@@ -6,6 +6,7 @@ import { messageDate, projectTimeline } from '../conversation';
 import type { ChatMessage } from '../conversation';
 import { MessageReactions, ReactionPicker } from './MessageReactions';
 import type { ReactionAction } from './MessageReactions';
+import { ActivityLine } from './ActivityLine';
 export function Transcript({
   conversationKey,
   messages,
@@ -146,13 +147,11 @@ export function Transcript({
           </motion.div>
         );
       })}
-      <div className="pc-activity-lane">
-        {running && (
-          <p className="pc-activity" role="status">
-            {activity === 'Stop requested' ? 'Stopping' : activity}
-          </p>
-        )}
-      </div>
+      <ActivityLine
+        key={conversationKey}
+        active={!!conversationKey && running}
+        label={activity === 'Stop requested' ? 'Stopping' : activity}
+      />
     </div>
   );
 }

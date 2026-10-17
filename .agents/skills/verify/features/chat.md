@@ -12,6 +12,12 @@ Choose a pebble or Crew from the rail. Type into Message. Use the message reacti
 
 Run `CI=1 npx playwright test --config playwright.chat.config.ts live-feedback.spec.ts reactions.spec.ts setup-continuity.spec.ts message-motion.spec.ts`. For touch geometry and stable completion controls, run the relevant keyboard/reaction specs with `playwright.mobile.config.ts`. Verify the addressed message, stable DOM/timestamp and draft, not just the presence of response text. Inspect normal, selected and hovered emoji styling and the settled phone screenshots.
 
+`interaction-feedback.spec.ts` samples activity settlement and send/stop glyph
+frames, real label changes, cancellation, held gestures and reduced motion.
+`startup.spec.ts` holds authentication, connection and native opening separately
+to reject transient empty-picker screens, then checks unavailable defaults and
+post-mount resize following. Both run through the mobile wrappers as well.
+
 Use native-owner and `scripts/fixture/reactions_smoke.py` for native reaction schema discovery and model receipt behavior. The latter needs an isolated prepared Hermes checkout. CI covers both supported reaction builds.
 
 ## Gotchas

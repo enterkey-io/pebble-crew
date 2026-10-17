@@ -461,6 +461,9 @@
   align-items: center;
   flex-shrink: 0;
 }
+.pc-activity-lane > div {
+  min-width: 0;
+}
 .pc-activity {
   max-width: 100%;
   overflow: hidden;
@@ -490,6 +493,11 @@
   100% {
     background-position: -80% 0;
   }
+}
+.pc-activity[data-settling] {
+  animation: none;
+  background: none;
+  -webkit-text-fill-color: currentColor;
 }
 @media (prefers-reduced-motion: reduce) {
   .pc-activity {
@@ -1094,6 +1102,9 @@
   }
   .pc-message {
     max-width: 94%;
+  }
+  .pc-message.user {
+    max-width: 88%;
   }
   .pc-bubble {
     font-size: 14px;
