@@ -105,6 +105,8 @@ test('private first use, native onboarding, idle keepalive, reconnection, settin
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
   await page.screenshot({ animations: 'disabled', path: 'test-results/agent-setup-mobile.png' });
   await page.setViewportSize({ width: 1440, height: 1000 });
+  // Accelerated timers diverge from Web Animations' clock. Real-frame browser journeys verify motion.
+  await page.emulateMedia({ reducedMotion: 'reduce' });
   await page.getByRole('button', { name: 'Start chatting', exact: true }).click();
   await expect(page.getByLabel('Message', { exact: true })).toBeEnabled({ timeout: 30000 });
   const sessionCookie = (await context.cookies()).find((c) => c.name.includes('session_token'));

@@ -23,3 +23,10 @@ Use native-owner and `scripts/fixture/reactions_smoke.py` for native reaction sc
 ## Gotchas
 
 Browser fixture hooks interrupt a real browser response stream, but simulate the external native service. Do not claim native model/tool discovery from those checks. Message-motion checks sample real frames, not just settled geometry; reduced motion and manual scrolling have separate cases. Geometry assertions need an explicit rounding tolerance; a successful rerun does not repair a flaky assertion.
+
+The native journey switches to reduced motion after its avatar check, before
+accelerating lifecycle timers. Playwright's accelerated performance/timer clock
+and the browser's Web Animations timeline diverge; advancing four minutes can
+schedule a normal exit animation four minutes ahead. Keep motion proof in the
+real-frame production journeys instead of interpreting that clock mismatch as
+a native completion failure.
