@@ -159,6 +159,9 @@ try {
       String(bridgePort),
       '--cert',
       ca,
+      ...(process.env.WORKSPACE_PLUGIN_ARCHIVE
+        ? ['--archive', process.env.WORKSPACE_PLUGIN_ARCHIVE]
+        : []),
     ],
     { env: { ...process.env, PYTHONPATH: source }, stdio: ['ignore', 'pipe', 'pipe'] },
   );
@@ -315,6 +318,7 @@ try {
     await readFile(join(directory, 'installation-results.json'), 'utf8'),
   );
   const result = {
+    application_revision: execFileSync('git', ['rev-parse', 'HEAD'], { encoding: 'utf8' }).trim(),
     source_revision: execFileSync('git', ['-C', source, 'rev-parse', 'HEAD'], {
       encoding: 'utf8',
     }).trim(),

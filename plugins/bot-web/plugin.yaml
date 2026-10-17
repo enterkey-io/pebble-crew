@@ -1,5 +1,5 @@
 name: bot-web
-version: 0.7.6
+version: 0.7.8
 description: Pebble Crew, a self-hosted interface for native Hermes Bot Mode.
 python_dependencies:
   - PyJWT[crypto]==2.13.0

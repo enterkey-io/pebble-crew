@@ -92,7 +92,7 @@ Run `hermes bot-web serve` under the verified root HERMES_HOME and the intended 
 
 For a pod with no tailnet interface, a supervised owner-controlled SSH tunnel plus an HTTPS tailnet entry on another owner machine is valid. Treat it as an explicit connection route, not app/bridge colocation. Verify restart of both tunnel and bridge. Never replace unrelated HTTPS/Tailscale routes, stop another service or assume a conversation-scoped background job survives a pod reboot.
 
-For a preview-to-owner update, preserve existing configuration/ports/routes, enroll trust, and run `hermes bot-web sync-runtime` to update this integration's enrolled profile copies with private backups. Wait until active native work is idle before maintenance/restarting the bridge. Do not interrupt active jobs just to finish an update. Never use global `revoke` for probe cleanup; it invalidates other browser grants. Probes release only their own connection lease.
+For a preview-to-owner update, preserve existing configuration/ports/routes, enroll trust, and run `hermes bot-web sync-runtime --source-package --native-idle` to update this integration's enrolled profile copies with private backups. Wait until active native work is idle before maintenance/restarting the bridge. Do not interrupt active jobs just to finish an update. Never use global `revoke` for probe cleanup; it invalidates other browser grants. Probes release only their own connection lease.
 
 ## 6. Verify the complete route before handoff
 

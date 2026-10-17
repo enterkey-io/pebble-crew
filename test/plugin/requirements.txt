@@ -17,5 +17,6 @@ typing-inspection==0.4.4
 
 PyJWT[crypto]==2.13.0
 Pillow==12.3.0
+PyYAML==6.0.3
 
 websockets==15.0.1

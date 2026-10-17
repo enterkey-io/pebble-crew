@@ -1,17 +1,7 @@
 import { request } from 'node:http';
 import { createHash } from 'node:crypto';
+import { bridgeRoute } from '@hermes-client/core';
 import type { IncomingMessage, ServerResponse } from 'node:http';
-
-const routes = new Map([
-  ['/v1/connect', ['POST', 'DELETE']],
-  ['/v1/renew', ['POST']],
-  ['/v1/rpc', ['POST']],
-  ['/v1/avatar', ['POST']],
-  ['/v1/files/upload', ['POST']],
-  ['/v1/files/read', ['POST']],
-  ['/v1/events', ['GET']],
-  ['/v1/oauth/callback', ['GET']],
-]);
 
 /** Fixed loopback destination and narrow protocol routes; never a general proxy. */
 export function proxyBridge(
@@ -22,9 +12,10 @@ export function proxyBridge(
 ) {
   const url = new URL(incoming.url!, origin);
   const callback = url.pathname === '/v1/oauth/callback';
+  const route = bridgeRoute(url.pathname);
   const suppliedOrigin = incoming.headers.origin;
   if (
-    !routes.get(url.pathname)?.includes(incoming.method ?? '') ||
+    !route?.methods.includes(incoming.method ?? '') ||
     (!callback && url.search) ||
     (suppliedOrigin && suppliedOrigin !== origin) ||
     (!callback && !suppliedOrigin && incoming.headers['sec-fetch-site'] !== 'same-origin')
@@ -32,12 +23,7 @@ export function proxyBridge(
     outgoing.writeHead(403).end();
     return;
   }
-  const limit =
-    url.pathname === '/v1/files/upload'
-      ? 14 * 1024 * 1024 + 4096
-      : url.pathname === '/v1/avatar'
-        ? 3_000_000
-        : 65_536;
+  const limit = route.maxBytes;
   if (Number(incoming.headers['content-length'] ?? 0) > limit) {
     outgoing.writeHead(413).end();
     return;

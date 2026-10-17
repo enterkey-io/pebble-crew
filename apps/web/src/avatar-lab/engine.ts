@@ -1,17 +1,7 @@
 /** Original procedural study. No vendor artwork or animation runtime. */
-export const SHAPES = [
-  'pebble',
-  'beacon',
-  'petal',
-  'kite',
-  'arch',
-  'cairn',
-  'seed',
-  'dune',
-  'flint',
-  'drift',
-] as const;
-export type Shape = (typeof SHAPES)[number];
+import type { Shape } from '@hermes-client/core';
+export { SHAPES } from '@hermes-client/core';
+export type { Shape } from '@hermes-client/core';
 export const STATES = ['ready', 'thinking', 'working', 'waiting', 'attention', 'done'] as const;
 export type Activity = (typeof STATES)[number];
 export const COLORS = [

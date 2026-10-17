@@ -1,17 +1,26 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useReducer, useState } from 'react';
 import type { BotBridgeClient } from '@hermes-client/protocol';
-import { workspaceState } from './workspace';
-import type { WorkspaceBot, WorkspaceState, Role } from './workspace';
+import { WorkspaceDomain } from '@hermes-client/protocol';
+import type { WorkspaceBot, WorkspaceSnapshot as WorkspaceState } from '@hermes-client/protocol';
+import {
+  emptyProfile,
+  profileValues,
+  profileSession,
+  profileReducer,
+  profileDirty,
+} from './profiles/edit-session';
+import { profileWriteError } from './profiles/save-outcome';
+import { ProfileConflicts } from './profiles/ProfileConflicts';
 import {
   PebbleProfileFields,
   RoleBasics,
   RoleDetails,
   ReportingField,
 } from './ui/pebble-profile-fields';
-import type { ProfileDraft } from './ui/pebble-profile-fields';
 import { Button } from './components/ui/button';
 import { LoadingBar } from './components/ui/loading-bar';
 import { Notice } from './ui/primitives';
+const refreshError = 'Could not refresh this profile. Your unsaved fields are still here.';
 export function ExistingPebbleSetup({
   client,
   profile,
@@ -25,63 +34,48 @@ export function ExistingPebbleSetup({
   onDone: (profile: string, introduce: boolean) => Promise<void>;
   onDirtyChange: (dirty: boolean) => void;
 }) {
-  const identity = useRef<string | undefined>(undefined);
   const [bot, setBot] = useState<WorkspaceBot>(),
-    [revision, setRevision] = useState(0),
     [loading, setLoading] = useState(true),
     [busy, setBusy] = useState(false),
     [error, setError] = useState(''),
     [retired, setRetired] = useState(false),
+    [uncertain, setUncertain] = useState(false),
     [avatarBusy, setAvatarBusy] = useState(false),
     [introduce, setIntroduce] = useState(true);
-  const [value, setValue] = useState<ProfileDraft>({
-    name: '',
-    handle: '',
-    appearance: { kind: 'shape', shape: 'pebble', color: 'iris' },
-    photo: '',
-  });
-  const [role, setRole] = useState<Role>({
-    title: '',
-    description: '',
-    responsibilities: '',
-    boundaries: '',
-    expectedOutputs: '',
-  });
-  const [manager, setManager] = useState('');
+  const [edit, dispatch] = useReducer(profileReducer, undefined, () =>
+    profileSession(emptyProfile()),
+  );
+  const value = edit.draft,
+    { role, manager } = value,
+    revision = edit.revision;
   useEffect(() => {
     let live = true;
-    void client
-      .invoke('workspace.describe', {})
-      .then((data) => {
-        const next = workspaceState(data),
-          found = next.bots.find((b) => b.profile === profile && b.available !== false);
-        if (!found) throw new Error();
+    void new WorkspaceDomain(client)
+      .describeWorkspace()
+      .then((next) => {
+        const found = next.bots.find((b) => b.profile === profile && b.available !== false);
+        if (!found) {
+          if (live) {
+            setRetired(true);
+            setError('This agent is unavailable. Go back and refresh the list.');
+          }
+          return;
+        }
         if (live) {
-          if (identity.current && identity.current !== found.id) throw new Error();
-          const first = !identity.current;
-          identity.current = found.id;
+          setRetired(false);
+          setError((error) => (error === refreshError ? '' : error));
           setBot(found);
-          setRevision(next.revision);
-          if (first)
-            setValue({
-              name: found.name,
-              handle: found.handle,
-              appearance: found.appearance,
-              photo: '',
-            });
-          if (first)
-            setRole({
-              ...found.role,
-              title: found.role.title,
-              description: found.role.description || found.description,
-            });
-          if (first) setManager(found.manager || next.orchestrator || '');
+          dispatch({
+            type: 'receive',
+            values: profileValues(found, next.orchestrator || '', true),
+            identity: found.id,
+            revision: next.revision,
+          });
         }
       })
       .catch(() => {
         if (live) {
-          setRetired(true);
-          setError('This agent is unavailable. Go back and refresh the list.');
+          setError(refreshError);
         }
       })
       .finally(() => {
@@ -90,45 +84,34 @@ export function ExistingPebbleSetup({
     return () => {
       live = false;
     };
-  }, [client, profile]);
+  }, [client, profile, state.revision]);
   useEffect(() => {
-    const dirty =
-      !!bot &&
-      (value.name !== bot.name ||
-        value.handle !== bot.handle ||
-        !!value.photo ||
-        JSON.stringify(value.appearance) !== JSON.stringify(bot.appearance) ||
-        JSON.stringify(role) !==
-          JSON.stringify({ ...bot.role, description: bot.role.description || bot.description }) ||
-        manager !== (bot.manager || state.orchestrator || ''));
-    onDirtyChange(dirty);
+    onDirtyChange(!!bot && profileDirty(edit));
     return () => onDirtyChange(false);
-  }, [bot, value, role, manager, state.orchestrator, onDirtyChange]);
+  }, [bot, edit, onDirtyChange]);
   async function add() {
-    if (busy || !bot || retired) return;
+    if (busy || !bot || retired || edit.retired || uncertain || edit.conflicts.length) return;
     setBusy(true);
     setError('');
     try {
-      await client.invoke('agent.onboard', {
-        profile,
-        id: bot.id,
+      const result = await new WorkspaceDomain(client).onboardExisting({
+        target: { profile, id: edit.identity! },
         name: value.name,
         handle: value.handle,
         appearance: value.appearance,
-        photo: value.appearance.kind === 'photo' ? value.photo || null : null,
+        photo: value.photo ? { kind: 'replace', data: value.photo } : { kind: 'preserve' },
         role,
         manager: profile === state.orchestrator ? null : manager || state.orchestrator,
-        expected_revision: revision,
+        expectedRevision: revision,
       });
+      if (result.kind !== 'confirmed') {
+        setUncertain(result.kind === 'uncertain');
+        setError(profileWriteError(result));
+        return;
+      }
       await onDone(profile, introduce);
     } catch {
-      setError('Could not finish adding this agent. Your profile is preserved.');
-      try {
-        const current = workspaceState(await client.invoke('workspace.describe', {}));
-        setRevision(current.revision);
-      } catch {
-        /* The draft stays local while offline. */
-      }
+      setError('Could not finish adding this agent. Reopen it to review the saved profile.');
     } finally {
       setBusy(false);
     }
@@ -146,23 +129,37 @@ export function ExistingPebbleSetup({
       <LoadingBar active={loading || busy} label={busy ? 'Adding agent' : 'Loading profile'} />
       <div className="profile-content" inert={busy}>
         {error && <Notice error>{error}</Notice>}
+        {edit.retired && (
+          <Notice error>This agent was replaced. Reopen the agent list before continuing.</Notice>
+        )}
+        <ProfileConflicts edit={edit} dispatch={dispatch} />
         {!loading && bot && (
           <PebbleProfileFields
             value={value}
-            onChange={(patch) => setValue((v) => ({ ...v, ...patch }))}
+            onChange={(patch) => dispatch({ type: 'change', patch })}
             client={client}
             profile={profile}
             onAvatarBusy={setAvatarBusy}
             revision={revision}
           >
-            <RoleBasics {...role} onChange={(patch) => setRole((r) => ({ ...r, ...patch }))} />
+            <RoleBasics
+              {...role}
+              onChange={(patch) =>
+                dispatch({ type: 'change', patch: { role: { ...role, ...patch } } })
+              }
+            />
             <ReportingField
               state={state}
               profile={profile}
               manager={manager}
-              onChange={setManager}
+              onChange={(manager) => dispatch({ type: 'change', patch: { manager } })}
             />
-            <RoleDetails role={role} onChange={(patch) => setRole((r) => ({ ...r, ...patch }))} />
+            <RoleDetails
+              role={role}
+              onChange={(patch) =>
+                dispatch({ type: 'change', patch: { role: { ...role, ...patch } } })
+              }
+            />
           </PebbleProfileFields>
         )}
       </div>
@@ -175,7 +172,20 @@ export function ExistingPebbleSetup({
           />
           Send me a welcome message
         </label>
-        <Button disabled={loading || busy || !bot || retired || avatarBusy}>Add pebble</Button>
+        <Button
+          disabled={
+            loading ||
+            busy ||
+            !bot ||
+            retired ||
+            edit.retired ||
+            uncertain ||
+            !!edit.conflicts.length ||
+            avatarBusy
+          }
+        >
+          Add pebble
+        </Button>
       </footer>
     </form>
   );

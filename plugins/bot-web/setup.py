@@ -126,64 +126,97 @@ def installed_primary():
     return value['profile']
 
 
-def sync_runtime():
-    """Update only this integration's installed profile copies, with private rollback."""
-    from .workspace import WorkspaceStore, workspace_path
-    from pathlib import Path
-    from datetime import datetime, timezone
+def sync_runtime(*, native_idle=False, source_package=False):
+    """Copy a compatible runtime only after the operator has stopped native work."""
+    from . import host_install as host
+    from .payload import copy_payload
+    from .workspace import workspace_path
     import shutil
-    from hermes_cli.profiles import get_profile_dir
-    store = WorkspaceStore(workspace_path())
-    try:
-        profiles = [p for p, b in store.read()['bots'].items() if b.get('enrolled')]
-    finally:
-        store.db.close()
-    source = Path(__file__).parent.resolve()
-    backup_root = workspace_path().parent / 'rollback' / datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%S%fZ')
-    changed = 0
-    for profile in profiles:
-        destination = Path(get_profile_dir(profile)) / 'plugins' / 'bot-web'
-        if destination.resolve() == source:
-            continue
-        if destination.is_symlink():
-            raise ValueError('Refusing to replace a linked plugin directory')
-        if destination.exists():
-            try:
-                import hermes_yaml as yaml
-            except ImportError:
-                import yaml
-            manifest = yaml.safe_load((destination / 'plugin.yaml').read_text())
-            if manifest.get('name') != 'bot-web':
-                raise ValueError('Refusing to replace unrelated plugin code')
-            backup = backup_root / profile
-            backup.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
-            backup.parent.chmod(0o700)
-            shutil.copytree(destination, backup)
-            backup.chmod(0o700)
-            previous = destination.with_name('.bot-web-previous')
-            if previous.exists():
-                raise ValueError('An earlier runtime update needs reconciliation')
-            os.replace(destination, previous)
-        else:
-            previous = None
-        temporary = destination.with_name('.bot-web-next')
+    import uuid
+    if not native_idle:
+        raise ValueError('Stop native work and profile processes, then use sync-runtime --native-idle. Copying files cannot reload running processes.')
+    directory = host.state_dir()
+    receipt_root = workspace_path().parent / 'rollback' / uuid.uuid4().hex
+    report = {'schema': 1, 'complete': False, 'profiles': [], 'loaded_runtime': 'unknown',
+              'next': 'Restart stopped profile processes before resuming native work.',
+              'receipt': str(receipt_root / 'receipt.json')}
+    lock = directory / 'install.lock' if (directory / 'install.json').exists() else workspace_path().parent / 'runtime-sync.lock'
+    with host.locked(lock):
+        package = Path(__file__).parent.resolve()
+        source = package
+        if (directory / 'install.json').exists() and not source_package:
+            value = host.load_install(directory)
+            source = host.release_dir(directory, value['active_release'])
+        report['source'] = host.runtime_evidence(source)
+        report['source_kind'] = 'package' if source == package else 'active-release'
+        report['idle_evidence'] = 'operator-confirmed; not process observation'
+        if source_package and (directory / 'install.json').exists():
+            active = host.load_install(directory)['active_release']
+            running = host.runtime_evidence(host.release_dir(directory, active))
+            if (report['source']['contract'] not in running['accepts']
+                or running['contract'] not in report['source']['accepts']):
+                raise ValueError('The staged runtime and active host have no tested compatibility; preserve both until a migration is available')
+        host.preflight_runtimes(source)
+        host.private_dir(receipt_root.parent)
+        host.atomic_write(receipt_root / 'receipt.json', report)
         try:
-            from .payload import copy_payload
-            if temporary.exists():
-                raise ValueError('An earlier runtime staging directory needs inspection')
-            copy_payload(source, temporary)
-            os.replace(temporary, destination)
-            if previous:
-                shutil.rmtree(previous)
+            for profile, destination in host.enrolled_runtime_paths().items():
+                row = {'profile': profile, 'destination': str(destination), 'source_sha256': report['source']['sha256'],
+                       'before_sha256': host.runtime_evidence(destination)['sha256'] if destination.exists() else None, 'backup': None,
+                       'status': 'pending', 'loaded': 'unknown'}
+                report['profiles'].append(row)
+                if destination.resolve() in {source.resolve(), package}:
+                    row['status'] = 'source-package-preserved'
+                    continue
+                if destination.is_symlink() or (destination.exists() and not destination.is_dir()):
+                    raise ValueError('Refusing an invalid or linked runtime directory')
+                temporary = destination.with_name('.bot-web-next')
+                previous = destination.with_name('.bot-web-previous')
+                if any(path.exists() or path.is_symlink() for path in (temporary, previous)):
+                    raise ValueError('An earlier runtime update needs reconciliation')
+                if any(path.is_symlink() for path in destination.rglob('*')):
+                    raise ValueError('Refusing linked files in a runtime backup')
+                if destination.exists():
+                    backup = receipt_root / profile
+                    shutil.copytree(destination, backup)
+                    for path in [backup, *backup.rglob('*')]:
+                        path.chmod(0o700 if path.is_dir() else 0o600)
+                    row['backup'] = str(backup)
+                destination.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+                host.atomic_write(receipt_root / 'receipt.json', report)
+                try:
+                    if report['source']['contract'] == 'legacy-b642cce':
+                        copy_payload(source, temporary, legacy_runtime=True)
+                    else:
+                        copy_payload(source, temporary)
+                    if host.runtime_evidence(temporary)['sha256'] != report['source']['sha256']:
+                        raise ValueError('Staged runtime differs from its source')
+                    if destination.exists():
+                        os.replace(destination, previous)
+                    os.replace(temporary, destination)
+                except BaseException:
+                    if temporary.exists():
+                        shutil.rmtree(temporary)
+                    if previous.exists() and not destination.exists():
+                        os.replace(previous, destination)
+                    row['status'] = 'failed'
+                    raise
+                row['status'] = 'copied'
+                row['after_sha256'] = host.runtime_evidence(destination)['sha256']
+                host.atomic_write(receipt_root / 'receipt.json', report)
+                if previous.exists():
+                    shutil.rmtree(previous)
+            report['complete'] = True
         except BaseException:
-            if temporary.exists():
-                shutil.rmtree(temporary)
-            if previous and previous.exists() and not destination.exists():
-                os.replace(previous, destination)
+            if report['profiles'] and report['profiles'][-1]['status'] == 'pending':
+                report['profiles'][-1]['status'] = 'failed'
+            host.atomic_write(receipt_root / 'receipt.json', report)
+            print(json.dumps(report))
             raise
-        changed += 1
-    print(json.dumps({'runtime_copies_updated': changed, 'private_backups': changed > 0,
-        'next': 'Restart the bridge only after native work is idle. Existing profiles and stores were preserved.'}))
+        report['runtime_copies_updated'] = sum(row['status'] == 'copied' for row in report['profiles'])
+        host.atomic_write(receipt_root / 'receipt.json', report)
+    print(json.dumps(report))
+    return report
 
 
 def read_event_frame(response):

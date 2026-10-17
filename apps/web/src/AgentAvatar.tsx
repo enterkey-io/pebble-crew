@@ -4,7 +4,7 @@ import { AvatarView, AvatarScheduler } from './avatar-lab/renderer';
 import { BODY_PATHS, COLORS, SHAPES } from './avatar-lab/engine';
 import { previewPhoto } from './avatar-lab/photo';
 import type { Activity } from './avatar-lab/engine';
-import type { Appearance } from './workspace';
+import type { Appearance } from '@hermes-client/protocol';
 import type { BotBridgeClient } from '@hermes-client/protocol';
 let clock: AvatarScheduler | undefined;
 let users = 0;

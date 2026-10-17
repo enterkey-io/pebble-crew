@@ -307,3 +307,24 @@ describe('direct Bot Mode bridge', () => {
     await expect(client.invoke('bots.list', {})).rejects.toMatchObject({ code: 'DISCONNECTED' });
   });
 });
+
+describe('full-profile photo routing', () => {
+  it.each(['agent.onboard', 'bots.profile.update'])(
+    'sends %s through the avatar route',
+    async (operation) => {
+      const fetcher = vi
+        .fn<typeof fetch>()
+        .mockResolvedValueOnce(connectedResponse())
+        .mockResolvedValue(Response.json({ result: { state: 'completed', profile: 'synthetic' } }));
+      const client = new BotBridgeClient(endpoint, token, fetcher);
+      await client.connect();
+      await client.invoke(operation, {
+        profile: 'synthetic',
+        photo: 'data:image/png;base64,' + 'a'.repeat(100_000),
+      });
+      expect(String(fetcher.mock.calls[1]![0])).toBe(
+        'https://personal.example.test/bridge/v1/avatar',
+      );
+    },
+  );
+});

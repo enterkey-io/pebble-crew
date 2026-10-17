@@ -131,7 +131,7 @@ test('existing agents get identity, appearance and role setup before native enro
   const fixture = await installFixture(context);
   const calls: { operation: string; params: Record<string, unknown> }[] = [];
   page.on('request', (r) => {
-    if (new URL(r.url()).pathname === '/v1/rpc') calls.push(r.postDataJSON());
+    if (['/v1/rpc', '/v1/avatar'].includes(new URL(r.url()).pathname)) calls.push(r.postDataJSON());
   });
   await ready(page);
   await newPebble(page);
@@ -299,7 +299,8 @@ test('a lost creation reply checks the same request and finishes setup without c
   fixture.loseNextCreationReply();
   const operations: string[] = [];
   page.on('request', (r) => {
-    if (new URL(r.url()).pathname === '/v1/rpc') operations.push(r.postDataJSON().operation);
+    if (['/v1/rpc', '/v1/avatar'].includes(new URL(r.url()).pathname))
+      operations.push(r.postDataJSON().operation);
   });
   await ready(page);
   await newPebble(page);

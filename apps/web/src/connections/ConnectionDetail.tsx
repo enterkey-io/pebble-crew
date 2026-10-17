@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useReducer, useRef, useState } from 'react';
 import { ChevronDown, ExternalLink } from 'lucide-react';
 import type { BotBridgeClient } from '@hermes-client/protocol';
 import { Button } from '../components/ui/button';
@@ -6,8 +6,9 @@ import { Input } from '../components/ui/input';
 import { Checkbox } from '../components/ui/checkbox';
 import { LoadingBar } from '../components/ui/loading-bar';
 import { Notice } from '../ui/primitives';
-import { permissions, probe, authFlow, keySaved, policyLabel, policyKey, toolTitle } from './model';
-import type { Connection, Permission, ToolPolicy, Tool, AuthFlow, Remote } from './model';
+import { permissions, probe, authFlow, keySaved, policyLabel, toolTitle } from './model';
+import type { Connection, Permission, Tool, AuthFlow, Remote } from './model';
+import { emptyPolicyEdit, policyDirty, reducePolicyEdit } from './edit-session';
 
 export function ConnectionDetail({
   client,
@@ -24,7 +25,8 @@ export function ConnectionDetail({
 }) {
   const name = connection.name;
   const [access, setAccess] = useState<Remote<Permission>>({ kind: 'loading' });
-  const [draft, setDraft] = useState<ToolPolicy>({ kind: 'native' });
+  const [edit, dispatch] = useReducer(reducePolicyEdit, emptyPolicyEdit);
+  const draft = edit.draft;
   const [tools, setTools] = useState<Tool[]>();
   const [toolsOpen, setToolsOpen] = useState(false);
   const [toolQuery, setToolQuery] = useState('');
@@ -37,8 +39,9 @@ export function ConnectionDetail({
   const [flow, setFlow] = useState<AuthFlow>();
   const [retry, setRetry] = useState(0);
   const keyInput = useRef<HTMLInputElement>(null);
-  const permission = access.kind === 'ready' ? access.value : undefined;
-  const toolsDirty = !!permission && policyKey(draft) !== policyKey(permission.policy);
+  const permission = edit.kind === 'ready' ? edit.remote : undefined;
+  const conflict = edit.kind === 'ready' && edit.conflict;
+  const toolsDirty = policyDirty(edit);
   const dirty = !!key || toolsDirty;
   useEffect(() => {
     if (keyOpen) keyInput.current?.focus({ preventScroll: true });
@@ -56,7 +59,7 @@ export function ConnectionDetail({
         const next = permissions(value);
         if (live) {
           setAccess({ kind: 'ready', value: next });
-          setDraft(next.policy);
+          dispatch({ type: 'receive', value: next });
         }
       })
       .catch(() => {
@@ -69,6 +72,7 @@ export function ConnectionDetail({
   async function refreshAccess() {
     const next = permissions(await client.invoke('connections.permissions', { profile, name }));
     setAccess({ kind: 'ready', value: next });
+    dispatch({ type: 'receive', value: next });
   }
   useEffect(() => {
     if (!flow || flow.state === 'approved' || flow.state === 'error') return;
@@ -85,7 +89,7 @@ export function ConnectionDetail({
           );
           if (!live) return;
           setAccess({ kind: 'ready', value: nextAccess });
-          setDraft(nextAccess.policy);
+          dispatch({ type: 'receive', value: nextAccess });
           setTools(undefined);
           setNotice('Signed in.');
           onChanged();
@@ -152,6 +156,17 @@ export function ConnectionDetail({
       />
       {error && <Notice error>{error}</Notice>}
       {notice && <Notice>{notice}</Notice>}
+      {conflict && (
+        <Notice>
+          Tool access changed elsewhere.
+          <Button variant="link" onClick={() => dispatch({ type: 'discard' })}>
+            Use saved settings
+          </Button>
+          <Button variant="link" onClick={() => dispatch({ type: 'keep' })}>
+            Keep my changes
+          </Button>
+        </Notice>
+      )}
       <section className="connection-section" aria-labelledby="connection-access-title">
         <h3 id="connection-access-title">Connection</h3>
         <div className="connection-detail-actions">
@@ -291,7 +306,9 @@ export function ConnectionDetail({
                   <Button
                     variant="secondary"
                     disabled={busy || !!authorizing}
-                    onClick={() => setDraft({ kind: 'custom', names: [] })}
+                    onClick={() =>
+                      dispatch({ type: 'change', value: { kind: 'custom', names: [] } })
+                    }
                   >
                     Choose tools
                   </Button>
@@ -301,6 +318,8 @@ export function ConnectionDetail({
                 <form
                   onSubmit={(event) => {
                     event.preventDefault();
+                    if (conflict) return;
+                    const submitted = draft;
                     void run(async () => {
                       const next = permissions(
                         await client.invoke('connections.permissions', {
@@ -311,7 +330,7 @@ export function ConnectionDetail({
                         }),
                       );
                       setAccess({ kind: 'ready', value: next });
-                      setDraft(next.policy);
+                      dispatch({ type: 'saved', value: next, submitted });
                       setNotice('Tool access saved. Applies when this pebble restarts.');
                     });
                   }}
@@ -348,12 +367,15 @@ export function ConnectionDetail({
                             disabled={busy || !!authorizing}
                             checked={draft.names.includes(tool.name)}
                             onCheckedChange={(selected) =>
-                              setDraft({
-                                kind: 'custom',
-                                names:
-                                  selected === true
-                                    ? [...draft.names, tool.name]
-                                    : draft.names.filter((n) => n !== tool.name),
+                              dispatch({
+                                type: 'change',
+                                value: {
+                                  kind: 'custom',
+                                  names:
+                                    selected === true
+                                      ? [...draft.names, tool.name]
+                                      : draft.names.filter((n) => n !== tool.name),
+                                },
                               })
                             }
                           />
@@ -366,7 +388,9 @@ export function ConnectionDetail({
                   </fieldset>
                   {!tools.length && !draft.names.length && <p>No tools available.</p>}
                   <div className="connection-detail-actions connection-tool-save">
-                    <Button disabled={busy || !!authorizing || !toolsDirty}>Save changes</Button>
+                    <Button disabled={busy || !!authorizing || !toolsDirty || conflict}>
+                      Save changes
+                    </Button>
                   </div>
                 </form>
               )}

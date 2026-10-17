@@ -20,7 +20,7 @@ import { Badge } from '../components/ui/badge';
 import { OrganizationRail, OrganizationDialog } from '../ui/OrganizationRail';
 import { placePebble, placementOf, sectionAccepts, readRailDrag } from '../ui/organization';
 import type { Organization, OrganizationEditor } from '../ui/organization';
-import type { WorkspaceState, WorkspaceBot } from '../workspace';
+import type { WorkspaceSnapshot as WorkspaceState, WorkspaceBot } from '@hermes-client/protocol';
 import type { BotBridgeClient } from '@hermes-client/protocol';
 import type { Activity } from '../avatar-lab/engine';
 import type { Row } from '../conversation';
@@ -342,7 +342,7 @@ export function Rail({
                         </span>
                       )}
                       {identity(b)?.role.title && (
-                        <Badge variant="secondary" aria-hidden="true">
+                        <Badge className="pc-pin-title" variant="secondary" aria-hidden="true">
                           {identity(b)?.role.title}
                         </Badge>
                       )}

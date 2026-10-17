@@ -1,6 +1,6 @@
 import type { BrowserContext, Page } from '@playwright/test';
 import type { OrganizationState } from '../../apps/web/src/ui/organization';
-import type { WorkspaceState } from '../../apps/web/src/workspace';
+import type { WorkspaceSnapshot as WorkspaceState } from '@hermes-client/protocol';
 export const names = [
   'Arlo',
   'Mica',
@@ -349,6 +349,7 @@ export async function installFixture(
           { name: 'browser', label: 'Browser', enabled: false },
         ],
       };
+    if (operation === 'agent.attach') result = { state: 'completed', runtime: 'refresh_required' };
     if (operation === 'agents.list')
       result = {
         agents: [...state.bots],
@@ -405,6 +406,10 @@ export async function installFixture(
         { role: params.role, manager: params.manager, team: params.team },
       );
       state.revision++;
+      result = {
+        revision: state.revision,
+        bots: Object.fromEntries(state.bots.map((bot) => [bot.profile, bot])),
+      };
     }
     if (operation === 'bots.appearance.update') {
       state.bots.find((b) => b.profile === params.profile)!.appearance = params.appearance;

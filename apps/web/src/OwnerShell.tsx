@@ -3,6 +3,7 @@ import { Button } from './components/ui/button';
 import { useEffect, useState } from 'react';
 import { App } from './App';
 import { useAppViewport } from './ui/viewport';
+import { StartupScreen } from './StartupScreen';
 
 export interface OwnerConnection {
   ticket: () => Promise<{ ticket: string; bridgeUrl: string }>;
@@ -94,6 +95,7 @@ export function OwnerShell({ setupProof = '' }: { setupProof?: string } = {}) {
     }
   }
   if (mode === 'preview') return <App />;
+  if (mode === 'loading') return <StartupScreen />;
   if (mode === 'ready')
     return (
       <App
@@ -122,11 +124,9 @@ export function OwnerShell({ setupProof = '' }: { setupProof?: string } = {}) {
         <h1>
           {mode === 'setup'
             ? 'Create your login'
-            : mode === 'loading'
-              ? 'Loading…'
-              : mode === 'unavailable'
-                ? 'Unable to connect'
-                : 'Sign in'}
+            : mode === 'unavailable'
+              ? 'Unable to connect'
+              : 'Sign in'}
         </h1>
         {mode === 'unavailable' ? (
           <>
@@ -135,7 +135,7 @@ export function OwnerShell({ setupProof = '' }: { setupProof?: string } = {}) {
               Try again
             </Button>
           </>
-        ) : mode === 'loading' ? null : (
+        ) : (
           <>
             {mode === 'setup' && !usingSetupLink && (
               <p>Open your private setup link to continue.</p>

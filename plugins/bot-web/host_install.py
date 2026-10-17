@@ -22,7 +22,9 @@ MAX_PAYLOAD_BYTES = 100_000_000
 
 def state_dir():
     from .setup import config_path
-    return config_path().parent / "web"
+    config = config_path()
+    # Canonicalize the trusted Hermes home, retaining checks on integration-owned children.
+    return config.parent.parent.resolve() / config.parent.name / "web"
 
 
 def private_dir(path):
@@ -218,6 +220,144 @@ def verify_existing_owner(directory, origin):
         connection.execute('SELECT id FROM owner_claim LIMIT 1').fetchone()
 
 
+LEGACY_RUNTIME_FILES = (
+    'runtime.py', 'workspace.py', 'operations.py', 'native.py', 'native_entry.py',
+    'native_extensions.py', 'reactions.py', 'reactions_native.py', 'identity.py',
+    'lifecycle_native.py', 'compatibility.py',
+)
+LEGACY_RUNTIME_SHA256 = '85fc3adb17cef6b519b9f6f16275828788a84ccdfa2c33b568ff9beec5cfa7f4'
+
+
+def code_digest(source, names):
+    source = Path(source)
+    checksums = {}
+    for name in names:
+        if (not isinstance(name, str) or PurePosixPath(name).is_absolute()
+            or '..' in PurePosixPath(name).parts or '\\' in name or str(PurePosixPath(name)) != name):
+            raise ValueError('Unsafe runtime inventory entry')
+        path = source / name
+        if any(part.is_symlink() for part in (path, *path.parents)) or not path.is_file():
+            raise ValueError('Runtime code is incomplete or linked')
+        checksums[name] = hashlib.sha256(path.read_bytes()).hexdigest()
+    return hashlib.sha256(json.dumps(checksums, sort_keys=True).encode()).hexdigest()
+
+
+def runtime_evidence(source):
+    """Inspect code on disk without importing or executing the inspected plugin."""
+    source = Path(source)
+    from .payload import FILES
+    if (source / 'runtime-contract.json').is_symlink():
+        raise ValueError('Invalid runtime compatibility declaration')
+    names = [name for name in FILES if (source / name).exists()]
+    optional_legacy = {'runtime-contract.json', 'protocol-catalog.json'}
+    required = set(FILES) if (source / 'runtime-contract.json').exists() else set(FILES) - optional_legacy
+    if not required.issubset(names):
+        raise ValueError('Runtime code payload is incomplete')
+    if not source.is_dir() or 'runtime.py' not in names:
+        raise ValueError('Runtime copy is missing')
+    digest = code_digest(source, names)
+    try:
+        import hermes_yaml as yaml
+    except ImportError:
+        import yaml
+    manifest = yaml.safe_load((source / 'plugin.yaml').read_text())
+    if not isinstance(manifest, dict) or manifest.get('name') != 'bot-web':
+        raise ValueError('Refusing unrelated plugin code')
+    path = source / 'runtime-contract.json'
+    if path.exists():
+        if path.is_symlink() or path.stat().st_size > 4096:
+            raise ValueError('Invalid runtime compatibility declaration')
+        contract = json.loads(path.read_text())
+        if (not isinstance(contract, dict) or set(contract) != {'schema', 'contract', 'accepts'}
+            or contract['schema'] != 1 or not isinstance(contract['contract'], str)
+            or not isinstance(contract['accepts'], list)
+            or not all(isinstance(item, str) for item in contract['accepts'])):
+            raise ValueError('Invalid runtime compatibility declaration')
+    else:
+        legacy = code_digest(source, LEGACY_RUNTIME_FILES) == LEGACY_RUNTIME_SHA256
+        contract = {'contract': 'legacy-b642cce' if legacy else None,
+                    'accepts': ['legacy-b642cce', 'workspace-runtime-v1'] if legacy else []}
+    return {'path': str(source), 'sha256': digest, 'contract': contract['contract'],
+            'accepts': contract['accepts'], 'loaded': 'unknown'}
+
+
+def enrolled_runtime_paths():
+    from .workspace import workspace_path
+    from hermes_cli.profiles import get_profile_dir
+    path = workspace_path()
+    if not path.exists():
+        return {}
+    if path.is_symlink() or (os.name == 'posix' and path.stat().st_mode & 0o077):
+        raise ValueError('Invalid private workspace database')
+    with closing(sqlite3.connect(path.resolve().as_uri() + '?mode=ro', uri=True)) as db:
+        row = db.execute('SELECT data FROM workspace WHERE id=1').fetchone()
+    bots = json.loads(row[0])['bots'] if row else {}
+    result = {}
+    for profile, bot in bots.items():
+        if not bot.get('enrolled'):
+            continue
+        if not isinstance(profile, str) or not re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9_-]*', profile):
+            raise ValueError('Invalid enrolled profile identity')
+        home = Path(get_profile_dir(profile))
+        if not home.is_dir() or (profile != 'default' and home.is_symlink()):
+            raise ValueError('Enrolled profile home is missing or linked')
+        if (home / 'plugins').is_symlink():
+            raise ValueError('Enrolled plugin directory is linked')
+        home = home.resolve()
+        if bot.get('native_incarnation'):
+            marker = home / '.pebble-crew-identity'
+            if marker.is_symlink() or not marker.is_file() or marker.stat().st_size > 512 or marker.stat().st_nlink != 1:
+                raise ValueError('Enrolled native profile identity is unverified; runtime not touched')
+            identity = json.loads(marker.read_text())
+            stat = home.stat()
+            if (identity.get('witness') != [stat.st_dev, stat.st_ino]
+                or not isinstance(identity.get('nonce'), str) or len(identity['nonce']) != 64
+                or hashlib.sha256(identity['nonce'].encode()).hexdigest() != bot['native_incarnation']):
+                raise ValueError('Enrolled native profile identity changed; runtime not touched')
+        result[profile] = home / 'plugins' / 'bot-web'
+    return result
+
+
+def runtime_status(directory=None, *, source=None):
+    directory = Path(directory or state_dir())
+    package = Path(source or Path(__file__).parent)
+    result = {'schema': 1, 'packaged': runtime_evidence(package),
+              'active_host': None, 'profiles': [], 'loaded_runtime': 'unknown'}
+    if (directory / 'install.json').exists():
+        value = load_install(directory)
+        active = release_dir(directory, value['active_release'])
+        metadata = read_private(active / 'release.json')
+        actual = code_digest(active, metadata['files'])
+        result['active_host'] = {'release': value['active_release'], 'sha256': actual,
+            'integrity': actual[:24] == value['active_release'], 'runtime': runtime_evidence(active)}
+    for profile, path in enrolled_runtime_paths().items():
+        if not path.exists() and not path.is_symlink():
+            result['profiles'].append({'profile': profile, 'path': str(path), 'state': 'not-installed',
+                'sha256': None, 'contract': None, 'loaded': 'unknown'})
+            continue
+        try:
+            evidence = runtime_evidence(path)
+        except (OSError, ValueError) as error:
+            evidence = {'path': str(path), 'sha256': None, 'contract': None,
+                        'loaded': 'unknown', 'error': type(error).__name__}
+        result['profiles'].append({'profile': profile, **evidence})
+    return result
+
+
+def preflight_runtimes(source):
+    host = runtime_evidence(source)
+    for profile, path in enrolled_runtime_paths().items():
+        # A native managed bot may never have opened through this integration.
+        if not path.exists() and not path.is_symlink():
+            continue
+        try:
+            runtime = runtime_evidence(path)
+        except (OSError, ValueError) as error:
+            raise ValueError(f'Runtime compatibility is unverified for {profile}; inspect runtime-status before activation') from error
+        if runtime['contract'] not in host['accepts'] or host['contract'] not in runtime['accepts']:
+            raise ValueError(f'Runtime compatibility is unverified for {profile}; preserve the active host and inspect runtime-status')
+
+
 def stage_release(directory, source, node):
     from .payload import payload_paths
     manifest, runtime_files = payload_files(source / "web-runtime")
@@ -296,6 +436,7 @@ def install(origin, *, directory=None, source=None, node=None, web_port=None,
                 (bridge_port and bridge_port != previous["bridge_port"])):
                 raise ValueError("Preserve this installation's origin, runtime and ports; relocation needs a migration")
         release = stage_release(directory, source, node)
+        preflight_runtimes(release_dir(directory, release))
         if previous and previous["active_release"] == release:
             return {"configured": True, "changed": False, "state": str(directory)}
         if previous and not update:
@@ -337,7 +478,8 @@ def rollback(directory=None):
         value = load_install(directory)
         if not value["previous_release"]:
             raise ValueError("There is no previous installed release")
-        release_dir(directory, value["previous_release"])
+        target = release_dir(directory, value["previous_release"])
+        preflight_runtimes(target)
         value["active_release"], value["previous_release"] = value["previous_release"], value["active_release"]
         atomic_write(directory / "install.json", value)
     return {"configured": True, "state": str(directory), "activation": "pending verification"}

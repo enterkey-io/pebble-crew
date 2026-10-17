@@ -1,4 +1,10 @@
-import { ClientError, ConnectionLifetime, endpointUrl, safeError } from '@hermes-client/core';
+import {
+  ClientError,
+  ConnectionLifetime,
+  endpointUrl,
+  operationRoute,
+  safeError,
+} from '@hermes-client/core';
 import type { Endpoint } from '@hermes-client/core';
 import { readBoundedJson, record } from './json';
 
@@ -86,15 +92,8 @@ export class BotBridgeClient {
     const generation = this.#lifetime.capture();
     return this.#withSlot(async () => {
       this.#lifetime.assertCurrent(generation);
-      return record(
-        await this.#request(
-          ['bots.appearance.update', 'workspace.initialize'].includes(operation)
-            ? 'v1/avatar'
-            : 'v1/rpc',
-          'POST',
-          { operation, params },
-        ),
-      ).result;
+      return record(await this.#request(operationRoute(operation), 'POST', { operation, params }))
+        .result;
     });
   }
 

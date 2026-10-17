@@ -34,9 +34,11 @@ jobs:
       - run: /tmp/bot-web-test-env/bin/python -m unittest discover -s test/plugin -p 'test_*.py'
   native-owner:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          fetch-depth: 0 # Installed rollback checks the exact pre-contract integration source.
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           repository: enterkey-io/hermes-agent
@@ -61,6 +63,21 @@ jobs:
           echo "HERMES_NATIVE_PYTHON=$RUNNER_TEMP/hermes-ui-env/bin/python" >> "$GITHUB_ENV"
       - run: npm run test:owner-browser
       - run: python scripts/fixture/reactions_smoke.py
+      - run: python scripts/package.py
+      - run: node scripts/verify-release.mjs
+        env:
+          WORKSPACE_PLUGIN_ARCHIVE: ${{ github.workspace }}/artifacts/packages/workspace-plugin-preview.zip
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        if: always()
+        with:
+          name: installed-package-evidence
+          path: |
+            artifacts/installed-package-acceptance.json
+            artifacts/plugin-login.png
+            artifacts/installed-plugin-failure.png
+            artifacts/packages/workspace-manifest.json
+          if-no-files-found: ignore
+          retention-days: 7
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         if: failure()
         with:

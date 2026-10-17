@@ -1,0 +1,360 @@
+{
+  "schema": 1,
+  "protocol": "hermes-bot-web.v1",
+  "routes": {
+    "connect": {
+      "path": "/v1/connect",
+      "methods": ["POST", "DELETE"],
+      "maxBytes": 65536
+    },
+    "renew": {
+      "path": "/v1/renew",
+      "methods": ["POST"],
+      "maxBytes": 65536
+    },
+    "rpc": {
+      "path": "/v1/rpc",
+      "methods": ["POST"],
+      "maxBytes": 65536
+    },
+    "avatar": {
+      "path": "/v1/avatar",
+      "methods": ["POST"],
+      "maxBytes": 3000000
+    },
+    "upload": {
+      "path": "/v1/files/upload",
+      "methods": ["POST"],
+      "maxBytes": 14684160
+    },
+    "read": {
+      "path": "/v1/files/read",
+      "methods": ["POST"],
+      "maxBytes": 65536
+    },
+    "events": {
+      "path": "/v1/events",
+      "methods": ["GET"],
+      "maxBytes": 65536
+    },
+    "oauth": {
+      "path": "/v1/oauth/callback",
+      "methods": ["GET"],
+      "maxBytes": 65536
+    }
+  },
+  "operations": {
+    "agent.attach": {
+      "preferred": "rpc",
+      "accepted": ["rpc"]
+    },
+    "agent.capabilities": {
+      "preferred": "rpc",
+      "accepted": ["rpc"]
+    },
+    "agent.create": {
+      "preferred": "rpc",
+      "accepted": ["rpc"]
+    },
+    "agent.delete": {
+      "preferred": "rpc",
+      "accepted": ["rpc"]
+    },
+    "agent.enable": {
+      "preferred": "rpc",
+      "accepted": ["rpc"]
+    },
+    "agent.hide": {
+      "preferred": "rpc",
+      "accepted": ["rpc"]
+    },
+    "agent.model": {
+      "preferred": "rpc",
+      "accepted": ["rpc"]
+    },
+    "agent.onboard": {
+      "preferred": "avatar",
+      "accepted": ["rpc", "avatar"]
+    },
+    "agent.pin": {
+      "preferred": "rpc",
+      "accepted": ["rpc"]
+    },
+    "agent.propose": {
+      "preferred": "rpc",
+      "accepted": ["rpc"]
+    },
+    "agent.update": {
+      "preferred": "rpc",
+      "accepted": ["rpc"]
+    },
+    "agent.welcome": {
+      "preferred": "rpc",
+      "accepted": ["rpc"]
+    },
+    "agents.list": {
+      "preferred": "rpc",
+      "accepted": ["rpc"]
+    },
+    "bot.open": {
+      "preferred": "rpc",
+      "accepted": ["rpc"]
+    },
+    "bots.appearance.get": {
+      "preferred": "rpc",
+      "accepted": ["rpc"]
+    },
+    "bots.appearance.update": {
+      "preferred": "avatar",
+      "accepted": ["rpc", "avatar"]
+    },
+    "bots.list": {
+      "preferred": "rpc",
+      "accepted": ["rpc"]
+    },
+    "bots.profile.update": {
+      "preferred": "avatar",
+      "accepted": ["rpc", "avatar"]
+    },
+    "bots.update_handle": {
+      "preferred": "rpc",
+      "accepted": ["rpc"]
+    },
+    "chat.approvals": {
+      "preferred": "rpc",
+      "accepted": ["rpc"]
+    },
+    "chat.approve": {
+      "preferred": "rpc",
+      "accepted": ["rpc"]
+    },
+    "chat.history": {
+      "preferred": "rpc",
+      "accepted": ["rpc"]
+    },
+    "chat.react": {
+      "preferred": "rpc",
+      "accepted": ["rpc"]
+    },
+    "chat.replay": {
+      "preferred": "rpc",
+      "accepted": ["rpc"]
+    },
+    "chat.send": {
+      "preferred": "rpc",
+      "accepted": ["rpc"]
+    },
+    "chat.stop": {
+      "preferred": "rpc",
+      "accepted": ["rpc"]
+    },
+    "computer.control": {
+      "preferred": "rpc",
+      "accepted": ["rpc"]
+    },
+    "computer.force_release": {
+      "preferred": "rpc",
+      "accepted": ["rpc"]
+    },
+    "computer.observe": {
+      "preferred": "rpc",
+      "accepted": ["rpc"]
+    },
+    "computer.release": {
+      "preferred": "rpc",
+      "accepted": ["rpc"]
+    },
+    "computer.start": {
+      "preferred": "rpc",
+      "accepted": ["rpc"]
+    },
+    "computer.status": {
+      "preferred": "rpc",
+      "accepted": ["rpc"]
+    },
+    "computer.stop": {
+      "preferred": "rpc",
+      "accepted": ["rpc"]
+    },
+    "connections.add": {
+      "preferred": "rpc",
+      "accepted": ["rpc"]
+    },
+    "connections.auth_cancel": {
+      "preferred": "rpc",
+      "accepted": ["rpc"]
+    },
+    "connections.auth_start": {
+      "preferred": "rpc",
+      "accepted": ["rpc"]
+    },
+    "connections.auth_status": {
+      "preferred": "rpc",
+      "accepted": ["rpc"]
+    },
+    "connections.list": {
+      "preferred": "rpc",
+      "accepted": ["rpc"]
+    },
+    "connections.permissions": {
+      "preferred": "rpc",
+      "accepted": ["rpc"]
+    },
+    "connections.set_key": {
+      "preferred": "rpc",
+      "accepted": ["rpc"]
+    },
+    "connections.test": {
+      "preferred": "rpc",
+      "accepted": ["rpc"]
+    },
+    "crews.save": {
+      "preferred": "rpc",
+      "accepted": ["rpc"]
+    },
+    "files.discard": {
+      "preferred": "rpc",
+      "accepted": ["rpc"]
+    },
+    "files.list": {
+      "preferred": "rpc",
+      "accepted": ["rpc"]
+    },
+    "files.read": {
+      "preferred": "read",
+      "accepted": ["read"]
+    },
+    "files.reconcile": {
+      "preferred": "rpc",
+      "accepted": ["rpc"]
+    },
+    "files.remove": {
+      "preferred": "rpc",
+      "accepted": ["rpc"]
+    },
+    "files.upload": {
+      "preferred": "upload",
+      "accepted": ["upload"]
+    },
+    "models.describe": {
+      "preferred": "rpc",
+      "accepted": ["rpc"]
+    },
+    "organization.chat": {
+      "preferred": "rpc",
+      "accepted": ["rpc"]
+    },
+    "organization.get": {
+      "preferred": "rpc",
+      "accepted": ["rpc"]
+    },
+    "organization.save": {
+      "preferred": "rpc",
+      "accepted": ["rpc"]
+    },
+    "presentation.order": {
+      "preferred": "rpc",
+      "accepted": ["rpc"]
+    },
+    "presentation.read": {
+      "preferred": "rpc",
+      "accepted": ["rpc"]
+    },
+    "requests.approve": {
+      "preferred": "rpc",
+      "accepted": ["rpc"]
+    },
+    "requests.deny": {
+      "preferred": "rpc",
+      "accepted": ["rpc"]
+    },
+    "requests.list": {
+      "preferred": "rpc",
+      "accepted": ["rpc"]
+    },
+    "requests.reconcile": {
+      "preferred": "rpc",
+      "accepted": ["rpc"]
+    },
+    "roles.update": {
+      "preferred": "rpc",
+      "accepted": ["rpc"]
+    },
+    "room.approve": {
+      "preferred": "rpc",
+      "accepted": ["rpc"]
+    },
+    "room.create": {
+      "preferred": "rpc",
+      "accepted": ["rpc"]
+    },
+    "room.log": {
+      "preferred": "rpc",
+      "accepted": ["rpc"]
+    },
+    "room.send": {
+      "preferred": "rpc",
+      "accepted": ["rpc"]
+    },
+    "room.state": {
+      "preferred": "rpc",
+      "accepted": ["rpc"]
+    },
+    "room.stop": {
+      "preferred": "rpc",
+      "accepted": ["rpc"]
+    },
+    "rooms.list": {
+      "preferred": "rpc",
+      "accepted": ["rpc"]
+    },
+    "routines.list": {
+      "preferred": "rpc",
+      "accepted": ["rpc"]
+    },
+    "routines.set_enabled": {
+      "preferred": "rpc",
+      "accepted": ["rpc"]
+    },
+    "search.context": {
+      "preferred": "rpc",
+      "accepted": ["rpc"]
+    },
+    "search.query": {
+      "preferred": "rpc",
+      "accepted": ["rpc"]
+    },
+    "services.catalog": {
+      "preferred": "rpc",
+      "accepted": ["rpc"]
+    },
+    "teams.save": {
+      "preferred": "rpc",
+      "accepted": ["rpc"]
+    },
+    "workspace.describe": {
+      "preferred": "rpc",
+      "accepted": ["rpc"]
+    },
+    "workspace.detect_primary": {
+      "preferred": "rpc",
+      "accepted": ["rpc"]
+    },
+    "workspace.initialize": {
+      "preferred": "avatar",
+      "accepted": ["rpc", "avatar"]
+    },
+    "workspace.set_orchestrator": {
+      "preferred": "rpc",
+      "accepted": ["rpc"]
+    },
+    "workspace.snapshot": {
+      "preferred": "rpc",
+      "accepted": ["rpc"]
+    },
+    "workspace.welcome": {
+      "preferred": "rpc",
+      "accepted": ["rpc"]
+    }
+  }
+}

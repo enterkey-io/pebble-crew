@@ -13,7 +13,11 @@ artifacts/
 __pycache__/
 .superdesign/
 .codex/
-.agents/
+.agents/*
+!.agents/skills/
+.agents/skills/*
+!.agents/skills/verify/
+.audit/
 .aws/
 .local/
 .dev.vars

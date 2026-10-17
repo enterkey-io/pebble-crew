@@ -235,15 +235,32 @@ button:disabled {
   flex-shrink: 0;
   align-self: flex-end;
 }
-.pc-composer-row .send-button svg {
+.pc-action-glyphs,
+.pc-action-glyphs > span {
+  display: grid;
+  place-items: center;
+  grid-area: 1 / 1;
+  pointer-events: none;
+}
+.pc-action-glyphs svg {
   width: 18px;
   height: 18px;
 }
-.stop-button span {
-  width: 12px;
-  height: 12px;
-  background: currentColor;
-  border-radius: 2px;
+.pc-action-glyphs > span {
+  transition: opacity 120ms ease-out;
+}
+.send-button [data-glyph='send'],
+.stop-button [data-glyph='stop'] {
+  opacity: 1;
+}
+.send-button [data-glyph='stop'],
+.stop-button [data-glyph='send'] {
+  opacity: 0;
+}
+@media (prefers-reduced-motion: reduce) {
+  .pc-action-glyphs > span {
+    transition: none;
+  }
 }
 .attachment-chips {
   display: flex;
@@ -508,6 +525,36 @@ button:disabled {
   display: flex;
   flex-direction: column;
   gap: 24px;
+}
+.startup-progress {
+  width: min(240px, 70vw);
+  min-height: 50px;
+}
+.startup-progress .loading-track {
+  background: var(--border);
+  border-radius: 1px;
+}
+.startup-sign-out {
+  display: block;
+  min-height: 44px;
+  margin-top: 4px;
+  padding: 0;
+  font-size: 12px;
+  color: var(--muted-foreground);
+  transition: color var(--motion-hover);
+}
+.startup-sign-out:hover,
+.startup-sign-out:focus-visible {
+  color: var(--foreground);
+}
+.startup-error {
+  margin-top: 16px;
+  font-size: 13px;
+  color: var(--muted-foreground);
+}
+.startup-error button {
+  margin-top: 8px;
+  color: var(--foreground);
 }
 .owner-card h1 {
   font-size: 26px;

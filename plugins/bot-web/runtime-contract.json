@@ -1,0 +1,5 @@
+{
+  "schema": 1,
+  "contract": "workspace-runtime-v1",
+  "accepts": ["workspace-runtime-v1", "legacy-b642cce"]
+}

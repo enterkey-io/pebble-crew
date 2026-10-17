@@ -7,7 +7,7 @@ import { ComputerPanel } from './ComputerPanel';
 import type { ReactNode } from 'react';
 import type { ChatBot } from './Rail';
 import { PebbleAvatar, CrewAvatar } from './Rail';
-import type { WorkspaceState } from '../workspace';
+import type { WorkspaceSnapshot as WorkspaceState } from '@hermes-client/protocol';
 import type { BotBridgeClient } from '@hermes-client/protocol';
 import type { Row } from '../conversation';
 export function Inspector({

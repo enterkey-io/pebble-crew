@@ -1,5 +1,18 @@
 # Installed-owner implementation status
 
+**17 October 0.7.8-preview.2:** pinned tiles center the avatar in their upper third,
+with the name and a two-line role label below. The corner action menu no longer
+pushes the avatar downward. Incremental fixes use preview suffixes within 0.7.8.
+
+**17 October 0.7.8 candidate:** initial opening uses one quiet progress view until
+the native conversation is restored. Reconnection keeps the existing app mounted.
+Actual activity labels settle in their reserved lane, send/stop glyphs crossfade
+inside one action target, and the existing Radix tooltips share cold/warm timing.
+Long owner messages use more of the phone width. See the
+[implementation plan](INTERACTION_POLISH_PLAN.md) and
+[React Bits assessment](REACT_BITS_REVIEW.md); no React Bits source or dependency
+is included. Crew semantics and agent-exchange overlays remain separate work.
+
 **16 October 0.7.0 update:** the actual app now uses the independently reviewed
 shadcn/Radix foundation across chat, Settings, Add/Edit pebble, account, requests
 and connections. The update includes integrated details motion, persistent custom

@@ -19,6 +19,7 @@ import { fileSize } from './chat/FilesPanel';
 import { Rail, PebbleAvatar, CrewAvatar } from './chat/Rail';
 import type { ChatBot as Bot } from './chat/Rail';
 import { Transcript } from './chat/Transcript';
+import { ComposerAction } from './chat/ComposerAction';
 import { Inspector } from './chat/Inspector';
 import { Icon } from './chat/Icon';
 import { Drawer } from './chat/Drawer';
@@ -32,14 +33,16 @@ import type { Organization, OrganizationState } from './ui/organization';
 import type { SetStateAction } from 'react';
 import { SearchOverlay } from './chat/SearchOverlay';
 import { SendProjection } from './chat/send-projection';
+import { TranscriptFollow } from './chat/viewport-motion';
 import { toolActivity } from './chat/activity';
 import { reactionReceipt } from './chat/reactions';
 import { useOverlayHistory } from './ui/overlay-history';
 import type { OwnerConnection } from './OwnerShell';
 import { WorkspaceSetup } from './WorkspaceSetup';
+import { StartupScreen } from './StartupScreen';
 
-import { workspaceState } from './workspace';
-import type { WorkspaceState, WorkspaceBot } from './workspace';
+import { decodeWorkspaceSnapshot } from '@hermes-client/protocol';
+import type { WorkspaceSnapshot as WorkspaceState, WorkspaceBot } from '@hermes-client/protocol';
 import type { Activity } from './avatar-lab/engine';
 
 type Row = Record<string, unknown>;
@@ -89,6 +92,7 @@ export function App({ owner }: { owner?: OwnerConnection }) {
   const roomsRef = useRef(rooms);
   roomsRef.current = rooms;
   const [selection, setSelection] = useState<Selection>();
+  const [starting, setStarting] = useState(true);
   const [messages, setMessages] = useState<Message[]>([]);
   const sendProjection = useRef(new SendProjection());
   const runEpoch = useRef(0);
@@ -233,6 +237,8 @@ export function App({ owner }: { owner?: OwnerConnection }) {
   const mutationQueue = useRef(Promise.resolve());
   const scrollAnimation = useRef<(() => void) | undefined>(undefined);
   const scrollAnimating = useRef(false);
+  const transcriptFollow = useRef<TranscriptFollow | undefined>(undefined);
+  const transcriptContext = useRef('');
   const detailsAnchor = useRef<{ id: string; offset: number } | undefined>(undefined);
 
   const [routinePending, setRoutinePending] = useState('');
@@ -477,11 +483,16 @@ export function App({ owner }: { owner?: OwnerConnection }) {
     }
     const profile = restoreProfile.current || workspace.orchestrator;
     const bot = bots.find((b) => b.profile === profile);
-    if (!bot) return;
+    if (!bot?.canonical) {
+      setStarting(false);
+      return;
+    }
     autoOpened.current = true;
     restoreProfile.current = '';
-    void open(bot, { restore: true }).then(async () => {
-      if (welcomeProfile.current === bot.profile) {
+    void open(bot, { restore: true }).then(async (result) => {
+      if (current.current !== client) return;
+      if (result === 'opened' || result === 'unavailable') setStarting(false);
+      if (result === 'opened' && welcomeProfile.current === bot.profile) {
         welcomeProfile.current = '';
         try {
           await client.invoke('workspace.welcome', { profile: bot.profile });
@@ -496,25 +507,38 @@ export function App({ owner }: { owner?: OwnerConnection }) {
   }, [client, streamState, busy, workspace, bots, rooms]);
   useLayoutEffect(() => {
     const pane = transcriptPane.current;
-    if (pane && followLatest.current && !pickingAgents && !scrollAnimating.current)
-      pane.scrollTop = pane.scrollHeight;
-  }, [messages, stream, pickingAgents, running]);
+    if (!pane || pickingAgents) return;
+    if (transcriptFollow.current?.node !== pane) {
+      transcriptFollow.current?.cancel();
+      transcriptFollow.current = new TranscriptFollow(pane);
+      transcriptContext.current = '';
+    }
+    const key = selection ? draftKey(selection) : '';
+    const opening = key !== transcriptContext.current;
+    transcriptContext.current = key;
+    if (followLatest.current && !scrollAnimating.current) {
+      if (opening) transcriptFollow.current.snap();
+      else transcriptFollow.current.follow();
+    }
+  }, [messages, stream, pickingAgents, running, selection, settings, starting]);
   useLayoutEffect(() => {
     const pane = transcriptPane.current;
     if (!pane) return;
     const observer = new ResizeObserver(() => {
       if (followLatest.current && !pickingAgents && !scrollAnimating.current)
-        pane.scrollTop = pane.scrollHeight;
+        transcriptFollow.current?.follow();
     });
     observer.observe(pane);
+    const content = pane.querySelector('.pc-messages');
+    if (content) observer.observe(content);
     return () => observer.disconnect();
-  }, [client, selection, pickingAgents, settings]);
+  }, [client, selection, pickingAgents, settings, starting]);
   useLayoutEffect(() => {
     const input = composer.current;
     if (!input) return;
     input.style.height = 'auto';
     input.style.height = `${Math.min(input.scrollHeight, 170)}px`;
-  }, [draft, selection, pickingAgents]);
+  }, [draft, selection, pickingAgents, starting]);
   useLayoutEffect(() => {
     if (
       focusOnReady.current &&
@@ -527,7 +551,7 @@ export function App({ owner }: { owner?: OwnerConnection }) {
       focusOnReady.current = false;
       composer.current.focus();
     }
-  }, [busy, blocked, pickingAgents, selection]);
+  }, [busy, blocked, pickingAgents, selection, starting]);
   function toggleDetails(value: boolean) {
     detailsAnchor.current = undefined;
     const pane = transcriptPane.current;
@@ -593,11 +617,18 @@ export function App({ owner }: { owner?: OwnerConnection }) {
       document.querySelector<HTMLElement>('.chat-title')?.focus({ preventScroll: true });
     }
   }, [settings]);
-  useEffect(() => () => scrollAnimation.current?.(), []);
+  useEffect(
+    () => () => {
+      scrollAnimation.current?.();
+      transcriptFollow.current?.cancel();
+    },
+    [],
+  );
   function jumpToLatest() {
     const pane = transcriptPane.current;
     if (!pane) return;
     scrollAnimation.current?.();
+    transcriptFollow.current?.cancel();
     scrollAnimating.current = true;
     scrollAnimation.current = scrollToLatest(
       pane,
@@ -758,7 +789,12 @@ export function App({ owner }: { owner?: OwnerConnection }) {
         if (connection.supportsWorkspace) {
           const data = object(await connection.invoke('workspace.snapshot', {}));
           if (current.current !== connection) return;
-          const state = workspaceState(data.workspace);
+          const state = decodeWorkspaceSnapshot(data.workspace);
+          if (
+            workspaceRef.current?.id === state.id &&
+            state.revision < workspaceRef.current.revision
+          )
+            return;
           const org = organizationState(data.organization);
           if (
             organizationFlight.current !== connection &&
@@ -939,8 +975,11 @@ export function App({ owner }: { owner?: OwnerConnection }) {
     }
   }
 
-  async function open(bot: Bot, { restore = false }: { restore?: boolean } = {}) {
-    if (!client || streamState !== 'live' || !bot.canonical) return;
+  async function open(
+    bot: Bot,
+    { restore = false }: { restore?: boolean } = {},
+  ): Promise<'opened' | 'unavailable' | 'recovering' | 'superseded'> {
+    if (!client || streamState !== 'live' || !bot.canonical) return 'unavailable';
     rememberScroll();
     const generation = ++selectGeneration.current;
     if (!restore) {
@@ -950,6 +989,8 @@ export function App({ owner }: { owner?: OwnerConnection }) {
       sendProjection.current = new SendProjection();
       setMessages([]);
       setStream('');
+      setRunning(false);
+      setActivity('Ready');
       setApprovals([]);
       setRoutines([]);
     }
@@ -970,7 +1011,8 @@ export function App({ owner }: { owner?: OwnerConnection }) {
     setStopping(false);
     try {
       const data = object(await client.invoke('bot.open', { profile: bot.profile }));
-      if (generation !== selectGeneration.current || current.current !== client) return;
+      if (generation !== selectGeneration.current || current.current !== client)
+        return 'superseded';
       const target: Selection = { kind: 'bot', bot, sessionId: text(data.session_id) };
       sessionProfiles.current.set(target.sessionId, bot.profile);
       setAgentStates((old) => ({
@@ -996,7 +1038,7 @@ export function App({ owner }: { owner?: OwnerConnection }) {
         const receipt = (await client.invoke('files.reconcile', {
           session_id: target.sessionId,
         })) as { state: string };
-        if (current.current !== client || selected.current !== target) return;
+        if (current.current !== client || selected.current !== target) return 'superseded';
         if (receipt.state === 'uncertain') {
           setAttachmentUncertain(true);
           setBlocked(true);
@@ -1010,7 +1052,7 @@ export function App({ owner }: { owner?: OwnerConnection }) {
       setStream(text(inflight.assistant));
       setActivity(data.running === true ? 'Working' : 'Ready');
       const ownedRoutines = object(await client.invoke('routines.list', { profile: bot.profile }));
-      if (current.current !== client || selected.current !== target) return;
+      if (current.current !== client || selected.current !== target) return 'superseded';
       setRoutines(rows(ownedRoutines.jobs ?? []));
       const pending = object(
         await client.invoke('chat.approvals', { session_id: target.sessionId }),
@@ -1029,6 +1071,7 @@ export function App({ owner }: { owner?: OwnerConnection }) {
         setRunning(snapshot.running === true);
         setStream(snapshot.inflight ? text(object(snapshot.inflight).assistant) : '');
       }
+      return current.current === client && selected.current === target ? 'opened' : 'superseded';
     } catch (error) {
       if (generation === selectGeneration.current && current.current === client) {
         if (
@@ -1037,10 +1080,14 @@ export function App({ owner }: { owner?: OwnerConnection }) {
           ['DISCONNECTED', 'REQUEST_FAILED', 'REQUEST_TIMEOUT', 'UNAUTHORIZED'].includes(
             safeError(error).code,
           )
-        )
+        ) {
           scheduleReconnect();
-        else fail(error);
+          return 'recovering';
+        }
+        fail(error);
+        return 'unavailable';
       }
+      return 'superseded';
     } finally {
       if (generation === selectGeneration.current) {
         focusOnReady.current = matchMedia('(pointer: fine)').matches;
@@ -1427,14 +1474,11 @@ export function App({ owner }: { owner?: OwnerConnection }) {
 
   if (!client)
     return owner ? (
-      <main className="owner-entry">
-        <div className="owner-card">
-          <h1>Connecting…</h1>
-          <p role="status">{activity}</p>
-          {error && <p className="error">{error}</p>}
-          <button onClick={() => void owner.logout()}>Sign out</button>
-        </div>
-      </main>
+      <StartupScreen
+        onSignOut={() => void owner.logout()}
+        error={error}
+        onRetry={scheduleReconnect}
+      />
     ) : (
       <FirstRun onConnect={connect} />
     );
@@ -1474,6 +1518,15 @@ export function App({ owner }: { owner?: OwnerConnection }) {
       : selection?.kind === 'room'
         ? text(selection.room.name)
         : 'Chats';
+  if (starting && client.supportsWorkspace)
+    return (
+      <StartupScreen
+        onSignOut={owner ? () => void owner.logout() : undefined}
+        error={error}
+        onRetry={owner ? scheduleReconnect : disconnect}
+      />
+    );
+
   const rail = (
     <Rail
       bots={bots}
@@ -1579,8 +1632,14 @@ export function App({ owner }: { owner?: OwnerConnection }) {
         owner={!!owner}
         state={workspace}
         onChange={(state) => {
+          if (
+            workspaceRef.current?.id === state.id &&
+            state.revision < workspaceRef.current.revision
+          )
+            return;
+          workspaceRef.current = state;
           setWorkspace(state);
-          void loadRoster(client).catch(fail);
+          void loadRoster(client, true).catch(fail);
         }}
         onClose={() => setSettings(false)}
       />
@@ -1711,13 +1770,23 @@ export function App({ owner }: { owner?: OwnerConnection }) {
               aria-live={pickingAgents ? undefined : 'off'}
               onWheel={() => {
                 detailsAnchor.current = undefined;
+                transcriptFollow.current?.cancel();
               }}
               onTouchStart={() => {
                 detailsAnchor.current = undefined;
               }}
+              onTouchMove={() => transcriptFollow.current?.cancel()}
+              onKeyDown={(event) => {
+                if (
+                  ['ArrowUp', 'ArrowDown', 'PageUp', 'PageDown', 'Home', 'End'].includes(event.key)
+                )
+                  transcriptFollow.current?.cancel();
+              }}
               onScroll={(event) => {
                 if (pickingAgents) return;
                 const pane = event.currentTarget;
+                if (transcriptFollow.current?.ownsScroll || scrollAnimating.current) return;
+                transcriptFollow.current?.cancel();
                 followLatest.current = pane.scrollHeight - pane.scrollTop - pane.clientHeight < 96;
                 setShowLatest(!followLatest.current);
                 rememberScroll();
@@ -1725,6 +1794,7 @@ export function App({ owner }: { owner?: OwnerConnection }) {
               }}
             >
               <Transcript
+                conversationKey={selection ? draftKey(selection) : ''}
                 onReact={
                   client.supportsReactions && streamState === 'live' ? reactToMessage : undefined
                 }
@@ -1748,7 +1818,7 @@ export function App({ owner }: { owner?: OwnerConnection }) {
                 stream={stream}
                 reply={sendProjection.current.reply}
                 running={running}
-                activity={activity}
+                activity={running && stopping ? 'Stopping' : activity}
                 authorName={(name) =>
                   workspace?.bots.find(
                     (b) =>
@@ -1933,32 +2003,19 @@ export function App({ owner }: { owner?: OwnerConnection }) {
                         }
                       }}
                     />
-                    {running ? (
-                      <button
-                        type="button"
-                        className="stop-button"
-                        aria-label={stopping ? 'Stopping' : 'Stop'}
-                        disabled={stopping || blocked}
-                        onClick={() => void stop()}
-                      >
-                        <span />
-                        {stopping && 'Stopping…'}
-                      </button>
-                    ) : (
-                      <button
-                        className="send-button"
-                        aria-label="Send message"
-                        disabled={
-                          !selection ||
-                          (!draft.trim() && !uploads.files.length) ||
-                          !uploads.ready ||
-                          busy ||
-                          blocked
-                        }
-                      >
-                        <Icon name="send" />
-                      </button>
-                    )}
+                    <ComposerAction
+                      mode={running ? (stopping ? 'stopping' : 'stop') : 'send'}
+                      disabled={
+                        running
+                          ? stopping || blocked
+                          : !selection ||
+                            (!draft.trim() && !uploads.files.length) ||
+                            !uploads.ready ||
+                            busy ||
+                            blocked
+                      }
+                      onStop={() => void stop()}
+                    />
                   </form>
                 </div>
               </>

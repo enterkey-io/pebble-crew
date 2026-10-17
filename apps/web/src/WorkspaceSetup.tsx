@@ -2,8 +2,8 @@ import { Button } from './components/ui/button';
 import { Input } from './components/ui/input';
 import { useEffect, useState } from 'react';
 import type { BotBridgeClient } from '@hermes-client/protocol';
-import { workspaceState } from './workspace';
-import type { Appearance, WorkspaceState } from './workspace';
+import { decodeWorkspaceSnapshot } from '@hermes-client/protocol';
+import type { Appearance, WorkspaceSnapshot as WorkspaceState } from '@hermes-client/protocol';
 import { AvatarChooser } from './AgentAvatar';
 export function WorkspaceSetup({
   client,
@@ -59,7 +59,7 @@ export function WorkspaceSetup({
     setBusy(true);
     setError('');
     try {
-      const data = workspaceState(
+      const data = decodeWorkspaceSnapshot(
         await client.invoke('workspace.initialize', {
           profile,
           handle,

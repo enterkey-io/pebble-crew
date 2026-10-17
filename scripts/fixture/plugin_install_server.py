@@ -15,6 +15,8 @@ import subprocess
 import sys
 import threading
 import time
+import urllib.request
+from urllib.parse import urlsplit
 from zipfile import ZipFile
 
 from native_smoke import Model
@@ -29,12 +31,13 @@ def main():
     parser.add_argument('--web-port', required=True)
     parser.add_argument('--bridge-port', required=True)
     parser.add_argument('--cert', required=True)
+    parser.add_argument('--archive', type=Path)
     args = parser.parse_args()
     project = Path(__file__).resolve().parents[2]
     directory = args.directory.resolve()
     home = directory / 'hermes-home'
     home.mkdir()
-    archive = project / 'artifacts/packages/workspace-plugin-preview.zip'
+    archive = (args.archive or project / 'artifacts/packages/workspace-plugin-preview.zip').resolve()
     manifest = json.loads((archive.parent / 'workspace-manifest.json').read_text())
     record = next(item for item in manifest['artifacts'] if item['name'] == archive.name)
     assert archive.stat().st_size == record['bytes']
@@ -135,6 +138,62 @@ def main():
             time.sleep(0.4)
         raise AssertionError('Installed combined services did not become ready')
 
+    def rpc(operation, params):
+        value = json.loads((state / 'install.json').read_text())
+        headers = {'Host': urlsplit(args.origin).netloc, 'Origin': args.origin,
+                   'Authorization': 'Bearer ' + value['operator_token'], 'Content-Type': 'application/json'}
+        base = f"http://127.0.0.1:{args.bridge_port}"
+        opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+        with opener.open(urllib.request.Request(base + '/v1/connect', data=b'', headers=headers), timeout=30) as response:
+            lease = json.load(response)['connection']
+        headers['X-Bot-Connection'] = lease
+        try:
+            with opener.open(urllib.request.Request(base + '/v1/rpc',
+                data=json.dumps({'operation': operation, 'params': params}).encode(), headers=headers), timeout=60) as response:
+                return json.load(response)['result']
+        finally:
+            with opener.open(urllib.request.Request(base + '/v1/connect', method='DELETE', headers=headers), timeout=30):
+                pass
+
+    def tool_marker(path):
+        result = subprocess.run([sys.executable, str(project / 'scripts/fixture/runtime_marker.py'), str(path)],
+            cwd=home, capture_output=True, text=True, timeout=30)
+        assert result.returncode == 0, result.stderr[-2000:]
+        return json.loads(result.stdout)
+
+    def historical_rollback_release():
+        """Exact pre-contract Python payload with this archive's web assets/dependencies."""
+        value = json.loads((state / 'install.json').read_text())
+        source = state / 'releases' / value['previous_release']
+        target = directory / 'legacy-rollback-staging'
+        shutil.copytree(source, target, symlinks=True)
+        metadata = json.loads((target / 'release.json').read_text())
+        metadata['version'] = '0.7.6'
+        names = list(metadata['files'])
+        for name in names:
+            if name.startswith('web-runtime/'):
+                continue
+            if name in {'runtime-contract.json', 'protocol-catalog.json'}:
+                (target / name).unlink()
+                del metadata['files'][name]
+                continue
+            old = subprocess.run(['git', 'show', 'b642ccef86511814223e9c4443fc48f639965b47:plugins/bot-web/' + name],
+                cwd=project, capture_output=True, timeout=30)
+            assert old.returncode == 0, 'Historical runtime source is unavailable; fetch repository history before acceptance'
+            (target / name).write_bytes(old.stdout)
+            metadata['files'][name] = hashlib.sha256(old.stdout).hexdigest()
+        identity = hashlib.sha256(json.dumps(metadata['files'], sort_keys=True).encode()).hexdigest()[:24]
+        (target / 'release.json').write_text(json.dumps(metadata))
+        target.chmod(0o700)
+        target.rename(state / 'releases' / identity)
+        value['previous_release'] = identity
+        (state / 'install.json').write_text(json.dumps(value))
+        return identity
+
+    runtime_paths = {}
+    runtime_original = {}
+    protected_files = {}
+
     class Control(BaseHTTPRequestHandler):
         def log_message(self, *args):
             pass
@@ -159,25 +218,87 @@ def main():
                     from collections import Counter
                     result = {'request_paths': dict(Counter(row['path'] for row in Model.request_audit)), 'count': Model.turns}
                 elif self.path == '/update':
-                    version = plugin / 'version.py'
-                    version.write_text(version.read_text() + '\n# synthetic update fixture\n')
+                    turns = Model.turns
+                    from hermes_cli.profiles import get_profile_dir
+                    for profile in ('alpha', 'beta'):
+                        snapshot = rpc('workspace.describe', {})
+                        bot = next(row for row in snapshot['bots'] if row['profile'] == profile)
+                        rpc('agent.onboard', {'profile': profile, 'id': bot['id'], 'name': profile.title(),
+                            'handle': profile, 'appearance': bot['appearance'], 'photo': None,
+                            'role': bot['role'], 'manager': snapshot['orchestrator'], 'expected_revision': snapshot['revision']})
+                        path = Path(get_profile_dir(profile)) / 'plugins/bot-web'
+                        runtime_paths[profile] = path
+                        runtime_original[profile] = tool_marker(path)
+                        (path / 'runtime-contract.json').unlink()
+                    initial = cli('runtime-status')
+                    checks['legacy_runtime_copies_recognized'] = all(row['contract'] == 'legacy-b642cce'
+                        for row in initial['profiles'] if row['profile'] in runtime_paths)
+                    checks['runtime_loaded_state_explicitly_unknown'] = initial['loaded_runtime'] == 'unknown'
+                    for profile in ('default', 'alpha', 'beta'):
+                        home_path = Path(get_profile_dir(profile))
+                        for name in ('SOUL.md', '.env', '.pebble-crew-identity', 'config.yaml', 'profile.yaml'):
+                            path = home_path / name
+                            if path.is_file():
+                                protected_files[path] = hashlib.sha256(path.read_bytes()).hexdigest()
+                    runtime = plugin / 'runtime.py'
+                    original = runtime.read_text()
+                    modified = original.replace('Describe your workspace or propose a team change for owner approval.',
+                        'Inspect your workspace or propose a team change for owner approval.')
+                    assert modified != original
+                    runtime.write_text(modified)
+                    pending = runtime_paths['beta'].with_name('.bot-web-next')
+                    pending.mkdir()
+                    (pending / 'keep').write_text('synthetic interrupted staging')
+                    failed = cli('sync-runtime', '--source-package', '--native-idle', expect_failure=True)
+                    partial = json.loads(failed.stdout[failed.stdout.find('{'):])
+                    checks['partial_runtime_sync_is_not_success'] = (not partial['complete']
+                        and any(row['profile'] == 'alpha' and row['status'] == 'copied' for row in partial['profiles'])
+                        and any(row['profile'] == 'beta' and row['status'] == 'failed' for row in partial['profiles'])
+                        and tool_marker(runtime_paths['alpha']) != runtime_original['alpha']
+                        and tool_marker(runtime_paths['beta']) == runtime_original['beta'])
+                    checks['partial_sync_preserves_private_backup'] = all(
+                        Path(row['backup']).is_dir() and Path(row['backup']).stat().st_mode & 0o777 == 0o700
+                        for row in partial['profiles'] if row['status'] == 'copied')
+                    assert (pending / 'keep').read_text() == 'synthetic interrupted staging'
+                    shutil.rmtree(pending)
+                    synced = cli('sync-runtime', '--source-package', '--native-idle')
+                    assert synced['complete']
                     cli('update')
                     current = json.loads((state / 'install.json').read_text())['active_release']
+                    evidence = cli('runtime-status')
                     checks['installed_code_update_changes_release'] = current != active
+                    checks['host_and_named_runtime_digests_match_after_sync'] = all(
+                        row['sha256'] == evidence['active_host']['runtime']['sha256']
+                        for row in evidence['profiles'] if row['profile'] in runtime_paths)
+                    checks['actual_registered_tool_marker_changes'] = all(
+                        tool_marker(path) != runtime_original[name] for name, path in runtime_paths.items())
                     checks['update_preserves_login_keys'] = hashlib.sha256(settings.read_bytes()).hexdigest() == key_digest
+                    checks['update_and_runtime_sync_run_zero_model_turns'] = Model.turns == turns
                     active = current
-                    result = {'updated': True}
+                    result = {'updated': True, 'runtime_receipt': synced['receipt']}
                 elif self.path == '/verify':
                     result = cli('verify', '--public', '--ca-file', args.cert)
                     checks['public_https_cli_stream_and_heartbeat'] = result['ready']
                 elif self.path == '/rollback':
+                    turns = Model.turns
+                    legacy = historical_rollback_release()
                     cli('rollback')
+                    restored = cli('sync-runtime', '--native-idle')
+                    assert restored['complete']
+                    checks['rollback_copies_exact_pre_contract_runtime'] = all(
+                        not (path / 'runtime-contract.json').exists() and not (path / 'protocol-catalog.json').exists()
+                        for path in runtime_paths.values())
+                    checks['rollback_restores_actual_runtime_tool_marker'] = all(
+                        tool_marker(path) == runtime_original[name] for name, path in runtime_paths.items())
+                    checks['rollback_runs_zero_model_turns'] = Model.turns == turns
                     current = json.loads((state / 'install.json').read_text())['active_release']
+                    assert current == legacy
                     checks['explicit_rollback_restores_previous_release'] = current != active
                     checks['rollback_preserves_login_keys'] = hashlib.sha256(settings.read_bytes()).hexdigest() == key_digest
                     active = current
                     result = {'rolled_back': True}
                 elif self.path == '/failed-update':
+                    turns = Model.turns
                     bundle = plugin / 'web-runtime/apps/owner-node/dist/main.mjs'
                     previous_bundle = bundle.read_bytes()
                     inventory = plugin / 'web-runtime/payload.json'
@@ -192,6 +313,9 @@ def main():
                         checks['failed_activation_restores_previous_release'] = current == active
                         checks['failed_activation_preserves_login_keys'] = hashlib.sha256(settings.read_bytes()).hexdigest() == key_digest
                         ready()
+                        checks['failed_activation_runs_zero_model_turns'] = Model.turns == turns
+                        checks['failed_activation_preserves_profile_runtime'] = all(
+                            tool_marker(path) == runtime_original[name] for name, path in runtime_paths.items())
                     finally:
                         bundle.write_bytes(previous_bundle)
                         inventory.write_bytes(previous_inventory)
@@ -226,7 +350,10 @@ def main():
         except subprocess.TimeoutExpired:
             manager.kill()
             manager.wait()
+        checks['exact_archive_unchanged_during_acceptance'] = hashlib.sha256(archive.read_bytes()).hexdigest() == record['sha256']
         checks['outer_manager_restart_exercised'] = outer_restarts > 0
+        checks['profile_credentials_config_and_identity_preserved'] = all(
+            hashlib.sha256(path.read_bytes()).hexdigest() == digest for path, digest in protected_files.items())
         checks['primary_soul_preserved'] = hashlib.sha256((home / 'SOUL.md').read_bytes()).hexdigest() == soul_digest
         checks['no_replayed_model_sends_after_recovery'] = Model.turns == 1
         (directory / 'installation-results.json').write_text(json.dumps({'checks': checks,

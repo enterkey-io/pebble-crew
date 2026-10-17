@@ -1,6 +1,10 @@
 import type { ReactNode } from 'react';
 import type { BotBridgeClient } from '@hermes-client/protocol';
-import type { Appearance, Role, WorkspaceState } from '../workspace';
+import type {
+  Appearance,
+  Role,
+  WorkspaceSnapshot as WorkspaceState,
+} from '@hermes-client/protocol';
 import { AvatarChooser } from '../AgentAvatar';
 import { Input } from '../components/ui/input';
 import { Textarea } from '../components/ui/textarea';

@@ -3,8 +3,8 @@ import { Button } from './components/ui/button';
 import { safeError } from '@hermes-client/core';
 import { useEffect, useRef, useState } from 'react';
 import type { BotBridgeClient } from '@hermes-client/protocol';
-import { workspaceState } from './workspace';
-import type { WorkspaceState, WorkspaceBot } from './workspace';
+import { decodeWorkspaceSnapshot } from '@hermes-client/protocol';
+import type { WorkspaceSnapshot as WorkspaceState, WorkspaceBot } from '@hermes-client/protocol';
 import { OwnerAccount } from './OwnerAccount';
 import { ConnectionsPanel } from './connections/ConnectionsPanel';
 import { RequestReview } from './chat/RequestReview';
@@ -92,7 +92,7 @@ export function WorkspaceSettings({
         fingerprint: r.fingerprint,
         ...(confirmation == null ? {} : { confirmation }),
       })) as Row;
-      onChange(workspaceState(await client.invoke('workspace.describe', {})));
+      onChange(decodeWorkspaceSnapshot(await client.invoke('workspace.describe', {})));
       setNotice(
         result.state === 'completed'
           ? 'Change completed.'

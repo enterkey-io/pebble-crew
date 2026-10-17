@@ -3,9 +3,11 @@
 
 def register(ctx):
     def setup(parser):
-        parser.add_argument("action", choices=["doctor", "serve", "setup", "approve", "revoke", "enroll", "primary", "sync-runtime", "probe", "install", "run", "service", "status", "verify", "setup-link", "update", "rollback"],
+        parser.add_argument("action", choices=["doctor", "serve", "setup", "approve", "revoke", "enroll", "primary", "sync-runtime", "runtime-status", "probe", "install", "run", "service", "status", "verify", "setup-link", "update", "rollback"],
             help="revoke invalidates ALL browser access; it is not diagnostic connection cleanup")
         parser.add_argument("code", nargs="?")
+        parser.add_argument("--source-package", action="store_true", help="Sync runtime from the newly installed plugin package before host update")
+        parser.add_argument("--native-idle", action="store_true", help="Confirm native work and profile processes are stopped before copying runtime files")
         parser.add_argument("--trust-file")
         parser.add_argument("--bridge-url")
         parser.add_argument("--app-origin", action="append")
@@ -81,7 +83,11 @@ def register(ctx):
             print("Verified primary profile bound for owner onboarding.")
         elif args.action == "sync-runtime":
             from .setup import sync_runtime
-            sync_runtime()
+            sync_runtime(native_idle=args.native_idle, source_package=args.source_package)
+        elif args.action == "runtime-status":
+            import json
+            from .host_install import runtime_status
+            print(json.dumps(runtime_status(), indent=2))
         elif args.action == "probe":
             from .setup import probe
             probe()

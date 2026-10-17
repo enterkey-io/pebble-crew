@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { Check, ChevronRight, Search } from 'lucide-react';
 import type { BotBridgeClient } from '@hermes-client/protocol';
-import type { WorkspaceState } from './workspace';
+import type { WorkspaceSnapshot as WorkspaceState } from '@hermes-client/protocol';
 import { AgentAvatar } from './AgentAvatar';
 import { Input } from './components/ui/input';
 import { LoadingBar } from './components/ui/loading-bar';

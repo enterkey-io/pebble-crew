@@ -1,2 +1,2 @@
-VERSION = "0.7.6"
+VERSION = "0.7.8"
 STATE_SCHEMA = 1

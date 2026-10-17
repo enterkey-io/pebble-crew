@@ -1,3 +1,4 @@
+import { useLayoutEffect, useState } from 'react';
 import type { ReactNode } from 'react';
 import { motion, useReducedMotion } from 'motion/react';
 import { MessageBody, CopyMessage } from '../MessageBody';
@@ -5,7 +6,9 @@ import { messageDate, projectTimeline } from '../conversation';
 import type { ChatMessage } from '../conversation';
 import { MessageReactions, ReactionPicker } from './MessageReactions';
 import type { ReactionAction } from './MessageReactions';
+import { ActivityLine } from './ActivityLine';
 export function Transcript({
+  conversationKey,
   messages,
   title,
   crew,
@@ -18,6 +21,7 @@ export function Transcript({
   onDownloadFile,
   onReact,
 }: {
+  conversationKey: string;
   messages: ChatMessage[];
   title: string;
   crew: boolean;
@@ -34,11 +38,22 @@ export function Transcript({
   const displayed = stream
     ? [...messages, { ...reply, id: reply.renderKey, role: 'assistant', text: stream }]
     : messages;
+  const timeline = projectTimeline(displayed);
+  const keys = timeline.map((item, i) =>
+    item.kind === 'activity'
+      ? item.id
+      : (item.message.renderKey ?? item.message.id ?? `pending-${i}`),
+  );
+  const signature = JSON.stringify(keys);
+  const [seen, setSeen] = useState(() => ({ conversationKey, keys: new Set(keys) }));
+  useLayoutEffect(() => {
+    setSeen({ conversationKey, keys: new Set<string>(JSON.parse(signature)) });
+  }, [conversationKey, signature]);
   let previous = '';
   return (
     <div className="pc-messages">
       {children}
-      {projectTimeline(displayed).map((item, i) => {
+      {timeline.map((item, i) => {
         if (item.kind === 'activity')
           return (
             <details className="activity-group" key={item.id}>
@@ -59,6 +74,8 @@ export function Transcript({
             </details>
           );
         const m = item.message;
+        const key = m.renderKey ?? m.id ?? `pending-${i}`;
+        const entering = seen.conversationKey === conversationKey && !seen.keys.has(key);
         const live = m.id === reply.renderKey;
         const react = !crew && m.id && /^[1-9]\d*$/.test(m.id) ? onReact : undefined;
         const date = messageDate(m.timestamp);
@@ -73,11 +90,11 @@ export function Transcript({
         return (
           <motion.div
             className={`pc-message message-group ${m.role}${live ? ' streaming' : ''}`}
-            initial={m.id?.startsWith('pending-') && !reduced ? { opacity: 0, y: 6 } : false}
+            initial={entering && !reduced ? { opacity: 0, y: 10 } : false}
             animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.16 }}
+            transition={{ duration: 0.22, ease: [0.22, 1, 0.36, 1] }}
             data-message-id={m.id ?? `pending-${i}`}
-            key={m.renderKey ?? m.id ?? `pending-${i}`}
+            key={key}
           >
             {label && <p className="pc-date date-divider">{group}</p>}
             <div className="pc-bubble-wrap">
@@ -130,13 +147,11 @@ export function Transcript({
           </motion.div>
         );
       })}
-      <div className="pc-activity-lane">
-        {running && (
-          <p className="pc-activity" role="status">
-            {activity === 'Stop requested' ? 'Stopping' : activity}
-          </p>
-        )}
-      </div>
+      <ActivityLine
+        key={conversationKey}
+        active={!!conversationKey && running}
+        label={activity === 'Stop requested' ? 'Stopping' : activity}
+      />
     </div>
   );
 }

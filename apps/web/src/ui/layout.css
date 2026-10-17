@@ -42,8 +42,9 @@
   margin-bottom: 28px;
 }
 .pc-pin {
-  width: 112px;
-  min-height: 132px;
+  position: relative;
+  width: 132px;
+  min-height: 156px;
   border-radius: 12px;
   transition: background-color var(--motion-hover);
 }
@@ -54,36 +55,49 @@
   background: var(--surface-hover);
 }
 .pc-pin-actions {
+  position: absolute;
+  top: 0;
+  right: 0;
+  z-index: 1;
   display: flex;
   align-items: center;
   justify-content: end;
   height: 32px;
-  padding: 0 4px;
+  padding: 0;
 }
 .pc-pin-open {
   width: 100%;
   min-width: 0;
+  min-height: 156px;
   display: flex;
   align-items: center;
   flex-direction: column;
-  gap: 4px;
-  padding: 0 8px 12px;
+  gap: 6px;
+  padding: 20px 10px 14px;
   border-radius: 8px;
 }
 .pc-pin-open strong {
+  font-size: 14px;
   font-weight: 550;
+  line-height: 20px;
   max-width: 100%;
   overflow: hidden;
   text-overflow: ellipsis;
+  white-space: nowrap;
 }
-.pc-pin-open [data-slot='badge'] {
+.pc-pin-title[data-slot='badge'] {
   font-size: 12px;
+  font-weight: 400;
+  line-height: 16px;
   max-width: 100%;
   overflow: hidden;
-  text-overflow: ellipsis;
-  display: inline-block;
-  padding: 0 5px;
-  height: 18px;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  padding: 1px 5px;
+  border-radius: 4px;
 }
 .pc-pin-open .agent-avatar {
   width: 56px;
@@ -461,6 +475,9 @@
   align-items: center;
   flex-shrink: 0;
 }
+.pc-activity-lane > div {
+  min-width: 0;
+}
 .pc-activity {
   max-width: 100%;
   overflow: hidden;
@@ -490,6 +507,11 @@
   100% {
     background-position: -80% 0;
   }
+}
+.pc-activity[data-settling] {
+  animation: none;
+  background: none;
+  -webkit-text-fill-color: currentColor;
 }
 @media (prefers-reduced-motion: reduce) {
   .pc-activity {
@@ -1094,6 +1116,9 @@
   }
   .pc-message {
     max-width: 94%;
+  }
+  .pc-message.user {
+    max-width: 88%;
   }
   .pc-bubble {
     font-size: 14px;

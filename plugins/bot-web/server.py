@@ -5,6 +5,7 @@ from contextlib import asynccontextmanager, suppress
 import hmac
 import json
 import os
+from pathlib import Path
 import re
 import secrets
 import time
@@ -19,7 +20,9 @@ from .compatibility import check_native_adapter
 from .pairing import BrowserPairing
 from .version import VERSION
 
-MAX_BODY = 65536
+PROTOCOL_CATALOG = json.loads(Path(__file__).with_name('protocol-catalog.json').read_text())
+ROUTES = {value['path']: value for value in PROTOCOL_CATALOG['routes'].values()}
+MAX_BODY = ROUTES['/v1/rpc']['maxBytes']
 LEASE_SECONDS = 1800
 HEARTBEAT_SECONDS = 15
 
@@ -156,8 +159,7 @@ def create_app(token, origins, hosts, gateway=None, trust=None, workspace=None, 
                 return await reject(403)
             scope["bot.principal"] = principal
             scope["bot.origin"] = origin
-            from .attachments import MAX_UPLOAD_BODY
-            body_limit = MAX_UPLOAD_BODY if scope["path"] == "/v1/files/upload" else 3_000_000 if scope["path"] == "/v1/avatar" else MAX_BODY
+            body_limit = ROUTES.get(scope["path"], {}).get("maxBytes", MAX_BODY)
             try:
                 if int(headers.get(b"content-length", b"0")) > body_limit:
                     return await reject(413)
@@ -255,16 +257,10 @@ def create_app(token, origins, hosts, gateway=None, trust=None, workspace=None, 
             operation, params = data["operation"], data["params"]
             if not isinstance(operation, str) or not isinstance(params, dict):
                 raise InvalidOperation("Invalid operation")
-            if request.url.path == '/v1/files/upload' and operation != 'files.upload':
-                raise InvalidOperation('Upload operation required')
-            if request.url.path == '/v1/files/read' and operation != 'files.read':
-                raise InvalidOperation('Download operation required')
-            if operation == 'files.upload' and request.url.path != '/v1/files/upload':
-                raise InvalidOperation('Dedicated upload route required')
-            if operation == 'files.read' and request.url.path != '/v1/files/read':
-                raise InvalidOperation('Dedicated download route required')
-            if request.url.path == "/v1/avatar" and operation not in {"bots.appearance.update", "workspace.initialize"}:
-                raise InvalidOperation("Avatar operation required")
+            definition = PROTOCOL_CATALOG['operations'].get(operation)
+            if not definition or not any(PROTOCOL_CATALOG['routes'][name]['path'] == request.url.path
+                                         for name in definition['accepted']):
+                raise InvalidOperation('Operation unavailable on this route')
             if (operation.startswith("chat.") or operation.startswith("files.")) and params.get("session_id") not in client["sessions"]:
                 raise InvalidOperation("Session belongs to another connection")
             if operation.startswith('computer.'):

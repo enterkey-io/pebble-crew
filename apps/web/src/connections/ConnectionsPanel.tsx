@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { ChevronLeft, ChevronRight, Plug, Plus, Search } from 'lucide-react';
 import type { BotBridgeClient } from '@hermes-client/protocol';
-import type { WorkspaceBot } from '../workspace';
+import type { WorkspaceBot } from '@hermes-client/protocol';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
 import { LoadingBar } from '../components/ui/loading-bar';
