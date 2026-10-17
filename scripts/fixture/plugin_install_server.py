@@ -232,8 +232,10 @@ def main():
                             'role': bot['role'], 'manager': snapshot['orchestrator'], 'expected_revision': snapshot['revision']})
                         path = Path(get_profile_dir(profile)) / 'plugins/bot-web'
                         runtime_paths[profile] = path
-                        from bot_web.payload import FILES
-                        for name in FILES:
+                        inventory = json.loads((state / 'releases' / active / 'release.json').read_text())['files']
+                        for name in inventory:
+                            if name.startswith('web-runtime/'):
+                                continue
                             if name in {'runtime-contract.json', 'protocol-catalog.json'}:
                                 (path / name).unlink()
                             else:
