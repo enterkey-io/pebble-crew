@@ -161,6 +161,12 @@ def main():
         assert result.returncode == 0, result.stderr[-2000:]
         return json.loads(result.stdout)
 
+    def historical_file(name):
+        result = subprocess.run(['git', 'show', 'b642ccef86511814223e9c4443fc48f639965b47:plugins/bot-web/' + name],
+            cwd=project, capture_output=True, timeout=30)
+        assert result.returncode == 0, 'Historical runtime source is unavailable; fetch repository history before acceptance'
+        return result.stdout
+
     def historical_rollback_release():
         """Exact pre-contract Python payload with this archive's web assets/dependencies."""
         value = json.loads((state / 'install.json').read_text())
@@ -177,11 +183,9 @@ def main():
                 (target / name).unlink()
                 del metadata['files'][name]
                 continue
-            old = subprocess.run(['git', 'show', 'b642ccef86511814223e9c4443fc48f639965b47:plugins/bot-web/' + name],
-                cwd=project, capture_output=True, timeout=30)
-            assert old.returncode == 0, 'Historical runtime source is unavailable; fetch repository history before acceptance'
-            (target / name).write_bytes(old.stdout)
-            metadata['files'][name] = hashlib.sha256(old.stdout).hexdigest()
+            old = historical_file(name)
+            (target / name).write_bytes(old)
+            metadata['files'][name] = hashlib.sha256(old).hexdigest()
         identity = hashlib.sha256(json.dumps(metadata['files'], sort_keys=True).encode()).hexdigest()[:24]
         (target / 'release.json').write_text(json.dumps(metadata))
         target.chmod(0o700)
@@ -228,11 +232,17 @@ def main():
                             'role': bot['role'], 'manager': snapshot['orchestrator'], 'expected_revision': snapshot['revision']})
                         path = Path(get_profile_dir(profile)) / 'plugins/bot-web'
                         runtime_paths[profile] = path
+                        from bot_web.payload import FILES
+                        for name in FILES:
+                            if name in {'runtime-contract.json', 'protocol-catalog.json'}:
+                                (path / name).unlink()
+                            else:
+                                (path / name).write_bytes(historical_file(name))
                         runtime_original[profile] = tool_marker(path)
-                        (path / 'runtime-contract.json').unlink()
                     initial = cli('runtime-status')
                     checks['legacy_runtime_copies_recognized'] = all(row['contract'] == 'legacy-b642cce'
                         for row in initial['profiles'] if row['profile'] in runtime_paths)
+                    assert checks['legacy_runtime_copies_recognized'], 'Exact historical runtime copies were not recognized'
                     checks['runtime_loaded_state_explicitly_unknown'] = initial['loaded_runtime'] == 'unknown'
                     for profile in ('default', 'alpha', 'beta'):
                         home_path = Path(get_profile_dir(profile))
@@ -250,6 +260,7 @@ def main():
                     pending.mkdir()
                     (pending / 'keep').write_text('synthetic interrupted staging')
                     failed = cli('sync-runtime', '--source-package', '--native-idle', expect_failure=True)
+                    assert '{' in failed.stdout, 'Expected partial-sync receipt, received: ' + failed.stderr[-2000:]
                     partial = json.loads(failed.stdout[failed.stdout.find('{'):])
                     checks['partial_runtime_sync_is_not_success'] = (not partial['complete']
                         and any(row['profile'] == 'alpha' and row['status'] == 'copied' for row in partial['profiles'])
