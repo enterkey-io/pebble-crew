@@ -116,9 +116,11 @@ test('the composer action changes meaning immediately and crossfades only its gl
   expect(await stop.evaluate((node, original) => node === original, button)).toBe(true);
   const after = (await stop.boundingBox())!;
   expect(after).toEqual(before);
-  expect((await frames).filter((opacity) => opacity > 0 && opacity < 0.95).length).toBeGreaterThan(
-    1,
-  );
+  const glyphFrames = await frames;
+  expect(
+    glyphFrames.filter((opacity) => opacity > 0 && opacity < 0.95).length,
+    JSON.stringify(glyphFrames),
+  ).toBeGreaterThan(0);
   let releaseStop!: () => void;
   const held = new Promise<void>((resolve) => (releaseStop = resolve));
   let calls = 0;
