@@ -1,0 +1,21 @@
+{
+  "valid": [
+    {
+      "source": "/cache/generated/chart%20one.png",
+      "normalized": "/cache/generated/chart one.png"
+    },
+    { "source": "/cache/generated/plus+sign.txt", "normalized": "/cache/generated/plus+sign.txt" },
+    { "source": "/cache/generated/percent%25.txt", "normalized": "/cache/generated/percent%.txt" },
+    {
+      "source": "/cache/generated/encoded%252F.txt",
+      "normalized": "/cache/generated/encoded%2F.txt"
+    },
+    { "source": "/cache/generated/%E5%B2%A9.png", "normalized": "/cache/generated/岩.png" },
+    { "source": "report.csv", "normalized": "report.csv" },
+    {
+      "source": "file:///cache/generated/photo.png",
+      "normalized": "file:///cache/generated/photo.png"
+    }
+  ],
+  "invalid": ["%", "%GG", "%FF", "%C0%AF", "%00", "%0a", ""]
+}

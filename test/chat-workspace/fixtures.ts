@@ -87,7 +87,7 @@ export async function installFixture(
       headers: {
         ...response.headers(),
         'content-security-policy':
-          "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self' https:;",
+          "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data: blob:; connect-src 'self' https:;",
       },
     });
   });
@@ -222,6 +222,7 @@ export async function installFixture(
             workspace: true,
             existing_agents: true,
             attachments: true,
+            generated_media: true,
             reactions: options.reactions !== false,
           },
         },

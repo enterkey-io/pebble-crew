@@ -1,5 +1,6 @@
 import { useLayoutEffect, useState } from 'react';
 import type { ReactNode } from 'react';
+import type { BotBridgeClient } from '@hermes-client/protocol';
 import { motion, useReducedMotion } from 'motion/react';
 import { MessageBody, CopyMessage } from '../MessageBody';
 import { messageDate, projectTimeline } from '../conversation';
@@ -20,6 +21,8 @@ export function Transcript({
   authorName,
   onDownloadFile,
   onReact,
+  client,
+  sessionId,
 }: {
   conversationKey: string;
   messages: ChatMessage[];
@@ -33,6 +36,8 @@ export function Transcript({
   authorName: (name: string) => string;
   onDownloadFile: (file: { id: string; name: string }) => void;
   onReact?: ReactionAction | undefined;
+  client?: BotBridgeClient | undefined;
+  sessionId?: string | undefined;
 }) {
   const reduced = useReducedMotion();
   const displayed = stream
@@ -106,7 +111,17 @@ export function Transcript({
                 )}
                 {m.role === 'tool' && <small className="message-author">Tool</small>}
                 {m.text.trim() &&
-                  (m.role === 'user' ? <p>{m.text}</p> : <MessageBody text={m.text} />)}
+                  (m.role === 'user' ? (
+                    <p>{m.text}</p>
+                  ) : (
+                    <MessageBody
+                      text={m.text}
+                      client={client}
+                      sessionId={sessionId}
+                      rowId={m.id}
+                      conversationKey={conversationKey}
+                    />
+                  ))}
                 {m.files?.map((file) => (
                   <button
                     className="message-file"

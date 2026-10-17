@@ -15,8 +15,24 @@ Run `CI=1 npx playwright test --config playwright.chat.config.ts live-feedback.s
 `interaction-feedback.spec.ts` samples activity settlement and send/stop glyph
 frames, real label changes, cancellation, held gestures and reduced motion.
 `startup.spec.ts` holds authentication, connection and native opening separately
-to reject transient empty-picker screens, then checks unavailable defaults and
-post-mount resize following. Both run through the mobile wrappers as well.
+to reject transient empty-picker screens, then checks unavailable defaults,
+selected pebble/room restoration, replaced identities and post-mount resize
+following. Both run through the mobile wrappers as well.
+
+`agent-media.spec.ts` verifies lazy native-style image/file reads, downloads,
+reconnect/reaction stability, reload, local retries and no automatic remote image
+requests. `markdown.spec.ts` checks code indentation/copy/overflow, semantic lists,
+quotes and tables with readable column headings and contained horizontal scroll.
+Run both through `playwright.chat.config.ts` and `playwright.mobile.config.ts`, then
+inspect settled screenshots. Images above the restored latest-message viewport
+load when scrolled into view; approach the stable image frame before asserting
+decoded pixels.
+
+`scripts/fixture/media_smoke.py` verifies actual native assistant provenance and
+bounded reads in isolated default/named profiles on both supported Hermes builds,
+including database replacement between chunks. It asserts zero model turns.
+The native-owner browser journey additionally displays an actual generated image,
+downloads a multi-chunk CSV, and restores that selected conversation after reload.
 
 Use native-owner and `scripts/fixture/reactions_smoke.py` for native reaction schema discovery and model receipt behavior. The latter needs an isolated prepared Hermes checkout. CI covers both supported reaction builds.
 

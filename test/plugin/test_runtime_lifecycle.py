@@ -6,6 +6,7 @@ import io
 import json
 from pathlib import Path
 import sqlite3
+import subprocess
 import sys
 import tempfile
 import types
@@ -54,9 +55,17 @@ class RuntimeLifecycleTests(unittest.TestCase):
         host.atomic_write(target / 'release.json', {'files': checksums})
         return target
 
+    def legacy(self, destination):
+        for name in host.LEGACY_RUNTIME_FILES:
+            result = subprocess.run(['git', 'show',
+                'b642ccef86511814223e9c4443fc48f639965b47:plugins/bot-web/' + name],
+                cwd=ROOT, check=True, capture_output=True)
+            (destination / name).write_bytes(result.stdout)
+        (destination / 'runtime-contract.json').unlink()
+        return destination
+
     def test_legacy_fingerprint_and_declared_pair_are_compatible(self):
-        legacy = self.paths['alpha']
-        (legacy / 'runtime-contract.json').unlink()
+        legacy = self.legacy(self.paths['alpha'])
         self.assertEqual(host.runtime_evidence(legacy)['contract'], 'legacy-b642cce')
         host.preflight_runtimes(self.source)
         host.preflight_runtimes(legacy)
@@ -193,8 +202,8 @@ class RuntimeLifecycleTests(unittest.TestCase):
 
     def test_sync_from_real_pre_contract_release_restores_legacy_payload(self):
         active = self.install(self.source)
-        for name in ('runtime-contract.json', 'protocol-catalog.json'):
-            (active / name).unlink()
+        self.legacy(active)
+        (active / 'protocol-catalog.json').unlink()
         legacy = host.runtime_evidence(active)
         self.assertEqual(legacy['contract'], 'legacy-b642cce')
         with contextlib.redirect_stdout(io.StringIO()):

@@ -72,6 +72,22 @@ class Model(BaseHTTPRequestHandler):
             Model.saw_native_tool = True
         text = "Native fixture reply"
         latest_user = next((m for m in reversed(data.get("messages", [])) if m.get("role") == "user"), {})
+        if 'nativegeneratedmedia' in str(latest_user.get('content')):
+            import re
+            context = '\n'.join(str(message.get('content')) for message in data.get('messages', []))
+            target = re.search(r'host-visible generated output directory (.+?) \(create it', context)
+            assert target, 'Native model was not given its real media-sharing capability'
+            output = Path(target[1])
+            assert output.is_relative_to(Path(os.environ['HERMES_HOME']))
+            output.mkdir(parents=True, exist_ok=True)
+            from PIL import Image, ImageDraw
+            image = Image.new('RGB', (320, 240), '#222225')
+            drawing = ImageDraw.Draw(image)
+            for index, height in enumerate([56, 94, 138, 172]):
+                drawing.rounded_rectangle((32 + index * 68, 210 - height, 72 + index * 68, 210), radius=6, fill='#a8b99a')
+            image.save(output / 'chart one.png')
+            (output / 'figures.csv').write_bytes(b'column,value\n' * 110000)
+            text = 'Here are the results.\n\n![Project chart](<' + str(output / 'chart one.png') + '>)\n\n[Download figures](<' + str(output / 'figures.csv') + '>)'
         tools = data.get("tools", [])
         tool_names = {t.get('function', {}).get('name') for t in tools}
         def can_call(name):

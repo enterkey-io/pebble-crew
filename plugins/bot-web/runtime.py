@@ -104,6 +104,16 @@ def register_runtime(ctx):
                 incoming, _ = maps(store.read(), members)
                 text += '\nFor this room only, its native frozen mention aliases map to public identities as follows: '+json.dumps(incoming)+'. Use the room aliases when addressing participants in this room; your public identity remains unchanged.'
             else:
+                from hermes_cli.profiles import get_profile_dir
+                output = Path(get_profile_dir(profile)) / 'cache' / 'generated'
+                text += ('\nTo share photos or files in this direct Pebble Crew chat, save the artifact in your '
+                         'host-visible generated output directory ' + str(output) +
+                         ' (create it with your file tools if needed), then include ordinary Markdown: '
+                         '![description](absolute-image-path) for PNG/JPEG/WebP or [filename](absolute-file-path). '
+                         'Standalone MEDIA:absolute-path is also supported. Other local paths are not exposed; '
+                         'copy the intended output into this directory first. In a remote terminal, use a verified '
+                         'mounted/synchronized cache; do not claim an unmounted sandbox path is downloadable. '
+                         'Never share credentials, configuration, private session stores or secrets.')
                 from .reactions import runtime_guidance
                 try:
                     guidance = runtime_guidance(platform)

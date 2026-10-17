@@ -375,4 +375,26 @@ test('private first use, native onboarding, idle keepalive, reconnection, settin
     animations: 'disabled',
     path: 'test-results/native-reactions-phone.png',
   });
+  await page.getByLabel('Message', { exact: true }).fill('nativegeneratedmedia');
+  await page.getByRole('button', { name: 'Send message', exact: true }).click();
+  const chart = page.getByRole('img', { name: 'Project chart', exact: true });
+  await expect(chart).toBeVisible({ timeout: 30000 });
+  await expect
+    .poll(() => chart.evaluate((image: HTMLImageElement) => image.naturalWidth))
+    .toBe(320);
+  const mediaDownload = page.waitForEvent('download');
+  await page.getByRole('button', { name: 'Download figures', exact: true }).click();
+  const figures = await mediaDownload;
+  expect(figures.suggestedFilename()).toBe('figures.csv');
+  expect((await readFile((await figures.path())!)).length).toBe(1430000);
+  await page.reload();
+  await expect(chart).toBeVisible({ timeout: 30000 });
+  await expect
+    .poll(() => chart.evaluate((image: HTMLImageElement) => image.naturalWidth))
+    .toBe(320);
+  expect(errors).toEqual([]);
+  await page.screenshot({
+    animations: 'disabled',
+    path: 'test-results/native-agent-media-phone.png',
+  });
 });

@@ -3,6 +3,56 @@ import { installFixture } from './fixtures';
 
 test.use({ serviceWorkers: 'block' });
 
+test('reload restores the selected pebble behind the progress bar and rejects a replaced identity', async ({
+  page,
+  context,
+}) => {
+  const fixture = await installFixture(context);
+  await page.goto('/');
+  await expect(page.getByLabel('Message', { exact: true })).toBeEnabled();
+  if (page.viewportSize()!.width < 768)
+    await page.getByRole('button', { name: 'Toggle navigation', exact: true }).click();
+  await page.getByRole('button', { name: /^Mica .*Bot Chat$/ }).click();
+  await expect(page.locator('.pc-chat-identity')).toContainText('Mica');
+  let release!: () => void;
+  const held = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  await page.route('**/v1/rpc', async (route) => {
+    const body = route.request().postDataJSON();
+    if (body.operation === 'bot.open' && body.params.profile === 'mica') await held;
+    await route.fallback();
+  });
+  try {
+    await page.reload();
+    await expect(page.getByRole('progressbar', { name: 'Opening Pebble Crew' })).toBeVisible();
+    await expect(page.locator('.pc-chat-identity')).toHaveCount(0);
+    release();
+    await expect(page.getByLabel('Message', { exact: true })).toBeEnabled();
+    await expect(page.locator('.pc-chat-identity')).toContainText('Mica');
+    fixture.replace('mica');
+    await page.reload();
+    await expect(page.getByLabel('Message', { exact: true })).toBeEnabled();
+    await expect(page.locator('.pc-chat-identity')).toContainText('Arlo');
+  } finally {
+    release();
+  }
+});
+
+test('reload restores a selected room and waits for its history', async ({ page, context }) => {
+  await installFixture(context);
+  await page.goto('/');
+  await expect(page.getByLabel('Message', { exact: true })).toBeEnabled();
+  if (page.viewportSize()!.width < 768)
+    await page.getByRole('button', { name: 'Toggle navigation', exact: true }).click();
+  await page.getByRole('button', { name: 'Research crew', exact: false }).click();
+  await expect(page.getByRole('log')).toContainText('I have the notes ready.');
+  await page.reload();
+  await expect(page.getByRole('log')).toContainText('I have the notes ready.');
+  await expect(page.locator('.pc-chat-identity')).toContainText('Research crew');
+  await expect(page.getByRole('progressbar', { name: 'Opening Pebble Crew' })).toHaveCount(0);
+});
+
 test('startup stays on one quiet progress view until the native conversation is restored', async ({
   page,
   context,

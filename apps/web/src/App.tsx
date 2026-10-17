@@ -35,6 +35,7 @@ import { SearchOverlay } from './chat/SearchOverlay';
 import { SendProjection } from './chat/send-projection';
 import { TranscriptFollow } from './chat/viewport-motion';
 import { toolActivity } from './chat/activity';
+import { conversationLocation, rememberConversation } from './chat/conversation-location';
 import { reactionReceipt } from './chat/reactions';
 import { useOverlayHistory } from './ui/overlay-history';
 import type { OwnerConnection } from './OwnerShell';
@@ -472,8 +473,10 @@ export function App({ owner }: { owner?: OwnerConnection }) {
   useEffect(() => {
     if (!client || streamState !== 'live' || busy || autoOpened.current || !workspace?.initialized)
       return;
-    if (restoreRoom.current) {
-      const room = rooms.find((r) => text(r.room_id) === restoreRoom.current);
+    const location = starting ? conversationLocation(workspace.id) : undefined;
+    const roomId = restoreRoom.current || (location?.kind === 'room' ? location.id : '');
+    if (roomId) {
+      const room = rooms.find((r) => text(r.room_id) === roomId);
       restoreRoom.current = '';
       if (room) {
         autoOpened.current = true;
@@ -481,7 +484,13 @@ export function App({ owner }: { owner?: OwnerConnection }) {
         return;
       }
     }
-    const profile = restoreProfile.current || workspace.orchestrator;
+    const savedBot =
+      location?.kind === 'bot' ? workspace.bots.find((bot) => bot.id === location.id) : undefined;
+    const savedProfile =
+      savedBot && bots.some((bot) => bot.profile === savedBot.profile)
+        ? savedBot.profile
+        : undefined;
+    const profile = restoreProfile.current || savedProfile || workspace.orchestrator;
     const bot = bots.find((b) => b.profile === profile);
     if (!bot?.canonical) {
       setStarting(false);
@@ -504,7 +513,7 @@ export function App({ owner }: { owner?: OwnerConnection }) {
         }
       }
     });
-  }, [client, streamState, busy, workspace, bots, rooms]);
+  }, [client, streamState, busy, workspace, bots, rooms, starting]);
   useLayoutEffect(() => {
     const pane = transcriptPane.current;
     if (!pane || pickingAgents) return;
@@ -1022,6 +1031,8 @@ export function App({ owner }: { owner?: OwnerConnection }) {
       selected.current = target;
       selectionConnection.current = client;
       setSelection(target);
+      const id = workspace?.bots.find((entry) => entry.profile === bot.profile)?.id;
+      if (workspace && id) rememberConversation(workspace.id, { kind: 'bot', id });
       setBlocked(false);
       observedHistory(target, data.messages);
       setMessages(sendProjection.current.project(transcript(data.messages)));
@@ -1104,6 +1115,7 @@ export function App({ owner }: { owner?: OwnerConnection }) {
     selected.current = target;
     selectionConnection.current = client;
     setSelection(target);
+    if (workspace) rememberConversation(workspace.id, { kind: 'room', id: text(room.room_id) });
     if (restore) setBlocked(false);
     if (!restore) {
       setDraft(drafts.current.get(draftKey(target)) ?? '');
@@ -1170,6 +1182,7 @@ export function App({ owner }: { owner?: OwnerConnection }) {
               : 'Native room driver ready',
         );
         setMessages(sendProjection.current.project(roomMessages([...events.values()])));
+        setStarting(false);
         const room = roomsRef.current.find(
           (r) => r.room_id === (selection?.kind === 'room' ? selection.room.room_id : ''),
         );
@@ -1183,7 +1196,15 @@ export function App({ owner }: { owner?: OwnerConnection }) {
         setRunning(driver.working === true);
         if (driver.working !== true) setStopping(false);
       } catch (error) {
-        if (!disposed) fail(error);
+        if (!disposed) {
+          fail(error);
+          if (
+            !['DISCONNECTED', 'REQUEST_FAILED', 'REQUEST_TIMEOUT', 'UNAUTHORIZED'].includes(
+              safeError(error).code,
+            )
+          )
+            setStarting(false);
+        }
       }
       if (!disposed)
         timer = setTimeout(() => {
@@ -1794,6 +1815,8 @@ export function App({ owner }: { owner?: OwnerConnection }) {
               }}
             >
               <Transcript
+                client={client}
+                sessionId={selection?.kind === 'bot' ? selection.sessionId : undefined}
                 conversationKey={selection ? draftKey(selection) : ''}
                 onReact={
                   client.supportsReactions && streamState === 'live' ? reactToMessage : undefined

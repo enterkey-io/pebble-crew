@@ -10,6 +10,8 @@ jobs:
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          fetch-depth: 0 # Unit rollback fixtures read the exact historical Python payload.
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version-file: .nvmrc
@@ -63,6 +65,7 @@ jobs:
           echo "HERMES_NATIVE_PYTHON=$RUNNER_TEMP/hermes-ui-env/bin/python" >> "$GITHUB_ENV"
       - run: npm run test:owner-browser
       - run: python scripts/fixture/reactions_smoke.py
+      - run: python scripts/fixture/media_smoke.py
       - run: python scripts/package.py
       - run: node scripts/verify-release.mjs
         env:
@@ -101,3 +104,4 @@ jobs:
       - run: python -m venv "$RUNNER_TEMP/hermes-legacy-env"
       - run: '"$RUNNER_TEMP/hermes-legacy-env/bin/pip" install uv -e ./native-hermes -r test/plugin/requirements.txt'
       - run: '"$RUNNER_TEMP/hermes-legacy-env/bin/python" scripts/fixture/reactions_smoke.py'
+      - run: '"$RUNNER_TEMP/hermes-legacy-env/bin/python" scripts/fixture/media_smoke.py'

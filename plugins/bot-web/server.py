@@ -53,6 +53,8 @@ def configuration():
 def create_app(token, origins, hosts, gateway=None, trust=None, workspace=None, public_callback=None):
     native = gateway or NativeGateway()
     ops = BotOperations(native)
+    from .attachments import GeneratedMedia
+    media = GeneratedMedia(ops)
     if workspace is None and gateway is None:
         from .workspace import WorkspaceService, WorkspaceStore, workspace_path
         from .setup import installed_primary
@@ -122,6 +124,7 @@ def create_app(token, origins, hosts, gateway=None, trust=None, workspace=None, 
                 origin = next((item for item in origins if urlsplit(item).netloc == host), "")
             if origin in origins:
                 common["Access-Control-Allow-Origin"] = origin
+                common["Access-Control-Expose-Headers"] = "Content-Disposition"
             async def reject(status):
                 await JSONResponse({"error": "Request denied"}, status, headers=common)(scope, receive, send)
             # Duplicated boundary headers are ambiguous and always rejected.
@@ -220,7 +223,7 @@ def create_app(token, origins, hosts, gateway=None, trust=None, workspace=None, 
                                "expires": request.scope.get("bot.ticket_expires"), "ended": None}
         build = getattr(native, "build", None) or {}
         return {"connection": connection, "protocol": "hermes-bot-web.v1", "bridge_version": VERSION,
-                "capabilities": {"existing_agents": True, "owner_login": owner_trust is not None, "workspace": bool(workspace), "attachments": bool(files), "reactions": True, "computer": computer.supported},
+                "capabilities": {"existing_agents": True, "owner_login": owner_trust is not None, "workspace": bool(workspace), "attachments": bool(files), "generated_media": True, "reactions": True, "computer": computer.supported},
                 "hermes_version": build.get("version"), "hermes_revision": build.get("revision")}
 
     @app.post("/v1/renew")
@@ -261,9 +264,13 @@ def create_app(token, origins, hosts, gateway=None, trust=None, workspace=None, 
             if not definition or not any(PROTOCOL_CATALOG['routes'][name]['path'] == request.url.path
                                          for name in definition['accepted']):
                 raise InvalidOperation('Operation unavailable on this route')
-            if (operation.startswith("chat.") or operation.startswith("files.")) and params.get("session_id") not in client["sessions"]:
+            if operation.startswith(("chat.", "files.", "media.")) and params.get("session_id") not in client["sessions"]:
                 raise InvalidOperation("Session belongs to another connection")
-            if operation.startswith('computer.'):
+            if operation == 'media.read':
+                blob, name, mime = await media.read(params)
+                from urllib.parse import quote
+                return Response(blob, media_type=mime, headers={'Content-Disposition': "attachment; filename*=UTF-8''" + quote(name, safe='')})
+            elif operation.startswith('computer.'):
                 result = await computer.invoke(operation, params, client, request.headers['x-bot-connection'])
             elif operation.startswith('files.'):
                 if not files:

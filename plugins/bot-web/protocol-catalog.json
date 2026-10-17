@@ -44,6 +44,10 @@
     }
   },
   "operations": {
+    "media.read": {
+      "preferred": "read",
+      "accepted": ["read"]
+    },
     "agent.attach": {
       "preferred": "rpc",
       "accepted": ["rpc"]

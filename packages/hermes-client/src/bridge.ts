@@ -14,6 +14,7 @@ export interface BridgeEvent {
   readonly seq?: number;
   readonly payload?: Readonly<Record<string, unknown>>;
 }
+export type DownloadedMedia = { blob: Blob; name: string };
 
 /** Direct connection to an optional plugin on the user's Hermes host. */
 export class BotBridgeClient {
@@ -26,6 +27,7 @@ export class BotBridgeClient {
   #existingAgents = false;
   #workspace = false;
   #attachments = false;
+  #generatedMedia = false;
   #computer = false;
   #reactions = false;
   #rpcActive = 0;
@@ -47,6 +49,9 @@ export class BotBridgeClient {
   }
   get supportsAttachments(): boolean {
     return this.#attachments;
+  }
+  get supportsGeneratedMedia(): boolean {
+    return this.#generatedMedia;
   }
 
   get supportsWorkspace(): boolean {
@@ -83,6 +88,8 @@ export class BotBridgeClient {
     this.#existingAgents = existingAgents;
     this.#workspace = !!data.capabilities && record(data.capabilities).workspace === true;
     this.#attachments = !!data.capabilities && record(data.capabilities).attachments === true;
+    this.#generatedMedia =
+      !!data.capabilities && record(data.capabilities).generated_media === true;
     this.#computer = !!data.capabilities && record(data.capabilities).computer === true;
     this.#reactions = !!data.capabilities && record(data.capabilities).reactions === true;
   }
@@ -168,22 +175,49 @@ export class BotBridgeClient {
     const generation = this.#lifetime.capture();
     return this.#withSlot(() => {
       this.#lifetime.assertCurrent(generation);
-      return this.#downloadFile(sessionId, id);
+      return this.#downloadBinary('files.read', { session_id: sessionId, id }).then(
+        (file) => file.blob,
+      );
     });
   }
-  async #downloadFile(sessionId: string, id: string): Promise<Blob> {
+  async downloadMedia(
+    sessionId: string,
+    rowId: number,
+    reference: string,
+    signal?: AbortSignal,
+  ): Promise<DownloadedMedia> {
+    if (!this.#generatedMedia) throw new ClientError('UNSUPPORTED');
+    const generation = this.#lifetime.capture();
+    return this.#withSlot(() => {
+      this.#lifetime.assertCurrent(generation);
+      signal?.throwIfAborted();
+      return this.#downloadBinary(
+        'media.read',
+        { session_id: sessionId, row_id: rowId, reference },
+        signal,
+      );
+    });
+  }
+  async #downloadBinary(
+    operation: 'files.read' | 'media.read',
+    params: Readonly<Record<string, unknown>>,
+    signal?: AbortSignal,
+  ): Promise<DownloadedMedia> {
     if (!this.#connection) throw new ClientError('DISCONNECTED');
     const generation = this.#lifetime.capture(),
       controller = new AbortController();
     this.#active.add(controller);
+    const abort = () => controller.abort();
+    signal?.addEventListener('abort', abort, { once: true });
+    if (signal?.aborted) controller.abort();
     const timer = setTimeout(() => controller.abort(), 50000);
     try {
       const url = endpointUrl(this.#endpoint, 'v1/files/read');
       const response = await this.#fetch(
         url,
         this.#options(controller, 'POST', {
-          operation: 'files.read',
-          params: { session_id: sessionId, id },
+          operation,
+          params,
         }),
       );
       await this.#check(response, url);
@@ -206,12 +240,36 @@ export class BotBridgeClient {
         reader.releaseLock();
       }
       this.#lifetime.assertCurrent(generation);
-      return new Blob(parts, { type: 'application/octet-stream' });
+      if (
+        Number(response.headers.get('content-length')) > 0 &&
+        Number(response.headers.get('content-length')) !== bytes
+      )
+        throw new ClientError('INVALID_RESPONSE');
+      const mime = response.headers.get('content-type')?.split(';')[0] ?? '';
+      const disposition = response.headers.get('content-disposition') ?? '';
+      const encoded = /filename\*=UTF-8''([^;]+)/i.exec(disposition)?.[1];
+      const name = encoded ? decodeURIComponent(encoded) : 'download';
+      if (
+        !name ||
+        [...name].length > 180 ||
+        /[/\\]/.test(name) ||
+        [...name].some((char) => char.charCodeAt(0) < 32 || char.charCodeAt(0) === 127)
+      )
+        throw new ClientError('INVALID_RESPONSE');
+      return {
+        blob: new Blob(parts, {
+          type: ['image/png', 'image/jpeg', 'image/webp'].includes(mime)
+            ? mime
+            : 'application/octet-stream',
+        }),
+        name,
+      };
     } catch (e) {
       this.#lifetime.assertCurrent(generation);
       throw safeError(e);
     } finally {
       clearTimeout(timer);
+      signal?.removeEventListener('abort', abort);
       this.#active.delete(controller);
     }
   }
@@ -369,6 +427,7 @@ export class BotBridgeClient {
     this.#connection = '';
     this.#existingAgents = false;
     this.#attachments = false;
+    this.#generatedMedia = false;
     this.#computer = false;
     this.#workspace = false;
     for (const controller of this.#active) controller.abort();

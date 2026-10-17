@@ -7,6 +7,7 @@ python_dependencies:
   - fastapi==0.133.1
   - uvicorn==0.41.0
   - websockets==15.0.1
+  - markdown-it-py==4.2.0
 provides_tools:
   - workspace_agents
   - pebble_react
