@@ -2,15 +2,19 @@
 
 ## Sub-features
 
-Pins, whole-row reordering, collapsible sections, valid item kinds, Crew chats, scoped settings, hidden/deleted profile reconciliation and menu placement.
+Pins, a flat unsectioned list, optional collapsible sections, whole-row reordering, valid item kinds, Crew chats, scoped settings, hidden/deleted profile reconciliation and menu placement.
 
 ## How to get to it (user POV)
 
 Use the rail's New menu or a row's action menu. Click a Crew to open its chat. Use its action menu for settings. Drag whole rows and section headers, or use Alt+Arrow for keyboard movement.
 
+Unsectioned pebbles appear below pins with no heading. Move to section → None returns a pebble to that list. A historical collapsed Pebbles destination must not hide it.
+
 ## Driving it with Playwright
 
 Find current organization and sidebar specs with `rg --files test/chat-workspace test/mobile`. Run those specs against the matching production configuration. Verify empty built-ins disappear, custom empty sections stay usable, Crews hold Crews, pins are centered and the actual action buttons sit at row/tile edges. Check 44px touch targets and settled phone screenshots.
+
+Run `unsectioned.spec.ts` in both production browser configurations for the historical collapsed list and custom-section round trip.
 
 ## Gotchas
 

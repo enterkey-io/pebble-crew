@@ -16,6 +16,9 @@ export type OrganizationEditor =
   | { kind: 'edit-crew'; id: string };
 
 export const SYSTEM_SECTIONS = { pebbles: 'Pebbles', crews: 'Crews' } as const;
+export function sectionChoiceLabel(section: Pick<Section, 'id' | 'name'>) {
+  return section.id === 'pebbles' ? 'None' : section.name;
+}
 export function isSystemSection(id: string) {
   return id === 'pebbles' || id === 'crews';
 }
@@ -103,7 +106,14 @@ export function placementOf(org: Organization, id: string): Placement | undefine
 
 export function reorderSection(org: Organization, id: string, beforeId: string): Organization {
   const section = org.sections.find((s) => s.id === id);
-  if (!section || id === beforeId || !org.sections.some((s) => s.id === beforeId)) return org;
+  if (
+    !section ||
+    id === 'pebbles' ||
+    beforeId === 'pebbles' ||
+    id === beforeId ||
+    !org.sections.some((s) => s.id === beforeId)
+  )
+    return org;
   return {
     ...org,
     sections: insertBefore(
@@ -115,12 +125,13 @@ export function reorderSection(org: Organization, id: string, beforeId: string):
 }
 
 export function nudgeSection(org: Organization, id: string, direction: -1 | 1): Organization {
-  const index = org.sections.findIndex((s) => s.id === id),
+  const movable = org.sections.filter((s) => s.id !== 'pebbles');
+  const index = movable.findIndex((s) => s.id === id),
     next = index + direction;
-  if (index < 0 || next < 0 || next >= org.sections.length) return org;
-  const sections = [...org.sections];
+  if (index < 0 || next < 0 || next >= movable.length) return org;
+  const sections = [...movable];
   [sections[index], sections[next]] = [sections[next]!, sections[index]!];
-  return { ...org, sections };
+  return { ...org, sections: [...org.sections.filter((s) => s.id === 'pebbles'), ...sections] };
 }
 
 function neighbor(

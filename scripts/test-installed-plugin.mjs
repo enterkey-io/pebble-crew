@@ -253,6 +253,23 @@ try {
   await page.getByRole('button', { name: 'Remove private-fixture.txt', exact: true }).click();
   await expect(page.locator('.attachment-chips')).toHaveCount(0);
   checks.actual_combined_authenticated_upload_and_remove = true;
+  await page.getByRole('button', { name: 'Your account', exact: true }).click();
+  await page.getByRole('menuitem', { name: 'Your photo', exact: true }).click();
+  const photoDialog = page.getByRole('dialog', { name: 'Your photo', exact: true });
+  const raster = await page.request.get(origin + '/icons/pebble-192.png');
+  await photoDialog.getByLabel('Your photo', { exact: true }).setInputFiles({
+    name: 'synthetic-account.png',
+    mimeType: 'image/png',
+    buffer: await raster.body(),
+  });
+  await expect(
+    photoDialog.getByRole('button', { name: 'Change photo', exact: true }),
+  ).toBeEnabled();
+  const accountImage = await photoDialog.locator('img').getAttribute('src');
+  expect(accountImage).toMatch(/^data:image\/png;base64,/);
+  await expect.poll(() => photoDialog.locator('img').evaluate((img) => img.naturalWidth)).toBe(192);
+  await photoDialog.getByRole('button', { name: 'Close', exact: true }).click();
+  checks.actual_combined_account_photo_upload = true;
   console.log('Installed package: first use and native Bot Mode reply passed.');
   console.log('Synthetic model audit after first turn:', await control('audit'));
   const cookie = (await context.cookies()).find((c) => c.name.includes('session_token'));
@@ -290,16 +307,31 @@ try {
   await expect(message).toBeEnabled();
   await expect(page.getByText('Native fixture reply', { exact: true }).last()).toBeVisible();
   checks.update_preserves_login_and_native_history = true;
+  await expect(page.locator('.pc-rail-footer .personal-avatar img')).toHaveAttribute(
+    'src',
+    accountImage,
+  );
+  checks.update_preserves_account_photo = true;
   await control('rollback');
   await page.reload();
   await expect(message).toBeEnabled();
   checks.rollback_preserves_login = true;
+  await expect(page.locator('.pc-rail-footer .personal-avatar img')).toHaveAttribute(
+    'src',
+    accountImage,
+  );
+  checks.rollback_preserves_account_photo = true;
   console.log('Installed update and explicit rollback passed; testing failed activation.');
   await control('failed-update');
   await page.reload();
   await expect(message).toBeEnabled();
   await expect(page.getByText('Native fixture reply', { exact: true }).last()).toBeVisible();
   checks.failed_activation_rolls_back_with_login_and_history = true;
+  await expect(page.locator('.pc-rail-footer .personal-avatar img')).toHaveAttribute(
+    'src',
+    accountImage,
+  );
+  checks.failed_activation_preserves_account_photo = true;
   console.log('Synthetic model audit after recovery:', await control('audit'));
   const denied = await page.request.post(origin + '/v1/rpc', {
     headers: { Origin: 'https://unapproved.example' },

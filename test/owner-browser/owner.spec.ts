@@ -211,6 +211,20 @@ test('private first use, native onboarding, idle keepalive, reconnection, settin
   await page.getByRole('button', { name: 'Close Edit Alpha', exact: true }).click();
   await page.getByRole('button', { name: 'Your account' }).click();
   await page.getByRole('menuitem', { name: 'Settings', exact: true }).click();
+  const accountPhoto = page.getByLabel('Your photo', { exact: true });
+  await accountPhoto.setInputFiles({
+    name: 'synthetic-owner.png',
+    mimeType: 'image/png',
+    buffer: Buffer.from(png, 'base64'),
+  });
+  await expect(page.getByRole('button', { name: 'Change photo', exact: true })).toBeEnabled();
+  const personalImage = page.locator('.personal-avatar-large img');
+  await expect
+    .poll(() => personalImage.evaluate((img: HTMLImageElement) => img.naturalWidth))
+    .toBe(192);
+  const savedPersonalPhoto = await personalImage.getAttribute('src');
+  expect(savedPersonalPhoto).toMatch(/^data:image\/png;base64,/);
+  await page.screenshot({ animations: 'disabled', path: 'test-results/native-account-photo.png' });
   await page.getByLabel('Current password', { exact: true }).fill('synthetic-owner-password-123');
   await page.getByLabel('New password', { exact: true }).fill('synthetic-owner-password-456');
   await page
@@ -238,6 +252,10 @@ test('private first use, native onboarding, idle keepalive, reconnection, settin
   await page.getByRole('button', { name: 'Close Edit Alpha', exact: true }).click();
   await page.reload();
   await expect(page.getByLabel('Message', { exact: true })).toBeEnabled({ timeout: 30000 });
+  await expect(page.locator('.pc-rail-footer .personal-avatar img')).toHaveAttribute(
+    'src',
+    savedPersonalPhoto!,
+  );
   await expect(page.getByRole('heading', { name: 'Create your login' })).toHaveCount(0);
   await page.getByRole('button', { name: 'Your account' }).click();
   await page.getByRole('menuitem', { name: 'Sign out', exact: true }).click();
@@ -246,6 +264,10 @@ test('private first use, native onboarding, idle keepalive, reconnection, settin
   await page.getByLabel('Password', { exact: true }).fill('synthetic-owner-password-456');
   await page.getByRole('button', { name: 'Sign in', exact: true }).click();
   await expect(page.getByLabel('Message', { exact: true })).toBeEnabled({ timeout: 30000 });
+  await expect(page.locator('.pc-rail-footer .personal-avatar img')).toHaveAttribute(
+    'src',
+    savedPersonalPhoto!,
+  );
   await page.getByRole('button', { name: 'Actions for Alpha', exact: true }).click();
   await page.getByRole('menuitem', { name: 'Edit pebble', exact: true }).click();
   await page.getByLabel('Name', { exact: true }).fill('Alpha Stone');

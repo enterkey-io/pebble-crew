@@ -4,37 +4,12 @@ import { useEffect, useState } from 'react';
 import { App } from './App';
 import { useAppViewport } from './ui/viewport';
 import { StartupScreen } from './StartupScreen';
+import { ownerRequest, OwnerRequestError } from './owner-request';
+import { OwnerPhotoProvider, sessionPhoto } from './OwnerPhoto';
 
 export interface OwnerConnection {
   ticket: () => Promise<{ ticket: string; bridgeUrl: string }>;
   logout: () => Promise<void>;
-}
-export class OwnerRequestError extends Error {
-  constructor(
-    message: string,
-    readonly status: number,
-  ) {
-    super(message);
-  }
-}
-export async function ownerRequest(path: string, body?: unknown) {
-  const response = await fetch(path, {
-    method: body === undefined ? 'GET' : 'POST',
-    credentials: 'same-origin',
-    cache: 'no-store',
-    redirect: 'error',
-    headers: body === undefined ? {} : { 'Content-Type': 'application/json' },
-    ...(body === undefined ? {} : { body: JSON.stringify(body) }),
-  });
-  const value: unknown = await response.json();
-  if (!response.ok)
-    throw new OwnerRequestError(
-      value && typeof value === 'object' && 'error' in value && typeof value.error === 'string'
-        ? value.error
-        : 'Please sign in.',
-      response.status,
-    );
-  return value;
 }
 export function OwnerShell({ setupProof = '' }: { setupProof?: string } = {}) {
   useAppViewport();
@@ -47,6 +22,7 @@ export function OwnerShell({ setupProof = '' }: { setupProof?: string } = {}) {
   const [proof, setProof] = useState(setupProof);
   const usingSetupLink = Boolean(setupProof);
   const [error, setError] = useState('');
+  const [image, setImage] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   async function check() {
     try {
@@ -66,6 +42,7 @@ export function OwnerShell({ setupProof = '' }: { setupProof?: string } = {}) {
         return;
       }
       const session = await ownerRequest('/api/auth/get-session');
+      setImage(sessionPhoto(session));
       setMode(session ? 'ready' : 'login');
     } catch {
       setMode('unavailable');
@@ -84,7 +61,12 @@ export function OwnerShell({ setupProof = '' }: { setupProof?: string } = {}) {
         await ownerRequest('/api/bootstrap', { username, password, proof });
         setProof('');
       }
-      await ownerRequest('/api/auth/sign-in/username', { username, password, rememberMe: true });
+      const signedIn = await ownerRequest('/api/auth/sign-in/username', {
+        username,
+        password,
+        rememberMe: true,
+      });
+      setImage(sessionPhoto(signedIn));
       setPassword('');
       setConfirmation('');
       setMode('ready');
@@ -98,25 +80,27 @@ export function OwnerShell({ setupProof = '' }: { setupProof?: string } = {}) {
   if (mode === 'loading') return <StartupScreen />;
   if (mode === 'ready')
     return (
-      <App
-        owner={{
-          ticket: async () => {
-            try {
-              return (await ownerRequest('/api/hermes/ticket', {})) as {
-                ticket: string;
-                bridgeUrl: string;
-              };
-            } catch (error) {
-              if (error instanceof OwnerRequestError && error.status === 401) setMode('login');
-              throw error;
-            }
-          },
-          logout: async () => {
-            await ownerRequest('/api/auth/sign-out', {});
-            setMode('login');
-          },
-        }}
-      />
+      <OwnerPhotoProvider image={image} onUnauthorized={() => setMode('login')}>
+        <App
+          owner={{
+            ticket: async () => {
+              try {
+                return (await ownerRequest('/api/hermes/ticket', {})) as {
+                  ticket: string;
+                  bridgeUrl: string;
+                };
+              } catch (error) {
+                if (error instanceof OwnerRequestError && error.status === 401) setMode('login');
+                throw error;
+              }
+            },
+            logout: async () => {
+              await ownerRequest('/api/auth/sign-out', {});
+              setMode('login');
+            },
+          }}
+        />
+      </OwnerPhotoProvider>
     );
   return (
     <main className="owner-entry">

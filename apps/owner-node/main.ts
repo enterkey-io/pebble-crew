@@ -6,6 +6,7 @@ import { randomBytes } from 'node:crypto';
 import { generateKeyPair, exportJWK } from 'jose';
 import { NodeOwnerDatabase } from '../../packages/owner-service/src/node-store';
 import { createOwnerService, digest } from '../../packages/owner-service/src/service';
+import { ownerBodyLimit } from '../../packages/owner-service/src/photo';
 import type { OwnerSettings } from '../../packages/owner-service/src/service';
 import { proxyBridge, proxyBridgeUpgrade } from '../../packages/owner-service/src/bridge-proxy';
 
@@ -166,9 +167,10 @@ if (command === 'init' || command === 'recover') {
       ) {
         const parts: Buffer[] = [];
         let length = 0;
+        const limit = ownerBodyLimit(url.pathname, req.method ?? 'GET');
         for await (const part of req) {
           length += part.length;
-          if (length > 8192) {
+          if (length > limit) {
             res.writeHead(413).end();
             return;
           }

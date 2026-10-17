@@ -1,7 +1,8 @@
 import { Button } from './components/ui/button';
 import { Input } from './components/ui/input';
 import { useState } from 'react';
-import { ownerRequest } from './OwnerShell';
+import { ownerRequest } from './owner-request';
+import { PersonalPhotoControls } from './OwnerPhoto';
 export function OwnerAccount() {
   const [current, setCurrent] = useState('');
   const [next, setNext] = useState('');
@@ -10,6 +11,8 @@ export function OwnerAccount() {
   const [message, setMessage] = useState('');
   return (
     <section className="owner-account">
+      <h2>Your photo</h2>
+      <PersonalPhotoControls />
       <h2>Change password</h2>
       <form
         onSubmit={async (e) => {

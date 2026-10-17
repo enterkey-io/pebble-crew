@@ -29,6 +29,7 @@ import {
   removeCrew,
   isSystemSection,
   sectionAccepts,
+  sectionChoiceLabel,
   removeSection,
   nudgeItem,
   nudgeSection,
@@ -81,7 +82,7 @@ function PlacementMenu({
                 value={section.id}
                 onSelect={() => onMove({ kind: 'section', id: section.id })}
               >
-                {section.name}
+                {sectionChoiceLabel(section)}
               </DropdownMenuRadioItem>
             ))}
           </DropdownMenuRadioGroup>
@@ -193,6 +194,7 @@ export function OrganizationRail({
       pebbles.map((p) => p.id),
     );
     if (!item) return;
+    if (item.kind === 'section' && target.kind === 'section' && target.id === 'pebbles') return;
     if (
       item.kind === 'pebble' &&
       pinnedIds.includes(item.id) &&
@@ -388,14 +390,32 @@ export function OrganizationRail({
   return (
     <>
       {org.sections
+        .filter((section) => section.id === 'pebbles')
+        .map((section) => (
+          <motion.div
+            layout
+            transition={move}
+            key={section.id}
+            className="pc-unsectioned"
+            role="group"
+            aria-label="Unsectioned pebbles"
+            {...targetEvents({ kind: 'section', id: section.id })}
+          >
+            {section.items.map((item) =>
+              item.kind === 'pebble' ? row(item.id, { kind: 'section', id: section.id }) : null,
+            )}
+          </motion.div>
+        ))}
+      {org.sections
         .filter(
           (section) =>
-            !isSystemSection(section.id) ||
-            section.items.some((item) =>
-              item.kind === 'crew'
-                ? org.crews.some((c) => c.id === item.id)
-                : pebbles.some((p) => p.id === item.id && !p.pinned),
-            ),
+            section.id !== 'pebbles' &&
+            (!isSystemSection(section.id) ||
+              section.items.some((item) =>
+                item.kind === 'crew'
+                  ? org.crews.some((c) => c.id === item.id)
+                  : pebbles.some((p) => p.id === item.id && !p.pinned),
+              )),
         )
         .map((section) => (
           <motion.section

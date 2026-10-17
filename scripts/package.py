@@ -3,6 +3,7 @@ from pathlib import Path
 from hashlib import sha256
 import json
 import shutil
+import subprocess
 from zipfile import ZipFile, ZipInfo, ZIP_DEFLATED
 import os
 
@@ -81,11 +82,15 @@ plugin += [(runtime_manifest, 'bot-web/web-runtime/payload.json')]
 plugin += [(root / "LICENSE", "LICENSE"), (root / "docs/AGENT_INSTALL.md", "AGENT_INSTALL.md")]
 archive("workspace-plugin-preview.zip", plugin)
 source = []
+# A checkout may contain another task's unpublished drafts. Ship tracked paths only.
+tracked = set(subprocess.check_output(
+    ['git', 'ls-files', '-z'], cwd=root).decode().split('\0')) if (root / '.git').exists() else None
 for directory in ("apps", "packages", "plugins", "scripts", "test", "docs", ".github", "deploy"):
     for path in (root / directory).rglob("*"):
         if (path.is_file() and not path.is_symlink() and not {"dist", "node_modules", "__pycache__", "artifacts", ".wrangler", ".local", ".superdesign"}.intersection(path.parts)
                 and path.suffix in {".ts", ".tsx", ".css", ".html", ".md", ".json", ".mjs", ".js", ".webmanifest", ".svg", ".png", ".py", ".yml", ".yaml", ".txt", ".sql", ".jsonc", ".example"}
-                and not path.name.startswith(".env") and path.name not in {"auth.json", "credentials.json", "config.yaml"}):
+                and not path.name.startswith(".env") and path.name not in {"auth.json", "credentials.json", "config.yaml"}
+                and (tracked is None or str(path.relative_to(root)) in tracked)):
             source.append((path, str(path.relative_to(root))))
 for name in ("AGENTS.md", "README.md", "PROGRESS.md", "IMPLEMENTATION_PLAN.md", "WEB_APP_PLAN.md", "LICENSE", "release.json",
              "package.json", "package-lock.json", "tsconfig.json", "eslint.config.mjs", "vitest.config.ts",

@@ -5,7 +5,7 @@ import {
   Search,
   Plus,
   X,
-  CircleUserRound,
+  Camera,
   MoreHorizontal,
   Settings2,
   Eye,
@@ -18,12 +18,19 @@ import type { MenuItem } from '../ui/primitives';
 import { IconButton } from '../components/ui/icon-button';
 import { Badge } from '../components/ui/badge';
 import { OrganizationRail, OrganizationDialog } from '../ui/OrganizationRail';
-import { placePebble, placementOf, sectionAccepts, readRailDrag } from '../ui/organization';
+import {
+  placePebble,
+  placementOf,
+  sectionAccepts,
+  sectionChoiceLabel,
+  readRailDrag,
+} from '../ui/organization';
 import type { Organization, OrganizationEditor } from '../ui/organization';
 import type { WorkspaceSnapshot as WorkspaceState, WorkspaceBot } from '@hermes-client/protocol';
 import type { BotBridgeClient } from '@hermes-client/protocol';
 import type { Activity } from '../avatar-lab/engine';
 import type { Row } from '../conversation';
+import { PersonalAvatar, useOwnerPhoto } from '../OwnerPhoto';
 export type ChatBot = {
   profile: string;
   name: string;
@@ -161,6 +168,7 @@ export function Rail({
   const [hidden, setHidden] = useState(false),
     [editor, setEditor] = useState<OrganizationEditor | null>(null);
   const reduced = useReducedMotion();
+  const personalPhoto = useOwnerPhoto();
   const identity = (bot: ChatBot) => workspace?.bots.find((b) => b.profile === bot.profile);
   const pinned = (bot: ChatBot) => {
     const b = identity(bot);
@@ -213,7 +221,7 @@ export function Rail({
         items: organization.sections
           .filter((s) => sectionAccepts(s.id, 'pebble'))
           .map((s) => ({
-            label: s.name,
+            label: sectionChoiceLabel(s),
             checked: current?.kind === 'section' && current.id === s.id,
             action: () =>
               onOrganization((org) => placePebble(org, b.id, { kind: 'section', id: s.id })),
@@ -455,6 +463,9 @@ export function Rail({
           label="Your account"
           placement="account"
           items={[
+            ...(owner && personalPhoto
+              ? [{ label: 'Your photo', icon: Camera, action: personalPhoto.edit }]
+              : []),
             { label: 'Settings', icon: Settings2, action: onSettings },
             {
               label: hidden ? 'Hide hidden pebbles' : 'Show hidden pebbles',
@@ -464,7 +475,7 @@ export function Rail({
             { label: owner ? 'Sign out' : 'Disconnect', icon: LogOut, action: onLogout },
           ]}
         >
-          <CircleUserRound />
+          <PersonalAvatar />
         </Menu>
         <span className="connection-status" data-online={online}>
           <i aria-hidden="true" />

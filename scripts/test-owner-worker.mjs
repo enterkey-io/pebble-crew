@@ -4,9 +4,10 @@ import { mkdtemp, readFile, writeFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { createHash } from 'node:crypto';
-import { createServer } from 'node:net';
+import { createConnection, createServer } from 'node:net';
 import assert from 'node:assert/strict';
 import { generateKeyPair, exportJWK, jwtVerify, importJWK } from 'jose';
+import { chromium } from '@playwright/test';
 const directory = await mkdtemp(join(tmpdir(), 'workspace-worker-'));
 const config = resolve('apps/owner-worker/wrangler.jsonc');
 const cli = resolve('node_modules/wrangler/bin/wrangler.js');
@@ -30,6 +31,7 @@ const settings = {
 };
 const env = { ...process.env, WRANGLER_SEND_METRICS: 'false', CLOUDFLARE_SEND_METRICS: 'false' };
 let server;
+let browser;
 function run(args) {
   return execFileSync(process.execPath, [cli, ...args, '--config', config], { env, stdio: 'pipe' });
 }
@@ -44,6 +46,8 @@ async function start() {
       '127.0.0.1',
       '--port',
       String(port),
+      '--inspector-port',
+      '0',
       '--persist-to',
       directory,
       '--config',
@@ -73,9 +77,23 @@ async function stop() {
   server = undefined;
   if (!child || child.exitCode !== null || child.signalCode !== null) return;
   await new Promise((r) => {
-    child.once('exit', r);
+    child.once('close', r);
     child.kill('SIGTERM');
   });
+  // Wrangler's wrapper can exit before its workerd listener finishes shutting down.
+  for (let attempt = 0; attempt < 50; attempt++) {
+    const listening = await new Promise((r) => {
+      const socket = createConnection({ host: '127.0.0.1', port });
+      socket.once('connect', () => {
+        socket.destroy();
+        r(true);
+      });
+      socket.once('error', () => r(false));
+    });
+    if (!listening) return;
+    await new Promise((r) => setTimeout(r, 100));
+  }
+  throw new Error('The local workerd test listener did not stop.');
 }
 async function call(path, body, cookie) {
   const r = await fetch(origin + path, {
@@ -129,19 +147,76 @@ try {
     .map((c) => c.split(';')[0])
     .join('; ');
   assert(cookie);
+  // Exercise the real workerd encoder and D1 record, then decode independently in Chromium.
+  const pixels = Buffer.alloc(192 * 192 * 4);
+  let seed = 271828;
+  for (let offset = 0; offset < pixels.length - 4; offset += 4) {
+    for (let channel = 0; channel < 3; channel++) {
+      seed ^= seed << 13;
+      seed ^= seed >>> 17;
+      seed ^= seed << 5;
+      pixels[offset + channel] = seed & 255;
+    }
+    pixels[offset + 3] = 255;
+  }
+  const upload = { pixels: pixels.toString('base64') };
+  assert.equal((await call('/api/owner/photo', upload)).status, 401);
+  assert.equal((await call('/api/owner/photo', { pixels: '<svg/>' }, cookie)).status, 400);
+  const blocked = await fetch(origin + '/api/owner/photo', {
+    method: 'POST',
+    headers: {
+      Origin: 'https://untrusted.invalid',
+      Cookie: cookie,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(upload),
+  });
+  assert.equal(blocked.status, 403);
+  assert.equal(
+    (await call('/api/owner/photo', { pixels: 'a'.repeat(205000) }, cookie)).status,
+    413,
+  );
+  const photo = await call('/api/owner/photo', upload, cookie);
+  assert.equal(photo.status, 200, await photo.clone().text());
+  const { image } = await photo.json();
+  assert(image.startsWith('data:image/png;base64,'));
+  browser = await chromium.launch();
+  const page = await browser.newPage();
+  const decoded = await page.evaluate(async (url) => {
+    const bitmap = await createImageBitmap(await (await fetch(url)).blob());
+    const canvas = document.createElement('canvas');
+    canvas.width = bitmap.width;
+    canvas.height = bitmap.height;
+    const context = canvas.getContext('2d');
+    context.drawImage(bitmap, 0, 0);
+    const bytes = context.getImageData(0, 0, canvas.width, canvas.height).data;
+    let value = '';
+    for (let i = 0; i < bytes.length; i += 8192)
+      value += String.fromCharCode(...bytes.subarray(i, i + 8192));
+    bitmap.close();
+    return { width: canvas.width, height: canvas.height, pixels: btoa(value) };
+  }, image);
+  assert.deepEqual(decoded, { width: 192, height: 192, pixels: upload.pixels });
   await stop();
   await start();
+  const session = await call('/api/auth/get-session', undefined, cookie);
+  assert.equal((await session.json()).user.image, image);
   const ticket = await call('/api/hermes/ticket', {}, cookie);
   assert.equal(ticket.status, 200, await ticket.clone().text());
   const payload = await ticket.json();
   const key = await importJWK(await exportJWK(pair.publicKey), 'EdDSA');
   await jwtVerify(payload.ticket, key, { issuer: origin, audience: settings.installationId });
+  assert.equal((await call('/api/owner/photo', { pixels: null }, cookie)).status, 200);
+  const removed = await call('/api/auth/get-session', undefined, cookie);
+  assert.equal((await removed.json()).user.image, null);
   assert.equal((await call('/api/auth/sign-out', {}, cookie)).status, 200);
   assert.equal((await call('/api/hermes/ticket', {}, cookie)).status, 401);
+  assert.equal((await call('/api/owner/photo', upload, cookie)).status, 401);
   console.log(
-    'Local Cloudflare Worker/D1: bootstrap, library password login, restart persistence, signed ticket and logout passed.',
+    'Local Cloudflare Worker/D1: login, photo validation and browser pixel decode, restart persistence, removal, signed ticket and logout passed.',
   );
 } finally {
+  await browser?.close();
   await stop();
   if (previous) await writeFile(vars, previous);
   else await rm(vars, { force: true });

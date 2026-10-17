@@ -1,5 +1,13 @@
 # Installed-owner implementation status
 
+**17 October 0.7.8-preview.3:** unsectioned pebbles are a flat list below pins,
+without a default heading or collapse control. Custom sections are optional;
+None returns a pebble to the plain list. Owner account photos can be uploaded,
+changed or removed through the account menu and Account settings. The photo-only
+control uses an account icon when empty and saves a bounded PNG in the owner's
+existing Node/SQLite or Worker/D1 login store, separate from Hermes profiles.
+No new owner setup or database migration is required.
+
 **17 October 0.7.8-preview.2:** pinned tiles center the avatar in their upper third,
 with the name and a two-line role label below. The corner action menu no longer
 pushes the avatar downward. Incremental fixes use preview suffixes within 0.7.8.

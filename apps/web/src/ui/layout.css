@@ -119,6 +119,13 @@
 .pc-list {
   margin: 16px 0 24px;
 }
+.pc-unsectioned {
+  min-height: 12px;
+  margin-bottom: 16px;
+}
+.pc-unsectioned:empty {
+  margin-bottom: 0;
+}
 .pc-list h2 {
   font-size: 12px;
   font-weight: 550;
