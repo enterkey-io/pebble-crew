@@ -202,7 +202,9 @@ test('private first use, native onboarding, idle keepalive, reconnection, settin
   await page.getByLabel('Title', { exact: true }).fill('Team lead');
   await page.getByLabel('Description', { exact: true }).fill('Coordinates synthetic research');
   await page.getByRole('button', { name: 'Save role', exact: true }).click();
-  await expect(page.getByRole('status')).toContainText('Role saved.');
+  await expect(
+    page.getByRole('tabpanel', { name: 'Role', exact: true }).getByRole('status'),
+  ).toHaveText('Role saved.');
   await expect(page.getByLabel('Title', { exact: true })).toHaveValue('Team lead');
   await page.getByRole('button', { name: 'Close Edit Alpha', exact: true }).click();
   await page.getByRole('button', { name: 'Your account' }).click();
