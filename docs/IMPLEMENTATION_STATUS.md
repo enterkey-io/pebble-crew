@@ -1,5 +1,9 @@
 # Installed-owner implementation status
 
+**17 October 0.7.8-preview.2:** pinned tiles center the avatar in their upper third,
+with the name and a two-line role label below. The corner action menu no longer
+pushes the avatar downward. Incremental fixes use preview suffixes within 0.7.8.
+
 **17 October 0.7.8 candidate:** initial opening uses one quiet progress view until
 the native conversation is restored. Reconnection keeps the existing app mounted.
 Actual activity labels settle in their reserved lane, send/stop glyphs crossfade

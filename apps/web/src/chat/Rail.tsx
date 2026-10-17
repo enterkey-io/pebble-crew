@@ -342,7 +342,7 @@ export function Rail({
                         </span>
                       )}
                       {identity(b)?.role.title && (
-                        <Badge variant="secondary" aria-hidden="true">
+                        <Badge className="pc-pin-title" variant="secondary" aria-hidden="true">
                           {identity(b)?.role.title}
                         </Badge>
                       )}

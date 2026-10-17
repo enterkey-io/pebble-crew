@@ -1,5 +1,6 @@
 import { test, expect } from '@playwright/test';
 import { installFixture } from '../chat-workspace/fixtures';
+import { expectPinnedLayout } from '../chat-workspace/pinned-layout';
 test.use({ serviceWorkers: 'block' });
 test('regular and pinned pebble menus have full touch targets aligned to their right edge', async ({
   page,
@@ -10,6 +11,12 @@ test('regular and pinned pebble menus have full touch targets aligned to their r
   await expect(page.getByLabel('Message', { exact: true })).toBeEnabled();
   await page.getByRole('button', { name: 'Toggle navigation', exact: true }).tap();
   const navigation = page.getByRole('dialog', { name: 'navigation', exact: true });
+  await expectPinnedLayout(navigation.locator('.pinned-tile'));
+  await page.screenshot({
+    animations: 'disabled',
+    scale: 'css',
+    path: info.outputPath('sidebar-pins.png'),
+  });
   expect((await navigation.boundingBox())!.width).toBeGreaterThanOrEqual(
     Math.min(360, page.viewportSize()!.width - 24) - 0.25,
   );

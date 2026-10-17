@@ -1,6 +1,7 @@
 import { test, expect } from '@playwright/test';
 import { mkdir, writeFile } from 'node:fs/promises';
 import { installFixture, emit } from './fixtures';
+import { expectPinnedLayout } from './pinned-layout';
 test('populated production workspace: layout, drafts, scroll, crew authors and routine controls', async ({
   page,
   context,
@@ -10,6 +11,7 @@ test('populated production workspace: layout, drafts, scroll, crew authors and r
   const input = page.getByLabel('Message', { exact: true });
   await expect(input).toBeEnabled();
   await expect(page.locator('.pinned-tile')).toHaveCount(2);
+  await expectPinnedLayout(page.locator('.pinned-tile'));
   await expect(page.locator('.pebble-row')).toHaveCount(10);
   expect((await page.locator('.pc-composer').boundingBox())!.height).toBeLessThanOrEqual(56);
   await page.screenshot({ path: 'test-results/workspace-desktop.png' });
