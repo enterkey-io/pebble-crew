@@ -101,7 +101,7 @@ class ProviderErrorTests(unittest.TestCase):
         native = SimpleNamespace(_live_section=lambda: {}, _resolve_credentials=lambda _: ('synthetic-private-key', 'https://provider.invalid/v1'), build_session_config=lambda _: {'instructions': 'Native instructions'})
         for status, code in [(401, 'VOICE_KEY_REJECTED'), (403, 'VOICE_ACCESS_DENIED'), (404, 'VOICE_MODEL_UNAVAILABLE'), (429, 'VOICE_LIMIT_REACHED'), (500, 'VOICE_PROVIDER_UNAVAILABLE'), (400, 'VOICE_OFFER_REJECTED')]:
             error = urllib.error.HTTPError('https://private.invalid', status, 'private body', {}, io.BytesIO(b'secret vendor detail'))
-            with patch.dict('sys.modules', {'tools.voice_live': native}), patch('bot_web.live_voice.urllib.request.urlopen', side_effect=error), self.assertRaises(InvalidOperation) as caught:
+            with patch.dict('sys.modules', {'tools': SimpleNamespace(voice_live=native), 'tools.voice_live': native}), patch('bot_web.live_voice.urllib.request.urlopen', side_effect=error), self.assertRaises(InvalidOperation) as caught:
                 create_session('v=0\r\n', 'Synthetic', False)
             self.assertEqual(caught.exception.code, code)
             self.assertNotIn('private', str(caught.exception))
@@ -111,6 +111,6 @@ class ProviderErrorTests(unittest.TestCase):
         import urllib.error
         from bot_web.live_voice import create_session
         native = SimpleNamespace(_live_section=lambda: {}, _resolve_credentials=lambda _: ('', 'https://provider.invalid/v1'))
-        with patch.dict('sys.modules', {'tools.voice_live': native}), self.assertRaises(InvalidOperation) as caught:
+        with patch.dict('sys.modules', {'tools': SimpleNamespace(voice_live=native), 'tools.voice_live': native}), self.assertRaises(InvalidOperation) as caught:
             create_session('v=0\r\n', 'Synthetic', False)
         self.assertEqual(caught.exception.code, 'VOICE_KEY_REQUIRED')
