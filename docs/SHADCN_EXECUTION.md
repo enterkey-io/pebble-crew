@@ -69,6 +69,13 @@ at least 360 pixels for the remaining desktop interface. Phone navigation retain
 its drawer. Keyboard resizing and double-click reset are supported. Preferences
 stay on the owner's device and are not sent to Hermes or a vendor service.
 
+Packaging explicitly includes the appearance startup asset and rejects any
+same-origin script or stylesheet referenced by entry HTML but omitted from the
+archive. Installed acceptance fetches the startup asset before first use. A browser
+journey holds the application module to prove appearance is applied beforehand.
+The larger complete browser suite exceeded the former 10-minute CI job deadline;
+the job now has 15 minutes without removing checks.
+
 `composition-integrity` checks real text/emoji/footer separation, centered row
 anatomy, pending and failed switching, and out-of-order responses. The existing
 flow suites exercise Settings, Add/Edit, menus, attachments, live replies and

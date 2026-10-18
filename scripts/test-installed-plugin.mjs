@@ -197,6 +197,11 @@ try {
   page.on('request', (r) => origins.add(new URL(r.url()).origin));
   page.on('pageerror', (e) => errors.push(e.message));
   const setupLink = (await readFile(join(state, 'setup-link.txt'), 'utf8')).trim();
+  const appearanceAsset = await page.request.get(new URL('/appearance-init.js', origin).href);
+  checks.theme_startup_asset_is_packaged =
+    appearanceAsset.status() === 200 &&
+    appearanceAsset.headers()['content-type']?.includes('javascript') === true;
+  expect(checks.theme_startup_asset_is_packaged).toBe(true);
   await page.goto(setupLink);
   const pwaAssets = [
     '/manifest.webmanifest',

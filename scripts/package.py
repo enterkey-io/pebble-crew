@@ -6,6 +6,8 @@ import shutil
 import subprocess
 from zipfile import ZipFile, ZipInfo, ZIP_DEFLATED
 import os
+from html.parser import HTMLParser
+from urllib.parse import urlsplit
 
 root = Path(__file__).resolve().parents[1]
 release = json.loads((root / "release.json").read_text())
@@ -37,13 +39,27 @@ def archive(name, files):
 def web_payload():
     allowed = {'index.html', 'avatar-lab.html', '_headers', 'install.html', 'install.md',
                'install.css', 'connection.json', 'version.json', 'manifest.webmanifest',
-               'service-worker.js', 'offline.html', 'offline.css'}
+               'service-worker.js', 'offline.html', 'offline.css', 'appearance-init.js'}
     files = [path for path in web_root.rglob('*') if path.is_file() and not path.is_symlink()
             and (str(path.relative_to(web_root)) in allowed or path.relative_to(web_root).parts[0] in {'assets', 'licenses', 'icons'})]
-    required = {'manifest.webmanifest', 'service-worker.js', 'offline.html', 'offline.css',
+    required = {'manifest.webmanifest', 'service-worker.js', 'offline.html', 'offline.css', 'appearance-init.js',
                 'icons/pebble.svg', 'icons/pebble-180.png', 'icons/pebble-192.png', 'icons/pebble-512.png'}
     if not required.issubset({str(path.relative_to(web_root)) for path in files}):
-        raise ValueError('The web build is missing required PWA assets')
+        raise ValueError('The web build is missing required startup or PWA assets')
+    class EntryAssets(HTMLParser):
+        def handle_starttag(self, tag, attrs):
+            if tag not in {'script', 'link'}:
+                return
+            attrs = dict(attrs)
+            reference = urlsplit(attrs.get('src' if tag == 'script' else 'href', ''))
+            if reference.scheme or reference.netloc or not reference.path:
+                return
+            target = reference.path.lstrip('/')
+            if target not in packaged:
+                raise ValueError(f'Entry HTML references an unpackaged asset: {target}')
+    packaged = {str(path.relative_to(web_root)) for path in files}
+    for name in ('index.html', 'avatar-lab.html'):
+        EntryAssets().feed((web_root / name).read_text())
     return files
 
 

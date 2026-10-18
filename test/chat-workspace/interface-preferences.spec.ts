@@ -3,6 +3,29 @@ import AxeBuilder from '@axe-core/playwright';
 import { installFixture } from './fixtures';
 
 test.use({ serviceWorkers: 'block' });
+test('appearance is applied before the application module starts', async ({ page, context }) => {
+  await installFixture(context);
+  await context.addInitScript(() => localStorage.setItem('pebble-crew.appearance', 'light'));
+  let release!: () => void;
+  const held = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  await page.route('**/assets/workspace-*.js', async (route) => {
+    await held;
+    await route.continue();
+  });
+  const navigation = page.goto('/');
+  try {
+    await expect(page.locator('html')).toHaveAttribute('data-theme', 'light');
+    await expect(page.getByLabel('Message', { exact: true })).toHaveCount(0);
+  } finally {
+    release();
+  }
+  await navigation;
+  await expect(page.getByLabel('Message', { exact: true })).toBeEnabled();
+  await expect(page.locator('html')).toHaveAttribute('data-theme', 'light');
+});
+
 async function openGeneral(page: import('@playwright/test').Page) {
   if (page.viewportSize()!.width < 768)
     await page.getByRole('button', { name: 'Toggle navigation', exact: true }).click();
