@@ -78,9 +78,11 @@ test('private first use, native onboarding, idle keepalive, reconnection, settin
     'true',
   );
   await expect(picker.locator('.avatar-preview svg.avatar')).toHaveCount(1);
-  await expect(picker.locator('.avatar-shapes button')).toHaveCount(SHAPES.length);
-  await expect(picker.locator('.avatar-shapes')).toHaveText('');
-  await expect(picker.locator('.avatar-colors')).toHaveText('');
+  await expect(
+    picker.getByRole('group', { name: 'Avatar shape', exact: true }).getByRole('button'),
+  ).toHaveCount(SHAPES.length);
+  await expect(picker.getByRole('group', { name: 'Avatar shape', exact: true })).toHaveText('');
+  await expect(picker.getByRole('group', { name: 'Avatar color', exact: true })).toHaveText('');
   const face = picker.locator('.avatar-preview [data-avatar-part="body"]');
   const initialGaze = await face.getAttribute('transform');
   await page.clock.runFor(7100);
@@ -95,8 +97,13 @@ test('private first use, native onboarding, idle keepalive, reconnection, settin
   await page.locator('.handle-input input').fill('aurora');
   await page.getByRole('button', { name: 'Snow', exact: true }).click();
   await page.getByRole('button', { name: 'petal', exact: true }).click();
-  await expect(picker.locator('.avatar-shapes path')).toHaveCount(SHAPES.length);
-  for (const path of await picker.locator('.avatar-shapes path').all())
+  await expect(
+    picker.getByRole('group', { name: 'Avatar shape', exact: true }).locator('path'),
+  ).toHaveCount(SHAPES.length);
+  for (const path of await picker
+    .getByRole('group', { name: 'Avatar shape', exact: true })
+    .locator('path')
+    .all())
     await expect(path).toHaveAttribute('fill', '#f4f3ef');
   await expect(picker.locator('.avatar-preview path[fill="#f4f3ef"]')).toHaveCount(1);
   await page.screenshot({ animations: 'disabled', path: 'test-results/agent-setup-desktop.png' });
@@ -211,6 +218,7 @@ test('private first use, native onboarding, idle keepalive, reconnection, settin
   await page.getByRole('button', { name: 'Close Edit Alpha', exact: true }).click();
   await page.getByRole('button', { name: 'Your account' }).click();
   await page.getByRole('menuitem', { name: 'Settings', exact: true }).click();
+  await page.getByRole('tab', { name: 'Account', exact: true }).click();
   const accountPhoto = page.getByLabel('Your photo', { exact: true });
   await accountPhoto.setInputFiles({
     name: 'synthetic-owner.png',

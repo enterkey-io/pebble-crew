@@ -80,13 +80,14 @@ test('reactions can be added, replaced, removed and restored without sending a m
     expect(sample.top).toBeLessThan(0);
     expect(sample.bottom).toBeGreaterThan(0);
   }
-  expect((await row.getByRole('button', { name: '😂 · You' }).boundingBox())!.height).toBeLessThan(
-    30,
-  );
+  expect(
+    (await row.getByRole('button', { name: '😂 · You' }).boundingBox())!.height,
+  ).toBeGreaterThanOrEqual(32);
+  expect((await emoji.locator('span').boundingBox())!.height).toBeLessThan(30);
   await page.reload();
   await expect(row.getByRole('button', { name: '😂 · You', exact: true })).toBeVisible();
   await row.getByRole('button', { name: '😂 · You', exact: true }).click();
-  await expect(row.locator('.pc-reactions')).toHaveCount(0);
+  await expect(row.locator('[data-slot="bubble-reactions"]')).toHaveCount(0);
   expect(sends).toBe(0);
 });
 
@@ -151,5 +152,7 @@ test('agent reaction events paint the exact message, not the latest bubble', asy
   });
   const row = page.locator('[data-message-id="24"]');
   await expect(row.getByRole('button', { name: '👍 · Arlo', exact: true })).toBeVisible();
-  await expect(page.locator('[data-message-id="28"] .pc-reactions')).toHaveCount(0);
+  await expect(page.locator('[data-message-id="28"] [data-slot="bubble-reactions"]')).toHaveCount(
+    0,
+  );
 });

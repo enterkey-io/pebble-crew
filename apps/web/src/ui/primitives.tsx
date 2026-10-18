@@ -19,11 +19,7 @@ import {
 
 export function Notice({ children, error = false }: { children: ReactNode; error?: boolean }) {
   return (
-    <Alert
-      className={`ui-notice ${error ? 'is-error' : ''}`}
-      variant={error ? 'destructive' : 'default'}
-      role={error ? 'alert' : 'status'}
-    >
+    <Alert variant={error ? 'destructive' : 'default'} role={error ? 'alert' : 'status'}>
       <AlertDescription>{children}</AlertDescription>
     </Alert>
   );

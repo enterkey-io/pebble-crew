@@ -36,6 +36,13 @@ Tooltip hover surfaces stay hidden on coarse pointers, including after a menu
 returns focus; icon buttons retain accessible labels and desktop focus tooltips.
 
 Card and Attachment support `asChild` to retain native section/list semantics.
+Attachment media/content also support it for phrasing-safe generated-file links.
+Item composes navigation rows, service rows, agent choices and chat identity;
+Toggle owns avatar choices. Bubble reserves reaction space in normal flow while
+keeping emoji across its edge. Tabs use the semantic muted-foreground token so
+inactive labels retain contrast in both appearances. Resizable supplies the
+desktop sidebar boundary and its keyboard control. These are owned adaptations
+and product compositions of the imported Radix system.
 Label owns stacked field alignment; Textarea supports caller-controlled sizing.
 Table can defer its horizontal viewport to the existing Markdown scroll owner.
 The installed transcript and workbench render the same complete Message

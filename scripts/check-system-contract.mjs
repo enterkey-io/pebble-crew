@@ -17,6 +17,30 @@ const migrated = [
   ['chat/Transcript.tsx', '../components/ai-elements/chain-of-thought', ['ChainOfThought']],
   ['PebbleEditor.tsx', './ui/EditorSurface', ['TabbedEditor']],
   ['WorkspaceSettings.tsx', './ui/EditorSurface', ['TabbedEditor']],
+  ['AgentPicker.tsx', './ui/NavigationItem', ['NavigationItem']],
+  ['NewPebble.tsx', './ui/NavigationItem', ['NavigationItem']],
+  ['AgentAvatar.tsx', './components/ui/toggle', ['Toggle']],
+  [
+    'ui/NavigationItem.tsx',
+    '../components/ui/item',
+    ['Item', 'ItemMedia', 'ItemContent', 'ItemTitle', 'ItemDescription'],
+  ],
+  [
+    'ui/ConversationIdentity.tsx',
+    '../components/ui/item',
+    ['Item', 'ItemMedia', 'ItemContent', 'ItemTitle', 'ItemDescription'],
+  ],
+  [
+    'components/ai-elements/message.tsx',
+    '../ui/bubble',
+    ['Bubble', 'BubbleContent', 'BubbleReactions'],
+  ],
+  [
+    'ui/WorkspacePanels.tsx',
+    '../components/ui/resizable',
+    ['ResizablePanelGroup', 'ResizablePanel', 'ResizableHandle'],
+  ],
+  ['GeneralSettings.tsx', './components/ui/select', ['Select', 'SelectTrigger', 'SelectItem']],
 ];
 for (const path of ['ui/layout.css', 'ui/product.css']) {
   requireRule(
@@ -24,6 +48,16 @@ for (const path of ['ui/layout.css', 'ui/product.css']) {
     `${path}: legacy chat geometry must not override the shared Message and Bubble composition.`,
   );
 }
+requireRule(
+  !/<button\b/.test(read('App.tsx')) && !/<button\b/.test(read('AgentAvatar.tsx')),
+  'App and avatar controls must use shared controls; native buttons belong inside the owned primitive compositions.',
+);
+requireRule(
+  !/\.pc-row-open|\.pc-row-copy|\.pc-reaction(?:\s|\.|:|\{)|\.agent-choice|\.avatar-(?:modes|shapes|colors) button/.test(
+    read('ui/layout.css') + read('ui/product.css'),
+  ),
+  'Remove legacy row, reaction and avatar-control CSS; Item, Bubble and Toggle own their layout and states.',
+);
 for (const [path, module, components] of migrated) {
   const contract = sourceContract(read(path));
   for (const component of components)

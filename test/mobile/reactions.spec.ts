@@ -34,7 +34,9 @@ test('touch reaction picker stays inside the screen and works without hover', as
   await expect(chip).toHaveCSS('box-shadow', 'none');
   const overlap = await row.evaluate((node) => {
     const bubble = node.querySelector('[data-slot="bubble-content"]')!.getBoundingClientRect();
-    const reactions = node.querySelector('.pc-reaction')!.getBoundingClientRect();
+    const reactions = node
+      .querySelector('[data-slot="bubble-reactions"] button > span')!
+      .getBoundingClientRect();
     return {
       top: reactions.top - bubble.bottom,
       bottom: reactions.bottom - bubble.bottom,
@@ -44,6 +46,7 @@ test('touch reaction picker stays inside the screen and works without hover', as
   expect(overlap.top).toBeLessThan(0);
   expect(overlap.bottom).toBeGreaterThan(0);
   expect(overlap.height).toBeLessThan(30);
+  expect((await chip.boundingBox())!.height).toBeGreaterThanOrEqual(44);
   await page.screenshot({ animations: 'disabled', path: info.outputPath('reaction-saved.png') });
   await chip.tap();
   await expect(chip).toHaveCount(0);

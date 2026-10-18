@@ -1,40 +1,4 @@
 /* Native screens share the same tokens, layout and Radix controls as the review. */
-button {
-  -webkit-tap-highlight-color: transparent;
-}
-.icon-button {
-  width: 32px;
-  height: 32px;
-  display: inline-grid;
-  place-items: center;
-  border-radius: 8px;
-  color: var(--muted-foreground);
-  transition: color var(--motion-hover);
-  flex-shrink: 0;
-}
-.icon-button:hover {
-  color: var(--foreground);
-}
-.icon-button svg {
-  width: 18px;
-  height: 18px;
-}
-button:disabled {
-  opacity: 0.45;
-}
-.pc-chat-identity {
-  background: transparent;
-}
-.pc-chat-identity h1 {
-  font-size: 15px;
-  font-weight: 550;
-  line-height: 20px;
-}
-.pc-chat-identity p {
-  font-size: 12px;
-  color: var(--muted-foreground);
-  line-height: 18px;
-}
 .header-actions {
   display: flex;
   align-items: center;
@@ -69,22 +33,6 @@ button:disabled {
 }
 .pc-details .role-description p {
   white-space: pre-wrap;
-}
-.generated-file {
-  display: inline-grid;
-  grid-template-columns: 18px minmax(0, 1fr) 18px;
-  align-items: center;
-  gap: 10px;
-  max-width: 100%;
-  position: relative;
-}
-.generated-file svg {
-  width: 16px;
-  height: 16px;
-}
-.generated-file small {
-  display: block;
-  color: var(--muted-foreground);
 }
 .generated-file > .loading-track {
   position: absolute;
@@ -213,40 +161,6 @@ button:disabled {
 .danger-text {
   color: var(--destructive);
 }
-.banner {
-  margin: 0 16px 8px;
-  padding: 10px 12px;
-  border-radius: 8px;
-  flex-shrink: 0;
-  font-size: 12px;
-  background: #352323;
-  display: flex;
-  align-items: flex-start;
-  gap: 12px;
-}
-.banner-body {
-  min-width: 0;
-  flex: 1;
-  overflow-wrap: anywhere;
-}
-.banner-body p {
-  line-height: 1.5;
-}
-.banner .icon-button {
-  margin-left: auto;
-}
-.ui-notice {
-  padding: 10px 12px;
-  border-radius: 8px;
-  background: var(--muted);
-  font-size: 12px;
-  line-height: 1.6;
-}
-.ui-notice.is-error {
-  background: #352323;
-  color: var(--destructive);
-}
-.banner button:not(.icon-button),
 .text-button {
   color: var(--ring);
   font-size: 12px;
@@ -454,75 +368,6 @@ button:disabled {
   width: 112px;
   height: 120px;
 }
-.avatar-modes {
-  display: flex;
-  gap: 4px;
-}
-.avatar-modes button {
-  padding: 6px 14px;
-  font-size: 12px;
-  border-radius: 8px;
-  color: var(--muted-foreground);
-  transition: background-color var(--motion-hover);
-}
-.avatar-modes button[aria-pressed='true'] {
-  color: var(--foreground);
-  background: var(--surface-selected);
-}
-.avatar-shapes {
-  display: grid;
-  grid-template-columns: repeat(5, 42px);
-  gap: 8px;
-}
-.avatar-shapes button {
-  width: 42px;
-  height: 46px;
-  display: grid;
-  place-items: center;
-  border-radius: 9px;
-  outline: 1px solid transparent;
-  outline-offset: 2px;
-  transition:
-    outline-color var(--motion-hover),
-    background-color var(--motion-hover);
-}
-.avatar-shapes svg {
-  width: 34px;
-  height: 38px;
-}
-.avatar-shapes button:hover {
-  background: var(--surface-hover);
-}
-.avatar-shapes button[aria-pressed='true'] {
-  outline-color: var(--ring);
-  background: var(--surface-selected);
-}
-.avatar-colors {
-  display: grid;
-  grid-template-columns: repeat(6, 22px);
-  gap: 14px;
-}
-.avatar-colors button {
-  width: 22px;
-  height: 22px;
-  border-radius: 50%;
-  display: grid;
-  place-items: center;
-  outline: 1px solid transparent;
-  outline-offset: 4px;
-}
-.avatar-colors button span {
-  width: 22px;
-  height: 22px;
-  border-radius: 50%;
-}
-.avatar-colors button[aria-pressed='true'] {
-  outline-color: var(--foreground);
-}
-.photo-upload button {
-  font-size: 12px;
-  color: var(--ring);
-}
 .product-dialog {
   width: 640px;
   max-width: calc(100vw - 32px);
@@ -589,32 +434,6 @@ button:disabled {
   flex: 1;
   overflow: auto;
   padding: 0 2px;
-}
-.creation-choices {
-  display: grid;
-  gap: 12px;
-}
-.creation-choices button {
-  display: flex;
-  flex-direction: row;
-  align-items: center;
-  height: 64px;
-  padding: 0 16px;
-  gap: 14px;
-  text-align: left;
-  justify-content: flex-start;
-}
-.creation-choices button > span {
-  flex: 1;
-}
-.creation-choices button > svg:last-child {
-  color: var(--muted-foreground);
-}
-
-.creation-choices span {
-  font-size: 12px;
-  color: var(--muted-foreground);
-  font-weight: 400;
 }
 .back-button {
   align-self: flex-start;
@@ -700,7 +519,7 @@ button:disabled {
   font-size: 12px;
 }
 .connection-status-text[data-connected='true'] {
-  color: #95baa5;
+  color: var(--success);
 }
 .connections-empty {
   padding: 20px 0;
@@ -1267,62 +1086,11 @@ button:disabled {
   align-items: center;
   gap: 18px;
 }
-.agent-search-field {
-  display: flex;
-  align-items: center;
-  position: relative;
-}
-.agent-search-field > svg {
-  position: absolute;
-  width: 16px;
-  height: 16px;
-  left: 12px;
-  color: var(--muted-foreground);
-}
-.agent-search-field input {
-  padding-left: 38px;
-}
 .agent-picker {
   gap: 4px;
 }
 .agent-options {
   padding: 8px 0;
-}
-.agent-choice {
-  display: flex;
-  width: 100%;
-  align-items: center;
-  text-align: left;
-  gap: 12px;
-  min-height: 60px;
-  padding: 8px 10px;
-  border-radius: 9px;
-  transition: background-color var(--motion-hover);
-}
-.agent-choice:not(:disabled):hover {
-  background: var(--surface-hover);
-}
-.agent-choice > span:not(.agent-avatar) {
-  flex: 1;
-  min-width: 0;
-}
-.agent-choice strong {
-  display: block;
-  font-size: 13px;
-  font-weight: 500;
-}
-.agent-choice small {
-  display: block;
-  color: var(--muted-foreground);
-  font-size: 12px;
-}
-.agent-choice > svg {
-  width: 16px;
-  height: 16px;
-  color: var(--muted-foreground);
-}
-.agent-choice:disabled {
-  opacity: 0.5;
 }
 .connection-status {
   display: flex;

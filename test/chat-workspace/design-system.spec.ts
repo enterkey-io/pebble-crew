@@ -44,10 +44,11 @@ test('shared design system: account settings, connections, requests, editor and 
   await expect(page.getByLabel('Actions for Arlo')).toBeFocused();
   await settings(page);
   await expect(page.getByRole('heading', { name: 'Settings', exact: true })).toBeVisible();
-  await expect(page.getByRole('tab', { name: 'Account', exact: true })).toHaveAttribute(
+  await expect(page.getByRole('tab', { name: 'General', exact: true })).toHaveAttribute(
     'aria-selected',
     'true',
   );
+  await page.getByRole('tab', { name: 'Account', exact: true }).click();
   await expect(page.getByRole('tab', { name: 'Teams', exact: true })).toHaveCount(0);
   await accessible(page);
   await page.screenshot({ animations: 'disabled', path: 'test-results/settings-account.png' });

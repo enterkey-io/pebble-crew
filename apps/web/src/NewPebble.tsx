@@ -16,6 +16,7 @@ import {
 } from './profiles/edit-session';
 import { profileWriteError } from './profiles/save-outcome';
 import { AgentPicker } from './AgentPicker';
+import { NavigationItem } from './ui/NavigationItem';
 import { ExistingPebbleSetup } from './ExistingPebbleSetup';
 import {
   PebbleProfileFields,
@@ -270,17 +271,19 @@ export function NewPebble({
       }
     >
       {step.kind === 'choose' ? (
-        <div className="creation-choices">
-          <Button variant="ghost" onClick={() => setStep({ kind: 'existing' })}>
-            <Users />
-            <span>Add existing Hermes agent</span>
-            <ChevronRight />
-          </Button>
-          <Button variant="ghost" onClick={() => setStep({ kind: 'create' })}>
-            <UserPlus />
-            <span>Create new pebble</span>
-            <ChevronRight />
-          </Button>
+        <div className="grid gap-3">
+          <NavigationItem
+            title="Add existing Hermes agent"
+            media={<Users className="size-5" />}
+            action={<ChevronRight />}
+            onClick={() => setStep({ kind: 'existing' })}
+          />
+          <NavigationItem
+            title="Create new pebble"
+            media={<UserPlus className="size-5" />}
+            action={<ChevronRight />}
+            onClick={() => setStep({ kind: 'create' })}
+          />
         </div>
       ) : step.kind === 'existing' ? (
         <AgentPicker

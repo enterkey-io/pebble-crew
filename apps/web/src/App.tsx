@@ -45,7 +45,12 @@ import { RequestReview } from './chat/RequestReview';
 import { DetailsDock } from './ui/DetailsDock';
 import { VoiceChat } from './voice/VoiceChat';
 import type { VoiceChatHandle } from './voice/VoiceChat';
-import { ChevronRight, File, Image, AudioLines } from 'lucide-react';
+import { File, Image, AudioLines, Menu as MenuIcon, RefreshCw, X } from 'lucide-react';
+import { Button } from './components/ui/button';
+import { IconButton } from './components/ui/icon-button';
+import { Alert, AlertDescription, AlertAction } from './components/ui/alert';
+import { ConversationIdentity } from './ui/ConversationIdentity';
+import { WorkspacePanels } from './ui/WorkspacePanels';
 import { Menu } from './ui/primitives';
 import { LoadingBar } from './components/ui/loading-bar';
 import { organizationState } from './ui/organization';
@@ -87,9 +92,9 @@ export function App({ owner }: { owner?: OwnerConnection }) {
   const voicePanel = useRef<VoiceChatHandle>(null);
   const [workspace, setWorkspace] = useState<WorkspaceState>();
   const [settings, setSettings] = useState(false);
-  const [settingsTab, setSettingsTab] = useState<'agents' | 'requests' | 'account' | 'connections'>(
-    'account',
-  );
+  const [settingsTab, setSettingsTab] = useState<
+    'agents' | 'requests' | 'account' | 'connections' | 'general'
+  >('general');
   const [agentStates, setAgentStates] = useState<Record<string, Activity>>({});
   const sessionProfiles = useRef(new Map<string, string>());
   const reconnectTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
@@ -129,6 +134,7 @@ export function App({ owner }: { owner?: OwnerConnection }) {
   const [activity, setActivity] = useState('Ready');
   const [running, setRunning] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [switching, setSwitching] = useState(false);
   const [blocked, setBlocked] = useState(false);
   const [streamState, setStreamState] = useState<'opening' | 'live' | 'lost'>('opening');
   const [error, setError] = useState('');
@@ -407,6 +413,7 @@ export function App({ owner }: { owner?: OwnerConnection }) {
     setDraft('');
     setRunning(false);
     setBusy(false);
+    setSwitching(false);
     setBlocked(false);
     setStreamState('opening');
     setError('');
@@ -862,6 +869,8 @@ export function App({ owner }: { owner?: OwnerConnection }) {
             ((target.kind === 'bot' && !surviving) || (target.kind === 'room' && !roomSurviving))
           ) {
             selectGeneration.current++;
+            setSwitching(false);
+            setBusy(false);
             selected.current = undefined;
             setSelection(undefined);
             setRemovedDraft(currentDraft.current);
@@ -1008,38 +1017,29 @@ export function App({ owner }: { owner?: OwnerConnection }) {
     if (!client || streamState !== 'live' || !bot.canonical) return 'unavailable';
     rememberScroll();
     const generation = ++selectGeneration.current;
-    if (!restore) {
-      selected.current = undefined;
-      setSelection(undefined);
-      displayedRead.current = undefined;
-      sendProjection.current = new SendProjection();
-      setMessages([]);
-      setStream('');
-      setRunning(false);
-      setActivity('Ready');
-      setApprovals([]);
-      setRoutines([]);
-    }
+    setSwitching(!restore);
     setError('');
-    setAttachmentUncertain(false);
-    if (!restore) setBlocked(false);
     setBusy(true);
     if (!restore) {
       setNav(false);
       setPickingAgents(false);
     }
-    if (!restore) {
-      followLatest.current = true;
-      setShowLatest(false);
-      setDraft(drafts.current.get(`bot:${bot.id ?? bot.profile}`) ?? '');
-    }
-    setRemovedDraft('');
-    setStopping(false);
     try {
       const data = await new ConversationDomain(client).open(bot.profile);
       if (generation !== selectGeneration.current || current.current !== client)
         return 'superseded';
       const target: Selection = { kind: 'bot', bot, sessionId: data.sessionId };
+      if (!restore) {
+        displayedRead.current = undefined;
+        sendProjection.current = new SendProjection();
+        setApprovals([]);
+        setRoutines([]);
+        followLatest.current = true;
+        setShowLatest(false);
+        setDraft(drafts.current.get(draftKey(target)) ?? '');
+      }
+      setRemovedDraft('');
+      setStopping(false);
       sessionProfiles.current.set(target.sessionId, bot.profile);
       setAgentStates((old) => ({
         ...old,
@@ -1048,11 +1048,15 @@ export function App({ owner }: { owner?: OwnerConnection }) {
       selected.current = target;
       selectionConnection.current = client;
       setSelection(target);
+      setSwitching(false);
       const id = workspace?.bots.find((entry) => entry.profile === bot.profile)?.id;
       if (workspace && id) rememberConversation(workspace.id, { kind: 'bot', id });
       setBlocked(false);
       observedHistory(target, data.history.coverage);
       setMessages(sendProjection.current.project(data.history.messages));
+      setRunning(data.running);
+      setStream(data.inflight);
+      setActivity(data.running === true ? 'Working' : 'Ready');
       const saved = scrollPositions.current.get(draftKey(target));
       if (saved && !saved.follow) {
         followLatest.current = false;
@@ -1075,9 +1079,6 @@ export function App({ owner }: { owner?: OwnerConnection }) {
           );
         }
       }
-      setRunning(data.running);
-      setStream(data.inflight);
-      setActivity(data.running === true ? 'Working' : 'Ready');
       const ownedRoutines = object(await client.invoke('routines.list', { profile: bot.profile }));
       if (current.current !== client || selected.current !== target) return 'superseded';
       setRoutines(rows(ownedRoutines.jobs ?? []));
@@ -1117,6 +1118,7 @@ export function App({ owner }: { owner?: OwnerConnection }) {
       if (generation === selectGeneration.current) {
         focusOnReady.current = matchMedia('(pointer: fine)').matches;
         setBusy(false);
+        setSwitching(false);
       }
     }
   }
@@ -1125,6 +1127,7 @@ export function App({ owner }: { owner?: OwnerConnection }) {
     rememberScroll();
     if (!restore) setPickingAgents(false);
     selectGeneration.current++;
+    setSwitching(false);
     const target: Selection = { kind: 'room', room };
     selected.current = target;
     selectionConnection.current = client;
@@ -1527,14 +1530,15 @@ export function App({ owner }: { owner?: OwnerConnection }) {
       <main className="onboarding-shell">
         <header>
           {owner && (
-            <button
+            <Button
+              variant="secondary"
               onClick={() => {
                 disconnect();
                 void owner.logout();
               }}
             >
               Sign out
-            </button>
+            </Button>
           )}
         </header>
         <WorkspaceSetup
@@ -1631,7 +1635,7 @@ export function App({ owner }: { owner?: OwnerConnection }) {
       }
       onSettings={() =>
         navigate(() => {
-          setSettingsTab(owner ? 'account' : 'connections');
+          setSettingsTab('general');
           setSettings(true);
           setPickingAgents(false);
           setNav(false);
@@ -1688,453 +1692,456 @@ export function App({ owner }: { owner?: OwnerConnection }) {
     <main
       className={`pc-shell workspace ${settings && settingsTab !== 'agents' ? 'editing' : ''} ${details && phone && !settings ? 'phone-details' : ''}`}
     >
-      <aside className="pc-rail sidebar" aria-label="Pebbles and crews">
-        {rail}
-      </aside>
       {nav && (
         <Drawer title="navigation" onClose={closeNav}>
           {rail}
         </Drawer>
       )}
-      <Chat
-        state={
-          starting
-            ? 'loading'
-            : streamState === 'live'
-              ? selection
-                ? 'ready'
-                : 'empty'
-              : 'restoring'
-        }
-        reader={showLatest ? 'manual' : 'follow'}
-        className="pc-main conversation"
-        aria-label="Conversation"
-        inert={details && phone && !settings}
-      >
-        {settings && settingsTab !== 'agents' && workspace ? (
-          settingsContent
-        ) : (
-          <>
-            <header className="pc-chat-header chat-header">
-              <button
-                className="icon-button mobile-nav"
-                aria-label="Toggle navigation"
-                onClick={() => setNav(true)}
-              >
-                <Icon name="menu" />
-              </button>
-              <button
-                type="button"
-                className="pc-chat-identity chat-title"
-                aria-labelledby="chat-heading chat-role chat-details-action"
-                aria-expanded={details}
-                aria-controls="pebble-details"
-                disabled={!selection}
-                onClick={() => toggleDetails(!details)}
-              >
-                {selection?.kind === 'bot' && (
-                  <PebbleAvatar
-                    bot={selection.bot}
-                    workspace={workspace}
-                    client={client}
-                    state={agentStates[selection.bot.profile]}
-                  />
-                )}
-                {selection?.kind === 'room' && (
-                  <CrewAvatar room={selection.room} workspace={workspace} client={client} />
-                )}
-                <div>
-                  <h1 id="chat-heading">{title}</h1>{' '}
-                  <span id="chat-details-action" className="sr-only">
-                    {details ? 'Hide details' : 'Show details'}
-                  </span>{' '}
+      <WorkspacePanels navigation={rail} phone={phone}>
+        <Chat
+          aria-busy={starting || switching}
+          state={
+            starting
+              ? 'loading'
+              : streamState === 'live'
+                ? switching
+                  ? 'loading'
+                  : selection
+                    ? 'ready'
+                    : 'empty'
+                : 'restoring'
+          }
+          reader={showLatest ? 'manual' : 'follow'}
+          className="pc-main conversation"
+          aria-label="Conversation"
+          inert={details && phone && !settings}
+        >
+          {settings && settingsTab !== 'agents' && workspace ? (
+            settingsContent
+          ) : (
+            <>
+              <div className="pointer-events-none absolute inset-x-0 top-0 z-10">
+                <LoadingBar active={switching} label="Opening conversation" />
+              </div>
+              <header className="pc-chat-header chat-header">
+                <IconButton
+                  quiet
+                  className="mobile-nav"
+                  label="Toggle navigation"
+                  icon={MenuIcon}
+                  onClick={() => setNav(true)}
+                />
+                <ConversationIdentity
+                  title={title}
+                  description={
+                    selection?.kind === 'bot'
+                      ? workspace?.bots.find((b) => b.profile === selection.bot.profile)?.role
+                          .title ||
+                        `@${workspace?.bots.find((b) => b.profile === selection.bot.profile)?.handle ?? selection.bot.profile}`
+                      : undefined
+                  }
+                  expanded={details}
+                  disabled={!selection}
+                  onClick={() => toggleDetails(!details)}
+                  media={
+                    selection?.kind === 'bot' ? (
+                      <PebbleAvatar
+                        bot={selection.bot}
+                        workspace={workspace}
+                        client={client}
+                        state={agentStates[selection.bot.profile]}
+                      />
+                    ) : selection?.kind === 'room' ? (
+                      <CrewAvatar room={selection.room} workspace={workspace} client={client} />
+                    ) : undefined
+                  }
+                />
+                <div className="header-actions">
+                  {requestCount > 0 && (
+                    <Button
+                      variant="quiet"
+                      className="request-count"
+                      onClick={() => {
+                        setSettingsTab('requests');
+                        setSettings(true);
+                      }}
+                    >
+                      {requestCount} to review
+                    </Button>
+                  )}
                   {selection?.kind === 'bot' && (
-                    <p id="chat-role">
-                      {workspace?.bots.find((b) => b.profile === selection.bot.profile)?.role
-                        .title ||
-                        `@${workspace?.bots.find((b) => b.profile === selection.bot.profile)?.handle ?? selection.bot.profile}`}
-                    </p>
+                    <IconButton
+                      quiet
+                      label="Refresh"
+                      icon={RefreshCw}
+                      onClick={() => void refreshHistory(client, selection).catch(fail)}
+                    />
                   )}
                 </div>
-                <ChevronRight
-                  className={`pc-details-chevron ${details ? 'is-open' : ''}`}
-                  aria-hidden
-                />
-              </button>
-              <div className="header-actions">
-                {requestCount > 0 && (
-                  <button
-                    className="request-count"
-                    onClick={() => {
-                      setSettingsTab('requests');
-                      setSettings(true);
+              </header>
+              {error && (
+                <Alert variant="destructive" className="banner mx-4 mb-2 w-auto shrink-0">
+                  <AlertDescription>
+                    <p>{error}</p>
+                    {attachmentUncertain && (
+                      <span className="attachment-recovery">
+                        <Button variant="secondary" onClick={() => void checkAttachmentSend()}>
+                          Check send outcome
+                        </Button>
+                        <Button variant="secondary" onClick={() => void checkAttachmentSend(true)}>
+                          Discard pending files
+                        </Button>
+                      </span>
+                    )}
+                    {streamState === 'lost' && (
+                      <Button variant="secondary" onClick={owner ? scheduleReconnect : disconnect}>
+                        {owner ? 'Try reconnecting now' : 'Disconnect and reconnect'}
+                      </Button>
+                    )}
+                  </AlertDescription>
+                  <AlertAction>
+                    <IconButton quiet label="Dismiss error" icon={X} onClick={() => setError('')} />
+                  </AlertAction>
+                </Alert>
+              )}
+              <ChatViewport
+                ref={transcriptPane}
+                className={`pc-transcript transcript ${pickingAgents ? 'choosing-agents' : ''}`}
+                role={pickingAgents ? undefined : 'log'}
+                aria-live={pickingAgents ? undefined : 'off'}
+                onWheel={() => {
+                  detailsAnchor.current = undefined;
+                  transcriptFollow.current?.cancel();
+                }}
+                onTouchStart={() => {
+                  detailsAnchor.current = undefined;
+                }}
+                onTouchMove={() => transcriptFollow.current?.cancel()}
+                onKeyDown={(event) => {
+                  if (
+                    ['ArrowUp', 'ArrowDown', 'PageUp', 'PageDown', 'Home', 'End'].includes(
+                      event.key,
+                    )
+                  )
+                    transcriptFollow.current?.cancel();
+                }}
+                onScroll={(event) => {
+                  if (pickingAgents) return;
+                  const pane = event.currentTarget;
+                  if (transcriptFollow.current?.ownsScroll || scrollAnimating.current) return;
+                  transcriptFollow.current?.cancel();
+                  followLatest.current =
+                    pane.scrollHeight - pane.scrollTop - pane.clientHeight < 96;
+                  setShowLatest(!followLatest.current);
+                  rememberScroll();
+                  acknowledgeRead();
+                }}
+              >
+                <Transcript
+                  footer={
+                    selection?.kind === 'bot' && (capabilities.voice || capabilities.secrets) ? (
+                      <VoiceChat
+                        key={selection.sessionId}
+                        ref={voicePanel}
+                        client={client}
+                        sessionId={selection.sessionId}
+                        running={running}
+                        onAccepted={(message) =>
+                          setMessages((previous) =>
+                            previous.some((item) => item.id === message.id)
+                              ? previous
+                              : [...previous, message],
+                          )
+                        }
+                      />
+                    ) : undefined
+                  }
+                  ownerColor={
+                    selection?.kind === 'bot'
+                      ? workspace?.bots.find((b) => b.profile === selection.bot.profile)?.appearance
+                          .color
+                      : undefined
+                  }
+                  client={client}
+                  sessionId={selection?.kind === 'bot' ? selection.sessionId : undefined}
+                  conversationKey={selection ? draftKey(selection) : ''}
+                  onReact={
+                    capabilities.reactions && streamState === 'live' ? reactToMessage : undefined
+                  }
+                  messages={withSharedFiles(messages, sharedFiles)}
+                  onDownloadFile={(file) => {
+                    if (selection?.kind !== 'bot') return;
+                    void client
+                      .downloadFile(selection.sessionId, file.id)
+                      .then((blob) => {
+                        const url = URL.createObjectURL(blob),
+                          a = document.createElement('a');
+                        a.href = url;
+                        a.download = file.name;
+                        a.click();
+                        setTimeout(() => URL.revokeObjectURL(url), 1000);
+                      })
+                      .catch(fail);
+                  }}
+                  title={title}
+                  crew={selection?.kind === 'room'}
+                  stream={stream}
+                  reply={sendProjection.current.reply}
+                  running={running}
+                  activity={running && stopping ? 'Stopping' : activity}
+                  authorName={(name) =>
+                    workspace?.bots.find(
+                      (b) =>
+                        b.profile === name ||
+                        b.handle === name.replace('@', '') ||
+                        (name === 'hermes' && b.profile === 'default'),
+                    )?.name ?? name
+                  }
+                >
+                  {!selection && !switching && (
+                    <div className="welcome">
+                      <h2>{streamState !== 'live' ? 'Connecting…' : 'Choose a conversation'}</h2>
+                      {streamState === 'live' && !bots.length && (
+                        <Button variant="secondary" onClick={() => setPickingAgents(true)}>
+                          Add existing agents
+                        </Button>
+                      )}
+                    </div>
+                  )}
+                  {selection && !messages.length && !stream && !running && (
+                    <span className="empty-chat" aria-hidden="true" />
+                  )}
+                  {removedDraft && (
+                    <section className="recovered-draft">
+                      <h3>Unsent draft</h3>
+                      <p className="preserve-whitespace">{removedDraft}</p>
+                      <Button
+                        variant="secondary"
+                        onClick={() => void navigator.clipboard.writeText(removedDraft)}
+                      >
+                        Copy draft
+                      </Button>
+                      <Button variant="secondary" onClick={() => setRemovedDraft('')}>
+                        Dismiss
+                      </Button>
+                    </section>
+                  )}
+                </Transcript>
+              </ChatViewport>
+              {!pickingAgents && (
+                <>
+                  {showLatest && (
+                    <Button variant="secondary" className="jump-latest" onClick={jumpToLatest}>
+                      ↓ Latest messages
+                    </Button>
+                  )}
+                  {approvals.length > 0 && (
+                    <Button
+                      variant="secondary"
+                      className="approval-nudge"
+                      onClick={() => setDetails(true)}
+                    >
+                      Approval needed · Review
+                    </Button>
+                  )}
+                  <div
+                    className="pc-composer-wrap composer-wrap"
+                    onDragOver={(e) => {
+                      if (selection?.kind === 'bot' && client.supportsAttachments)
+                        e.preventDefault();
+                    }}
+                    onDrop={(e) => {
+                      if (selection?.kind === 'bot' && client.supportsAttachments) {
+                        e.preventDefault();
+                        uploads.add([...e.dataTransfer.files]);
+                      }
                     }}
                   >
-                    {requestCount} to review
-                  </button>
-                )}
-                {selection?.kind === 'bot' && (
-                  <button
-                    className="icon-button"
-                    aria-label="Refresh"
-                    title="Refresh conversation"
-                    onClick={() => void refreshHistory(client, selection).catch(fail)}
-                  >
-                    <Icon name="refresh" />
-                  </button>
-                )}
-              </div>
-            </header>
-            {error && (
-              <div className="error banner" role="alert">
-                <div className="banner-body">
-                  <p>{error}</p>
-                  {attachmentUncertain && (
-                    <span className="attachment-recovery">
-                      <button onClick={() => void checkAttachmentSend()}>Check send outcome</button>
-                      <button onClick={() => void checkAttachmentSend(true)}>
-                        Discard pending files
-                      </button>
-                    </span>
-                  )}
-                  {streamState === 'lost' && (
-                    <button onClick={owner ? scheduleReconnect : disconnect}>
-                      {owner ? 'Try reconnecting now' : 'Disconnect and reconnect'}
-                    </button>
-                  )}
-                </div>
-                <button
-                  className="icon-button"
-                  aria-label="Dismiss error"
-                  onClick={() => setError('')}
-                >
-                  <Icon name="close" />
-                </button>
-              </div>
-            )}
-            <ChatViewport
-              ref={transcriptPane}
-              className={`pc-transcript transcript ${pickingAgents ? 'choosing-agents' : ''}`}
-              role={pickingAgents ? undefined : 'log'}
-              aria-live={pickingAgents ? undefined : 'off'}
-              onWheel={() => {
-                detailsAnchor.current = undefined;
-                transcriptFollow.current?.cancel();
-              }}
-              onTouchStart={() => {
-                detailsAnchor.current = undefined;
-              }}
-              onTouchMove={() => transcriptFollow.current?.cancel()}
-              onKeyDown={(event) => {
-                if (
-                  ['ArrowUp', 'ArrowDown', 'PageUp', 'PageDown', 'Home', 'End'].includes(event.key)
-                )
-                  transcriptFollow.current?.cancel();
-              }}
-              onScroll={(event) => {
-                if (pickingAgents) return;
-                const pane = event.currentTarget;
-                if (transcriptFollow.current?.ownsScroll || scrollAnimating.current) return;
-                transcriptFollow.current?.cancel();
-                followLatest.current = pane.scrollHeight - pane.scrollTop - pane.clientHeight < 96;
-                setShowLatest(!followLatest.current);
-                rememberScroll();
-                acknowledgeRead();
-              }}
-            >
-              <Transcript
-                footer={
-                  selection?.kind === 'bot' && (capabilities.voice || capabilities.secrets) ? (
-                    <VoiceChat
-                      key={selection.sessionId}
-                      ref={voicePanel}
-                      client={client}
-                      sessionId={selection.sessionId}
-                      running={running}
-                      onAccepted={(message) =>
-                        setMessages((previous) =>
-                          previous.some((item) => item.id === message.id)
-                            ? previous
-                            : [...previous, message],
-                        )
-                      }
-                    />
-                  ) : undefined
-                }
-                ownerColor={
-                  selection?.kind === 'bot'
-                    ? workspace?.bots.find((b) => b.profile === selection.bot.profile)?.appearance
-                        .color
-                    : undefined
-                }
-                client={client}
-                sessionId={selection?.kind === 'bot' ? selection.sessionId : undefined}
-                conversationKey={selection ? draftKey(selection) : ''}
-                onReact={
-                  capabilities.reactions && streamState === 'live' ? reactToMessage : undefined
-                }
-                messages={withSharedFiles(messages, sharedFiles)}
-                onDownloadFile={(file) => {
-                  if (selection?.kind !== 'bot') return;
-                  void client
-                    .downloadFile(selection.sessionId, file.id)
-                    .then((blob) => {
-                      const url = URL.createObjectURL(blob),
-                        a = document.createElement('a');
-                      a.href = url;
-                      a.download = file.name;
-                      a.click();
-                      setTimeout(() => URL.revokeObjectURL(url), 1000);
-                    })
-                    .catch(fail);
-                }}
-                title={title}
-                crew={selection?.kind === 'room'}
-                stream={stream}
-                reply={sendProjection.current.reply}
-                running={running}
-                activity={running && stopping ? 'Stopping' : activity}
-                authorName={(name) =>
-                  workspace?.bots.find(
-                    (b) =>
-                      b.profile === name ||
-                      b.handle === name.replace('@', '') ||
-                      (name === 'hermes' && b.profile === 'default'),
-                  )?.name ?? name
-                }
-              >
-                {!selection && (
-                  <div className="welcome">
-                    <h2>{streamState !== 'live' ? 'Connecting…' : 'Choose a conversation'}</h2>
-                    {streamState === 'live' && !bots.length && (
-                      <button onClick={() => setPickingAgents(true)}>Add existing agents</button>
+                    {uploads.error && (
+                      <p className="upload-error" role="alert">
+                        {uploads.error}
+                      </p>
                     )}
-                  </div>
-                )}
-                {selection && !messages.length && !stream && !running && (
-                  <span className="empty-chat" aria-hidden="true" />
-                )}
-                {removedDraft && (
-                  <section className="recovered-draft">
-                    <h3>Unsent draft</h3>
-                    <p className="preserve-whitespace">{removedDraft}</p>
-                    <button onClick={() => void navigator.clipboard.writeText(removedDraft)}>
-                      Copy draft
-                    </button>
-                    <button onClick={() => setRemovedDraft('')}>Dismiss</button>
-                  </section>
-                )}
-              </Transcript>
-            </ChatViewport>
-            {!pickingAgents && (
-              <>
-                {showLatest && (
-                  <button className="jump-latest" onClick={jumpToLatest}>
-                    ↓ Latest messages
-                  </button>
-                )}
-                {approvals.length > 0 && (
-                  <button className="approval-nudge" onClick={() => setDetails(true)}>
-                    Approval needed · Review
-                  </button>
-                )}
-                <div
-                  className="pc-composer-wrap composer-wrap"
-                  onDragOver={(e) => {
-                    if (selection?.kind === 'bot' && client.supportsAttachments) e.preventDefault();
-                  }}
-                  onDrop={(e) => {
-                    if (selection?.kind === 'bot' && client.supportsAttachments) {
-                      e.preventDefault();
-                      uploads.add([...e.dataTransfer.files]);
-                    }
-                  }}
-                >
-                  {uploads.error && (
-                    <p className="upload-error" role="alert">
-                      {uploads.error}
-                    </p>
-                  )}
-                  {!!uploads.files.length && (
-                    <ul className="attachment-chips">
-                      {uploads.files.map((file) => (
-                        <Attachment
-                          asChild
-                          key={file.key}
-                          size="sm"
-                          className="flex-nowrap"
-                          state={file.status === 'ready' ? 'done' : file.status}
-                        >
-                          <li data-status={file.status}>
-                            <AttachmentMedia>
-                              <Icon name="file" />
-                            </AttachmentMedia>
-                            <AttachmentContent>
-                              <AttachmentTitle>{file.name}</AttachmentTitle>
-                              <AttachmentDescription>
-                                {file.status === 'error' ? file.error : fileSize(file.size)}
-                              </AttachmentDescription>
-                            </AttachmentContent>
-                            {file.status === 'uploading' && (
-                              <span className="sr-only" role="status">
-                                Uploading {file.name}
-                              </span>
-                            )}
-                            <AttachmentActions>
-                              {file.status === 'error' && (
+                    {!!uploads.files.length && (
+                      <ul className="attachment-chips">
+                        {uploads.files.map((file) => (
+                          <Attachment
+                            asChild
+                            key={file.key}
+                            size="sm"
+                            className="flex-nowrap"
+                            state={file.status === 'ready' ? 'done' : file.status}
+                          >
+                            <li data-status={file.status}>
+                              <AttachmentMedia>
+                                <Icon name="file" />
+                              </AttachmentMedia>
+                              <AttachmentContent>
+                                <AttachmentTitle>{file.name}</AttachmentTitle>
+                                <AttachmentDescription>
+                                  {file.status === 'error' ? file.error : fileSize(file.size)}
+                                </AttachmentDescription>
+                              </AttachmentContent>
+                              {file.status === 'uploading' && (
+                                <span className="sr-only" role="status">
+                                  Uploading {file.name}
+                                </span>
+                              )}
+                              <AttachmentActions>
+                                {file.status === 'error' && (
+                                  <AttachmentAction
+                                    variant="quiet"
+                                    aria-label={`Retry ${file.name}`}
+                                    onClick={() => uploads.retry(file)}
+                                  >
+                                    <Icon name="refresh" />
+                                  </AttachmentAction>
+                                )}
                                 <AttachmentAction
                                   variant="quiet"
-                                  aria-label={`Retry ${file.name}`}
-                                  onClick={() => uploads.retry(file)}
+                                  aria-label={`Remove ${file.name}`}
+                                  disabled={busy}
+                                  onClick={() => uploads.remove(file)}
                                 >
-                                  <Icon name="refresh" />
+                                  <Icon name="close" />
                                 </AttachmentAction>
-                              )}
-                              <AttachmentAction
-                                variant="quiet"
-                                aria-label={`Remove ${file.name}`}
-                                disabled={busy}
-                                onClick={() => uploads.remove(file)}
-                              >
-                                <Icon name="close" />
-                              </AttachmentAction>
-                            </AttachmentActions>
-                          </li>
-                        </Attachment>
-                      ))}
-                    </ul>
-                  )}
+                              </AttachmentActions>
+                            </li>
+                          </Attachment>
+                        ))}
+                      </ul>
+                    )}
 
-                  <PromptInputFrame
-                    className="pc-composer pc-composer-row"
-                    onSubmit={(e) => {
-                      e.preventDefault();
-                      void send();
-                    }}
-                    onClick={(e) => {
-                      if (e.target === e.currentTarget) composer.current?.focus();
-                    }}
-                  >
-                    {capabilities.attachments && selection?.kind === 'bot' && (
-                      <>
-                        <input
-                          ref={attachmentInput}
-                          type="file"
-                          className="sr-only"
-                          tabIndex={-1}
-                          aria-label="Choose attachments"
-                          multiple
-                          onChange={(e) => {
-                            uploads.add([...(e.target.files ?? [])]);
-                            e.target.value = '';
+                    <PromptInputFrame
+                      className="pc-composer pc-composer-row"
+                      onSubmit={(e) => {
+                        e.preventDefault();
+                        void send();
+                      }}
+                      onClick={(e) => {
+                        if (e.target === e.currentTarget) composer.current?.focus();
+                      }}
+                    >
+                      {capabilities.attachments && selection?.kind === 'bot' && (
+                        <>
+                          <input
+                            ref={attachmentInput}
+                            type="file"
+                            className="sr-only"
+                            tabIndex={-1}
+                            aria-label="Choose attachments"
+                            multiple
+                            onChange={(e) => {
+                              uploads.add([...(e.target.files ?? [])]);
+                              e.target.value = '';
+                            }}
+                          />
+                          <Menu
+                            label="Add attachment"
+                            placement="composer"
+                            disabled={busy || blocked || uploads.files.length >= 5}
+                            items={[
+                              {
+                                label: 'File',
+                                icon: File,
+                                action: () => {
+                                  if (attachmentInput.current) {
+                                    attachmentInput.current.accept = '';
+                                    attachmentInput.current.click();
+                                  }
+                                },
+                              },
+                              {
+                                label: 'Photo',
+                                icon: Image,
+                                action: () => {
+                                  if (attachmentInput.current) {
+                                    attachmentInput.current.accept =
+                                      'image/png,image/jpeg,image/webp';
+                                    attachmentInput.current.click();
+                                  }
+                                },
+                              },
+                            ]}
+                          >
+                            <Icon name="plus" />
+                          </Menu>
+                        </>
+                      )}
+                      <PromptInputField
+                        sizing="fixed"
+                        ref={composer}
+                        rows={1}
+                        aria-label="Message"
+                        placeholder={selection ? `Message ${title}` : 'Choose a conversation'}
+                        value={draft}
+                        disabled={!selection || busy || blocked}
+                        maxLength={16000}
+                        onPaste={(e) => {
+                          if (
+                            client.supportsAttachments &&
+                            selection?.kind === 'bot' &&
+                            e.clipboardData.files.length
+                          ) {
+                            e.preventDefault();
+                            uploads.add([...e.clipboardData.files]);
+                          }
+                        }}
+                        onChange={(e) => {
+                          setDraft(e.target.value);
+                          if (selected.current)
+                            drafts.current.set(draftKey(selected.current), e.target.value);
+                        }}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
+                            e.preventDefault();
+                            void send();
+                          }
+                        }}
+                      />
+                      {selection?.kind === 'bot' && capabilities.voice && (
+                        <IconButton
+                          quiet
+                          className="pc-call-button"
+                          label="Voice chat"
+                          icon={AudioLines}
+                          disabled={blocked}
+                          onClick={() => {
+                            voicePanel.current?.open();
+                            followLatest.current = true;
+                            requestAnimationFrame(jumpToLatest);
                           }}
                         />
-                        <Menu
-                          label="Add attachment"
-                          placement="composer"
-                          disabled={busy || blocked || uploads.files.length >= 5}
-                          items={[
-                            {
-                              label: 'File',
-                              icon: File,
-                              action: () => {
-                                if (attachmentInput.current) {
-                                  attachmentInput.current.accept = '';
-                                  attachmentInput.current.click();
-                                }
-                              },
-                            },
-                            {
-                              label: 'Photo',
-                              icon: Image,
-                              action: () => {
-                                if (attachmentInput.current) {
-                                  attachmentInput.current.accept =
-                                    'image/png,image/jpeg,image/webp';
-                                  attachmentInput.current.click();
-                                }
-                              },
-                            },
-                          ]}
-                        >
-                          <Icon name="plus" />
-                        </Menu>
-                      </>
-                    )}
-                    <PromptInputField
-                      sizing="fixed"
-                      ref={composer}
-                      rows={1}
-                      aria-label="Message"
-                      placeholder={selection ? `Message ${title}` : 'Choose a conversation'}
-                      value={draft}
-                      disabled={!selection || busy || blocked}
-                      maxLength={16000}
-                      onPaste={(e) => {
-                        if (
-                          client.supportsAttachments &&
-                          selection?.kind === 'bot' &&
-                          e.clipboardData.files.length
-                        ) {
-                          e.preventDefault();
-                          uploads.add([...e.clipboardData.files]);
+                      )}
+                      <ComposerAction
+                        mode={running ? (stopping ? 'stopping' : 'stop') : 'send'}
+                        disabled={
+                          running
+                            ? stopping || blocked
+                            : !selection ||
+                              (!draft.trim() && !uploads.files.length) ||
+                              !uploads.ready ||
+                              busy ||
+                              blocked
                         }
-                      }}
-                      onChange={(e) => {
-                        setDraft(e.target.value);
-                        if (selected.current)
-                          drafts.current.set(draftKey(selected.current), e.target.value);
-                      }}
-                      onKeyDown={(e) => {
-                        if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
-                          e.preventDefault();
-                          void send();
-                        }
-                      }}
-                    />
-                    {selection?.kind === 'bot' && capabilities.voice && (
-                      <button
-                        type="button"
-                        className="icon-button pc-call-button"
-                        aria-label="Voice chat"
-                        disabled={blocked}
-                        onClick={() => {
-                          voicePanel.current?.open();
-                          followLatest.current = true;
-                          requestAnimationFrame(jumpToLatest);
-                        }}
-                      >
-                        <AudioLines size={20} />
-                      </button>
-                    )}
-                    <ComposerAction
-                      mode={running ? (stopping ? 'stopping' : 'stop') : 'send'}
-                      disabled={
-                        running
-                          ? stopping || blocked
-                          : !selection ||
-                            (!draft.trim() && !uploads.files.length) ||
-                            !uploads.ready ||
-                            busy ||
-                            blocked
-                      }
-                      onStop={() => void stop()}
-                    />
-                  </PromptInputFrame>
-                </div>
-              </>
-            )}
-          </>
-        )}
-      </Chat>
-      <DetailsDock
-        open={details && (!settings || settingsTab === 'agents')}
-        onFrame={restoreDetailsAnchor}
-      >
-        <div id="pebble-details" className="pc-details details-panel">
-          {detailsContent}
-        </div>
-      </DetailsDock>
+                        onStop={() => void stop()}
+                      />
+                    </PromptInputFrame>
+                  </div>
+                </>
+              )}
+            </>
+          )}
+        </Chat>
+        <DetailsDock
+          open={details && (!settings || settingsTab === 'agents')}
+          onFrame={restoreDetailsAnchor}
+        >
+          <div id="pebble-details" className="pc-details details-panel">
+            {detailsContent}
+          </div>
+        </DetailsDock>
+      </WorkspacePanels>
       {settings && settingsTab === 'agents' && (
         <Drawer
           title="Edit pebble"
@@ -2230,8 +2237,12 @@ export function App({ owner }: { owner?: OwnerConnection }) {
           <h2>Start a chat with this crew?</h2>
           <p>Membership changed. Your previous chat will stay in Group chats.</p>
           <div className="form-actions">
-            <button onClick={() => setConfirmCrew(undefined)}>Cancel</button>
-            <button onClick={() => void openCrew(confirmCrew, true)}>Start new chat</button>
+            <Button variant="secondary" onClick={() => setConfirmCrew(undefined)}>
+              Cancel
+            </Button>
+            <Button variant="secondary" onClick={() => void openCrew(confirmCrew, true)}>
+              Start new chat
+            </Button>
           </div>
         </Drawer>
       )}
@@ -2243,10 +2254,11 @@ export function App({ owner }: { owner?: OwnerConnection }) {
         >
           <h2>Discard unsaved changes?</h2>
           <div className="form-actions">
-            <button data-autofocus onClick={() => setConfirmNavigation(false)}>
+            <Button variant="secondary" data-autofocus onClick={() => setConfirmNavigation(false)}>
               Keep editing
-            </button>
-            <button
+            </Button>
+            <Button
+              variant="destructive"
               className="danger-text"
               onClick={() => {
                 dirtyEditor.current = false;
@@ -2256,7 +2268,7 @@ export function App({ owner }: { owner?: OwnerConnection }) {
               }}
             >
               Discard changes
-            </button>
+            </Button>
           </div>
         </Drawer>
       )}

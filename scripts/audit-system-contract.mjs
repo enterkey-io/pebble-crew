@@ -19,6 +19,21 @@ try {
   const tool = 'apps/web/src/components/ai-elements/tool.tsx';
   const cases = [
     [
+      'fixed-height legacy navigation layout',
+      'apps/web/src/ui/layout.css',
+      (source) => source + '\n.pc-row-open { height: 36px; padding: 8px; }',
+    ],
+    [
+      'custom reaction positioning',
+      'apps/web/src/ui/layout.css',
+      (source) => source + '\n.pc-reaction { position: absolute; bottom: -8px; }',
+    ],
+    [
+      'handcrafted avatar control',
+      'apps/web/src/AgentAvatar.tsx',
+      (source) => source.replaceAll('<Toggle', '<button').replaceAll('</Toggle>', '</button>'),
+    ],
+    [
       'legacy chat layout override',
       'apps/web/src/ui/layout.css',
       (source) => source + '\n.pc-bubble { padding: 13px 16px 8px; }',

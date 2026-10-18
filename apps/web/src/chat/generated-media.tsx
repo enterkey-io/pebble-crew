@@ -4,6 +4,14 @@ import type { BotBridgeClient, DownloadedMedia } from '@hermes-client/protocol';
 import { Download, File, RotateCw } from 'lucide-react';
 import { IconButton } from '../components/ui/icon-button';
 import { LoadingBar } from '../components/ui/loading-bar';
+import {
+  Attachment,
+  AttachmentMedia,
+  AttachmentContent,
+  AttachmentTitle,
+  AttachmentDescription,
+} from '../components/ui/attachment';
+import { Button } from '../components/ui/button';
 
 export type MessageMedia =
   | { kind: 'pending'; identity: string }
@@ -69,19 +77,34 @@ export function GeneratedFile({ source, children }: { source: string; children: 
     }
   }
   return (
-    <button
-      className="message-file generated-file"
-      disabled={media?.kind !== 'saved' || state === 'loading'}
-      onClick={() => void download()}
+    <Attachment
+      asChild
+      size="sm"
+      state={state === 'error' ? 'error' : state === 'loading' ? 'processing' : 'done'}
+      className="generated-file flex-nowrap text-left"
     >
-      <File aria-hidden="true" />
-      <span>
-        {children}
-        {state === 'error' && <small>File unavailable · Try again</small>}
-      </span>
-      {state === 'error' ? <RotateCw aria-hidden="true" /> : <Download aria-hidden="true" />}
-      <LoadingBar as="span" active={state === 'loading'} label="Downloading file" />
-    </button>
+      <button
+        type="button"
+        disabled={media?.kind !== 'saved' || state === 'loading'}
+        onClick={() => void download()}
+      >
+        <AttachmentMedia asChild>
+          <span>
+            <File aria-hidden="true" />
+          </span>
+        </AttachmentMedia>
+        <AttachmentContent asChild>
+          <span>
+            <AttachmentTitle>{children}</AttachmentTitle>
+            {state === 'error' && (
+              <AttachmentDescription>File unavailable · Try again</AttachmentDescription>
+            )}
+          </span>
+        </AttachmentContent>
+        {state === 'error' ? <RotateCw aria-hidden="true" /> : <Download aria-hidden="true" />}
+        <LoadingBar as="span" active={state === 'loading'} label="Downloading file" />
+      </button>
+    </Attachment>
   );
 }
 
@@ -167,10 +190,14 @@ export function GeneratedImage({ source, alt }: { source: string; alt: string })
           />
         </>
       ) : state.kind === 'ready' ? (
-        <button className="message-file" onClick={() => state.kind === 'ready' && save(state.file)}>
+        <Button
+          variant="outline"
+          className="h-auto max-w-full justify-start whitespace-normal"
+          onClick={() => state.kind === 'ready' && save(state.file)}
+        >
           <Download aria-hidden="true" />
           {state.file.name}
-        </button>
+        </Button>
       ) : state.kind === 'error' || !media ? (
         <span className="message-image-error">
           Image unavailable

@@ -1,6 +1,6 @@
 import type { CSSProperties, ReactNode } from 'react';
 import { Message as Frame, MessageContent, MessageHeader, MessageFooter } from '../ui/message';
-import { Bubble, BubbleContent } from '../ui/bubble';
+import { Bubble, BubbleContent, BubbleReactions } from '../ui/bubble';
 export type MessagePhase = 'pending' | 'live' | 'committed' | 'failed' | 'cancelled';
 export function Message({
   id,
@@ -34,17 +34,15 @@ export function Message({
     >
       <MessageContent>
         {author && <MessageHeader>{author}</MessageHeader>}
-        {role === 'user' ? (
-          <Bubble variant="muted" align="end">
-            <BubbleContent style={style}>{children}</BubbleContent>
-            {reactions}
-          </Bubble>
-        ) : (
-          <div data-slot="message-response" className="relative min-w-0">
-            {children}
-            {reactions}
-          </div>
-        )}
+        <Bubble
+          variant={role === 'user' ? 'muted' : 'ghost'}
+          align={role === 'user' ? 'end' : 'start'}
+        >
+          <BubbleContent style={style}>
+            {role === 'user' ? children : <div data-slot="message-response">{children}</div>}
+          </BubbleContent>
+          {reactions && <BubbleReactions aria-label="Reactions">{reactions}</BubbleReactions>}
+        </Bubble>
         {(metadata || actions) && (
           <MessageFooter className="min-h-8 gap-1 px-0 tabular-nums">
             {actions}

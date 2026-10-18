@@ -9,6 +9,8 @@ import type { MenuItem } from '../ui/primitives';
 import { IconButton } from '../components/ui/icon-button';
 import { Badge } from '../components/ui/badge';
 import { OrganizationRail, OrganizationDialog } from '../ui/OrganizationRail';
+import { NavigationItem } from '../ui/NavigationItem';
+import { Item, ItemMedia, ItemContent, ItemTitle, ItemDescription } from '../components/ui/item';
 import {
   placePebble,
   placementOf,
@@ -408,18 +410,20 @@ export function Rail({
                 .filter((b) => b.hidden)
                 .map((b) => (
                   <div className="pc-row" key={b.id}>
-                    <span className="pc-row-open">
-                      {face(b.id!)}
-                      <span className="pc-row-copy">
-                        <strong>{b.name}</strong>
+                    <Item size="xs" className="min-h-16 flex-nowrap gap-2.5">
+                      <ItemMedia className="group-has-data-[slot=item-description]/item:self-center group-has-data-[slot=item-description]/item:translate-y-0">
+                        {face(b.id!)}
+                      </ItemMedia>
+                      <ItemContent>
+                        <ItemTitle>{b.name}</ItemTitle>
                         {pendingPins[identity(b)?.id ?? ''] && (
                           <span className="pin-saving sr-only" role="status">
                             Saving pin…
                           </span>
                         )}
-                        <small>Hidden</small>
-                      </span>
-                    </span>
+                        <ItemDescription>Hidden</ItemDescription>
+                      </ItemContent>
+                    </Item>
                     {controls(b)}
                   </div>
                 ))}
@@ -429,19 +433,15 @@ export function Rail({
             {rooms
               .filter((r) => !Object.values(crewChats).includes(String(r.room_id)))
               .map((r) => (
-                <Button
-                  variant="quiet"
+                <NavigationItem
                   className="pc-crew"
                   key={String(r.room_id)}
                   disabled={!online}
                   onClick={() => onRoom(r)}
-                >
-                  <CrewAvatar room={r} workspace={workspace} client={client} />
-                  <span>
-                    <strong>{String(r.name ?? 'Crew')}</strong>
-                    <small>{String(r.preview ?? 'Group conversation')}</small>
-                  </span>
-                </Button>
+                  media={<CrewAvatar room={r} workspace={workspace} client={client} />}
+                  title={String(r.name ?? 'Crew')}
+                  description={String(r.preview ?? 'Group conversation')}
+                />
               ))}
           </nav>
           {!all.length && (

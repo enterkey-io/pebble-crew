@@ -8,7 +8,12 @@ export default defineConfig({
   outputDir: 'test-results/system',
   timeout: 60000,
   workers: 1,
-  use: { baseURL: 'http://127.0.0.1:8098', serviceWorkers: 'block', trace: 'retain-on-failure' },
+  use: {
+    colorScheme: 'dark',
+    baseURL: 'http://127.0.0.1:8098',
+    serviceWorkers: 'block',
+    trace: 'retain-on-failure',
+  },
   projects: [
     { name: 'desktop', use: { viewport: { width: 1440, height: 900 } } },
     { name: 'iphone', use: { ...devices['iPhone 13'] } },

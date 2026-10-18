@@ -67,10 +67,13 @@ const attachmentMediaVariants = cva(
 function AttachmentMedia({
   className,
   variant = 'icon',
+  asChild = false,
   ...props
-}: React.ComponentProps<'div'> & VariantProps<typeof attachmentMediaVariants>) {
+}: React.ComponentProps<'div'> &
+  VariantProps<typeof attachmentMediaVariants> & { asChild?: boolean }) {
+  const Comp = asChild ? Slot.Root : 'div';
   return (
-    <div
+    <Comp
       data-slot="attachment-media"
       data-variant={variant}
       className={cn(attachmentMediaVariants({ variant }), className)}
@@ -79,9 +82,14 @@ function AttachmentMedia({
   );
 }
 
-function AttachmentContent({ className, ...props }: React.ComponentProps<'div'>) {
+function AttachmentContent({
+  className,
+  asChild = false,
+  ...props
+}: React.ComponentProps<'div'> & { asChild?: boolean }) {
+  const Comp = asChild ? Slot.Root : 'div';
   return (
-    <div
+    <Comp
       data-slot="attachment-content"
       className={cn(
         'max-w-full min-w-0 flex-1 leading-tight group-data-[orientation=vertical]/attachment:px-1',

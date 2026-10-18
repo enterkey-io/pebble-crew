@@ -6,6 +6,7 @@ export default defineConfig({
   timeout: 60000,
   workers: 1,
   use: {
+    colorScheme: 'dark',
     serviceWorkers: 'block',
     baseURL: 'http://127.0.0.1:8093',
     viewport: { width: 1440, height: 900 },

@@ -186,7 +186,7 @@ try {
   browser = await chromium.launch(
     process.env.BOT_WEB_TEST_CHROMIUM ? { executablePath: process.env.BOT_WEB_TEST_CHROMIUM } : {},
   );
-  const context = await browser.newContext({ ignoreHTTPSErrors: true });
+  const context = await browser.newContext({ ignoreHTTPSErrors: true, colorScheme: 'dark' });
   page = await context.newPage();
   const origins = new Set(),
     errors = [];
@@ -256,6 +256,7 @@ try {
   await page.getByRole('button', { name: 'Your account', exact: true }).click();
   await expect(page.getByRole('menuitem', { name: 'Your photo', exact: true })).toHaveCount(0);
   await page.getByRole('menuitem', { name: 'Settings', exact: true }).click();
+  await page.getByRole('tab', { name: 'Account', exact: true }).click();
   const accountSettings = page.getByRole('region', { name: 'Settings', exact: true });
   await expect(accountSettings.getByRole('tab', { name: 'Account', exact: true })).toHaveAttribute(
     'aria-selected',

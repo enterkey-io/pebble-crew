@@ -4,7 +4,7 @@ import type { Dispatch, DragEvent, ReactNode, SetStateAction } from 'react';
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
 import { ChevronDown, MoreHorizontal, Pin, SlidersHorizontal, Users } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
+import { NavigationItem } from './NavigationItem';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
@@ -257,25 +257,18 @@ export function OrganizationRail({
         onDragEnd={() => setOver('')}
         {...targetEvents(target, id)}
       >
-        <Button
-          variant="quiet"
-          className="pc-row-open"
+        <NavigationItem
+          media={
+            <span className="flex [&>.agent-avatar]:h-12 [&>.agent-avatar]:w-11">{face(id)}</span>
+          }
+          title={pebble.name}
+          label={pebble.title}
+          description={<span aria-hidden="true">{pebble.preview}</span>}
           onClick={() => onOpenPebble(id)}
           aria-label={
             openLabel?.(pebble) ?? `Open ${pebble.name} ${pebble.title} ${pebble.preview}`
           }
-        >
-          {face(id)}
-          <span className="pc-row-copy">
-            <span>
-              <strong>{pebble.name}</strong>{' '}
-              <Badge variant="secondary" aria-hidden="true">
-                {pebble.title}
-              </Badge>
-            </span>{' '}
-            <small aria-hidden="true">{pebble.preview}</small>
-          </span>
-        </Button>
+        />
         {actions ? (
           actions(id)
         ) : (
@@ -302,23 +295,22 @@ export function OrganizationRail({
           onDragEnd={() => setOver('')}
           {...targetEvents({ kind: 'crew', id })}
         >
-          <Button
-            variant="quiet"
+          <NavigationItem
             className="pc-crew"
+            title={crew.name}
+            description={`${crew.members.length} pebbles`}
             aria-label={`${crew.name} ${crew.members.length} pebbles. Open chat`}
             onClick={() => onOpenCrew(id)}
-          >
-            <span className="pc-crew-faces">
-              {crew.members.length ? (
-                crew.members.slice(0, 2).map((member) => <span key={member}>{face(member)}</span>)
-              ) : (
-                <Users />
-              )}
-            </span>
-            <span>
-              <strong>{crew.name}</strong> <small>{crew.members.length} pebbles</small>
-            </span>
-          </Button>
+            media={
+              <span className="pc-crew-faces">
+                {crew.members.length ? (
+                  crew.members.slice(0, 2).map((member) => <span key={member}>{face(member)}</span>)
+                ) : (
+                  <Users />
+                )}
+              </span>
+            }
+          />
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button

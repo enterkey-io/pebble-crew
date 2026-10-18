@@ -1,4 +1,3 @@
-import { BubbleReactions } from '../components/ui/bubble';
 import { useRef, useState } from 'react';
 import { SmilePlus } from 'lucide-react';
 import { Button } from '../components/ui/button';
@@ -97,31 +96,37 @@ export function MessageReactions({
   const [pending, setPending] = useState(false);
   if (!reactions.length) return null;
   return (
-    <BubbleReactions className="pc-reactions translate-y-1/2" aria-label="Reactions">
+    <>
       {[...new Set(reactions.map((r) => r.emoji))].map((emoji) => {
         const matching = reactions.filter((r) => r.emoji === emoji);
         const own = matching.some((r) => r.author === 'user');
         const who = matching.map((r) => (r.author === 'user' ? 'You' : agentName)).join(' and ');
         return (
-          <button
+          <Button
             key={emoji}
             type="button"
-            className="pc-reaction"
+            variant="quiet"
+            size="icon-sm"
+            className="w-auto min-w-8 gap-1 px-0 text-lg"
             aria-label={`${emoji} · ${who}`}
             aria-pressed={own}
-            disabled={!onReact || pending}
+            aria-disabled={!onReact || pending}
             title={who}
             onClick={() => {
-              if (!onReact) return;
+              if (!onReact || pending) return;
               setPending(true);
               void onReact(id, own ? null : emoji).finally(() => setPending(false));
             }}
           >
             <span aria-hidden="true">{emoji}</span>
-            {matching.length > 1 && <small aria-hidden="true">{matching.length}</small>}
-          </button>
+            {matching.length > 1 && (
+              <small className="text-xs text-muted-foreground" aria-hidden="true">
+                {matching.length}
+              </small>
+            )}
+          </Button>
         );
       })}
-    </BubbleReactions>
+    </>
   );
 }

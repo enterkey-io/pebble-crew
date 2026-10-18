@@ -30,6 +30,9 @@
   --surface-hover: #222225;
   --surface-raised: #29292c;
   --details: #111113;
+  --composer: #242426;
+  --composer-border: #3c3b41;
+  --success: #95baa5;
   --motion-hover: 120ms;
   --motion-overlay: 160ms;
   --motion-panel: 240ms;
@@ -51,6 +54,38 @@
   --sidebar-accent-foreground: var(--accent-foreground);
   --sidebar-border: var(--border);
   --sidebar-ring: var(--ring);
+}
+
+:root[data-theme='light'] {
+  color-scheme: light;
+  --background: #faf9f6;
+  --foreground: #242321;
+  --card: #fffefd;
+  --card-foreground: #242321;
+  --popover: #fffefd;
+  --popover-foreground: #242321;
+  --primary: #2e2c29;
+  --primary-foreground: #faf9f6;
+  --secondary: #efede8;
+  --secondary-foreground: #4a4742;
+  --muted: #f0eeea;
+  --muted-foreground: #6d6963;
+  --accent: #eae7e1;
+  --accent-foreground: #242321;
+  --destructive: #b73b34;
+  --border: #d6d1c8;
+  --input: #bcb7ad;
+  --ring: #77736c;
+  --rail: #f2f0ec;
+  --surface-selected: #e5e1da;
+  --surface-hover: #eae7e1;
+  --surface-raised: #fffdf9;
+  --details: #f6f4ef;
+  --composer: #fffefd;
+  --composer-border: #c9c4ba;
+  --success: #326c4a;
+  --scrollbar-thumb: #c5bfb4;
+  --scrollbar-thumb-hover: #a9a294;
 }
 
 @media (max-width: 767px), (any-pointer: coarse) {
@@ -132,6 +167,7 @@
   button,
   [role='button'] {
     cursor: pointer;
+    -webkit-tap-highlight-color: transparent;
   }
   button:disabled {
     cursor: default;

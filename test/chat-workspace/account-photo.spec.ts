@@ -39,6 +39,7 @@ test('personal photos have no shape controls, persist on reload and keep a chat 
     await page.getByRole('button', { name: 'Your account', exact: true }).click();
     await expect(page.getByRole('menuitem', { name: 'Your photo', exact: true })).toHaveCount(0);
     await page.getByRole('menuitem', { name: 'Settings', exact: true }).click();
+    await page.getByRole('tab', { name: 'Account', exact: true }).click();
     await expect(page.getByRole('tab', { name: 'Account', exact: true })).toHaveAttribute(
       'aria-selected',
       'true',

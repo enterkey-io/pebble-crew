@@ -1,3 +1,4 @@
+import { Button } from './components/ui/button';
 import { LoadingBar } from './components/ui/loading-bar';
 
 export function StartupScreen({
@@ -14,14 +15,18 @@ export function StartupScreen({
       <div className="startup-progress">
         <LoadingBar active label="Opening Pebble Crew" />
         {onSignOut && (
-          <button className="startup-sign-out" onClick={onSignOut}>
+          <Button variant="quiet" size="sm" className="startup-sign-out" onClick={onSignOut}>
             Sign out
-          </button>
+          </Button>
         )}
         {error && (
           <div className="startup-error">
             <p role="alert">{error}</p>
-            {onRetry && <button onClick={onRetry}>Try again</button>}
+            {onRetry && (
+              <Button variant="secondary" onClick={onRetry}>
+                Try again
+              </Button>
+            )}
           </div>
         )}
       </div>

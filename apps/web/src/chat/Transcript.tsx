@@ -153,12 +153,14 @@ export function Transcript({
                 )
               }
               reactions={
-                <MessageReactions
-                  id={m.id ?? ''}
-                  reactions={m.reactions ?? []}
-                  agentName={title}
-                  onReact={react}
-                />
+                m.reactions?.length ? (
+                  <MessageReactions
+                    id={m.id ?? ''}
+                    reactions={m.reactions ?? []}
+                    agentName={title}
+                    onReact={react}
+                  />
+                ) : undefined
               }
               actions={
                 (m.text.trim() || m.files?.length) && (

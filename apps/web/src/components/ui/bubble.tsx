@@ -14,7 +14,7 @@ function BubbleGroup({ className, ...props }: React.ComponentProps<'div'>) {
 }
 
 const bubbleVariants = cva(
-  'group/bubble relative flex w-fit max-w-[80%] min-w-0 flex-col gap-1 group-data-[align=end]/message:self-end data-[align=end]:self-end data-[variant=ghost]:max-w-full',
+  'group/bubble relative flex w-fit max-w-[80%] min-w-0 flex-col gap-1 group-data-[align=end]/message:self-end data-[align=end]:self-end data-[variant=ghost]:max-w-full has-data-[slot=bubble-reactions]:*:data-[slot=bubble-content]:w-full has-[[data-slot=bubble-reactions][data-side=bottom]]:*:data-[slot=bubble-content]:pb-6 has-[[data-slot=bubble-reactions][data-side=top]]:*:data-[slot=bubble-content]:pt-6',
   {
     variants: {
       variant: {
@@ -82,16 +82,16 @@ function BubbleContent({
 }
 
 const bubbleReactionsVariants = cva(
-  'absolute z-10 flex w-fit shrink-0 items-center justify-center gap-1 border-0 bg-transparent p-0 text-sm shadow-none',
+  'relative z-10 mx-3 flex w-fit max-w-[calc(100%-1.5rem)] flex-wrap items-center gap-1 border-0 bg-transparent p-0 text-sm shadow-none',
   {
     variants: {
       side: {
-        top: 'top-0 -translate-y-3/4',
-        bottom: 'bottom-0 translate-y-3/4',
+        top: 'order-first -mb-6',
+        bottom: 'order-last -mt-6',
       },
       align: {
-        start: 'left-3',
-        end: 'right-3',
+        start: 'self-start',
+        end: 'self-end',
       },
     },
     defaultVariants: {

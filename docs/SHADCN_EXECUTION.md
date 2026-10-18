@@ -1,6 +1,6 @@
 # Shared UI implementation
 
-Current correction: `0.7.8-preview.6`. Original candidate: `0.7.8-preview.5`.
+Current candidate: `0.7.8-preview.9`. Original candidate: `0.7.8-preview.5`.
 Baseline: `291fab771b803edce4a4b63061303eb181af0a96`.
 This implements the [Astra plan](SHADCN_IMPLEMENTATION_PLAN.md) in the existing
 React application. It does not migrate to Vue or add a hosted application service.
@@ -41,6 +41,40 @@ are also checked while the transcript scrolls; repeated desktop runs exercise
 the measurement without weakening those requirements.
 Exact-package acceptance and publication are tracked separately on the progress board.
 The original verification record below describes preview.5.
+
+## Composition corrections and interface preferences
+
+The earlier migration still left fixed-height Buttons hosting two-line navigation
+rows, custom avatar controls, and reactions positioned without checking message
+text or action-footer intersections. Catalog coverage did not prove those screens
+were correctly composed. The baseline at `65ac4dd` fails the new production
+geometry checks: row media is 14 pixels below center, reactions intersect a short
+owner message and its footer, and switching clears the current conversation before
+its replacement is ready.
+
+The current candidate uses Item media/content/title/description for navigation,
+agent choices and the conversation identity; Toggle owns avatar selection;
+Message/Bubble owns both authors and reaction flow; Attachment owns generated-file
+cards; Button, IconButton and Alert own chat actions and notices. Competing row,
+reaction, avatar-control, header-control and notice CSS is removed. Native buttons
+inside Item/Attachment remain semantic activation targets composed through asChild.
+That is use of the kit, not a separate raw control layout.
+
+General is the first Settings tab. Light, Dark and System use the same semantic
+tokens throughout the installed app. A same-origin blocking startup asset applies
+the preference before the app mounts without weakening the script policy. System
+tracks device appearance changes; explicit choices persist on that browser.
+Sidebar resizing uses the shared Resizable panels: 280–960 pixels, while preserving
+at least 360 pixels for the remaining desktop interface. Phone navigation retains
+its drawer. Keyboard resizing and double-click reset are supported. Preferences
+stay on the owner's device and are not sent to Hermes or a vendor service.
+
+`composition-integrity` checks real text/emoji/footer separation, centered row
+anatomy, pending and failed switching, and out-of-order responses. The existing
+flow suites exercise Settings, Add/Edit, menus, attachments, live replies and
+reconnection. Import/catalog guards complement these journeys; they are not a
+substitute for them. Verification of this candidate and its exact package is
+tracked separately on the progress board. Earlier results below remain historical.
 
 ## Decisions
 

@@ -7,6 +7,7 @@ import type { BotBridgeClient } from '@hermes-client/protocol';
 import { decodeWorkspaceSnapshot } from '@hermes-client/protocol';
 import type { WorkspaceSnapshot as WorkspaceState, WorkspaceBot } from '@hermes-client/protocol';
 import { OwnerAccount } from './OwnerAccount';
+import { GeneralSettings } from './GeneralSettings';
 import { ConnectionsPanel } from './connections/ConnectionsPanel';
 import { RequestReview } from './chat/RequestReview';
 import { PebbleEditor } from './PebbleEditor';
@@ -18,7 +19,7 @@ export function WorkspaceSettings({
   onChange,
   onClose,
   owner = false,
-  initialTab = 'account',
+  initialTab = 'general',
   initialProfile,
   onDirtyChange,
   onNavigate,
@@ -26,7 +27,7 @@ export function WorkspaceSettings({
   onDirtyChange: (dirty: boolean) => void;
   onNavigate: (action: () => void) => void;
   owner?: boolean;
-  initialTab?: 'agents' | 'requests' | 'connections' | 'account';
+  initialTab?: 'agents' | 'requests' | 'connections' | 'account' | 'general';
   initialProfile?: string | undefined;
   client: BotBridgeClient;
   state: WorkspaceState;
@@ -142,6 +143,7 @@ export function WorkspaceSettings({
       aria-label="Settings"
       header={<PageHeader title="Settings" onClose={() => onNavigate(onClose)} />}
       tabs={[
+        { id: 'general', label: 'General' },
         ...(owner ? [{ id: 'account', label: 'Account' }] : []),
         { id: 'connections', label: 'Connections' },
         { id: 'requests', label: 'Requests' },
@@ -159,6 +161,7 @@ export function WorkspaceSettings({
       )}
       {notice && <Notice>{notice}</Notice>}
       <LoadingBar active={loading} label="Loading Settings" />
+      {tab === 'general' && <GeneralSettings />}
       {tab === 'account' && owner && <OwnerAccount />}
       {tab === 'requests' && !loading && (
         <>

@@ -33,7 +33,7 @@ test('installed chat uses standard user bubbles, unboxed replies and separate ac
   await expect(user.locator('[data-slot="message"]')).toHaveAttribute('data-align', 'end');
   await expect(agent.locator('[data-slot="message"]')).toHaveAttribute('data-align', 'start');
   await expect(user.locator('[data-slot="bubble"]')).toHaveAttribute('data-variant', 'muted');
-  await expect(agent.locator('[data-slot="bubble"]')).toHaveCount(0);
+  await expect(agent.locator('[data-slot="bubble"]')).toHaveAttribute('data-variant', 'ghost');
   await expect(agent.getByRole('heading', { name: 'Next steps' })).toBeVisible();
   await expect(agent.locator('[data-slot="message-response"]')).toHaveCSS(
     'background-color',
@@ -45,9 +45,7 @@ test('installed chat uses standard user bubbles, unboxed replies and separate ac
   expect(surface.width / frame.width).toBeGreaterThan(0.79);
   expect(surface.width / frame.width).toBeLessThan(0.81);
   for (const row of [user, agent]) {
-    const content = (await row
-      .locator('[data-slot="bubble-content"], [data-slot="message-response"]')
-      .boundingBox())!;
+    const content = (await row.locator('[data-slot="bubble-content"]').boundingBox())!;
     const footer = row.locator('[data-slot="message-footer"]');
     const bounds = (await footer.boundingBox())!;
     expect(bounds.y).toBeGreaterThanOrEqual(content.y + content.height);
