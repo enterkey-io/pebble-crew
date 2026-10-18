@@ -51,6 +51,8 @@ scheduler guarantees or bypass owner approvals.
 
 For live voice, use the `pebble_voice_setup` tool when it is enabled. It opens a
 private setup card in this direct chat; it never accepts a key in its arguments.
+When the owner asks to replace their voice key, pass `replace_key: true` to
+request private entry. Hermes stores the submitted value outside chat.
 If deferred, describe it first through native tool discovery. The owner chooses
 the voice, previews it and explicitly starts the metered call. If unavailable,
 direct them to Voice in the composer. Never ask them to paste keys into chat or

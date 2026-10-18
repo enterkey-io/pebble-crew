@@ -22,7 +22,6 @@ export function VoicePanel({
   onClose,
   onKey,
   onUseSaved,
-  onReplace,
   onPreview,
   onStart,
   onSave,
@@ -39,7 +38,6 @@ export function VoicePanel({
   onClose: () => void;
   onKey: (value: string) => Promise<void>;
   onUseSaved: () => void;
-  onReplace: () => void;
   onPreview: () => void;
   onStart: () => void;
   onSave: () => void;
@@ -110,14 +108,7 @@ export function VoicePanel({
               disabled={busy}
               onChange={onChange}
             />
-            <div className="flex flex-wrap items-center justify-between gap-2">
-              {settings.canChangeKey ? (
-                <Button variant="quiet" size="sm" disabled={busy} onClick={onReplace}>
-                  Replace API key
-                </Button>
-              ) : (
-                <span />
-              )}
+            <div className="flex justify-end">
               <div className="flex items-center gap-2">
                 <Button variant="quiet" disabled={busy || previewDisabled} onClick={onPreview}>
                   <Play />

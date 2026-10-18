@@ -9,6 +9,7 @@ test('private voice setup, Snow and selected-Pebble message colors', async ({
 }, info) => {
   await installFixture(context, { voice: true });
   let configured = false,
+    setupComplete = false,
     voice = 'marin',
     speed = 1;
   let submitted = '';
@@ -35,7 +36,7 @@ test('private voice setup, Snow and selected-Pebble message colors', async ({
             voices: ['marin', 'cedar'],
             speed,
             speed_control: 'instruction',
-            setup_complete: false,
+            setup_complete: setupComplete,
           },
         },
       });
@@ -84,10 +85,31 @@ test('private voice setup, Snow and selected-Pebble message colors', async ({
   });
   await expect(page.getByRole('button', { name: /Latest messages/ })).not.toBeVisible();
   await page.screenshot({ path: info.outputPath('voice-ready.png') });
-  await page.getByRole('button', { name: 'Replace API key', exact: true }).click();
+  await expect(page.getByRole('button', { name: 'Replace API key', exact: true })).toHaveCount(0);
+  await page.getByRole('button', { name: 'Close voice setup' }).click();
+  setupComplete = true;
+  await page.evaluate(() =>
+    Reflect.get(
+      window,
+      '__chatEvent',
+    )({
+      type: 'voice.setup',
+      session_id: 'session-arlo',
+      payload: { replace_key: true },
+    }),
+  );
   await expect(page.getByLabel('API key', { exact: true })).toHaveValue('');
-  await page.getByRole('button', { name: 'Use saved key', exact: true }).click();
-  await expect(page.getByRole('combobox', { name: 'Voice', exact: true })).toContainText('Cedar');
+  await page.getByLabel('API key', { exact: true }).fill('synthetic-replacement-key');
+  await card.getByRole('button', { name: 'Submit', exact: true }).click();
+  await expect(page.getByRole('button', { name: 'Start call', exact: true })).toBeVisible();
+  expect(submitted).toBe('synthetic-replacement-key');
+  expect(await page.locator('body').innerText()).not.toContain(submitted);
+  expect(
+    await page.evaluate(() =>
+      JSON.stringify({ local: { ...localStorage }, session: { ...sessionStorage } }),
+    ),
+  ).not.toContain(submitted);
+  await expect(page.getByRole('combobox', { name: 'Voice', exact: true })).toContainText('Marin');
   await page.getByRole('button', { name: 'Close voice setup' }).click();
   if (page.viewportSize()!.width < 768)
     await page.getByRole('button', { name: 'Toggle navigation', exact: true }).click();

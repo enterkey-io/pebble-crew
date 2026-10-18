@@ -4,7 +4,7 @@ Run the actual production bundle with the shared `test/chat-workspace/voice.spec
 journeys. The mobile runner imports the same journeys.
 
 - Private setup: field is masked, submission clears it, no value in messages or
-  browser persistence, voice/numeric speed survive saving, key-change entry starts empty.
+  browser persistence, voice/numeric speed survive saving. Key replacement is requested by the agent, starts empty and never appears as a voice-settings action.
 - Palette: selected-Pebble owner bubbles, dark text, neutral Snow exception.
 - First use: shared private ApprovalSurface before voice choices; explicit reuse of a saved key, then voice/speed. Saved setup starts a call directly on the next opening. Voice lives in the Pebble editor; no read-only Model tab.
 - Call bar: Pebble avatar at the top, real audio-amplitude bars, settings, transcript toggle, mute and stop. End stops local tracks immediately and requests one text follow-up only for a real call with a transcript; previews never do.

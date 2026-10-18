@@ -97,13 +97,13 @@ export const VoiceChat = forwardRef<
   useEffect(() => {
     if (mode === 'chat' && visible && state === 'idle' && !opening) onSetupChange?.();
   }, [mode, visible, state, step, value, settings, opening, onSetupChange]);
-  async function loadSettings() {
+  async function loadSettings(requestKey = false) {
     const value = decodeSettings(await rpc('voice.status'));
     if (mounted.current) {
       setSettings(value);
       if (value.supported) {
         setValue(choices(value));
-        setStep(value.configured && value.setupComplete ? 'settings' : 'key');
+        setStep(!requestKey && value.configured && value.setupComplete ? 'settings' : 'key');
       }
     }
     return value;
@@ -272,7 +272,9 @@ export const VoiceChat = forwardRef<
       if (event.session_id !== sessionId) return;
       if (event.type === 'voice.setup') {
         setVisible(true);
-        void loadSettings().catch(() => setError('Voice settings could not be loaded.'));
+        void loadSettings(event.payload?.replace_key === true).catch(() =>
+          setError('Voice settings could not be loaded.'),
+        );
       }
       if (event.type === 'secret.changed') void loadSecret().catch(() => undefined);
       const result = receipts.current.observe(event);
@@ -413,7 +415,6 @@ export const VoiceChat = forwardRef<
             setStep('settings');
           }}
           onUseSaved={() => setStep('settings')}
-          onReplace={() => setStep('key')}
           onPreview={() => void start(true)}
           onStart={() => void start(false)}
           onSave={() => {

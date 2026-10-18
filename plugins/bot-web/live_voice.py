@@ -228,7 +228,7 @@ def register_runtime(ctx):
     def setup(args, session_id=None, **_kwargs):
         store = None
         try:
-            if args != {}:
+            if not isinstance(args, dict) or set(args) - {'replace_key'} or ('replace_key' in args and type(args['replace_key']) is not bool):
                 raise ValueError('No secret values accepted')
             from .runtime import caller
             from .workspace import WorkspaceStore, workspace_path
@@ -251,15 +251,15 @@ def register_runtime(ctx):
                 from pathlib import Path
                 if Path(row['profile_home']).resolve() != Path(get_profile_dir(profile)).resolve():
                     raise ValueError('Different owner profile')
-            server._emit('voice.setup', ui_sid, {})
+            server._emit('voice.setup', ui_sid, {'replace_key': args.get('replace_key', False)})
             return json.dumps({'requested': True, 'message': 'Requested private voice setup in the current direct chat. The owner can also open Voice in the composer, enter a key privately, select/preview a voice and start a live call. Never ask for keys as chat text.'})
         except Exception:
             return json.dumps({'error': 'Open this Pebble’s direct chat and select Voice. Never send API keys in messages.'})
         finally:
             if store:
                 store.db.close()
-    schema = {'name': 'pebble_voice_setup', 'description': 'Open private live-voice setup in the current Pebble Crew chat. The owner enters any key outside chat, chooses/previews a voice and starts the call. Never accepts credentials or starts a metered call itself.',
-              'parameters': {'type': 'object', 'additionalProperties': False, 'properties': {}}}
+    schema = {'name': 'pebble_voice_setup', 'description': 'Open private live-voice setup in the current Pebble Crew chat. When the owner asks to replace their key, set replace_key to true to request private key entry. The owner enters any key outside chat, chooses/previews a voice and starts the call. Never accepts credentials or starts a metered call itself.',
+              'parameters': {'type': 'object', 'additionalProperties': False, 'properties': {'replace_key': {'type': 'boolean', 'description': 'Request private key entry when the owner asks to replace the saved voice key.'}}}}
     ctx.register_tool(name='pebble_voice_setup', toolset='workspace', description=schema['description'], schema=schema, handler=setup)
 
 
@@ -272,4 +272,4 @@ def runtime_guidance(platform):
     tools = get_tool_definitions(enabled_toolsets=server._load_enabled_toolsets(platform), disabled_toolsets=disabled, quiet_mode=True, skip_tool_search_assembly=True)
     if not any(t.get('function', {}).get('name') == 'pebble_voice_setup' for t in tools):
         return ''
-    return ('For live voice setup, use pebble_voice_setup with no arguments. If deferred, first use tool_describe(names=["pebble_voice_setup"]), then tool_call with its advertised schema. This opens private key entry and voice controls; never ask for an API key as chat text. The owner starts calls explicitly.')
+    return ('For live voice setup, use pebble_voice_setup with no arguments. When the owner asks to replace their voice key, use replace_key=true to open private key entry; the submitted value is stored by Hermes outside the chat. If deferred, first use tool_describe(names=["pebble_voice_setup"]), then tool_call with its advertised schema. Never ask for an API key as chat text. The owner starts calls explicitly.')
