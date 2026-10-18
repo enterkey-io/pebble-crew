@@ -19,8 +19,11 @@ Pebble colors and the single viewport controller remain feature responsibilities
 The standard Bubble's 80-percent maximum replaces the old per-device width rules.
 Legacy presentation rules and unused bubble tokens are removed. A structural
 negative control rejects their reintroduction; installed browser journeys check
-the actual geometry and stable live/final response elements. Verification and
-release of this candidate remain in progress.
+the actual geometry and stable live/final response elements. Complete desktop and
+phone journeys, clean source checks, AI catalog states and isolated native-owner
+acceptance passed. Screenshot review caught and corrected a touch tooltip left
+over the conversation, with failing-before/passing-after phone coverage. Package
+acceptance/publication remain separate from updating the owner's installation.
 
 ## PC-071 — recurring native lease ownership (18 October)
 

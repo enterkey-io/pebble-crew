@@ -32,6 +32,8 @@ Radix. Calendar and Shiki option construction respect optional values. Sidebar
 persistence belongs to its caller rather than a second cookie. These sources
 are building blocks; they do not own profile drafts, native authority or chat
 history.
+Tooltip hover surfaces stay hidden on coarse pointers, including after a menu
+returns focus; icon buttons retain accessible labels and desktop focus tooltips.
 
 Card and Attachment support `asChild` to retain native section/list semantics.
 Label owns stacked field alignment; Textarea supports caller-controlled sizing.

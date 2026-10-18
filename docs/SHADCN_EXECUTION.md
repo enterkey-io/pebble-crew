@@ -19,7 +19,24 @@ bubble geometry, metadata/action overrides and unused bubble tokens are deleted.
 Typography, Code Block and Table now own Markdown presentation. Native receipt
 identity, reactions, selected-Pebble colors and TranscriptFollow are retained.
 An installed geometry journey and a negative legacy-CSS control cover the previous
-gap. Candidate verification is in progress; the record below describes preview.5.
+gap. Phone screenshot review also caught a desktop tooltip remaining over the
+conversation after touch-menu focus returned. Shared Tooltip suppresses hover
+surfaces on coarse pointers; a phone test fails on the former build in both engines
+and passes on the correction. Accessible button labels and desktop focus tooltips
+remain available.
+
+Runtime source: `e871609`. Evidence is retained under
+`.audit/standard-transcript/`. A clean tracked-source checkout passed
+`npm run check` (160 unit tests, types, lint, contracts, format and production
+builds). The complete desktop suite passed 72 journeys; the complete phone suite
+passed 89 with seven existing skips. After the touch-tooltip correction, another
+21 desktop and 36 phone journeys passed, with six desktop-only cases skipped.
+All nine AI catalog journeys passed across desktop, iPhone and Android. The actual
+native owner flow passed against disposable Hermes and a deterministic local model.
+Settled desktop, iPhone and Android conversation, Markdown and reaction screenshots
+were inspected. These checks establish exercised behavior, not owner visual acceptance.
+Exact-package acceptance and publication are tracked separately on the progress board.
+The original verification record below describes preview.5.
 
 ## Decisions
 
