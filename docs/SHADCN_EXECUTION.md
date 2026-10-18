@@ -35,6 +35,10 @@ All nine AI catalog journeys passed across desktop, iPhone and Android. The actu
 native owner flow passed against disposable Hermes and a deterministic local model.
 Settled desktop, iPhone and Android conversation, Markdown and reaction screenshots
 were inspected. These checks establish exercised behavior, not owner visual acceptance.
+Reaction geometry is sampled atomically: separate browser reads can compare
+different viewport frames during movement. The same edge-overlap requirements
+are also checked while the transcript scrolls; repeated desktop runs exercise
+the measurement without weakening those requirements.
 Exact-package acceptance and publication are tracked separately on the progress board.
 The original verification record below describes preview.5.
 
