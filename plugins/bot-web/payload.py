@@ -11,7 +11,7 @@ PRE_VOICE_FILES = (
 )
 
 
-FILES = PRE_VOICE_FILES + ('live_voice.py',)
+FILES = PRE_VOICE_FILES + ('live_voice.py', 'commands.py')
 
 def source_inventory(source):
     """Read a known literal inventory without importing inspected/rollback code."""
@@ -28,8 +28,14 @@ def source_inventory(source):
                 names = ast.literal_eval(node.value)
                 if names in (PRE_VOICE_FILES, tuple(n for n in PRE_VOICE_FILES if n not in {'protocol-catalog.json', 'runtime-contract.json'})):
                     return names
-            if path.read_bytes() == Path(__file__).read_bytes():
-                return FILES
+            if (isinstance(node.value, ast.BinOp) and isinstance(node.value.op, ast.Add)
+                and isinstance(node.value.left, ast.Name) and node.value.left.id == 'PRE_VOICE_FILES'
+                and isinstance(node.value.right, ast.Tuple)):
+                bases = [item.value for item in tree.body if isinstance(item, ast.Assign)
+                         and any(isinstance(target, ast.Name) and target.id == 'PRE_VOICE_FILES' for target in item.targets)]
+                suffix = ast.literal_eval(node.value.right)
+                if len(bases) == 1 and ast.literal_eval(bases[0]) == PRE_VOICE_FILES and suffix in (('live_voice.py',), ('live_voice.py', 'commands.py')):
+                    return PRE_VOICE_FILES + suffix
     raise ValueError("Unknown code inventory")
 
 def payload_paths(source, *, legacy_runtime=False):
@@ -43,6 +49,18 @@ def payload_paths(source, *, legacy_runtime=False):
         if not path.is_file() or path.is_symlink() or not path.resolve().is_relative_to(source):
             raise ValueError('Incomplete integration code payload')
         result.append(path)
+    # Imports are code dependencies even when they occur inside a request handler.
+    # Catch a new module omitted from the positive shipping/runtime inventory.
+    import ast
+    names = {str(path.relative_to(source)) for path in result}
+    for path in result:
+        if path.suffix != '.py':
+            continue
+        for node in ast.walk(ast.parse(path.read_text())):
+            if isinstance(node, ast.ImportFrom) and node.level == 1 and node.module:
+                dependency = node.module.split('.')[0] + '.py'
+                if dependency not in names:
+                    raise ValueError('Integration inventory omits local import: ' + dependency)
     return result
 
 

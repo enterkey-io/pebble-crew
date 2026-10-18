@@ -244,6 +244,13 @@ try {
   await page.getByRole('button', { name: 'Start chatting', exact: true }).click();
   const message = page.getByLabel('Message', { exact: true });
   await expect(message).toBeEnabled();
+  await message.fill('/');
+  await expect(page.getByRole('option').filter({ hasText: '/model' }).first()).toBeVisible();
+  await message.fill('/model');
+  await page.getByRole('button', { name: 'Send message', exact: true }).click();
+  await expect(page.getByRole('alert')).toContainText('Use /model <model name>');
+  await page.getByRole('button', { name: 'Dismiss command result', exact: true }).click();
+  checks.native_slash_catalog_and_command_are_packaged = true;
   await message.fill('Synthetic installed plugin round trip');
   await page.getByRole('button', { name: 'Send message', exact: true }).click();
   await expect(page.getByText('Native fixture reply', { exact: true }).last()).toBeVisible();
