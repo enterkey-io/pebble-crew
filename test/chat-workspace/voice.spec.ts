@@ -79,6 +79,10 @@ test('private voice setup, Snow and selected-Pebble message colors', async ({
   await expect
     .poll(async () => (await page.locator('.pc-chat-header').boundingBox())?.y)
     .toBeGreaterThanOrEqual(0);
+  await expect(page.getByRole('button', { name: 'Start call', exact: true })).toBeInViewport({
+    ratio: 1,
+  });
+  await expect(page.getByRole('button', { name: /Latest messages/ })).not.toBeVisible();
   await page.screenshot({ path: info.outputPath('voice-ready.png') });
   await page.getByRole('button', { name: 'Replace API key', exact: true }).click();
   await expect(page.getByLabel('API key', { exact: true })).toHaveValue('');

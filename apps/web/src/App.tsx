@@ -300,6 +300,11 @@ export function App({ owner }: { owner?: OwnerConnection }) {
   const [pickingAgents, setPickingAgents] = useState(false);
   const transcriptPane = useRef<HTMLDivElement>(null);
   const composer = useRef<HTMLTextAreaElement>(null);
+  const prepareVoiceSetup = useCallback(() => {
+    followLatest.current = true;
+    setShowLatest(false);
+    requestAnimationFrame(() => transcriptFollow.current?.follow());
+  }, []);
   const followLatest = useRef(true);
   const focusOnReady = useRef(false);
   const drafts = useRef(new Map<string, string>());
@@ -1904,6 +1909,7 @@ export function App({ owner }: { owner?: OwnerConnection }) {
                         sessionId={selection.sessionId}
                         running={running}
                         onActiveChange={setVoiceActive}
+                        onSetupChange={prepareVoiceSetup}
                         barTarget={voiceBarTarget}
                         agentName={selection.bot.name}
                         avatar={

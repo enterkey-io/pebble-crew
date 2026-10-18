@@ -29,6 +29,7 @@ export const VoiceChat = forwardRef<
     running: boolean;
     onAccepted: (message: ChatMessage) => void;
     onOpenSettings?: () => void;
+    onSetupChange?: () => void;
     onActiveChange?: (active: boolean) => void;
     mode?: 'chat' | 'settings';
     externalCallActive?: boolean;
@@ -43,6 +44,7 @@ export const VoiceChat = forwardRef<
     running,
     onAccepted,
     onOpenSettings,
+    onSetupChange,
     onActiveChange,
     mode = 'chat',
     externalCallActive = false,
@@ -90,6 +92,9 @@ export const VoiceChat = forwardRef<
     setSettings(next);
     return next;
   }
+  useEffect(() => {
+    if (mode === 'chat' && visible && state === 'idle') onSetupChange?.();
+  }, [mode, visible, state, step, value, settings, onSetupChange]);
   async function loadSettings() {
     const value = decodeSettings(await rpc('voice.status'));
     if (mounted.current) {
