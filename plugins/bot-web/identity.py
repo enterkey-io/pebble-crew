@@ -1,6 +1,46 @@
-"""Owner-directed presentation changes and at-most-once native introductions."""
+"""Workspace identity, reporting and owner-directed native introductions."""
 from .operations import InvalidOperation, fields, identifier
 from .native import NativeError
+
+
+def hierarchy_context(state, profile):
+    bots = state['bots']
+    root = state['orchestrator']
+    references = {p: {'id': b['id'], 'profile': p, 'handle': '@'+b['handle'],
+        'native_target': 'hermes' if p == 'default' else p,
+        'is_main_pebble': p == root and b['manager'] is None}
+        for p, b in bots.items() if b.get('enrolled') and b.get('available', True)}
+    main = references.get(root)
+    if main and not main['is_main_pebble']:
+        main = None
+    manager = references.get(bots[profile]['manager'])
+    path, seen = [], set()
+    current = profile
+    while current in references and current not in seen:
+        seen.add(current)
+        path.append(references[current])
+        if main and current == root:
+            break
+        current = bots[current]['manager']
+    complete = bool(main and path and path[-1] == main)
+    if not main:
+        summary = ('The Main Pebble is not configured or is unavailable. Do not infer one '
+                   'from job titles, profile names or earlier conversations.')
+    elif profile == root:
+        summary = f'You are {main["handle"]}, the Main Pebble. You report directly to the human owner; no Pebble is above you.'
+    else:
+        summary = f'{main["handle"]} is the Main Pebble and reports directly to the human owner. '
+        if complete:
+            route = ' -> '.join(p['handle'] + (' (Main Pebble)' if p == main else '') for p in path)
+            summary += f'Your reporting path is {route} -> human owner.'
+        else:
+            summary += 'Your reporting path could not be verified. Do not invent a manager.'
+    return {'main_pebble': main, 'is_main_pebble': bool(main and profile == root),
+        'your_manager': manager, 'your_reporting_path': path if complete else [],
+        'hierarchy_summary': summary,
+        'directory': [{**reference, 'role': bots[p]['role'],
+            'manager_profile': bots[p]['manager'], 'manager': references.get(bots[p]['manager'])}
+            for p, reference in references.items()]}
 
 
 async def welcome(service, state, profile):
@@ -16,7 +56,7 @@ async def welcome(service, state, profile):
     prompt = ('The owner has just added you to Pebble Crew. Introduce yourself briefly in your existing '
               'voice and personality. You are the same agent, with the same memory and skills. '
               f'Your public handle here is @{bot["handle"]}. '
-              + ('You are their Main Pebble. ' if profile == state['orchestrator'] else '')
+              + hierarchy_context(state, profile)['hierarchy_summary'] + ' '
               + 'Read your workspace context and bot-web:manage-team skill. Mention only features you '
               'can verify and ask what they would like to work on. Do not create or change anything.')
     try:

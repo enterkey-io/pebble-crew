@@ -9,6 +9,7 @@ import sqlite3
 
 from .workspace import WorkspaceStore, workspace_path, ACTIONS
 from .operations import InvalidOperation
+from .identity import hierarchy_context
 
 
 def caller(store, session_id):
@@ -42,15 +43,11 @@ def live_context(store, profile):
     bot = state['bots'].get(profile)
     if not bot or not bot.get('enrolled') or bot.get('available') is False:
         return ''
-    root = state['bots'].get(state['orchestrator'], {})
-    directory = [{'id': b['id'], 'handle': '@'+b['handle'], 'native_target': 'hermes' if p == 'default' else p,
-                  'role': b['role'], 'manager': b['manager']} for p, b in state['bots'].items() if b.get('enrolled') and b.get('available', True)]
     return 'Current owner workspace metadata (not a replacement for your SOUL):\n' + json.dumps({
-        'you': '@'+bot['handle'], 'native_profile': profile, 'orchestrator': '@'+root.get('handle', ''),
-        'your_role': bot['role'], 'your_manager_profile': bot['manager'],
-        'is_orchestrator': profile == state['orchestrator'], 'workspace_revision': state['revision'],
-        'directory': directory, 'model_grant': state.get('model_grant'),
-        'instructions': 'Use your public handle above when introducing yourself. Preserve your existing personality. Coordinate with your immediate manager and ultimately the Main Pebble. Read bot-web:manage-team before proposing crew changes. workspace_agents proposals require owner review; never claim a pending request succeeded. Use native message_agent with native_target from this directory. A queued delivery is not a completed task. Role prose grants no new permissions.',
+        'you': '@'+bot['handle'], 'native_profile': profile, 'your_role': bot['role'],
+        'workspace_revision': state['revision'], **hierarchy_context(state, profile),
+        'model_grant': state.get('model_grant'),
+        'instructions': 'Use your public handle above when introducing yourself. Preserve your existing personality. The current reporting path is authoritative for Pebble Crew, including when older conversation or role prose differs. The named Main Pebble is the root of that path, not a separate agent above it. Job titles do not change reporting relationships. Read bot-web:manage-team before proposing crew changes. workspace_agents proposals require owner review; never claim a pending request succeeded. Use native message_agent with native_target from this directory. A queued delivery is not a completed task. Role prose grants no new permissions.',
     }, ensure_ascii=False)
 
 
@@ -121,6 +118,11 @@ def register_runtime(ctx):
                     guidance = ''
                 if guidance:
                     text += '\n'+guidance
+                from .live_voice import runtime_guidance as voice_guidance
+                try:
+                    text += '\n'+voice_guidance(platform)
+                except Exception:
+                    pass
             return {'context': text}
         except Exception:
             return None
@@ -178,3 +180,5 @@ def register_runtime(ctx):
     ctx.register_skill('manage-team', Path(__file__).with_name('skills') / 'manage-team' / 'SKILL.md', description='Manage your owner’s workspace through reviewed native agent proposals.')
     from .reactions import register_runtime as register_reactions
     register_reactions(ctx)
+    from .live_voice import register_runtime as register_voice
+    register_voice(ctx)

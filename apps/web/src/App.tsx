@@ -25,7 +25,9 @@ import { Icon } from './chat/Icon';
 import { Drawer } from './chat/Drawer';
 import { RequestReview } from './chat/RequestReview';
 import { DetailsDock } from './ui/DetailsDock';
-import { ChevronRight, File, Image } from 'lucide-react';
+import { VoiceChat } from './voice/VoiceChat';
+import type { VoiceChatHandle } from './voice/VoiceChat';
+import { ChevronRight, File, Image, AudioLines } from 'lucide-react';
 import { Menu } from './ui/primitives';
 import { LoadingBar } from './components/ui/loading-bar';
 import { organizationState } from './ui/organization';
@@ -64,6 +66,7 @@ function text(value: unknown): string {
 export function App({ owner }: { owner?: OwnerConnection }) {
   const ownerRef = useRef(owner);
   ownerRef.current = owner;
+  const voicePanel = useRef<VoiceChatHandle>(null);
   const [workspace, setWorkspace] = useState<WorkspaceState>();
   const [settings, setSettings] = useState(false);
   const [settingsTab, setSettingsTab] = useState<'agents' | 'requests' | 'account' | 'connections'>(
@@ -710,6 +713,7 @@ export function App({ owner }: { owner?: OwnerConnection }) {
 
   async function receive(connection: BotBridgeClient, event: BridgeEvent) {
     if (current.current !== connection) return;
+    voicePanel.current?.event(event);
     if (event.type === 'workspace.changed') {
       await loadRoster(connection, true);
       return;
@@ -1815,6 +1819,31 @@ export function App({ owner }: { owner?: OwnerConnection }) {
               }}
             >
               <Transcript
+                footer={
+                  selection?.kind === 'bot' &&
+                  (client.supportsLiveVoice || client.supportsSecrets) ? (
+                    <VoiceChat
+                      key={selection.sessionId}
+                      ref={voicePanel}
+                      client={client}
+                      sessionId={selection.sessionId}
+                      running={running}
+                      onAccepted={(message) =>
+                        setMessages((previous) =>
+                          previous.some((item) => item.id === message.id)
+                            ? previous
+                            : [...previous, message],
+                        )
+                      }
+                    />
+                  ) : undefined
+                }
+                ownerColor={
+                  selection?.kind === 'bot'
+                    ? workspace?.bots.find((b) => b.profile === selection.bot.profile)?.appearance
+                        .color
+                    : undefined
+                }
                 client={client}
                 sessionId={selection?.kind === 'bot' ? selection.sessionId : undefined}
                 conversationKey={selection ? draftKey(selection) : ''}
@@ -2026,6 +2055,21 @@ export function App({ owner }: { owner?: OwnerConnection }) {
                         }
                       }}
                     />
+                    {selection?.kind === 'bot' && client.supportsLiveVoice && (
+                      <button
+                        type="button"
+                        className="icon-button pc-call-button"
+                        aria-label="Voice chat"
+                        disabled={blocked}
+                        onClick={() => {
+                          voicePanel.current?.open();
+                          followLatest.current = true;
+                          requestAnimationFrame(jumpToLatest);
+                        }}
+                      >
+                        <AudioLines size={20} />
+                      </button>
+                    )}
                     <ComposerAction
                       mode={running ? (stopping ? 'stopping' : 'stop') : 'send'}
                       disabled={

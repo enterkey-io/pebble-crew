@@ -11,7 +11,7 @@ export const COLORS = [
   { id: 'lagoon', label: 'Lagoon', hex: '#8dcec6' },
   { id: 'rose', label: 'Rose', hex: '#e7a5ba' },
   { id: 'sky', label: 'Sky', hex: '#9bbfe8' },
-  { id: 'white', label: 'White', hex: '#f4f3ef' },
+  { id: 'white', label: 'Snow', hex: '#f4f3ef' },
   { id: 'umber', label: 'Umber', hex: '#9c7658' },
   { id: 'moss', label: 'Moss', hex: '#789463' },
   { id: 'ocean', label: 'Ocean', hex: '#5e8fb5' },

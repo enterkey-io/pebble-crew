@@ -53,6 +53,8 @@ def configuration():
 def create_app(token, origins, hosts, gateway=None, trust=None, workspace=None, public_callback=None):
     native = gateway or NativeGateway()
     ops = BotOperations(native)
+    from .live_voice import LiveVoice, supported as live_voice_supported
+    voice = LiveVoice(ops)
     from .attachments import GeneratedMedia
     media = GeneratedMedia(ops)
     if workspace is None and gateway is None:
@@ -223,7 +225,7 @@ def create_app(token, origins, hosts, gateway=None, trust=None, workspace=None, 
                                "expires": request.scope.get("bot.ticket_expires"), "ended": None}
         build = getattr(native, "build", None) or {}
         return {"connection": connection, "protocol": "hermes-bot-web.v1", "bridge_version": VERSION,
-                "capabilities": {"existing_agents": True, "owner_login": owner_trust is not None, "workspace": bool(workspace), "attachments": bool(files), "generated_media": True, "reactions": True, "computer": computer.supported},
+                "capabilities": {"existing_agents": True, "owner_login": owner_trust is not None, "workspace": bool(workspace), "attachments": bool(files), "generated_media": True, "reactions": True, "live_voice": live_voice_supported(), "secrets": bool(getattr(native, "build", None) and native.build.get("server_requests")), "computer": computer.supported},
                 "hermes_version": build.get("version"), "hermes_revision": build.get("revision")}
 
     @app.post("/v1/renew")
@@ -264,9 +266,17 @@ def create_app(token, origins, hosts, gateway=None, trust=None, workspace=None, 
             if not definition or not any(PROTOCOL_CATALOG['routes'][name]['path'] == request.url.path
                                          for name in definition['accepted']):
                 raise InvalidOperation('Operation unavailable on this route')
-            if operation.startswith(("chat.", "files.", "media.")) and params.get("session_id") not in client["sessions"]:
+            if operation.startswith(("chat.", "files.", "media.", "voice.", "secrets.")) and params.get("session_id") not in client["sessions"]:
                 raise InvalidOperation("Session belongs to another connection")
-            if operation == 'media.read':
+            if operation in {'voice.status', 'voice.preferences', 'voice.credential', 'voice.session', 'voice.submit'}:
+                result = await voice.invoke(operation, params)
+            elif operation in {'secrets.pending', 'secrets.respond'}:
+                sid = params.get('session_id')
+                profile = ops.sessions.get(sid)
+                if not profile or await ops.stamp(profile) != ops.session_incarnations.get(sid):
+                    raise InvalidOperation('Reopen this Pebble before answering')
+                result = await native.secret_prompt(operation, params)
+            elif operation == 'media.read':
                 blob, name, mime = await media.read(params)
                 from urllib.parse import quote
                 return Response(blob, media_type=mime, headers={'Content-Disposition': "attachment; filename*=UTF-8''" + quote(name, safe='')})

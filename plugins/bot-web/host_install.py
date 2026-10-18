@@ -245,12 +245,13 @@ def code_digest(source, names):
 def runtime_evidence(source):
     """Inspect code on disk without importing or executing the inspected plugin."""
     source = Path(source)
-    from .payload import FILES
+    from .payload import source_inventory
+    files = source_inventory(source)
     if (source / 'runtime-contract.json').is_symlink():
         raise ValueError('Invalid runtime compatibility declaration')
-    names = [name for name in FILES if (source / name).exists()]
+    names = [name for name in files if (source / name).exists()]
     optional_legacy = {'runtime-contract.json', 'protocol-catalog.json'}
-    required = set(FILES) if (source / 'runtime-contract.json').exists() else set(FILES) - optional_legacy
+    required = set(files) if (source / 'runtime-contract.json').exists() else set(files) - optional_legacy
     if not required.issubset(names):
         raise ValueError('Runtime code payload is incomplete')
     if not source.is_dir() or 'runtime.py' not in names:

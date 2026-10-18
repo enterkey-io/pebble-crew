@@ -93,7 +93,7 @@ test('private first use, native onboarding, idle keepalive, reconnection, settin
   await picker.getByRole('button', { name: 'Animated', exact: true }).click();
   await page.getByRole('checkbox', { name: 'Send an introduction' }).uncheck();
   await page.locator('.handle-input input').fill('aurora');
-  await page.getByRole('button', { name: 'White', exact: true }).click();
+  await page.getByRole('button', { name: 'Snow', exact: true }).click();
   await page.getByRole('button', { name: 'petal', exact: true }).click();
   await expect(picker.locator('.avatar-shapes path')).toHaveCount(SHAPES.length);
   for (const path of await picker.locator('.avatar-shapes path').all())

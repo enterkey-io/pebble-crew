@@ -359,6 +359,34 @@
     "workspace.welcome": {
       "preferred": "rpc",
       "accepted": ["rpc"]
+    },
+    "voice.status": {
+      "preferred": "rpc",
+      "accepted": ["rpc"]
+    },
+    "voice.preferences": {
+      "preferred": "rpc",
+      "accepted": ["rpc"]
+    },
+    "voice.credential": {
+      "preferred": "rpc",
+      "accepted": ["rpc"]
+    },
+    "voice.session": {
+      "preferred": "rpc",
+      "accepted": ["rpc"]
+    },
+    "voice.submit": {
+      "preferred": "rpc",
+      "accepted": ["rpc"]
+    },
+    "secrets.pending": {
+      "preferred": "rpc",
+      "accepted": ["rpc"]
+    },
+    "secrets.respond": {
+      "preferred": "rpc",
+      "accepted": ["rpc"]
     }
   }
 }

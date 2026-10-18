@@ -235,7 +235,7 @@ try {
   );
   await page.getByRole('checkbox', { name: 'Send an introduction' }).uncheck();
   await page.locator('.handle-input input').fill('aurora');
-  await page.getByRole('button', { name: 'White', exact: true }).click();
+  await page.getByRole('button', { name: 'Snow', exact: true }).click();
   await page.getByRole('button', { name: 'Start chatting', exact: true }).click();
   const message = page.getByLabel('Message', { exact: true });
   await expect(message).toBeEnabled();

@@ -8,6 +8,7 @@ import type { ChatMessage } from '../conversation';
 import { MessageReactions, ReactionPicker } from './MessageReactions';
 import type { ReactionAction } from './MessageReactions';
 import { ActivityLine } from './ActivityLine';
+import { ownerBubbleStyle } from './bubble-color';
 export function Transcript({
   conversationKey,
   messages,
@@ -23,6 +24,8 @@ export function Transcript({
   onReact,
   client,
   sessionId,
+  ownerColor,
+  footer,
 }: {
   conversationKey: string;
   messages: ChatMessage[];
@@ -38,6 +41,8 @@ export function Transcript({
   onReact?: ReactionAction | undefined;
   client?: BotBridgeClient | undefined;
   sessionId?: string | undefined;
+  ownerColor?: string | undefined;
+  footer?: ReactNode;
 }) {
   const reduced = useReducedMotion();
   const displayed = stream
@@ -103,7 +108,10 @@ export function Transcript({
           >
             {label && <p className="pc-date date-divider">{group}</p>}
             <div className="pc-bubble-wrap">
-              <article className={`pc-bubble message ${m.role}`}>
+              <article
+                className={`pc-bubble message ${m.role}`}
+                style={m.role === 'user' ? ownerBubbleStyle(ownerColor) : undefined}
+              >
                 {crew && m.role === 'assistant' && (
                   <strong className="message-author">
                     {m.author ? authorName(m.author) : live ? title : 'Crew member'}
@@ -162,6 +170,7 @@ export function Transcript({
           </motion.div>
         );
       })}
+      {footer}
       <ActivityLine
         key={conversationKey}
         active={!!conversationKey && running}

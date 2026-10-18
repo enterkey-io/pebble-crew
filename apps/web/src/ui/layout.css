@@ -347,6 +347,9 @@
   width: 13px;
   height: 13px;
 }
+.pc-message.user .pc-bubble[style] .pc-message-meta {
+  color: inherit;
+}
 .pc-message-actions {
   display: flex;
   position: absolute;
@@ -522,9 +525,13 @@
 }
 @media (prefers-reduced-motion: reduce) {
   .pc-activity {
+    opacity: 1 !important;
     background: none;
     -webkit-text-fill-color: currentColor;
     animation: none;
+  }
+  .pc-activity[data-settling] {
+    opacity: 0 !important;
   }
 }
 .pc-empty-chat {

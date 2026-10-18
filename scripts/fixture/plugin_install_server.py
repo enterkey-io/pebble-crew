@@ -3,6 +3,7 @@
 Test control endpoints exist only in this fixture and are never packaged.
 """
 import argparse
+import ast
 import hashlib
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import json
@@ -167,6 +168,14 @@ def main():
         assert result.returncode == 0, 'Historical runtime source is unavailable; fetch repository history before acceptance'
         return result.stdout
 
+    def historical_inventory():
+        tree = ast.parse(historical_file('payload.py').decode())
+        declaration = next(node for node in tree.body if isinstance(node, ast.Assign)
+            and any(isinstance(target, ast.Name) and target.id == 'FILES' for target in node.targets))
+        names = ast.literal_eval(declaration.value)
+        assert isinstance(names, tuple) and all(isinstance(name, str) and not Path(name).is_absolute() and '..' not in Path(name).parts for name in names)
+        return names
+
     def historical_rollback_release():
         """Exact pre-contract Python payload with this archive's web assets/dependencies."""
         value = json.loads((state / 'install.json').read_text())
@@ -175,15 +184,14 @@ def main():
         shutil.copytree(source, target, symlinks=True)
         metadata = json.loads((target / 'release.json').read_text())
         metadata['version'] = '0.7.6'
-        names = list(metadata['files'])
-        for name in names:
-            if name.startswith('web-runtime/'):
-                continue
-            if name in {'runtime-contract.json', 'protocol-catalog.json'}:
+        old_names = historical_inventory()
+        for name in list(metadata['files']):
+            if not name.startswith('web-runtime/') and name not in old_names:
                 (target / name).unlink()
                 del metadata['files'][name]
-                continue
+        for name in old_names:
             old = historical_file(name)
+            (target / name).parent.mkdir(parents=True, exist_ok=True)
             (target / name).write_bytes(old)
             metadata['files'][name] = hashlib.sha256(old).hexdigest()
         identity = hashlib.sha256(json.dumps(metadata['files'], sort_keys=True).encode()).hexdigest()[:24]
@@ -233,13 +241,13 @@ def main():
                         path = Path(get_profile_dir(profile)) / 'plugins/bot-web'
                         runtime_paths[profile] = path
                         inventory = json.loads((state / 'releases' / active / 'release.json').read_text())['files']
+                        old_names = historical_inventory()
                         for name in inventory:
-                            if name.startswith('web-runtime/'):
-                                continue
-                            if name in {'runtime-contract.json', 'protocol-catalog.json'}:
-                                (path / name).unlink()
-                            else:
-                                (path / name).write_bytes(historical_file(name))
+                            if not name.startswith('web-runtime/') and name not in old_names:
+                                (path / name).unlink(missing_ok=True)
+                        for name in old_names:
+                            (path / name).parent.mkdir(parents=True, exist_ok=True)
+                            (path / name).write_bytes(historical_file(name))
                         runtime_original[profile] = tool_marker(path)
                     initial = cli('runtime-status')
                     checks['legacy_runtime_copies_recognized'] = all(row['contract'] == 'legacy-b642cce'

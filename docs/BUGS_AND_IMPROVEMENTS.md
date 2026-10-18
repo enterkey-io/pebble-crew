@@ -4,6 +4,17 @@ Track owner reports here through implementation, verification and release. A
 published fix is separate from updating and verifying the owner's installation.
 New reports receive a stable ID; later work updates the existing entry.
 
+## 0.7.8-preview.4 candidate
+
+| ID     | Report                                             | Change                                                                                                                                                                                   |
+| ------ | -------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| PC-068 | Existing agents infer a separate boss above Aurora | Shared native context/introduction resolves the Main Pebble and full reporting path by identity; job titles do not alter the graph.                                                      |
+| PC-069 | Voice needs guided private setup                   | Native OpenAI Live integration, private secret card, voice/pace and preview, explicit call controls and exact reply receipts. Legacy Hermes reports unsupported; no custom Grok adapter. |
+| PC-070 | Owner bubble color and White naming                | Owner bubbles use the selected Pebble palette with readable dark text. White is named Snow; existing white IDs and neutral gray owner bubbles remain.                                    |
+
+Publication is separate from upgrading the owner's installation. Verification
+limits and voice provenance are recorded in [the voice plan](VOICE_IMPLEMENTATION_PLAN.md).
+
 ## 0.7.7 reliability and message motion
 
 See the [implementation plan](AGENT_RELIABILITY_PLAN.md) for the retained baseline

@@ -7,6 +7,7 @@ import unittest
 from test_security import Native
 from bot_web.operations import BotOperations, InvalidOperation
 from bot_web.workspace import WorkspaceStore, WorkspaceService, normalize_photo
+from bot_web.runtime import live_context
 
 
 class WorkspaceNative(Native):
@@ -126,6 +127,75 @@ class WorkspaceTests(unittest.IsolatedAsyncioTestCase):
         prompt = self.service.ops.greet.call_args.args[1]
         self.assertIn('@aurora', prompt)
         self.assertIn('existing voice and personality', prompt)
+
+    async def test_existing_agent_context_resolves_main_pebble_and_manager_to_same_identity(self):
+        state = self.store.read()
+        state['bots']['default']['role']['title'] = 'Chief of Staff'
+        state['bots']['amy'].update(handle='chloe', manager='default')
+        state['bots']['amy']['role']['title'] = "Aurora's assistant"
+        self.store.save(state, state['revision'])
+        context = json.loads(live_context(self.store, 'amy').split('\n', 1)[1])
+        self.assertEqual(context['main_pebble']['handle'], '@aurora')
+        self.assertEqual(context['main_pebble']['profile'], 'default')
+        self.assertEqual(context['your_manager'], context['main_pebble'])
+        self.assertEqual([p['handle'] for p in context['your_reporting_path']], ['@chloe', '@aurora'])
+        self.assertIn('@aurora is the Main Pebble', context['hierarchy_summary'])
+        self.assertIn('human owner', context['hierarchy_summary'])
+        root = next(p for p in context['directory'] if p['handle'] == '@aurora')
+        self.assertTrue(root['is_main_pebble'])
+        self.assertIsNone(root['manager'])
+        self.assertEqual(root['profile'], 'default')
+        self.assertEqual(root['native_target'], 'hermes')
+
+    async def test_main_pebble_has_no_pebble_manager_and_transfer_refreshes_context(self):
+        context = json.loads(live_context(self.store, 'default').split('\n', 1)[1])
+        self.assertTrue(context['is_main_pebble'])
+        self.assertIsNone(context['your_manager'])
+        self.assertIn('You are @aurora, the Main Pebble', context['hierarchy_summary'])
+        state = self.store.read()
+        await self.service.invoke('workspace.set_orchestrator', {
+            'profile': 'amy', 'expected_revision': state['revision']})
+        context = json.loads(live_context(self.store, 'default').split('\n', 1)[1])
+        self.assertFalse(context['is_main_pebble'])
+        self.assertEqual(context['main_pebble']['handle'], '@amy')
+        self.assertEqual(context['your_manager'], context['main_pebble'])
+
+    async def test_indirect_manager_is_distinct_from_the_main_pebble(self):
+        self.native.profiles.append({'name': 'grace', 'is_default': False,
+            'ui_meta': {'hermes-bots': {'title': 'Grace'}},
+            'canonical_session': {'id': 'grace-root'}})
+        await self.service.invoke('workspace.describe', {})
+        state = self.store.read()
+        state['bots']['default']['role']['title'] = 'Chief of Staff'
+        state['bots']['grace']['role']['title'] = 'Executive Assistant'
+        state['bots']['amy'].update(handle='chloe', manager='grace')
+        self.store.save(state, state['revision'])
+        context = json.loads(live_context(self.store, 'amy').split('\n', 1)[1])
+        self.assertEqual(context['main_pebble']['handle'], '@aurora')
+        self.assertEqual(context['your_manager']['handle'], '@grace')
+        self.assertEqual([p['handle'] for p in context['your_reporting_path']], ['@chloe', '@grace', '@aurora'])
+        self.assertIn('@chloe -> @grace -> @aurora (Main Pebble) -> human owner', context['hierarchy_summary'])
+
+    async def test_existing_agent_intro_names_main_pebble_and_exact_reporting_path(self):
+        from unittest.mock import AsyncMock
+        self.service.ops.greet = AsyncMock()
+        state = self.store.read()
+        state['bots']['amy']['handle'] = 'chloe'
+        self.store.save(state, state['revision'])
+        await self.service.invoke('agent.welcome', {'profile': 'amy', 'id': state['bots']['amy']['id']})
+        prompt = self.service.ops.greet.call_args.args[1]
+        self.assertIn('@aurora is the Main Pebble', prompt)
+        self.assertIn('@chloe -> @aurora (Main Pebble) -> human owner', prompt)
+
+    async def test_no_configured_main_pebble_does_not_infer_one_from_a_job_title(self):
+        state = self.store.read()
+        state.update(initialized=False, orchestrator=None)
+        state['bots']['default']['role']['title'] = 'Main Pebble'
+        self.store.save(state, state['revision'])
+        context = json.loads(live_context(self.store, 'amy').split('\n', 1)[1])
+        self.assertIsNone(context['main_pebble'])
+        self.assertFalse(context['is_main_pebble'])
+        self.assertIn('not configured', context['hierarchy_summary'])
 
     async def test_stock_native_photo_does_not_override_animated_default_or_saved_choice(self):
         self.native.profiles[1]['has_avatar'] = True

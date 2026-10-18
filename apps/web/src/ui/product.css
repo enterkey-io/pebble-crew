@@ -1711,3 +1711,118 @@ button.connection-row:hover {
     flex-wrap: wrap;
   }
 }
+
+.pc-secret-card,
+.pc-voice-card {
+  width: 100%;
+  padding: 24px;
+  border-radius: 24px;
+  background: var(--card);
+  color: var(--foreground);
+}
+.pc-secret-heading,
+.pc-secret-card footer,
+.pc-secret-card small,
+.pc-voice-card header,
+.pc-voice-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.pc-secret-heading {
+  color: var(--muted-foreground);
+  margin-bottom: 24px;
+}
+.pc-secret-card h3,
+.pc-voice-card h3 {
+  font-size: 17px;
+  font-weight: 550;
+}
+.pc-secret-card p,
+.pc-voice-card p {
+  font-size: 14px;
+  color: var(--muted-foreground);
+  line-height: 1.5;
+  margin-top: 6px;
+}
+.pc-secret-card label {
+  display: grid;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--muted-foreground);
+  margin: 24px 0;
+}
+.pc-secret-card input {
+  height: 44px;
+}
+.pc-secret-card footer {
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+.pc-secret-card small {
+  font-size: 12px;
+  color: var(--muted-foreground);
+  margin-right: auto;
+}
+.pc-voice-card header {
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+.pc-voice-card .pc-secret-card {
+  padding: 0;
+}
+.pc-voice-options {
+  display: flex;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+.pc-voice-options label {
+  display: grid;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--muted-foreground);
+  flex: 1;
+}
+.pc-voice-options select {
+  min-height: 42px;
+  min-width: 120px;
+  padding: 6px 12px;
+  border-radius: 10px;
+  background: var(--background);
+  color: var(--foreground);
+  border: 1px solid var(--border);
+}
+.pc-voice-actions {
+  justify-content: flex-end;
+  margin-top: 18px;
+}
+.pc-voice-actions [role='status'] {
+  margin-right: auto;
+  font-size: 13px;
+  color: var(--muted-foreground);
+}
+.pc-voice-card .pc-voice-disclosure {
+  font-size: 12px;
+  margin-top: 16px;
+}
+.pc-voice-card .pc-voice-error {
+  color: var(--foreground);
+}
+.pc-voice-card .pc-voice-caption {
+  font-size: 13px;
+  margin-top: 12px;
+}
+.pc-call-button {
+  flex-shrink: 0;
+}
+@media (max-width: 640px) {
+  .pc-secret-card,
+  .pc-voice-card {
+    padding: 18px;
+    border-radius: 20px;
+  }
+  .pc-secret-card small {
+    flex-basis: 100%;
+    margin-bottom: 6px;
+  }
+}

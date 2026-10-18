@@ -23,10 +23,19 @@ class WorkspaceModel(Model):
     described = False
     handed = False
     room_handed = False
+    live_requests = []
 
     def do_POST(self):
         payload = self.rfile.read(int(self.headers['Content-Length']))
         data = json.loads(payload)
+        if self.path == '/v1/live/sessions':
+            self.live_requests.append(data)
+            response = json.dumps({'session': {'id': 'synthetic-live'}, 'transport': {'type': 'webrtc', 'sdp': 'v=0\r\nsynthetic-answer\r\n'}}).encode()
+            self.send_response(200)
+            self.send_header('Content-Type', 'application/json')
+            self.end_headers()
+            self.wfile.write(response)
+            return
         self.requests.append(data)
         names = {t.get('function', {}).get('name') for t in data.get('tools', [])}
         user = str(next((m.get('content') for m in reversed(data.get('messages', [])) if m.get('role') == 'user'), ''))
@@ -65,7 +74,7 @@ class WorkspaceModel(Model):
         super().do_POST()
 
 
-async def verify(home):
+async def verify(home, model_port):
     from bot_web.native import NativeGateway
     from bot_web.operations import BotOperations, InvalidOperation
     from bot_web.workspace import WorkspaceStore, WorkspaceService
@@ -76,6 +85,8 @@ async def verify(home):
     workspace = WorkspaceService(ops, store)
     try:
         await native.call('profiles.create', {'name': 'engineer', 'no_alias': True, 'no_skills': True, 'mirror_credentials': False})
+        existing_model = await native.call('bot_web.models', {'action': 'describe'})
+        await native.call('bot_web.models', {'action': 'grant', 'profile': 'engineer', 'expected': existing_model['fingerprint']})
         soul = (home / 'SOUL.md').read_bytes()
         detection = await workspace.invoke('workspace.detect_primary', {})
         assert detection['profile'] == 'default', detection
@@ -113,6 +124,75 @@ async def verify(home):
         current = await workspace.invoke('workspace.describe', {})
         model = current['model_grant']
         assert model['supported'] is True, model
+        # An ordinary existing profile receives the same explicit root in its
+        # real introduction and model context, even when job titles differ.
+        await native.call('bot_web.models', {'action': 'grant', 'profile': 'engineer', 'expected': model['fingerprint']})
+        engineer = next(b for b in current['bots'] if b['profile'] == 'engineer')
+        start = len(WorkspaceModel.requests)
+        greeting = await workspace.invoke('agent.welcome', {'profile': 'engineer', 'id': engineer['id']})
+        assert greeting['state'] == 'accepted', greeting
+        async with asyncio.timeout(60):
+            while True:
+                event = await queue.get()
+                if event.get('type') == 'message.complete' and ops.sessions.get(event.get('session_id')) == 'engineer':
+                    break
+        contexts = []
+        for request in WorkspaceModel.requests[start:]:
+            for message in request.get('messages', []):
+                content = message.get('content')
+                marker = 'Current owner workspace metadata (not a replacement for your SOUL):\n'
+                if isinstance(content, str) and marker in content:
+                    value, _ = json.JSONDecoder().raw_decode(content.rsplit(marker, 1)[1])
+                    if value.get('native_profile') == 'engineer':
+                        contexts.append(value)
+        assert contexts, 'Existing agent introduction did not receive live hierarchy'
+        assert all(c['main_pebble']['handle'] == '@aurora' and c['your_manager'] == c['main_pebble'] for c in contexts), contexts
+        assert all([p['handle'] for p in c['your_reporting_path']] == ['@engineer', '@aurora'] for c in contexts), contexts
+        assert '@aurora is the Main Pebble' in json.dumps(WorkspaceModel.requests[start:]), 'Welcome omitted actual root'
+        # The modern native Live helpers, actual profile secret lifecycle and
+        # normal model turn, with signaling only to this deterministic localhost.
+        from bot_web.live_voice import LiveVoice, supported as supports_live
+        if supports_live():
+            from hermes_cli.web_server_profiles import _config_profile_scope
+            from hermes_cli.config import read_user_config_raw, save_config
+            with _config_profile_scope('engineer'):
+                config = read_user_config_raw() or {}
+                config.setdefault('auxiliary', {})['voice_chat'] = {'model': 'must-not-use-auxiliary-voice-reasoner'}
+                config.setdefault('voice', {}).setdefault('gpt_live', {})['base_url'] = 'http://127.0.0.1:' + str(model_port) + '/v1'
+                save_config(config)
+            voice = LiveVoice(ops)
+            engineer_chat = await ops.invoke('bot.open', {'profile': 'engineer'})
+            sid = engineer_chat['session_id']
+            before_env = (home / '.env').read_bytes()
+            status = await voice.invoke('voice.status', {'session_id': sid})
+            assert status['supported'] and not status['configured'], status
+            assert (await voice.invoke('voice.credential', {'session_id': sid, 'value': 'synthetic-voice-only-key'})) == {'saved': True, 'validated': False}
+            status = await voice.invoke('voice.status', {'session_id': sid})
+            assert status['configured'], status
+            status = await voice.invoke('voice.preferences', {'session_id': sid, 'voice': status['voices'][1], 'pace': 'slower'})
+            assert status['pace'] == 'slower', status
+            for preview in (True, False):
+                answer = await voice.invoke('voice.session', {'session_id': sid, 'sdp': 'v=0\r\nsynthetic-offer\r\n', 'preview': preview})
+                assert answer['transport']['sdp'] == 'v=0\r\nsynthetic-answer\r\n'
+                sent = WorkspaceModel.live_requests[-1]
+                assert sent['transport']['sdp'] == 'v=0\r\nsynthetic-offer\r\n'
+                assert sent['session']['audio']['output']['voice'] == status['voice']
+                assert 'synthetic-voice-only-key' not in json.dumps(sent)
+            assert (home / '.env').read_bytes() == before_env, 'Voice credential changed the primary profile'
+            start = len(WorkspaceModel.requests)
+            accepted = await voice.invoke('voice.submit', {'session_id': sid, 'text': 'Synthetic live voice request', 'context': 'User: check this synthetic request'})
+            assert type(accepted.get('user_row_id')) is int, accepted
+            async with asyncio.timeout(60):
+                while True:
+                    event = await queue.get()
+                    if event.get('type') == 'message.complete' and event.get('session_id') == sid:
+                        receipt = event.get('payload', {}).get('persisted_turn', {})
+                        assert receipt.get('user_row_id') == accepted['user_row_id'], event
+                        assert type(receipt.get('final_assistant_row_id')) is int, event
+                        break
+            assert WorkspaceModel.requests[start:] and all(r.get('model') == 'fixture-model' for r in WorkspaceModel.requests[start:])
+            assert 'live spoken conversation' in json.dumps(WorkspaceModel.requests[start:]), 'Native Live surface note omitted'
+        current = await workspace.invoke('workspace.describe', {})
         created = await workspace.invoke('agent.create', {'name': 'new-researcher', 'display_name': 'New Researcher', 'soul': 'SYNTHETIC_NEW_RESEARCHER_PERSONALITY', 'role': 'Research synthetic fixtures', 'model_source': 'default', 'model_fingerprint': model['fingerprint'], 'skills': [], 'toolsets': ['workspace', 'skills'], 'manager': 'default', 'team': None, 'expected_revision': current['revision']})
         assert created['state'] == 'completed', created
         from hermes_cli.profiles import get_profile_dir
@@ -181,7 +261,7 @@ async def verify(home):
         persisted = WorkspaceStore(home / 'bot-web' / 'workspace.sqlite')
         assert persisted.read()['bots']['default']['id'] == root['id']
         persisted.db.close()
-        print(json.dumps({'workspace': 'pass', 'revision': native.build['revision'], 'native_primary': 'pass', 'same_soul': 'pass', 'real_model_management_proposal': 'pass', 'caller_binding': 'pass', 'owner_approval': 'pass', 'live_public_handle_context': 'pass', 'new_agent_distinct_persona_and_real_model_turn': 'pass', 'single_provider_grant': 'pass', 'named_profile_management_context': 'pass', 'public_handle_native_dm': 'pass', 'public_handle_native_room_handoff': 'pass', 'metadata_merge': 'pass', 'stale_write_rejected': 'pass', 'model': 'synthetic-loopback-only'}))
+        print(json.dumps({'workspace': 'pass', 'revision': native.build['revision'], 'native_primary': 'pass', 'same_soul': 'pass', 'real_model_management_proposal': 'pass', 'caller_binding': 'pass', 'owner_approval': 'pass', 'live_public_handle_context': 'pass', 'new_agent_distinct_persona_and_real_model_turn': 'pass', 'single_provider_grant': 'pass', 'named_profile_management_context': 'pass', 'public_handle_native_dm': 'pass', 'public_handle_native_room_handoff': 'pass', 'metadata_merge': 'pass', 'stale_write_rejected': 'pass', 'native_live_profile_secret_settings_and_receipts': 'pass' if supports_live() else 'unsupported-on-legacy', 'model': 'synthetic-loopback-only'}))
     finally:
         store.db.close()
         await native.stop()
@@ -201,7 +281,7 @@ def main():
         (home / 'config.yaml').write_text('model:\n  default: fixture-model\n  provider: custom:fixture\nproviders:\n  fixture:\n    base_url: http://127.0.0.1:' + str(model.server_port) + '/v1\n    api_key: fixture-only\nagent:\n  max_turns: 3\n  bot_mode_protocol: true\n  stream: false\ntools:\n  tool_search:\n    enabled: \'off\'\nplugins:\n  enabled: [bot-web]\n  entries:\n    bot-web:\n      enabled: true\n')
         load_plugin(ROOT)
         try:
-            asyncio.run(verify(home))
+            asyncio.run(verify(home, model.server_port))
         finally:
             model.shutdown()
 

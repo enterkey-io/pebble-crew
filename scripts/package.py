@@ -10,6 +10,8 @@ import os
 root = Path(__file__).resolve().parents[1]
 release = json.loads((root / "release.json").read_text())
 destination = root / "artifacts/packages"
+tracked = set(subprocess.check_output(
+    ['git', 'ls-files', '-z'], cwd=root).decode().split('\0')) if (root / '.git').exists() else None
 destination.mkdir(parents=True, exist_ok=True)
 build = Path(os.environ['WORKSPACE_BUILD_ROOT']).resolve() if os.environ.get('WORKSPACE_BUILD_ROOT') else None
 web_root = build / 'web' if build else root / 'apps/web/dist'
@@ -59,6 +61,8 @@ for name in ("apps/owner-worker/migrations/0001_owner.sql",
     owner.append((root / name, name))
 for directory in ("apps", "packages"):
     for package in (root / directory).glob("*/package.json"):
+        if tracked is not None and str(package.relative_to(root)) not in tracked:
+            continue
         owner.append((package, str(package.relative_to(root))))
 for example in (root / "deploy").glob("*.example"):
     owner.append((example, str(example.relative_to(root))))
@@ -83,8 +87,7 @@ plugin += [(root / "LICENSE", "LICENSE"), (root / "docs/AGENT_INSTALL.md", "AGEN
 archive("workspace-plugin-preview.zip", plugin)
 source = []
 # A checkout may contain another task's unpublished drafts. Ship tracked paths only.
-tracked = set(subprocess.check_output(
-    ['git', 'ls-files', '-z'], cwd=root).decode().split('\0')) if (root / '.git').exists() else None
+
 for directory in ("apps", "packages", "plugins", "scripts", "test", "docs", ".github", "deploy"):
     for path in (root / directory).rglob("*"):
         if (path.is_file() and not path.is_symlink() and not {"dist", "node_modules", "__pycache__", "artifacts", ".wrangler", ".local", ".superdesign"}.intersection(path.parts)

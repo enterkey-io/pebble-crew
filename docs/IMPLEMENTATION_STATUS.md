@@ -1,5 +1,20 @@
 # Installed-owner implementation status
 
+**17 October 0.7.8-preview.4 candidate:** owner bubbles follow the selected
+Pebble's palette; Snow retains neutral gray and existing `white` identities.
+Native hierarchy context and introductions identify the same Main Pebble by
+handle and full reporting path. The voice integration reuses Hermes's pinned
+GPT-Live session builder, credentials, WebRTC protocol and native prompt surface.
+It adds private inline setup, saved voice/pace, output-only preview, call controls
+and receipt-matched final results. Native 0.21.0 keeps text chat and reports voice
+unsupported; Grok live is not offered under the native-support requirement.
+
+Keys stay in the owner's native credential storage and out of the transcript.
+Live audio and bounded recent chat context go to the explicitly selected OpenAI
+provider. Install/update checks never use provider calls or owner models. Local
+acceptance uses disposable native homes, a deterministic model and a local WebRTC
+peer. Physical-phone/provider access and owner-host deployment are separate checks.
+
 **17 October 0.7.8-preview.3:** unsectioned pebbles are a flat list below pins,
 without a default heading or collapse control. Custom sections are optional;
 None returns a pebble to the plain list. Owner account photos can be uploaded,

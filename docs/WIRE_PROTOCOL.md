@@ -178,3 +178,32 @@ browser presentation rule.
 
 Event framing remains one JSON object per LF-terminated line. This release does
 not change the stream framing or heartbeat interval.
+
+## Live voice and private prompts (0.7.8-preview.4)
+
+The existing RPC route adds `voice.status`, `voice.preferences`,
+`voice.credential`, `voice.session` and `voice.submit`, plus `secrets.pending` and
+`secrets.respond`. All require a session opened by the same authenticated
+connection. Native profile identity is rechecked; clients never choose profile
+paths or provider URLs. `live_voice` and `secrets` capabilities are advertised
+separately. The older pinned Hermes build has no native live mode.
+
+`voice.credential` accepts only a voice key for the opened Pebble. It uses native
+credential storage, returns a nonsecret save receipt, and does not validate paid
+provider access. `voice.session` accepts an SDP offer and a boolean `preview`. It
+returns only the negotiated session/SDP answer. Audio travels over the native
+WebRTC protocol directly to the provider, outside RPC and the events stream.
+
+`voice.submit` carries bounded text/context to normal native `prompt.submit`
+with `surface=voice-live` and `queued=true`; it never sets `voice_turn` or invokes
+whole-session interruption. A saved `user_row_id` must match a completion before
+a final result is read aloud. Unattributed queued results stay in chat.
+
+`secret.changed` announces that native private prompts changed; its event has no
+secret value. `secrets.pending` returns only request ID, prompt and field label
+for the authorized session. `secrets.respond` answers an existing native request
+once, with the value confined to the response path. The native callback owns
+the save verdict; `submitted=true` alone is not proof of storage or provider
+validation. Requests expire and are removed on native cancellation/disconnection.
+`voice.setup` asks the current chat to open its private voice setup controls.
+Neither event is persisted as a chat message.

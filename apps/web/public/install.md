@@ -72,13 +72,13 @@ installation.
 
 ## 3. Obtain the immutable combined release
 
-Candidate: `v0.7.8-preview.3`. If these assets are not published, stop and report
+Candidate: `v0.7.8-preview.4`. If these assets are not published, stop and report
 that the candidate is unavailable. Do not substitute main or an API-only package.
 
-- [Manifest](https://github.com/enterkey-io/pebble-crew/releases/download/v0.7.8-preview.3/workspace-manifest.json)
-- [SHA256SUMS](https://github.com/enterkey-io/pebble-crew/releases/download/v0.7.8-preview.3/SHA256SUMS)
-- [Complete plugin](https://github.com/enterkey-io/pebble-crew/releases/download/v0.7.8-preview.3/workspace-plugin-preview.zip)
-- [Source](https://github.com/enterkey-io/pebble-crew/releases/download/v0.7.8-preview.3/workspace-source-preview.zip)
+- [Manifest](https://github.com/enterkey-io/pebble-crew/releases/download/v0.7.8-preview.4/workspace-manifest.json)
+- [SHA256SUMS](https://github.com/enterkey-io/pebble-crew/releases/download/v0.7.8-preview.4/SHA256SUMS)
+- [Complete plugin](https://github.com/enterkey-io/pebble-crew/releases/download/v0.7.8-preview.4/workspace-plugin-preview.zip)
+- [Source](https://github.com/enterkey-io/pebble-crew/releases/download/v0.7.8-preview.4/workspace-source-preview.zip)
 
 Verify size and SHA-256 against both manifest and checksum file. Reject absolute
 archive paths, traversal, symlinks and entries escaping private staging. The
@@ -206,7 +206,7 @@ with `hermes bot-web setup-link` (use `--renew-setup` only if it expired).
 remaining seconds). Its output contains the private file path, never the secret.
 
 Event parsing and legacy access controls are specified in
-[the wire protocol](https://github.com/enterkey-io/pebble-crew/blob/v0.7.8-preview.3/docs/WIRE_PROTOCOL.md).
+[the wire protocol](https://github.com/enterkey-io/pebble-crew/blob/v0.7.8-preview.4/docs/WIRE_PROTOCOL.md).
 Never use global revocation for diagnostic cleanup: use DELETE `/v1/connect`
 with the probe's own lease. Global revocation now requires `hermes bot-web revoke
 --all` or the operator-only HTTP body `{"all":true}`.
@@ -328,3 +328,13 @@ Ten shape options and twelve colors are now supported, along with owner photos.
 Existing saved appearances are retained. Do not reset appearance or onboarding to
 expose the new choices. Give the owner their same plain URL after public verification;
 reloading once loads the new assets, with no pairing or new administrator setup.
+
+## Live voice
+
+The supported 0.21.7 build includes native OpenAI live conversation. The older
+0.21.0 build does not. Do not configure or test a paid provider during installation
+or upgrade. After login, the owner selects Voice in a Pebble's composer. Missing
+credentials open a private field in chat; keys must never be pasted as messages.
+Voice selection and pace save in that Pebble's native profile. Calls and previews
+start only on the owner's action. No Grok live provider is offered: this Hermes
+build's separate xAI transcription/speech output is not a live conversation mode.

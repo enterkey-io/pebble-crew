@@ -29,10 +29,18 @@ export class BotBridgeClient {
   #attachments = false;
   #generatedMedia = false;
   #computer = false;
+  #liveVoice = false;
+  #secrets = false;
   #reactions = false;
   #rpcActive = 0;
   readonly #rpcWaiting: (() => void)[] = [];
 
+  get supportsLiveVoice(): boolean {
+    return this.#liveVoice;
+  }
+  get supportsSecrets(): boolean {
+    return this.#secrets;
+  }
   get supportsComputer(): boolean {
     return this.#computer;
   }
@@ -91,6 +99,8 @@ export class BotBridgeClient {
     this.#generatedMedia =
       !!data.capabilities && record(data.capabilities).generated_media === true;
     this.#computer = !!data.capabilities && record(data.capabilities).computer === true;
+    this.#liveVoice = !!data.capabilities && record(data.capabilities).live_voice === true;
+    this.#secrets = !!data.capabilities && record(data.capabilities).secrets === true;
     this.#reactions = !!data.capabilities && record(data.capabilities).reactions === true;
   }
 
