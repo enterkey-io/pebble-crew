@@ -254,21 +254,28 @@ try {
   await expect(page.locator('.attachment-chips')).toHaveCount(0);
   checks.actual_combined_authenticated_upload_and_remove = true;
   await page.getByRole('button', { name: 'Your account', exact: true }).click();
-  await page.getByRole('menuitem', { name: 'Your photo', exact: true }).click();
-  const photoDialog = page.getByRole('dialog', { name: 'Your photo', exact: true });
+  await expect(page.getByRole('menuitem', { name: 'Your photo', exact: true })).toHaveCount(0);
+  await page.getByRole('menuitem', { name: 'Settings', exact: true }).click();
+  const accountSettings = page.getByRole('region', { name: 'Settings', exact: true });
+  await expect(accountSettings.getByRole('tab', { name: 'Account', exact: true })).toHaveAttribute(
+    'aria-selected',
+    'true',
+  );
   const raster = await page.request.get(origin + '/icons/pebble-192.png');
-  await photoDialog.getByLabel('Your photo', { exact: true }).setInputFiles({
+  await accountSettings.getByLabel('Your photo', { exact: true }).setInputFiles({
     name: 'synthetic-account.png',
     mimeType: 'image/png',
     buffer: await raster.body(),
   });
   await expect(
-    photoDialog.getByRole('button', { name: 'Change photo', exact: true }),
+    accountSettings.getByRole('button', { name: 'Change photo', exact: true }),
   ).toBeEnabled();
-  const accountImage = await photoDialog.locator('img').getAttribute('src');
+  const accountImage = await accountSettings.locator('img').getAttribute('src');
   expect(accountImage).toMatch(/^data:image\/png;base64,/);
-  await expect.poll(() => photoDialog.locator('img').evaluate((img) => img.naturalWidth)).toBe(192);
-  await photoDialog.getByRole('button', { name: 'Close', exact: true }).click();
+  await expect
+    .poll(() => accountSettings.locator('img').evaluate((img) => img.naturalWidth))
+    .toBe(192);
+  await accountSettings.getByRole('button', { name: 'Close Settings', exact: true }).click();
   checks.actual_combined_account_photo_upload = true;
   console.log('Installed package: first use and native Bot Mode reply passed.');
   console.log('Synthetic model audit after first turn:', await control('audit'));
