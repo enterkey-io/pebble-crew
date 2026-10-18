@@ -41,3 +41,21 @@ test('touch reaction picker stays inside the screen and works without hover', as
   await chip.tap();
   await expect(chip).toHaveCount(0);
 });
+
+test('message action focus does not leave a desktop tooltip over touch conversations', async ({
+  page,
+  context,
+}) => {
+  await installFixture(context);
+  await page.goto('/');
+  await expect(page.getByLabel('Message', { exact: true })).toBeEnabled();
+  await page.clock.install();
+  const trigger = page
+    .locator('[data-message-id="28"]')
+    .getByRole('button', { name: 'React to message', exact: true });
+  await trigger.focus();
+  await page.clock.runFor(1000);
+  await expect(trigger).toBeFocused();
+  await expect(page.getByRole('tooltip')).toBeHidden();
+  await page.clock.resume();
+});

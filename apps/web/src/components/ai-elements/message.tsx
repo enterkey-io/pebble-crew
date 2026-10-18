@@ -46,7 +46,7 @@ export function Message({
           </div>
         )}
         {(metadata || actions) && (
-          <MessageFooter className="min-h-8 gap-1 px-0 tabular-nums [@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:[&_button]:size-11">
+          <MessageFooter className="min-h-8 gap-1 px-0 tabular-nums">
             {actions}
             {metadata && <span className="ml-1 whitespace-nowrap">{metadata}</span>}
           </MessageFooter>
