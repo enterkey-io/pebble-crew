@@ -328,20 +328,20 @@ export function App({ owner }: { owner?: OwnerConnection }) {
       : `room:${text(target.room.room_id)}`;
 
   const attachmentInput = useRef<HTMLInputElement>(null);
-  const uploads = useUploads(
-    client,
-    selection ? draftKey(selection) : '',
-    selection?.kind === 'bot' ? selection.sessionId : undefined,
-  );
+  const fileSession =
+    client && selection?.kind === 'bot' && selectionConnection.current === client
+      ? selection.sessionId
+      : undefined;
+  const uploads = useUploads(client, selection ? draftKey(selection) : '', fileSession);
   const [attachmentUncertain, setAttachmentUncertain] = useState(false);
   const [sharedFiles, setSharedFiles] = useState<SharedFile[]>([]),
     [filesVersion, setFilesVersion] = useState(0);
   useEffect(() => {
     let live = true;
     setSharedFiles([]);
-    if (client?.supportsAttachments && selection?.kind === 'bot')
+    if (client?.supportsAttachments && fileSession)
       void new ConversationDomain(client)
-        .files(selection.sessionId)
+        .files(fileSession)
         .then((files) => {
           if (live) setSharedFiles(files);
         })
@@ -349,7 +349,7 @@ export function App({ owner }: { owner?: OwnerConnection }) {
     return () => {
       live = false;
     };
-  }, [client, selection, filesVersion]);
+  }, [client, fileSession, filesVersion]);
   async function checkAttachmentSend(discard = false) {
     if (!client || selection?.kind !== 'bot') return;
     const target = selection,
@@ -1480,7 +1480,7 @@ export function App({ owner }: { owner?: OwnerConnection }) {
       client={client}
       routines={routines}
       target={detailsTarget}
-      sessionId={selection?.kind === 'bot' ? selection.sessionId : undefined}
+      sessionId={fileSession}
       filesVersion={filesVersion}
       pending={routinePending}
       onToggle={(r) => void toggleRoutine(r)}

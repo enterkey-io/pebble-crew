@@ -4,6 +4,14 @@ Track owner reports here through implementation, verification and release. A
 published fix is separate from updating and verifying the owner's installation.
 New reports receive a stable ID; later work updates the existing entry.
 
+## 0.7.8-preview.8 navigation corrections
+
+| ID     | Report                                      | Change                                                                                                                                                             |
+| ------ | ------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| PC-073 | Pinned titles wrap and tiles look dimmed    | Pinned names use the normal foreground. Fixed avatar/name/title rows keep tiles aligned; long titles truncate on one line. Desktop and phone checks measure both.  |
+| PC-074 | Details shows an edit label and loses Files | A labeled edit icon opens the existing editor. Files stays visible, reports unsupported connections and retains its selected tab through transport restoration.    |
+| PC-075 | Personal photo is a top-level account item  | Photo management lives in Settings → Account. The duplicate menu action and dialog are removed; photo save, failure, restoration and removal use that single flow. |
+
 ## PC-072 — chat retained legacy layout after the component migration
 
 Owner report confirmed: preview.5 rendered only shared bubble-content and

@@ -10,13 +10,11 @@ import { photoCanvas } from './avatar-lab/photo';
 import { ownerRequest, OwnerRequestError } from './owner-request';
 import { Button } from './components/ui/button';
 import { LoadingBar } from './components/ui/loading-bar';
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from './components/ui/dialog';
-import { useOverlayHistory } from './ui/overlay-history';
 
 type PhotoState =
   | { kind: 'ready' | 'saving'; image: string | null }
   | { kind: 'error'; image: string | null; message: string };
-type AccountPhoto = { state: PhotoState; edit: () => void; save: (file: File | null) => void };
+type AccountPhoto = { state: PhotoState; save: (file: File | null) => void };
 const PhotoContext = createContext<AccountPhoto | undefined>(undefined);
 export const useOwnerPhoto = () => useContext(PhotoContext);
 
@@ -91,10 +89,8 @@ export function OwnerPhotoProvider({
   onUnauthorized: () => void;
 }) {
   const [state, setState] = useState<PhotoState>({ kind: 'ready', image });
-  const [editing, setEditing] = useState(false);
   const request = useRef<AbortController | undefined>(undefined);
   useEffect(() => () => request.current?.abort(), []);
-  useOverlayHistory(editing, () => setEditing(false));
   async function save(file: File | null) {
     if (request.current) return;
     const controller = new AbortController();
@@ -133,18 +129,8 @@ export function OwnerPhotoProvider({
     }
   }
   return (
-    <PhotoContext.Provider
-      value={{ state, edit: () => setEditing(true), save: (file) => void save(file) }}
-    >
+    <PhotoContext.Provider value={{ state, save: (file) => void save(file) }}>
       {children}
-      <Dialog open={editing} onOpenChange={setEditing}>
-        <DialogContent className="personal-photo-dialog" aria-describedby={undefined}>
-          <DialogHeader>
-            <DialogTitle>Your photo</DialogTitle>
-          </DialogHeader>
-          <PersonalPhotoControls />
-        </DialogContent>
-      </Dialog>
     </PhotoContext.Provider>
   );
 }

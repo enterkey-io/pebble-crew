@@ -88,7 +88,7 @@ export function FilesPanel({
           </Button>
         </Notice>
       )}
-      {!loading && !files.length ? (
+      {!loading && !error && !files.length ? (
         <p className="empty-note">No files shared here yet.</p>
       ) : (
         <ul className="file-list">

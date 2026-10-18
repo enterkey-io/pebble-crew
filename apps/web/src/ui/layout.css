@@ -43,7 +43,8 @@
 }
 .pc-pin {
   position: relative;
-  width: 132px;
+  width: calc((100% - 8px) / 2);
+  max-width: 144px;
   min-height: 156px;
   border-radius: 12px;
   transition: background-color var(--motion-hover);
@@ -69,11 +70,14 @@
   width: 100%;
   min-width: 0;
   min-height: 156px;
-  display: flex;
+  height: auto;
+  display: grid;
+  grid-template-rows: 60px 20px 20px;
+  justify-items: center;
+  align-content: start;
   align-items: center;
-  flex-direction: column;
   gap: 6px;
-  padding: 20px 10px 14px;
+  padding: 20px 8px 14px;
   border-radius: 8px;
 }
 .pc-pin-open strong {
@@ -91,11 +95,9 @@
   line-height: 16px;
   max-width: 100%;
   overflow: hidden;
-  display: -webkit-box;
-  -webkit-box-orient: vertical;
-  -webkit-line-clamp: 2;
-  white-space: normal;
-  overflow-wrap: anywhere;
+  display: block;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   padding: 1px 5px;
   border-radius: 4px;
 }
@@ -509,10 +511,8 @@
   font-size: 12px;
   margin-top: 3px;
 }
-.pc-details-identity > button {
-  color: var(--ring);
-  font-size: 12px;
-  margin-top: 12px;
+.pc-details-edit {
+  margin-right: auto;
 }
 .pc-details [data-slot='tabs-list'] {
   gap: 0;

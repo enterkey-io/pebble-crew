@@ -28,11 +28,12 @@ export function DetailsDock({
   const panel = useRef<HTMLElement>(null);
   useEffect(() => {
     if (open && phone) {
-      const frame = requestAnimationFrame(() =>
-        panel.current
-          ?.querySelector<HTMLElement>('[role="tab"][data-state="active"],button')
-          ?.focus(),
-      );
+      const frame = requestAnimationFrame(() => {
+        const activeTab = panel.current?.querySelector<HTMLElement>(
+          '[role="tab"][data-state="active"]',
+        );
+        (activeTab ?? panel.current?.querySelector<HTMLElement>('button'))?.focus();
+      });
       return () => cancelAnimationFrame(frame);
     }
   }, [open, phone]);

@@ -76,6 +76,7 @@ export async function installFixture(
   context: BrowserContext,
   options: {
     reactions?: boolean;
+    attachments?: boolean;
     voice?: boolean;
     messages?: (Record<string, unknown> & { row_id: number })[];
   } = {},
@@ -224,7 +225,7 @@ export async function installFixture(
             secrets: options.voice === true,
             workspace: true,
             existing_agents: true,
-            attachments: true,
+            attachments: options.attachments !== false,
             generated_media: true,
             reactions: options.reactions !== false,
           },

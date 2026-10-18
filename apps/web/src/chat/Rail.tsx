@@ -2,17 +2,7 @@ import { Button } from '../components/ui/button';
 import { useState } from 'react';
 import type { Dispatch, SetStateAction } from 'react';
 import { LayoutGroup, motion, useReducedMotion } from 'motion/react';
-import {
-  Search,
-  Plus,
-  X,
-  Camera,
-  MoreHorizontal,
-  Settings2,
-  Eye,
-  EyeOff,
-  LogOut,
-} from 'lucide-react';
+import { Search, Plus, X, MoreHorizontal, Settings2, Eye, EyeOff, LogOut } from 'lucide-react';
 import { AgentAvatar } from '../AgentAvatar';
 import { Menu } from '../ui/primitives';
 import type { MenuItem } from '../ui/primitives';
@@ -31,7 +21,7 @@ import type { WorkspaceSnapshot as WorkspaceState, WorkspaceBot } from '@hermes-
 import type { BotBridgeClient } from '@hermes-client/protocol';
 import type { Activity } from '../avatar-lab/engine';
 import type { Row } from '../conversation';
-import { PersonalAvatar, useOwnerPhoto } from '../OwnerPhoto';
+import { PersonalAvatar } from '../OwnerPhoto';
 export type ChatBot = {
   profile: string;
   name: string;
@@ -169,7 +159,6 @@ export function Rail({
   const [hidden, setHidden] = useState(false),
     [editor, setEditor] = useState<OrganizationEditor | null>(null);
   const reduced = useReducedMotion();
-  const personalPhoto = useOwnerPhoto();
   const identity = (bot: ChatBot) => workspace?.bots.find((b) => b.profile === bot.profile);
   const pinned = (bot: ChatBot) => {
     const b = identity(bot);
@@ -337,12 +326,14 @@ export function Rail({
                   >
                     <div className="pc-pin-actions">{controls(b)}</div>
                     <Button
-                      variant="quiet"
-                      className="pc-pin-open"
+                      variant="ghost"
+                      className="pc-pin-open hover:bg-transparent dark:hover:bg-transparent"
                       aria-label={`${b.name} ${identity(b)?.role.title ?? ''} Bot Chat`}
                       aria-current={selected === b.profile ? 'page' : undefined}
-                      disabled={!online}
-                      onClick={() => onOpen(b)}
+                      aria-disabled={!online}
+                      onClick={() => {
+                        if (online) onOpen(b);
+                      }}
                     >
                       {face(identity(b)!.id, true)}
                       <strong>{b.name}</strong>{' '}
@@ -468,9 +459,6 @@ export function Rail({
           label="Your account"
           placement="account"
           items={[
-            ...(owner && personalPhoto
-              ? [{ label: 'Your photo', icon: Camera, action: personalPhoto.edit }]
-              : []),
             { label: 'Settings', icon: Settings2, action: onSettings },
             {
               label: hidden ? 'Hide hidden pebbles' : 'Show hidden pebbles',

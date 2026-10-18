@@ -1,9 +1,9 @@
 import { Item, ItemContent, ItemTitle, ItemDescription } from '../components/ui/item';
 import { useEffect, useState } from 'react';
 import { Tabs } from '../ui/primitives';
-import { X } from 'lucide-react';
-import { Button } from '../components/ui/button';
+import { Pencil, X } from 'lucide-react';
 import { IconButton } from '../components/ui/icon-button';
+import { LoadingBar } from '../components/ui/loading-bar';
 import { Switch } from '../components/ui/switch';
 import { FilesPanel } from './FilesPanel';
 import { ComputerPanel } from './ComputerPanel';
@@ -47,7 +47,7 @@ export function Inspector({
   useEffect(() => {
     let live = true;
     setComputer(false);
-    setTab('routines');
+    setTab((current) => (current === 'computer' ? 'routines' : current));
     if (client.supportsComputer && bot)
       void client
         .invoke('computer.status', { profile: bot.profile })
@@ -75,6 +75,14 @@ export function Inspector({
   return (
     <>
       <header>
+        {identity && (
+          <IconButton
+            className="pc-details-edit"
+            label={`Edit ${identity.name}`}
+            icon={Pencil}
+            onClick={onEdit}
+          />
+        )}
         <IconButton className="details-close" label="Close details" icon={X} onClick={onClose} />
       </header>
       <div className="pc-details-identity identity-summary">
@@ -86,11 +94,6 @@ export function Inspector({
         <h2>{bot?.name ?? String(room?.name ?? 'Details')}</h2>
         {identity?.role.title && <p>{identity.role.title}</p>}
         {identity && <span className="handle">@{identity.handle}</span>}
-        {identity && (
-          <Button variant="quiet" className="text-button" onClick={onEdit}>
-            Edit pebble
-          </Button>
-        )}
       </div>
       <div className="inspector-body">
         {children}
@@ -99,9 +102,7 @@ export function Inspector({
             <Tabs
               tabs={[
                 { id: 'routines', label: 'Routines' },
-                ...(client.supportsAttachments && sessionId
-                  ? [{ id: 'files', label: 'Files' }]
-                  : []),
+                { id: 'files', label: 'Files' },
                 ...(computer ? [{ id: 'computer', label: 'Computer' }] : []),
               ]}
               value={tab}
@@ -109,13 +110,21 @@ export function Inspector({
             >
               {tab === 'computer' ? (
                 <ComputerPanel client={client} profile={bot.profile} name={bot.name} />
-              ) : tab === 'files' && sessionId ? (
-                <FilesPanel
-                  client={client}
-                  sessionId={sessionId}
-                  version={filesVersion}
-                  focusId={target?.tab === 'files' ? target.id : undefined}
-                />
+              ) : tab === 'files' ? (
+                client.supportsAttachments ? (
+                  sessionId ? (
+                    <FilesPanel
+                      client={client}
+                      sessionId={sessionId}
+                      version={filesVersion}
+                      focusId={target?.tab === 'files' ? target.id : undefined}
+                    />
+                  ) : (
+                    <LoadingBar active label="Loading files" />
+                  )
+                ) : (
+                  <p className="empty-note">Files aren’t available on this connection.</p>
+                )
               ) : (
                 <div className="routine-list">
                   {routines.map((r) => {

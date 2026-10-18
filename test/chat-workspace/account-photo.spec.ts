@@ -37,8 +37,13 @@ test('personal photos have no shape controls, persist on reload and keep a chat 
     if (phone && !(await page.getByRole('dialog', { name: 'navigation' }).isVisible()))
       await page.getByRole('button', { name: 'Toggle navigation', exact: true }).click();
     await page.getByRole('button', { name: 'Your account', exact: true }).click();
-    await page.getByRole('menuitem', { name: 'Your photo', exact: true }).click();
-    return page.getByRole('dialog', { name: 'Your photo', exact: true });
+    await expect(page.getByRole('menuitem', { name: 'Your photo', exact: true })).toHaveCount(0);
+    await page.getByRole('menuitem', { name: 'Settings', exact: true }).click();
+    await expect(page.getByRole('tab', { name: 'Account', exact: true })).toHaveAttribute(
+      'aria-selected',
+      'true',
+    );
+    return page.getByRole('region', { name: 'Settings', exact: true });
   }
   const dialog = await openPhoto();
   await expect(dialog.getByRole('group', { name: 'Avatar shape' })).toHaveCount(0);
@@ -57,6 +62,8 @@ test('personal photos have no shape controls, persist on reload and keep a chat 
   await page.evaluate(() => (window as unknown as { __breakStream: () => void }).__breakStream());
   await expect(dialog).toBeVisible();
   await expect(dialog.locator('img')).toHaveAttribute('src', saved!);
+  for (const pin of await page.locator('.pc-pin-open').all())
+    await expect(pin).toHaveCSS('opacity', '1');
   await page.screenshot({ animations: 'disabled', path: info.outputPath('account-photo.png') });
   fail = true;
   await input.setInputFiles({
@@ -74,7 +81,7 @@ test('personal photos have no shape controls, persist on reload and keep a chat 
   });
   await expect(dialog.getByRole('alert')).toContainText('JPEG');
   expect(saves).toBe(1);
-  await dialog.getByRole('button', { name: 'Close', exact: true }).click();
+  await dialog.getByRole('button', { name: 'Close Settings', exact: true }).click();
   const navigation = page.getByRole('dialog', { name: 'navigation' });
   if (phone && (await navigation.isVisible()))
     await navigation.getByRole('button', { name: 'Close navigation' }).click();

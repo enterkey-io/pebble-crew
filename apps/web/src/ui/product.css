@@ -941,17 +941,11 @@ button:disabled {
   height: 48px;
   color: var(--muted-foreground);
 }
-.personal-photo-dialog {
-  width: min(400px, calc(100vw - 32px));
-}
 .personal-photo-control {
   display: flex;
   align-items: center;
   gap: 20px;
   margin-block: 8px 28px;
-}
-.personal-photo-dialog .personal-photo-control {
-  margin-bottom: 0;
 }
 .personal-photo-actions {
   position: relative;
