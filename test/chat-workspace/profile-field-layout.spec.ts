@@ -2,6 +2,17 @@ import { test, expect, type Page } from '@playwright/test';
 import { installFixture } from './fixtures';
 test.use({ serviceWorkers: 'block' });
 async function fieldLayout(page: Page) {
+  for (const shape of await page
+    .getByRole('group', { name: 'Avatar shape', exact: true })
+    .locator('svg')
+    .all()) {
+    const bounds = (await shape.boundingBox())!;
+    expect(
+      bounds.width,
+      'Shape previews must not inherit the default 16px control-icon size',
+    ).toBeGreaterThanOrEqual(32);
+    expect(bounds.height).toBeGreaterThanOrEqual(32);
+  }
   for (const name of ['Name', 'Title', 'Description']) {
     const input = page.getByLabel(name, { exact: true });
     await expect(input).toBeVisible();

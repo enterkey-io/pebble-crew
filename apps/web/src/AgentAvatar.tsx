@@ -265,14 +265,14 @@ export function AvatarChooser({
           <div className="grid grid-cols-5 gap-2" role="group" aria-label="Avatar shape">
             {SHAPES.map((shape) => (
               <Toggle
-                className="h-12 w-11 p-0 pointer-coarse:min-h-11 pointer-coarse:min-w-11 [&>svg]:h-[38px] [&>svg]:w-[34px]"
+                className="h-12 w-11 p-0 pointer-coarse:min-h-11 pointer-coarse:min-w-11"
                 key={shape}
                 type="button"
                 aria-label={shape}
                 pressed={look.shape === shape}
                 onPressedChange={() => choose({ ...look, kind: 'shape', shape })}
               >
-                <svg viewBox="0 0 100 108" aria-hidden="true" focusable="false">
+                <svg className="size-9" viewBox="0 0 100 108" aria-hidden="true" focusable="false">
                   <path
                     d={BODY_PATHS[shape]}
                     fill={COLORS.find((c) => c.id === look.color)?.hex ?? COLORS[0].hex}
