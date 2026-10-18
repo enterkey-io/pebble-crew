@@ -1,5 +1,6 @@
 import { it, expect } from 'vitest';
 import { SendProjection } from './send-projection';
+import type { ChatMessage } from '../conversation';
 
 it('a native receipt without a timestamp keeps the visible send time', () => {
   const view = new SendProjection();
@@ -30,7 +31,7 @@ it('keeps the streamed time when Hermes commits a different completion time', ()
 });
 it('keeps one bubble and its render identity when history beats a delayed receipt', () => {
   const view = new SendProjection(),
-    pending = {
+    pending: ChatMessage & { id: string; renderKey: string } = {
       id: 'pending-a',
       renderKey: 'pending-a',
       role: 'user',

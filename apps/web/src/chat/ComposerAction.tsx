@@ -1,3 +1,4 @@
+import { Button } from '../components/ui/button';
 import { Icon } from './Icon';
 import { useRef } from 'react';
 
@@ -14,7 +15,7 @@ export function ComposerAction({
   const action = sending ? 'send' : 'stop';
   const pressed = useRef<typeof action | null>(null);
   return (
-    <button
+    <Button
       type={sending ? 'submit' : 'button'}
       className={sending ? 'send-button' : 'stop-button'}
       aria-label={sending ? 'Send message' : mode === 'stopping' ? 'Stopping' : 'Stop'}
@@ -51,6 +52,6 @@ export function ComposerAction({
           </svg>
         </span>
       </span>
-    </button>
+    </Button>
   );
 }

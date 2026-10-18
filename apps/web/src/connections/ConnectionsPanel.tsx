@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
-import { ChevronLeft, ChevronRight, Plug, Plus, Search } from 'lucide-react';
+import { ChevronLeft, Plus, Search } from 'lucide-react';
 import type { BotBridgeClient } from '@hermes-client/protocol';
 import type { WorkspaceBot } from '@hermes-client/protocol';
 import { Button } from '../components/ui/button';
-import { Input } from '../components/ui/input';
+import { InputGroup, InputGroupInput, InputGroupAddon } from '../components/ui/input-group';
+import { ServiceRow } from './ServiceRow';
 import { LoadingBar } from '../components/ui/loading-bar';
 import {
   Select,
@@ -193,25 +194,18 @@ export function ConnectionsPanel({
             <div className="connection-list">
               {!list.value.length && <p className="connections-empty">No connections</p>}
               {list.value.map((connection) => (
-                <button
-                  className="connection-row"
+                <ServiceRow
                   key={connection.name}
-                  data-connection-trigger={connection.name}
-                  onClick={() => show({ kind: 'detail', connection }, connection.name)}
-                >
-                  <Plug aria-hidden="true" />
-                  <span>
-                    <strong>{connection.name}</strong>
-                    <small>
-                      {!connection.enabled
-                        ? 'Disabled'
-                        : connection.needsSignIn
-                          ? 'Sign-in needed'
-                          : 'Configured'}
-                    </small>
-                  </span>
-                  <ChevronRight aria-hidden="true" />
-                </button>
+                  name={connection.name}
+                  description={
+                    !connection.enabled
+                      ? 'Disabled'
+                      : connection.needsSignIn
+                        ? 'Sign-in needed'
+                        : 'Configured'
+                  }
+                  onOpen={() => show({ kind: 'detail', connection }, connection.name)}
+                />
               ))}
             </div>
           )}
@@ -234,15 +228,17 @@ export function ConnectionsPanel({
           <h2 className="connections-view-title" tabIndex={-1} data-view-focus>
             Add connection
           </h2>
-          <div className="connections-search">
-            <Search aria-hidden="true" />
-            <Input
+          <InputGroup className="connections-search">
+            <InputGroupAddon>
+              <Search aria-hidden="true" />
+            </InputGroupAddon>
+            <InputGroupInput
               aria-label="Search services"
               placeholder="Search services"
               value={query}
               onChange={(e) => setQuery(e.target.value)}
             />
-          </div>
+          </InputGroup>
           <LoadingBar active={catalog.kind === 'loading' || !!adding} label="Loading services" />
           {error && <Notice error>{error}</Notice>}
           {setup && <Notice>{setup} needs setup in Hermes before it can be connected.</Notice>}
@@ -261,12 +257,11 @@ export function ConnectionsPanel({
                   `${s.name} ${s.description}`.toLowerCase().includes(query.toLowerCase()),
                 )
                 .map((service) => (
-                  <div className="connection-row" key={service.name}>
-                    <Plug aria-hidden="true" />
-                    <span>
-                      <strong>{service.name}</strong>
-                      <small>{service.description}</small>
-                    </span>
+                  <ServiceRow
+                    key={service.name}
+                    name={service.name}
+                    description={service.description}
+                  >
                     {listView.some((c) => c.name === service.name) ? (
                       <span className="connection-added">Added</span>
                     ) : service.available ? (
@@ -288,7 +283,7 @@ export function ConnectionsPanel({
                         Setup needed
                       </Button>
                     )}
-                  </div>
+                  </ServiceRow>
                 ))}
               {!catalog.value.some((s) =>
                 `${s.name} ${s.description}`.toLowerCase().includes(query.toLowerCase()),

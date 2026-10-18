@@ -1,3 +1,5 @@
+import { ApprovalSurface } from '../components/ai-elements/confirmation';
+import { Label } from '../components/ui/label';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
 import { useState } from 'react';
@@ -26,12 +28,16 @@ export function RequestReview({
     'agent.attach': 'Change tools and skills',
   };
   return (
-    <article className={`request-card ${deleting ? 'destructive-request' : ''}`}>
-      <h3>{titles[String(r.action)] ?? String(r.action)}</h3>
-      <p>
-        <strong>{String(spec.profile ?? spec.display_name ?? spec.name ?? 'Agent')}</strong> ·{' '}
-        {String(r.state)}
-      </p>
+    <ApprovalSurface
+      className={`request-card ${deleting ? 'destructive-request' : ''}`}
+      title={titles[String(r.action)] ?? String(r.action)}
+      description={
+        <>
+          <strong>{String(spec.profile ?? spec.display_name ?? spec.name ?? 'Agent')}</strong> ·{' '}
+          {String(r.state)}
+        </>
+      }
+    >
       {deleting && (
         <p>
           Removes this Hermes profile, its personality files, memory, local conversations, skills
@@ -105,19 +111,17 @@ export function RequestReview({
       )}
       {r.state === 'pending' && (
         <>
-          <label>
-            {deleting && (
-              <>
-                Type <strong>{String(spec.profile)}</strong> to confirm
-                <Input
-                  aria-label="Confirm profile name"
-                  autoComplete="off"
-                  value={confirmation}
-                  onChange={(e) => setConfirmation(e.target.value)}
-                />
-              </>
-            )}
-          </label>
+          {deleting && (
+            <Label className="flex-col items-start">
+              Type <strong>{String(spec.profile)}</strong> to confirm
+              <Input
+                aria-label="Confirm profile name"
+                autoComplete="off"
+                value={confirmation}
+                onChange={(e) => setConfirmation(e.target.value)}
+              />
+            </Label>
+          )}
           <div className="choice-row">
             <Button
               type="button"
@@ -144,6 +148,6 @@ export function RequestReview({
           Check outcome
         </Button>
       )}
-    </article>
+    </ApprovalSurface>
   );
 }

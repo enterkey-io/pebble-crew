@@ -9,6 +9,7 @@ const state = join(directory, 'owner'),
   key = join(directory, 'key.pem');
 const processes = [];
 const env = { ...process.env, WORKSPACE_TEST_STATE: state };
+const ownerPort = env.WORKSPACE_TEST_OWNER_PORT ?? '8099';
 const ownerBundle = env.WORKSPACE_BUILD_ROOT
   ? join(env.WORKSPACE_BUILD_ROOT, 'owner/main.mjs')
   : 'apps/owner-node/dist/main.mjs';
@@ -72,10 +73,10 @@ try {
     '--state',
     state,
     '--port',
-    '8096',
+    ownerPort,
     ...(env.WORKSPACE_BUILD_ROOT ? ['--assets', join(env.WORKSPACE_BUILD_ROOT, 'web')] : []),
   ]);
-  start(process.execPath, ['scripts/fixture/owner_tls_proxy.mjs', cert, key]);
+  start(process.execPath, ['scripts/fixture/owner_tls_proxy.mjs', cert, key, ownerPort]);
   start(
     env.HERMES_NATIVE_PYTHON ?? '/private/tmp/hermes-af0-py314/bin/python',
     [
@@ -97,7 +98,7 @@ try {
     { PYTHONPATH: env.HERMES_NATIVE_ROOT ?? '/private/tmp/hermes-af0-source' },
   );
   // Test readiness uses loopback HTTP. Browser acceptance handles the disposable TLS certificate.
-  await ready('http://127.0.0.1:8096/api/instance/status');
+  await ready(`http://127.0.0.1:${ownerPort}/api/instance/status`);
   for (let i = 0; i < 300; i++) {
     const status = await new Promise((r) => {
       const request = httpsRequest(

@@ -1,3 +1,6 @@
+import { Label } from './components/ui/label';
+import { Checkbox } from './components/ui/checkbox';
+import { Form } from './components/ui/form';
 import { Button } from './components/ui/button';
 import { Input } from './components/ui/input';
 import { useEffect, useState } from 'react';
@@ -87,8 +90,8 @@ export function WorkspaceSetup({
             : 'Your primary agent. Choose a handle and avatar.'}
         </p>
       </div>
-      <form onSubmit={(e) => void finish(e)}>
-        <label>
+      <Form onSubmit={(e) => void finish(e)}>
+        <Label layout="stacked">
           Handle
           <span className="handle-input">
             <span>@</span>
@@ -102,7 +105,7 @@ export function WorkspaceSetup({
               spellCheck={false}
             />
           </span>
-        </label>
+        </Label>
         <AvatarChooser
           look={look}
           onChange={setLook}
@@ -112,10 +115,10 @@ export function WorkspaceSetup({
           profile={profile}
           onBusyChange={setPhotoBusy}
         />
-        <label className="welcome-choice">
-          <input type="checkbox" checked={welcome} onChange={(e) => setWelcome(e.target.checked)} />
+        <Label className="welcome-choice">
+          <Checkbox checked={welcome} onCheckedChange={(checked) => setWelcome(checked === true)} />
           Send an introduction
-        </label>
+        </Label>
         {error && (
           <p role="alert" className="error">
             {error}
@@ -124,7 +127,7 @@ export function WorkspaceSetup({
         <Button variant="default" className="primary" disabled={busy || photoBusy || !profile}>
           {busy ? 'Saving…' : 'Start chatting'}
         </Button>
-      </form>
+      </Form>
     </section>
   );
 }

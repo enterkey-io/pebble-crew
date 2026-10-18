@@ -1,6 +1,6 @@
 {
   "name": "pebble-crew",
-  "version": "0.7.8-preview.4",
+  "version": "0.7.8-preview.5",
   "private": true,
   "type": "module",
   "workspaces": [
@@ -39,7 +39,7 @@
     "test:owner-worker": "node scripts/test-owner-worker.mjs",
     "test:owner-browser": "node scripts/test-owner-browser.mjs",
     "test:installed-plugin": "node scripts/test-installed-plugin.mjs",
-    "check:ui": "node scripts/check-ui-contract.mjs"
+    "check:ui": "node scripts/check-ui-contract.mjs && node scripts/check-system-contract.mjs"
   },
   "dependencies": {
     "@novnc/novnc": "1.7.0",
@@ -66,6 +66,7 @@
     "esbuild": "0.28.2",
     "eslint": "10.12.0",
     "prettier": "3.9.10",
+    "shadcn": "4.22.0",
     "tailwindcss": "4.3.3",
     "typescript": "6.0.3",
     "typescript-eslint": "8.71.2",

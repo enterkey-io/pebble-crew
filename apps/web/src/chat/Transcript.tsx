@@ -1,9 +1,23 @@
+import {
+  Attachment,
+  AttachmentMedia,
+  AttachmentContent,
+  AttachmentTitle,
+  AttachmentDescription,
+  AttachmentTrigger,
+} from '../components/ui/attachment';
+import { FileText } from 'lucide-react';
+import { fileSize } from './FilesPanel';
+import { MessageBubble, MessageMetadata } from '../components/ai-elements/message';
+import { ChainOfThought } from '../components/ai-elements/chain-of-thought';
+import { Tool } from '../components/ai-elements/tool';
 import { useLayoutEffect, useState } from 'react';
 import type { ReactNode } from 'react';
 import type { BotBridgeClient } from '@hermes-client/protocol';
 import { motion, useReducedMotion } from 'motion/react';
 import { MessageBody, CopyMessage } from '../MessageBody';
-import { messageDate, projectTimeline } from '../conversation';
+import { messageDate } from '../conversation';
+import { projectTimeline } from './presentation';
 import type { ChatMessage } from '../conversation';
 import { MessageReactions, ReactionPicker } from './MessageReactions';
 import type { ReactionAction } from './MessageReactions';
@@ -45,7 +59,7 @@ export function Transcript({
   footer?: ReactNode;
 }) {
   const reduced = useReducedMotion();
-  const displayed = stream
+  const displayed: ChatMessage[] = stream
     ? [...messages, { ...reply, id: reply.renderKey, role: 'assistant', text: stream }]
     : messages;
   const timeline = projectTimeline(displayed);
@@ -66,22 +80,30 @@ export function Transcript({
       {timeline.map((item, i) => {
         if (item.kind === 'activity')
           return (
-            <details className="activity-group" key={item.id}>
-              <summary>
-                {item.messages.some((m) => m.role === 'tool')
-                  ? `${item.messages.length} tool ${item.messages.length === 1 ? 'call' : 'calls'}`
-                  : 'Activity'}
-              </summary>
-              <ol>
-                {item.messages.map((m, index) => (
-                  <li key={m.id ?? index}>
-                    <strong>{m.toolName ?? 'Update'}</strong>
-                    {m.context && <p>{m.context}</p>}
-                    {m.text.trim() && <MessageBody text={m.text} />}
-                  </li>
-                ))}
-              </ol>
-            </details>
+            <div className="activity-group" key={item.id}>
+              <ChainOfThought
+                state="unknown"
+                title={
+                  item.messages.some((m) => m.role === 'tool')
+                    ? `${item.messages.length} tool ${item.messages.length === 1 ? 'call' : 'calls'}`
+                    : 'Activity'
+                }
+              >
+                <div className="grid gap-3">
+                  {item.messages.map((m, index) => (
+                    <Tool
+                      key={m.id ?? index}
+                      id={m.id ?? String(index)}
+                      name={m.toolName ?? 'Update'}
+                      state="unknown"
+                      defaultOpen
+                      input={m.context}
+                      output={m.text.trim() ? m.text : undefined}
+                    />
+                  ))}
+                </div>
+              </ChainOfThought>
+            </div>
           );
         const m = item.message;
         const key = m.renderKey ?? m.id ?? `pending-${i}`;
@@ -108,7 +130,7 @@ export function Transcript({
           >
             {label && <p className="pc-date date-divider">{group}</p>}
             <div className="pc-bubble-wrap">
-              <article
+              <MessageBubble
                 className={`pc-bubble message ${m.role}`}
                 style={m.role === 'user' ? ownerBubbleStyle(ownerColor) : undefined}
               >
@@ -131,22 +153,28 @@ export function Transcript({
                     />
                   ))}
                 {m.files?.map((file) => (
-                  <button
-                    className="message-file"
-                    key={file.id}
-                    onClick={() => onDownloadFile(file)}
-                  >
-                    {file.name} ↓
-                  </button>
+                  <Attachment key={file.id} className="message-file my-1" size="sm" state="done">
+                    <AttachmentMedia>
+                      <FileText />
+                    </AttachmentMedia>
+                    <AttachmentContent>
+                      <AttachmentTitle>{file.name}</AttachmentTitle>
+                      <AttachmentDescription>{fileSize(file.size)}</AttachmentDescription>
+                    </AttachmentContent>
+                    <AttachmentTrigger
+                      aria-label={`Download ${file.name}`}
+                      onClick={() => onDownloadFile(file)}
+                    />
+                  </Attachment>
                 ))}
-                <div className="pc-message-meta message-meta">
+                <MessageMetadata className="pc-message-meta message-meta">
                   {date && (
                     <time dateTime={date.toISOString()}>
                       {date.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' })}
                     </time>
                   )}
-                </div>
-              </article>
+                </MessageMetadata>
+              </MessageBubble>
               <MessageReactions
                 id={m.id ?? ''}
                 reactions={m.reactions ?? []}

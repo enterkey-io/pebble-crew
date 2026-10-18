@@ -1,3 +1,4 @@
+import { Button } from '../components/ui/button';
 import { useState } from 'react';
 import type { Dispatch, SetStateAction } from 'react';
 import { LayoutGroup, motion, useReducedMotion } from 'motion/react';
@@ -335,7 +336,8 @@ export function Rail({
                     key={identity(b)?.id ?? b.profile}
                   >
                     <div className="pc-pin-actions">{controls(b)}</div>
-                    <button
+                    <Button
+                      variant="quiet"
                       className="pc-pin-open"
                       aria-label={`${b.name} ${identity(b)?.role.title ?? ''} Bot Chat`}
                       aria-current={selected === b.profile ? 'page' : undefined}
@@ -357,7 +359,7 @@ export function Rail({
                       {identity(b)?.unread && (
                         <span className="unread-dot" aria-label="Unread messages" />
                       )}
-                    </button>
+                    </Button>
                   </motion.div>
                 ))}
               </div>
@@ -436,7 +438,8 @@ export function Rail({
             {rooms
               .filter((r) => !Object.values(crewChats).includes(String(r.room_id)))
               .map((r) => (
-                <button
+                <Button
+                  variant="quiet"
                   className="pc-crew"
                   key={String(r.room_id)}
                   disabled={!online}
@@ -447,13 +450,15 @@ export function Rail({
                     <strong>{String(r.name ?? 'Crew')}</strong>
                     <small>{String(r.preview ?? 'Group conversation')}</small>
                   </span>
-                </button>
+                </Button>
               ))}
           </nav>
           {!all.length && (
             <div className="rail-empty">
               <p>No pebbles yet.</p>
-              <button onClick={onAdd}>Add existing agents</button>
+              <Button variant="quiet" onClick={onAdd}>
+                Add existing agents
+              </Button>
             </div>
           )}
         </LayoutGroup>

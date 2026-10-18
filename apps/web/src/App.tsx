@@ -1,7 +1,24 @@
+import { Confirmation } from './components/ai-elements/confirmation';
+import {
+  Attachment,
+  AttachmentMedia,
+  AttachmentContent,
+  AttachmentTitle,
+  AttachmentDescription,
+  AttachmentActions,
+  AttachmentAction,
+} from './components/ui/attachment';
+import { PromptInputFrame, PromptInputField } from './components/ai-elements/prompt-input';
+import { conversationCapabilities } from './chat/capability-ledger';
 import { useEffect, useLayoutEffect, useRef, useState, useCallback } from 'react';
 import { normalizeEndpoint, safeError } from '@hermes-client/core';
-import { BotBridgeClient } from '@hermes-client/protocol';
-import type { BridgeEvent } from '@hermes-client/protocol';
+import {
+  BotBridgeClient,
+  ConversationDomain,
+  decodeApprovals,
+  approvalKey,
+} from '@hermes-client/protocol';
+import type { BridgeEvent, ConversationApproval, HistoryCoverage } from '@hermes-client/protocol';
 import { FirstRun } from './FirstRun';
 import { lazy, Suspense } from 'react';
 const NewPebble = lazy(() => import('./NewPebble').then((m) => ({ default: m.NewPebble })));
@@ -10,7 +27,7 @@ const WorkspaceSettings = lazy(() =>
 );
 
 import { useMedia, scrollToLatest } from './ui/motion';
-import { nativeMessages as transcript, roomMessages, withSharedFiles } from './conversation';
+import { roomMessages, withSharedFiles } from './conversation';
 import type { ChatMessage as Message } from './conversation';
 import { RosterLoader } from './chat/roster';
 import { useUploads } from './chat/uploads';
@@ -19,6 +36,7 @@ import { fileSize } from './chat/FilesPanel';
 import { Rail, PebbleAvatar, CrewAvatar } from './chat/Rail';
 import type { ChatBot as Bot } from './chat/Rail';
 import { Transcript } from './chat/Transcript';
+import { Chat, ChatViewport } from './components/ai-elements/chat';
 import { ComposerAction } from './chat/ComposerAction';
 import { Inspector } from './chat/Inspector';
 import { Icon } from './chat/Icon';
@@ -101,7 +119,9 @@ export function App({ owner }: { owner?: OwnerConnection }) {
   const sendProjection = useRef(new SendProjection());
   const runEpoch = useRef(0);
   const [routines, setRoutines] = useState<Row[]>([]);
-  const [approvals, setApprovals] = useState<Row[]>([]);
+  const [approvals, setApprovals] = useState<ConversationApproval[]>([]);
+  const approvalFlights = useRef(new Set<string>());
+  const [approvalSubmitting, setApprovalSubmitting] = useState<Record<string, boolean>>({});
   const [draft, setDraft] = useState('');
   const currentDraft = useRef(draft);
   currentDraft.current = draft;
@@ -269,17 +289,15 @@ export function App({ owner }: { owner?: OwnerConnection }) {
   const [showLatest, setShowLatest] = useState(false);
   const displayedRead = useRef<{ key: string; cursor: number } | undefined>(undefined);
   const acknowledgedRead = useRef(new Map<string, number>());
-  function observedHistory(target: Selection, native: unknown) {
-    if (target.kind !== 'bot' || !Array.isArray(native)) return;
+  function observedHistory(target: Selection, coverage: HistoryCoverage) {
+    if (target.kind !== 'bot') return;
     const bot = workspaceRef.current?.bots.find((b) => b.id === target.bot.id);
     // Only acknowledge a native roster cursor covered by the loaded history.
     // A later background snapshot cannot mark unseen messages as read.
     if (
       bot?.read_key &&
       typeof bot.cursor === 'number' &&
-      (bot.cursor_type === 'row'
-        ? Math.max(0, ...native.map((m) => Number(m?.row_id) || 0))
-        : native.length) >= bot.cursor
+      (bot.cursor_type === 'row' ? coverage.maxRow : coverage.count) >= bot.cursor
     )
       displayedRead.current = { key: bot.read_key, cursor: bot.cursor };
   }
@@ -322,11 +340,10 @@ export function App({ owner }: { owner?: OwnerConnection }) {
     let live = true;
     setSharedFiles([]);
     if (client?.supportsAttachments && selection?.kind === 'bot')
-      void client
-        .invoke('files.list', { session_id: selection.sessionId })
-        .then((v) => {
-          if (live && Array.isArray((v as { files: SharedFile[] }).files))
-            setSharedFiles((v as { files: SharedFile[] }).files);
+      void new ConversationDomain(client)
+        .files(selection.sessionId)
+        .then((files) => {
+          if (live) setSharedFiles(files);
         })
         .catch(() => undefined);
     return () => {
@@ -664,15 +681,15 @@ export function App({ owner }: { owner?: OwnerConnection }) {
     if (sendProjection.current.replying && !complete) return;
     const terminalEpoch = runEpoch.current;
     const generation = ++historyGeneration.current;
-    const data = object(await connection.invoke('chat.history', { session_id: target.sessionId }));
+    const data = await new ConversationDomain(connection).history(target.sessionId);
     if (current.current === connection && selected.current === target) {
       if (
         generation === historyGeneration.current &&
         terminalEpoch === runEpoch.current &&
         (!sendProjection.current.replying || complete)
       ) {
-        observedHistory(target, data.messages);
-        setMessages(sendProjection.current.project(transcript(data.messages), complete));
+        observedHistory(target, data.coverage);
+        setMessages(sendProjection.current.project(data.messages, complete));
         if (complete) {
           setStream('');
           setRunning(false);
@@ -695,12 +712,10 @@ export function App({ owner }: { owner?: OwnerConnection }) {
       target = selected.current;
     if (!connection?.supportsReactions || target?.kind !== 'bot' || streamState !== 'live') return;
     try {
-      const result = reactionReceipt(
-        await connection.invoke('chat.react', {
-          session_id: target.sessionId,
-          row_id: Number(id),
-          emoji,
-        }),
+      const result = await new ConversationDomain(connection).react(
+        target.sessionId,
+        Number(id),
+        emoji,
       );
       if (current.current !== connection || selected.current !== target) return;
       setMessages((old) =>
@@ -787,10 +802,8 @@ export function App({ owner }: { owner?: OwnerConnection }) {
     if (event.type === 'status.update')
       setActivity(text(payload.text).trim().slice(0, 140) || 'Working');
     if (event.type === 'approval.request') {
-      const data = object(
-        await connection.invoke('chat.approvals', { session_id: target.sessionId }),
-      );
-      if (selected.current === target) setApprovals(rows(data.approvals));
+      const data = await new ConversationDomain(connection).approvals(target.sessionId);
+      if (selected.current === target) setApprovals(data);
     }
     if (event.type === 'error') setError('Hermes reported an error. Refresh before retrying.');
   }
@@ -1023,10 +1036,10 @@ export function App({ owner }: { owner?: OwnerConnection }) {
     setRemovedDraft('');
     setStopping(false);
     try {
-      const data = object(await client.invoke('bot.open', { profile: bot.profile }));
+      const data = await new ConversationDomain(client).open(bot.profile);
       if (generation !== selectGeneration.current || current.current !== client)
         return 'superseded';
-      const target: Selection = { kind: 'bot', bot, sessionId: text(data.session_id) };
+      const target: Selection = { kind: 'bot', bot, sessionId: data.sessionId };
       sessionProfiles.current.set(target.sessionId, bot.profile);
       setAgentStates((old) => ({
         ...old,
@@ -1038,8 +1051,8 @@ export function App({ owner }: { owner?: OwnerConnection }) {
       const id = workspace?.bots.find((entry) => entry.profile === bot.profile)?.id;
       if (workspace && id) rememberConversation(workspace.id, { kind: 'bot', id });
       setBlocked(false);
-      observedHistory(target, data.messages);
-      setMessages(sendProjection.current.project(transcript(data.messages)));
+      observedHistory(target, data.history.coverage);
+      setMessages(sendProjection.current.project(data.history.messages));
       const saved = scrollPositions.current.get(draftKey(target));
       if (saved && !saved.follow) {
         followLatest.current = false;
@@ -1062,29 +1075,26 @@ export function App({ owner }: { owner?: OwnerConnection }) {
           );
         }
       }
-      const inflight = data.inflight ? object(data.inflight) : {};
-      setRunning(data.running === true);
-      setStream(text(inflight.assistant));
+      setRunning(data.running);
+      setStream(data.inflight);
       setActivity(data.running === true ? 'Working' : 'Ready');
       const ownedRoutines = object(await client.invoke('routines.list', { profile: bot.profile }));
       if (current.current !== client || selected.current !== target) return 'superseded';
       setRoutines(rows(ownedRoutines.jobs ?? []));
-      const pending = object(
-        await client.invoke('chat.approvals', { session_id: target.sessionId }),
-      );
-      if (selected.current === target) setApprovals(rows(pending.approvals));
+      const pending = await new ConversationDomain(client).approvals(target.sessionId);
+      if (selected.current === target) setApprovals(pending);
       // Reconcile the open/routine-fetch interval against a fresh native snapshot.
       const version = eventVersion.current;
-      const snapshot = object(await client.invoke('bot.open', { profile: bot.profile }));
+      const snapshot = await new ConversationDomain(client).open(bot.profile);
       if (
         current.current === client &&
         selected.current === target &&
         version === eventVersion.current
       ) {
-        observedHistory(target, snapshot.messages);
-        setMessages(sendProjection.current.project(transcript(snapshot.messages)));
+        observedHistory(target, snapshot.history.coverage);
+        setMessages(sendProjection.current.project(snapshot.history.messages));
         setRunning(snapshot.running === true);
-        setStream(snapshot.inflight ? text(object(snapshot.inflight).assistant) : '');
+        setStream(snapshot.inflight);
       }
       return current.current === client && selected.current === target ? 'opened' : 'superseded';
     } catch (error) {
@@ -1177,7 +1187,15 @@ export function App({ owner }: { owner?: OwnerConnection }) {
         if (disposed) return;
         const driver = object(state.driver_status ?? {});
         const actions = rows(driver.pending_actions ?? []);
-        setApprovals(actions.filter((action) => action.kind === 'approval'));
+        setApprovals(
+          decodeApprovals(
+            actions.filter((action) => action.kind === 'approval'),
+            {
+              kind: 'room',
+              roomId: text(selection?.kind === 'room' ? selection.room.room_id : ''),
+            },
+          ),
+        );
         setActivity(
           driver.blocked === true
             ? 'Room recovery needed · Inspect in Hermes'
@@ -1248,7 +1266,7 @@ export function App({ owner }: { owner?: OwnerConnection }) {
     setShowLatest(false);
     const pendingId = `pending-${crypto.randomUUID()}`;
     const roomEventId = crypto.randomUUID();
-    const pendingMessage = {
+    const pendingMessage: Message & { id: string; renderKey: string } = {
       id: pendingId,
       renderKey: pendingId,
       timestamp: new Date().toISOString(),
@@ -1270,18 +1288,20 @@ export function App({ owner }: { owner?: OwnerConnection }) {
     }
     try {
       if (selection.kind === 'bot') {
-        const result = (await client.invoke('chat.send', {
-          session_id: selection.sessionId,
+        const [firstFile, ...restFiles] = fileIds;
+        const result = await new ConversationDomain(client).send({
+          sessionId: selection.sessionId,
           text: message,
-          ...(fileIds.length ? { attachments: fileIds, request_id: crypto.randomUUID() } : {}),
-        })) as Row;
-        if (owns()) setMessages(sendProjection.current.acknowledge(result.user_row_id));
-        if (fileIds.length && result.state !== 'accepted')
-          throw new Error('Attachment outcome uncertain');
+          ...(firstFile
+            ? { attachments: { ids: [firstFile, ...restFiles], requestId: crypto.randomUUID() } }
+            : {}),
+        });
+        if (owns()) setMessages(sendProjection.current.acknowledge(result.userRowId));
+        if (fileIds.length && !result.accepted) throw new Error('Attachment outcome uncertain');
       } else {
-        await client.invoke('room.send', {
-          room_id: text(selection.room.room_id),
-          event_id: roomEventId,
+        await new ConversationDomain(client).sendRoom({
+          roomId: text(selection.room.room_id),
+          eventId: roomEventId,
           text: message,
         });
         if (owns()) setMessages(sendProjection.current.acknowledge(roomEventId));
@@ -1313,11 +1333,10 @@ export function App({ owner }: { owner?: OwnerConnection }) {
     if (stopping) return;
     setStopping(true);
     try {
-      await client.invoke(
-        selection.kind === 'bot' ? 'chat.stop' : 'room.stop',
+      await new ConversationDomain(client).stop(
         selection.kind === 'bot'
-          ? { session_id: selection.sessionId }
-          : { room_id: text(selection.room.room_id) },
+          ? { kind: 'chat', sessionId: selection.sessionId }
+          : { kind: 'room', roomId: text(selection.room.room_id) },
       );
       if (current.current === connection && selected.current === target)
         setActivity('Stop requested');
@@ -1328,31 +1347,27 @@ export function App({ owner }: { owner?: OwnerConnection }) {
       }
     }
   }
-  async function approve(approval: Row, choice: string) {
+  async function approve(approval: ConversationApproval, choice: 'once' | 'deny') {
     if (!client || !selection || blocked) return;
-    const requestId = text(approval.request_id);
+    const requestKey = approvalKey(approval.target);
+    if (approvalFlights.current.has(requestKey)) return;
+    approvalFlights.current.add(requestKey);
+    setApprovalSubmitting((old) => ({ ...old, [requestKey]: true }));
     const connection = client,
       target = selection;
     try {
-      if (target.kind === 'bot') {
-        await client.invoke('chat.approve', {
-          session_id: target.sessionId,
-          request_id: requestId,
-          choice,
-        });
-      } else
-        await client.invoke('room.approve', {
-          room_id: text(target.room.room_id),
-          member_id: text(approval.member_id),
-          task_id: text(approval.task_id),
-          execution_generation: approval.execution_generation,
-          request_id: requestId,
-          choice,
-        });
+      await new ConversationDomain(client).decide(approval.target, choice);
       if (current.current === connection && selected.current === target)
-        setApprovals((old) => old.filter((a) => a.request_id !== requestId));
+        setApprovals((old) => old.filter((a) => approvalKey(a.target) !== requestKey));
     } catch (error) {
       if (current.current === connection && selected.current === target) fail(error);
+    } finally {
+      approvalFlights.current.delete(requestKey);
+      setApprovalSubmitting((old) => {
+        const next = { ...old };
+        delete next[requestKey];
+        return next;
+      });
     }
   }
 
@@ -1456,6 +1471,7 @@ export function App({ owner }: { owner?: OwnerConnection }) {
       setRoutinePending('');
     }
   }
+  const capabilities = conversationCapabilities(client, selection?.kind ?? 'none');
   const detailsContent = client && (
     <Inspector
       bot={selection?.kind === 'bot' ? selection.bot : undefined}
@@ -1476,23 +1492,21 @@ export function App({ owner }: { owner?: OwnerConnection }) {
       }}
     >
       {approvals.map((approval) => (
-        <section className="approval" key={text(approval.request_id)}>
-          <h3>Approval needed</h3>
-          <p>
-            {text(approval.command) ||
-              text(approval.description) ||
-              (approval.approval ? text(object(approval.approval).command) : '') ||
-              'Hermes requested permission.'}
-          </p>
-          <div>
-            <button disabled={blocked} onClick={() => void approve(approval, 'deny')}>
-              Deny
-            </button>
-            <button disabled={blocked} onClick={() => void approve(approval, 'once')}>
-              Allow once
-            </button>
-          </div>
-        </section>
+        <Confirmation
+          key={approvalKey(approval.target)}
+          className="approval"
+          title="Approval needed"
+          description={approval.description}
+          value={
+            approvalSubmitting[approvalKey(approval.target)]
+              ? { kind: 'submitting', message: 'Sending decision' }
+              : {
+                  kind: 'pending',
+                  disabled: blocked,
+                  onDecision: (choice) => void approve(approval, choice),
+                }
+          }
+        />
       ))}
     </Inspector>
   );
@@ -1682,7 +1696,17 @@ export function App({ owner }: { owner?: OwnerConnection }) {
           {rail}
         </Drawer>
       )}
-      <section
+      <Chat
+        state={
+          starting
+            ? 'loading'
+            : streamState === 'live'
+              ? selection
+                ? 'ready'
+                : 'empty'
+              : 'restoring'
+        }
+        reader={showLatest ? 'manual' : 'follow'}
         className="pc-main conversation"
         aria-label="Conversation"
         inert={details && phone && !settings}
@@ -1788,7 +1812,7 @@ export function App({ owner }: { owner?: OwnerConnection }) {
                 </button>
               </div>
             )}
-            <div
+            <ChatViewport
               ref={transcriptPane}
               className={`pc-transcript transcript ${pickingAgents ? 'choosing-agents' : ''}`}
               role={pickingAgents ? undefined : 'log'}
@@ -1820,8 +1844,7 @@ export function App({ owner }: { owner?: OwnerConnection }) {
             >
               <Transcript
                 footer={
-                  selection?.kind === 'bot' &&
-                  (client.supportsLiveVoice || client.supportsSecrets) ? (
+                  selection?.kind === 'bot' && (capabilities.voice || capabilities.secrets) ? (
                     <VoiceChat
                       key={selection.sessionId}
                       ref={voicePanel}
@@ -1848,7 +1871,7 @@ export function App({ owner }: { owner?: OwnerConnection }) {
                 sessionId={selection?.kind === 'bot' ? selection.sessionId : undefined}
                 conversationKey={selection ? draftKey(selection) : ''}
                 onReact={
-                  client.supportsReactions && streamState === 'live' ? reactToMessage : undefined
+                  capabilities.reactions && streamState === 'live' ? reactToMessage : undefined
                 }
                 messages={withSharedFiles(messages, sharedFiles)}
                 onDownloadFile={(file) => {
@@ -1902,7 +1925,7 @@ export function App({ owner }: { owner?: OwnerConnection }) {
                   </section>
                 )}
               </Transcript>
-            </div>
+            </ChatViewport>
             {!pickingAgents && (
               <>
                 {showLatest && (
@@ -1935,41 +1958,54 @@ export function App({ owner }: { owner?: OwnerConnection }) {
                   {!!uploads.files.length && (
                     <ul className="attachment-chips">
                       {uploads.files.map((file) => (
-                        <li key={file.key} data-status={file.status}>
-                          <Icon name="file" />
-                          <span>
-                            <strong>{file.name}</strong>
-                            <small>
-                              {file.status === 'uploading'
-                                ? 'Uploading…'
-                                : file.status === 'error'
-                                  ? file.error
-                                  : fileSize(file.size)}
-                            </small>
-                          </span>
-                          {file.status === 'error' && (
-                            <button
-                              type="button"
-                              aria-label={`Retry ${file.name}`}
-                              onClick={() => uploads.retry(file)}
-                            >
-                              <Icon name="refresh" />
-                            </button>
-                          )}
-                          <button
-                            type="button"
-                            aria-label={`Remove ${file.name}`}
-                            disabled={busy}
-                            onClick={() => uploads.remove(file)}
-                          >
-                            <Icon name="close" />
-                          </button>
-                        </li>
+                        <Attachment
+                          asChild
+                          key={file.key}
+                          size="sm"
+                          className="flex-nowrap"
+                          state={file.status === 'ready' ? 'done' : file.status}
+                        >
+                          <li data-status={file.status}>
+                            <AttachmentMedia>
+                              <Icon name="file" />
+                            </AttachmentMedia>
+                            <AttachmentContent>
+                              <AttachmentTitle>{file.name}</AttachmentTitle>
+                              <AttachmentDescription>
+                                {file.status === 'error' ? file.error : fileSize(file.size)}
+                              </AttachmentDescription>
+                            </AttachmentContent>
+                            {file.status === 'uploading' && (
+                              <span className="sr-only" role="status">
+                                Uploading {file.name}
+                              </span>
+                            )}
+                            <AttachmentActions>
+                              {file.status === 'error' && (
+                                <AttachmentAction
+                                  variant="quiet"
+                                  aria-label={`Retry ${file.name}`}
+                                  onClick={() => uploads.retry(file)}
+                                >
+                                  <Icon name="refresh" />
+                                </AttachmentAction>
+                              )}
+                              <AttachmentAction
+                                variant="quiet"
+                                aria-label={`Remove ${file.name}`}
+                                disabled={busy}
+                                onClick={() => uploads.remove(file)}
+                              >
+                                <Icon name="close" />
+                              </AttachmentAction>
+                            </AttachmentActions>
+                          </li>
+                        </Attachment>
                       ))}
                     </ul>
                   )}
 
-                  <form
+                  <PromptInputFrame
                     className="pc-composer pc-composer-row"
                     onSubmit={(e) => {
                       e.preventDefault();
@@ -1979,7 +2015,7 @@ export function App({ owner }: { owner?: OwnerConnection }) {
                       if (e.target === e.currentTarget) composer.current?.focus();
                     }}
                   >
-                    {client.supportsAttachments && selection?.kind === 'bot' && (
+                    {capabilities.attachments && selection?.kind === 'bot' && (
                       <>
                         <input
                           ref={attachmentInput}
@@ -2025,7 +2061,8 @@ export function App({ owner }: { owner?: OwnerConnection }) {
                         </Menu>
                       </>
                     )}
-                    <textarea
+                    <PromptInputField
+                      sizing="fixed"
                       ref={composer}
                       rows={1}
                       aria-label="Message"
@@ -2055,7 +2092,7 @@ export function App({ owner }: { owner?: OwnerConnection }) {
                         }
                       }}
                     />
-                    {selection?.kind === 'bot' && client.supportsLiveVoice && (
+                    {selection?.kind === 'bot' && capabilities.voice && (
                       <button
                         type="button"
                         className="icon-button pc-call-button"
@@ -2083,13 +2120,13 @@ export function App({ owner }: { owner?: OwnerConnection }) {
                       }
                       onStop={() => void stop()}
                     />
-                  </form>
+                  </PromptInputFrame>
                 </div>
               </>
             )}
           </>
         )}
-      </section>
+      </Chat>
       <DetailsDock
         open={details && (!settings || settingsTab === 'agents')}
         onFrame={restoreDetailsAnchor}

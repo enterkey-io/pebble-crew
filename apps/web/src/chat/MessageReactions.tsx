@@ -1,3 +1,4 @@
+import { BubbleReactions } from '../components/ui/bubble';
 import { useRef, useState } from 'react';
 import { SmilePlus } from 'lucide-react';
 import { Button } from '../components/ui/button';
@@ -90,7 +91,7 @@ export function MessageReactions({
   const [pending, setPending] = useState(false);
   if (!reactions.length) return null;
   return (
-    <div className="pc-reactions" aria-label="Reactions">
+    <BubbleReactions className="pc-reactions translate-y-0" aria-label="Reactions">
       {[...new Set(reactions.map((r) => r.emoji))].map((emoji) => {
         const matching = reactions.filter((r) => r.emoji === emoji);
         const own = matching.some((r) => r.author === 'user');
@@ -115,6 +116,6 @@ export function MessageReactions({
           </button>
         );
       })}
-    </div>
+    </BubbleReactions>
   );
 }

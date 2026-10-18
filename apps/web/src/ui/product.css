@@ -70,14 +70,6 @@ button:disabled {
 .pc-details .role-description p {
   white-space: pre-wrap;
 }
-.pc-routine strong {
-  font-size: 12px;
-  font-weight: 500;
-  display: block;
-}
-.pc-routine p {
-  overflow-wrap: anywhere;
-}
 .pc-message .date-divider {
   margin: 0 0 12px;
 }
@@ -156,15 +148,6 @@ button:disabled {
   border-radius: 9px;
   overflow: hidden;
 }
-.code-toolbar {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  min-height: 36px;
-  padding: 2px 6px 2px 12px;
-  color: var(--muted-foreground);
-  font-size: 11px;
-}
 .pc-message .code-block pre {
   margin: 0;
 }
@@ -213,15 +196,6 @@ button:disabled {
   color: var(--muted-foreground);
   display: block;
   margin-bottom: 8px;
-}
-.message-file {
-  display: block;
-  padding: 8px 10px;
-  border-radius: 8px;
-  background: #ffffff08;
-  font-size: 12px;
-  margin: 6px 0;
-  text-align: left;
 }
 .generated-file {
   display: inline-grid;
@@ -281,28 +255,6 @@ button:disabled {
   font-size: 12px;
   color: var(--muted-foreground);
   max-width: 88%;
-}
-.activity-group summary {
-  cursor: pointer;
-  padding: 6px 0;
-}
-.activity-group ol {
-  display: grid;
-  gap: 12px;
-  margin: 10px 0;
-}
-.activity-group li {
-  border-left: 2px solid var(--border);
-  padding-left: 12px;
-}
-.activity-group .message-body {
-  max-height: 240px;
-  overflow: auto;
-  font-size: 12px;
-}
-.activity-group li p {
-  white-space: pre-wrap;
-  overflow-wrap: anywhere;
 }
 .pc-composer-row textarea {
   border: 0;
@@ -366,38 +318,6 @@ button:disabled {
   gap: 8px;
   margin: 0 auto 10px;
   max-width: 744px;
-}
-.attachment-chips li {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  max-width: 100%;
-  background: var(--card);
-  padding: 8px;
-  border-radius: 10px;
-}
-.attachment-chips svg {
-  width: 16px;
-  height: 16px;
-}
-.attachment-chips li > span {
-  min-width: 0;
-}
-.attachment-chips :is(strong, small) {
-  display: block;
-  max-width: 240px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  font-size: 12px;
-}
-.attachment-chips small {
-  color: var(--muted-foreground);
-}
-.attachment-chips button {
-  width: 28px;
-  height: 28px;
-  display: grid;
-  place-items: center;
 }
 .jump-latest,
 .approval-nudge {
@@ -536,48 +456,6 @@ button:disabled {
   color: var(--muted-foreground);
   margin-top: 6px;
 }
-.entity-page form,
-.owner-card form,
-.workspace-setup form {
-  display: grid;
-  gap: 20px;
-}
-.entity-page form > label,
-.owner-card label,
-.workspace-setup form > label {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  font-size: 12px;
-  font-weight: 500;
-}
-.entity-page :is(input, textarea, select),
-.owner-card input,
-.workspace-setup input {
-  font-size: var(--text-field);
-}
-.entity-page select {
-  height: 40px;
-  padding: 0 12px;
-  border: 1px solid var(--input);
-  border-radius: 8px;
-  background: var(--card);
-  min-width: 0;
-  max-width: 100%;
-}
-.entity-page input[type='checkbox'],
-.workspace-setup input[type='checkbox'] {
-  width: 16px;
-  height: 16px;
-  accent-color: var(--ring);
-  flex-shrink: 0;
-}
-.entity-page label:has(> input[type='checkbox']),
-.workspace-setup label:has(> input[type='checkbox']) {
-  flex-direction: row;
-  align-items: center;
-  font-weight: 400;
-}
 .form-actions {
   display: flex;
   align-items: center;
@@ -590,6 +468,7 @@ button:disabled {
   margin-right: auto;
 }
 .handle-input {
+  width: 100%;
   display: flex;
   align-items: center;
   border: 1px solid var(--input);
@@ -936,49 +815,10 @@ button:disabled {
   flex-direction: column;
   gap: 4px;
 }
-.connection-row {
-  display: grid;
-  grid-template-columns: 24px minmax(0, 1fr) auto;
-  align-items: center;
-  gap: 14px;
-  min-height: 68px;
-  padding: 12px 10px;
-  margin: 0 -10px;
-  min-width: 0;
-  border-radius: 8px;
-  text-align: left;
-  transition: background-color var(--motion-hover);
-}
-button.connection-row:hover {
-  background: var(--surface-hover);
-}
-.connection-row > svg {
-  width: 20px;
-  height: 20px;
-  color: var(--muted-foreground);
-}
-.connection-row > svg:last-child {
-  width: 16px;
-  height: 16px;
-}
-.connection-row > span {
-  min-width: 0;
-}
-.connection-row strong,
 .connection-tool strong {
   display: block;
   font-size: 14px;
   font-weight: 500;
-  overflow-wrap: anywhere;
-}
-.connection-row small {
-  display: -webkit-box;
-  -webkit-line-clamp: 2;
-  -webkit-box-orient: vertical;
-  overflow: hidden;
-  margin-top: 2px;
-  color: var(--muted-foreground);
-  font-size: 12px;
   overflow-wrap: anywhere;
 }
 .connection-added,
@@ -988,21 +828,6 @@ button.connection-row:hover {
 }
 .connection-status-text[data-connected='true'] {
   color: #95baa5;
-}
-.connections-search {
-  position: relative;
-}
-.connections-search > svg {
-  position: absolute;
-  width: 16px;
-  height: 16px;
-  left: 12px;
-  top: 50%;
-  transform: translateY(-50%);
-  color: var(--muted-foreground);
-}
-.connections-search [data-slot='input'] {
-  padding-left: 38px;
 }
 .connections-empty {
   padding: 20px 0;
@@ -1023,7 +848,9 @@ button.connection-row:hover {
 }
 .connection-tool-save {
   position: sticky;
-  bottom: 0;
+  bottom: -24px;
+  z-index: 1;
+  justify-content: flex-end;
   padding-block: 12px;
   background: var(--background);
 }
@@ -1068,6 +895,9 @@ button.connection-row:hover {
   gap: 16px;
   min-height: 48px;
   text-align: left;
+  height: auto;
+  padding: 0;
+  white-space: normal;
 }
 .connection-disclosure small,
 .connection-tools p,
@@ -1448,27 +1278,6 @@ button.connection-row:hover {
   gap: 16px;
   margin-top: 16px;
 }
-.file-list li {
-  display: flex;
-  gap: 12px;
-  align-items: center;
-  justify-content: space-between;
-  font-size: 12px;
-}
-.file-list li > span {
-  min-width: 0;
-}
-.file-list strong {
-  display: block;
-  font-size: 13px;
-  font-weight: 500;
-  overflow-wrap: anywhere;
-}
-.file-list small {
-  display: block;
-  color: var(--muted-foreground);
-  margin-top: 4px;
-}
 .sheet-actions {
   display: flex;
   justify-content: flex-end;
@@ -1782,15 +1591,6 @@ button.connection-row:hover {
   font-size: 12px;
   color: var(--muted-foreground);
   flex: 1;
-}
-.pc-voice-options select {
-  min-height: 42px;
-  min-width: 120px;
-  padding: 6px 12px;
-  border-radius: 10px;
-  background: var(--background);
-  color: var(--foreground);
-  border: 1px solid var(--border);
 }
 .pc-voice-actions {
   justify-content: flex-end;

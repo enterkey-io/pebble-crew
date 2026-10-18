@@ -1,3 +1,7 @@
+import { Label } from './components/ui/label';
+import { Checkbox } from './components/ui/checkbox';
+import { Form } from './components/ui/form';
+import { EditorSurface } from './ui/EditorSurface';
 import { useEffect, useState, useCallback, useReducer } from 'react';
 import { ArrowLeft, ChevronRight, UserPlus, Users } from 'lucide-react';
 import type { BotBridgeClient } from '@hermes-client/protocol';
@@ -238,27 +242,33 @@ export function NewPebble({
           ? 'Add your agent'
           : 'Create a pebble';
   return (
-    <section className="entity-page new-pebble" aria-label="New pebble">
-      <div className="new-pebble-header">
-        {step.kind !== 'choose' && (
-          <IconButton
-            label="Back"
-            icon={ArrowLeft}
-            disabled={busy}
-            onClick={() => {
-              if (
-                (step.kind === 'create' && createDirty && !request) ||
-                (step.kind === 'configure' && childDirty)
-              ) {
-                setBackConfirm(true);
-                return;
-              }
-              setStep({ kind: step.kind === 'configure' ? 'existing' : 'choose' });
-            }}
-          />
-        )}
-        <PageHeader title={title} onClose={onClose} />
-      </div>
+    <EditorSurface
+      className="entity-page new-pebble"
+      aria-label="New pebble"
+      bodyClassName="contents"
+      header={
+        <div className="new-pebble-header">
+          {step.kind !== 'choose' && (
+            <IconButton
+              label="Back"
+              icon={ArrowLeft}
+              disabled={busy}
+              onClick={() => {
+                if (
+                  (step.kind === 'create' && createDirty && !request) ||
+                  (step.kind === 'configure' && childDirty)
+                ) {
+                  setBackConfirm(true);
+                  return;
+                }
+                setStep({ kind: step.kind === 'configure' ? 'existing' : 'choose' });
+              }}
+            />
+          )}
+          <PageHeader title={title} onClose={onClose} />
+        </div>
+      }
+    >
       {step.kind === 'choose' ? (
         <div className="creation-choices">
           <Button variant="ghost" onClick={() => setStep({ kind: 'existing' })}>
@@ -289,7 +299,7 @@ export function NewPebble({
           onDirtyChange={reportChildDirty}
         />
       ) : (
-        <form
+        <Form
           className="profile-form"
           onSubmit={(event) => {
             event.preventDefault();
@@ -345,7 +355,7 @@ export function NewPebble({
                       ? `${model.provider} · ${model.model}`
                       : 'Configure your model in Hermes to create a new pebble.'}
                   </p>
-                  <label>
+                  <Label layout="stacked">
                     Personality
                     <Textarea
                       rows={4}
@@ -353,21 +363,20 @@ export function NewPebble({
                       value={soul}
                       onChange={(e) => setSoul(e.target.value)}
                     />
-                  </label>
+                  </Label>
                 </details>
               </>
             )}
           </div>
           {(!request || createdIdentity) && (
             <footer className="profile-footer">
-              <label className="intro-choice">
-                <input
-                  type="checkbox"
+              <Label className="intro-choice">
+                <Checkbox
                   checked={introduce}
-                  onChange={(e) => setIntroduce(e.target.checked)}
+                  onCheckedChange={(checked) => setIntroduce(checked === true)}
                 />
                 Send me a welcome message
-              </label>
+              </Label>
               <Button
                 disabled={
                   busy ||
@@ -382,7 +391,7 @@ export function NewPebble({
               </Button>
             </footer>
           )}
-        </form>
+        </Form>
       )}
       {backConfirm && (
         <Drawer title="Unsaved changes" variant="dialog" onClose={() => setBackConfirm(false)}>
@@ -403,6 +412,6 @@ export function NewPebble({
           </div>
         </Drawer>
       )}
-    </section>
+    </EditorSurface>
   );
 }

@@ -1,3 +1,5 @@
+import { Label } from './components/ui/label';
+import { Form } from './components/ui/form';
 import { Input } from './components/ui/input';
 import { Button } from './components/ui/button';
 import { useEffect, useRef, useState } from 'react';
@@ -146,14 +148,16 @@ export function FirstRun({
                 Use the Hermes connection address your agent gave you. This web app stays here; your
                 browser talks directly to Hermes. You do not need to paste an API key.
               </p>
-              <form
+              <Form
                 onSubmit={(event) => {
                   event.preventDefault();
                   void pair();
                 }}
               >
                 <>
-                  <label htmlFor="workspace-url">Hermes connection address</label>
+                  <Label layout="stacked" htmlFor="workspace-url">
+                    Hermes connection address
+                  </Label>
                   <Input
                     id="workspace-url"
                     type="url"
@@ -169,7 +173,7 @@ export function FirstRun({
                 <Button variant="default" className="primary" disabled={busy}>
                   {busy ? 'Contacting your Hermes…' : 'Request browser access'}
                 </Button>
-              </form>
+              </Form>
             </>
           )}
           {code && (

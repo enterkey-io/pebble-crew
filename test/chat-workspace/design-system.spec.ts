@@ -182,7 +182,10 @@ test('attachments are conversation bound, can be removed, send without text, and
   await page.getByRole('tab', { name: 'Files', exact: true }).click();
   await expect(page.locator('.file-list')).toContainText('notes.txt');
   const download = page.waitForEvent('download');
-  await page.getByRole('button', { name: 'Download notes.txt', exact: true }).click();
+  await page
+    .getByRole('tabpanel', { name: 'Files', exact: true })
+    .getByRole('button', { name: 'Download notes.txt', exact: true })
+    .click();
   expect((await download).suggestedFilename()).toBe('notes.txt');
   await accessible(page);
   await picker.setInputFiles({
@@ -477,11 +480,15 @@ test('chat proportions, restrained header hover, new avatar choices and minimal 
   await emit(page, 'message.start');
   const activity = page.locator('.pc-activity');
   await expect(activity).toHaveText('Thinking');
-  expect(await activity.evaluate((n) => getComputedStyle(n).animationName)).toContain('shimmer');
+  expect(
+    await activity
+      .locator('[data-slot=trace-title]')
+      .evaluate((n) => getComputedStyle(n).animationName),
+  ).toContain('shimmer');
   await emit(page, 'tool.start', { name: 'terminal' });
   await expect(activity).toHaveText('Running a command');
   await page.emulateMedia({ reducedMotion: 'reduce' });
-  await expect(activity).toHaveCSS('animation-name', 'none');
+  await expect(activity.locator('[data-slot=trace-title]')).toHaveCSS('animation-name', 'none');
   await emit(page, 'message.complete', { status: 'done' });
   await page.getByLabel('Actions for Mica').click();
   await page.getByRole('menuitem', { name: 'Edit pebble' }).click();

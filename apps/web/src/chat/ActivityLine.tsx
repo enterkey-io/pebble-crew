@@ -1,3 +1,4 @@
+import { TraceLine, TraceTitle } from '../components/ui/trace';
 import { AnimatePresence, motion, useIsPresent } from 'motion/react';
 import { useMedia } from '../ui/motion';
 
@@ -5,7 +6,7 @@ function ActivityLabel({ label }: { label: string }) {
   const present = useIsPresent();
   const reduced = useMedia('(prefers-reduced-motion: reduce)');
   return (
-    <motion.p
+    <motion.div
       className="pc-activity"
       data-settling={!present || undefined}
       initial={reduced ? false : { opacity: 0 }}
@@ -13,8 +14,10 @@ function ActivityLabel({ label }: { label: string }) {
       exit={{ opacity: 0 }}
       transition={{ duration: reduced ? 0 : 0.12 }}
     >
-      {label}
-    </motion.p>
+      <TraceLine status="running">
+        <TraceTitle>{label}</TraceTitle>
+      </TraceLine>
+    </motion.div>
   );
 }
 

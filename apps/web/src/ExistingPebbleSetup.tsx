@@ -1,3 +1,6 @@
+import { Label } from './components/ui/label';
+import { Checkbox } from './components/ui/checkbox';
+import { Form } from './components/ui/form';
 import { useEffect, useReducer, useState } from 'react';
 import type { BotBridgeClient } from '@hermes-client/protocol';
 import { WorkspaceDomain } from '@hermes-client/protocol';
@@ -117,7 +120,7 @@ export function ExistingPebbleSetup({
     }
   }
   return (
-    <form
+    <Form
       className="profile-form"
       aria-label="Configure existing agent"
       onSubmit={(event) => {
@@ -164,14 +167,13 @@ export function ExistingPebbleSetup({
         )}
       </div>
       <footer className="profile-footer">
-        <label className="intro-choice">
-          <input
-            type="checkbox"
+        <Label className="intro-choice">
+          <Checkbox
             checked={introduce}
-            onChange={(e) => setIntroduce(e.target.checked)}
+            onCheckedChange={(checked) => setIntroduce(checked === true)}
           />
           Send me a welcome message
-        </label>
+        </Label>
         <Button
           disabled={
             loading ||
@@ -187,6 +189,6 @@ export function ExistingPebbleSetup({
           Add pebble
         </Button>
       </footer>
-    </form>
+    </Form>
   );
 }

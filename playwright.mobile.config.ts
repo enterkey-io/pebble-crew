@@ -1,4 +1,5 @@
 import { defineConfig, devices } from '@playwright/test';
+import { resolve } from 'node:path';
 
 export default defineConfig({
   outputDir: 'test-results/mobile',
@@ -12,7 +13,13 @@ export default defineConfig({
   ],
   webServer: {
     command: 'node scripts/serve-static.mjs',
-    env: { BOT_WEB_STATIC_PORT: '8097', BOT_WEB_STATIC_DIRECTORY: 'apps/web/dist' },
+    env: {
+      BOT_WEB_STATIC_PORT: '8097',
+      BOT_WEB_STATIC_DIRECTORY: resolve(
+        process.env.WORKSPACE_BUILD_ROOT ?? 'apps/web/dist',
+        process.env.WORKSPACE_BUILD_ROOT ? 'web' : '',
+      ),
+    },
     url: 'http://127.0.0.1:8097/',
     reuseExistingServer: !process.env.CI,
   },

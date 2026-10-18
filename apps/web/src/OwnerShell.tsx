@@ -1,3 +1,5 @@
+import { Label } from './components/ui/label';
+import { Form } from './components/ui/form';
 import { Input } from './components/ui/input';
 import { Button } from './components/ui/button';
 import { useEffect, useState } from 'react';
@@ -124,9 +126,9 @@ export function OwnerShell({ setupProof = '' }: { setupProof?: string } = {}) {
             {mode === 'setup' && !usingSetupLink && (
               <p>Open your private setup link to continue.</p>
             )}
-            <form onSubmit={(e) => void submit(e)}>
+            <Form onSubmit={(e) => void submit(e)}>
               {mode === 'setup' && !usingSetupLink && (
-                <label>
+                <Label layout="stacked">
                   Private setup code
                   <Input
                     required
@@ -134,9 +136,9 @@ export function OwnerShell({ setupProof = '' }: { setupProof?: string } = {}) {
                     value={proof}
                     onChange={(e) => setProof(e.target.value.trim())}
                   />
-                </label>
+                </Label>
               )}
-              <label>
+              <Label layout="stacked">
                 Username
                 <Input
                   required
@@ -148,8 +150,8 @@ export function OwnerShell({ setupProof = '' }: { setupProof?: string } = {}) {
                   value={username}
                   onChange={(e) => setUsername(e.target.value)}
                 />
-              </label>
-              <label>
+              </Label>
+              <Label layout="stacked">
                 Password
                 <Input
                   required
@@ -161,9 +163,9 @@ export function OwnerShell({ setupProof = '' }: { setupProof?: string } = {}) {
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                 />
-              </label>
+              </Label>
               {mode === 'setup' && (
-                <label>
+                <Label layout="stacked">
                   Confirm password
                   <Input
                     required
@@ -172,7 +174,7 @@ export function OwnerShell({ setupProof = '' }: { setupProof?: string } = {}) {
                     value={confirmation}
                     onChange={(e) => setConfirmation(e.target.value)}
                   />
-                </label>
+                </Label>
               )}
               {error && (
                 <p className="error" role="alert">
@@ -182,7 +184,7 @@ export function OwnerShell({ setupProof = '' }: { setupProof?: string } = {}) {
               <Button variant="default" className="primary" disabled={busy}>
                 {busy ? 'Please wait…' : mode === 'setup' ? 'Create login' : 'Sign in'}
               </Button>
-            </form>
+            </Form>
             {mode === 'login' && (
               <details>
                 <summary>Forgot your password?</summary>

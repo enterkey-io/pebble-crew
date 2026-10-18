@@ -1,16 +1,19 @@
+import { Card } from '../components/ui/card';
+import { Label } from '../components/ui/label';
+import { NativeSelect, NativeSelectOption } from '../components/ui/native-select';
 import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from 'react';
 import type { BotBridgeClient, BridgeEvent } from '@hermes-client/protocol';
 import { Mic, MicOff, PhoneOff, Play, X } from 'lucide-react';
 import { Button } from '../components/ui/button';
 import { LoadingBar } from '../components/ui/loading-bar';
-import { nativeMessages } from '../conversation';
+import { ConversationDomain } from '@hermes-client/protocol';
 import type { ChatMessage } from '../conversation';
 import { record, settings as decodeSettings, sessionAnswer } from './decode';
 import type { VoiceSettings } from './decode';
 import { VoiceLiveSession } from './live-session';
 import { DelegationReceipts, delegationPrompt } from './delegations';
 import type { Completion } from './delegations';
-import { SecretCard } from './SecretCard';
+import { SecretCard } from '../components/ai-elements/secret-card';
 
 export type VoiceChatHandle = { open: () => void; event: (event: BridgeEvent) => void };
 export const VoiceChat = forwardRef<
@@ -121,7 +124,7 @@ export const VoiceChat = forwardRef<
         call.speak(id, 'That request failed. Please check the error in chat.');
         return;
       }
-      const history = nativeMessages(record(await rpc('chat.history')).messages);
+      const { messages: history } = await new ConversationDomain(client).history(sessionId);
       if (generation.current !== epoch || live.current !== call) return;
       const reply = history.find(
         (message) => message.id === String(result.assistant) && message.role === 'assistant',
@@ -147,7 +150,7 @@ export const VoiceChat = forwardRef<
       const early = receipts.current.accept(request.id, response);
       call.think(request.id, 'The selected agent is handling your request.');
       const data = record(response);
-      const history = nativeMessages(record(await rpc('chat.history')).messages);
+      const { messages: history } = await new ConversationDomain(client).history(sessionId);
       const user = history.find((message) => message.id === String(data.user_row_id));
       if (user && generation.current === epoch) onAccepted(user);
       if (early) await finish(early);
@@ -292,157 +295,167 @@ export const VoiceChat = forwardRef<
     <>
       {secretCard}
       {visible && (
-        <section ref={panel} className="pc-voice-card" aria-label="Voice chat">
-          <header>
-            <h3>Voice</h3>
-            <Button
-              type="button"
-              variant="quiet"
-              size="icon"
-              aria-label="Close voice setup"
-              onClick={() => {
-                end();
-                setVisible(false);
-              }}
-            >
-              <X />
-            </Button>
-          </header>
-          {!settings && !error && <LoadingBar active label="Loading voice settings" />}
-          {settings?.supported === false && <p>This Hermes build doesn’t support live voice.</p>}
-          {settings?.supported && (!settings.configured || changingKey) && (
-            <SecretCard
-              title="OpenAI API key"
-              label="VOICE_TOOLS_OPENAI_KEY"
-              description="Saved to this Pebble’s Hermes profile. Live voice uses your OpenAI account."
-              onSkip={() =>
-                settings?.supported && settings.configured
-                  ? setChangingKey(false)
-                  : setVisible(false)
-              }
-              onSubmit={async (value) => {
-                const receipt = record(await rpc('voice.credential', { value }));
-                if (receipt.saved !== true) throw new Error('Save not confirmed');
-                setChangingKey(false);
-                await loadSettings();
-              }}
-            />
-          )}
-          {settings?.supported && settings.configured && !changingKey && (
-            <>
-              <div className="pc-voice-options">
-                <label>
-                  Voice
-                  <select
-                    aria-label="Voice"
-                    value={settings.voice}
-                    disabled={state !== 'idle' || saving}
-                    onChange={(event) => void updatePreferences(event.target.value, settings.pace)}
-                  >
-                    {!settings.voices.includes(settings.voice) && <option>{settings.voice}</option>}
-                    {settings.voices.map((voice) => (
-                      <option key={voice}>{voice}</option>
-                    ))}
-                  </select>
-                </label>
-                <label>
-                  Speaking pace
-                  <select
-                    aria-label="Speaking pace"
-                    value={settings.pace}
-                    disabled={state !== 'idle' || saving}
-                    onChange={(event) => void updatePreferences(settings.voice, event.target.value)}
-                  >
-                    <option value="slower">Slower</option>
-                    <option value="natural">Natural</option>
-                    <option value="faster">Faster</option>
-                  </select>
-                </label>
-              </div>
-              {settings.canChangeKey && state === 'idle' && (
-                <Button
-                  type="button"
-                  variant="quiet"
-                  size="sm"
-                  disabled={saving}
-                  onClick={() => setChangingKey(true)}
-                >
-                  Change API key
-                </Button>
-              )}
-              <p className="pc-voice-disclosure">
-                Audio and recent chat context go directly to OpenAI. Calls and previews use your
-                provider account.
-              </p>
-              {saving && <LoadingBar active label="Saving voice settings" />}
-              {state === 'idle' ? (
-                <div className="pc-voice-actions">
+        <Card asChild className="pc-voice-card gap-0 border-0 shadow-none">
+          <section ref={panel} aria-label="Voice chat">
+            <header>
+              <h3>Voice</h3>
+              <Button
+                type="button"
+                variant="quiet"
+                size="icon"
+                aria-label="Close voice setup"
+                onClick={() => {
+                  end();
+                  setVisible(false);
+                }}
+              >
+                <X />
+              </Button>
+            </header>
+            {!settings && !error && <LoadingBar active label="Loading voice settings" />}
+            {settings?.supported === false && <p>This Hermes build doesn’t support live voice.</p>}
+            {settings?.supported && (!settings.configured || changingKey) && (
+              <SecretCard
+                title="OpenAI API key"
+                label="VOICE_TOOLS_OPENAI_KEY"
+                description="Saved to this Pebble’s Hermes profile. Live voice uses your OpenAI account."
+                onSkip={() =>
+                  settings?.supported && settings.configured
+                    ? setChangingKey(false)
+                    : setVisible(false)
+                }
+                onSubmit={async (value) => {
+                  const receipt = record(await rpc('voice.credential', { value }));
+                  if (receipt.saved !== true) throw new Error('Save not confirmed');
+                  setChangingKey(false);
+                  await loadSettings();
+                }}
+              />
+            )}
+            {settings?.supported && settings.configured && !changingKey && (
+              <>
+                <div className="pc-voice-options">
+                  <Label layout="stacked">
+                    Voice
+                    <NativeSelect
+                      className="w-full"
+                      aria-label="Voice"
+                      value={settings.voice}
+                      disabled={state !== 'idle' || saving}
+                      onChange={(event) =>
+                        void updatePreferences(event.target.value, settings.pace)
+                      }
+                    >
+                      {!settings.voices.includes(settings.voice) && (
+                        <NativeSelectOption>{settings.voice}</NativeSelectOption>
+                      )}
+                      {settings.voices.map((voice) => (
+                        <NativeSelectOption key={voice}>{voice}</NativeSelectOption>
+                      ))}
+                    </NativeSelect>
+                  </Label>
+                  <Label layout="stacked">
+                    Speaking pace
+                    <NativeSelect
+                      className="w-full"
+                      aria-label="Speaking pace"
+                      value={settings.pace}
+                      disabled={state !== 'idle' || saving}
+                      onChange={(event) =>
+                        void updatePreferences(settings.voice, event.target.value)
+                      }
+                    >
+                      <NativeSelectOption value="slower">Slower</NativeSelectOption>
+                      <NativeSelectOption value="natural">Natural</NativeSelectOption>
+                      <NativeSelectOption value="faster">Faster</NativeSelectOption>
+                    </NativeSelect>
+                  </Label>
+                </div>
+                {settings.canChangeKey && state === 'idle' && (
                   <Button
                     type="button"
                     variant="quiet"
+                    size="sm"
                     disabled={saving}
-                    onClick={() => void start(true)}
+                    onClick={() => setChangingKey(true)}
                   >
-                    <Play />
-                    Preview
+                    Change API key
                   </Button>
-                  <Button type="button" disabled={saving} onClick={() => void start(false)}>
-                    <Mic />
-                    Start call
-                  </Button>
-                </div>
-              ) : (
-                <div className="pc-voice-actions">
-                  <span role="status">
-                    {state === 'starting'
-                      ? 'Connecting'
-                      : state === 'preview'
-                        ? 'Voice preview'
-                        : muted
-                          ? 'Muted'
-                          : 'Live'}
-                  </span>
-                  {state === 'live' && (
+                )}
+                <p className="pc-voice-disclosure">
+                  Audio and recent chat context go directly to OpenAI. Calls and previews use your
+                  provider account.
+                </p>
+                {saving && <LoadingBar active label="Saving voice settings" />}
+                {state === 'idle' ? (
+                  <div className="pc-voice-actions">
                     <Button
                       type="button"
                       variant="quiet"
-                      aria-label={muted ? 'Unmute microphone' : 'Mute microphone'}
-                      onClick={() => {
-                        live.current?.setMuted(!muted);
-                        setMuted(!muted);
-                      }}
+                      disabled={saving}
+                      onClick={() => void start(true)}
                     >
-                      {muted ? <MicOff /> : <Mic />}
+                      <Play />
+                      Preview
                     </Button>
-                  )}
-                  <Button type="button" variant="quiet" onClick={end}>
-                    <PhoneOff />
-                    End
+                    <Button type="button" disabled={saving} onClick={() => void start(false)}>
+                      <Mic />
+                      Start call
+                    </Button>
+                  </div>
+                ) : (
+                  <div className="pc-voice-actions">
+                    <span role="status">
+                      {state === 'starting'
+                        ? 'Connecting'
+                        : state === 'preview'
+                          ? 'Voice preview'
+                          : muted
+                            ? 'Muted'
+                            : 'Live'}
+                    </span>
+                    {state === 'live' && (
+                      <Button
+                        type="button"
+                        variant="quiet"
+                        aria-label={muted ? 'Unmute microphone' : 'Mute microphone'}
+                        onClick={() => {
+                          live.current?.setMuted(!muted);
+                          setMuted(!muted);
+                        }}
+                      >
+                        {muted ? <MicOff /> : <Mic />}
+                      </Button>
+                    )}
+                    <Button type="button" variant="quiet" onClick={end}>
+                      <PhoneOff />
+                      End
+                    </Button>
+                  </div>
+                )}
+                {blockedAudio && (
+                  <Button
+                    type="button"
+                    onClick={() => {
+                      void live.current?.audio
+                        .play()
+                        .then(() => setBlockedAudio(false))
+                        .catch(() => setError('Your browser blocked audio playback.'));
+                    }}
+                  >
+                    Enable audio
                   </Button>
-                </div>
-              )}
-              {blockedAudio && (
-                <Button
-                  type="button"
-                  onClick={() => {
-                    void live.current?.audio
-                      .play()
-                      .then(() => setBlockedAudio(false))
-                      .catch(() => setError('Your browser blocked audio playback.'));
-                  }}
-                >
-                  Enable audio
-                </Button>
-              )}
-              {caption && <p className="pc-voice-caption">{caption}</p>}
-            </>
-          )}
-          {error && (
-            <p role="alert" className="pc-voice-error">
-              {error}
-            </p>
-          )}
-        </section>
+                )}
+                {caption && <p className="pc-voice-caption">{caption}</p>}
+              </>
+            )}
+            {error && (
+              <p role="alert" className="pc-voice-error">
+                {error}
+              </p>
+            )}
+          </section>
+        </Card>
       )}
     </>
   );

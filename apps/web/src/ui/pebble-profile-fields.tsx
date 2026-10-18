@@ -1,3 +1,4 @@
+import { Label } from '../components/ui/label';
 import type { ReactNode } from 'react';
 import type { BotBridgeClient } from '@hermes-client/protocol';
 import type {
@@ -37,7 +38,7 @@ export function PebbleProfileFields({
   return (
     <div className="pebble-profile-fields">
       <div className="profile-identity-fields">
-        <label>
+        <Label layout="stacked">
           Name
           <Input
             required
@@ -46,8 +47,8 @@ export function PebbleProfileFields({
             value={value.name}
             onChange={(e) => onChange({ name: e.target.value })}
           />
-        </label>
-        <label>
+        </Label>
+        <Label layout="stacked">
           Handle
           <span className="handle-input">
             <span aria-hidden="true">@</span>
@@ -63,7 +64,7 @@ export function PebbleProfileFields({
               onChange={(e) => onChange({ handle: e.target.value })}
             />
           </span>
-        </label>
+        </Label>
         {children}
       </div>
       <AvatarChooser
@@ -90,7 +91,7 @@ export function RoleBasics({
 }) {
   return (
     <>
-      <label>
+      <Label layout="stacked">
         Title
         <Input
           maxLength={1000}
@@ -98,8 +99,8 @@ export function RoleBasics({
           onChange={(e) => onChange({ title: e.target.value })}
           placeholder="e.g. Researcher"
         />
-      </label>
-      <label>
+      </Label>
+      <Label layout="stacked">
         Description
         <Textarea
           aria-label="Description"
@@ -108,7 +109,7 @@ export function RoleBasics({
           value={description}
           onChange={(e) => onChange({ description: e.target.value })}
         />
-      </label>
+      </Label>
     </>
   );
 }
@@ -137,7 +138,7 @@ export function ReportingField({
     return true;
   });
   return (
-    <label className="reporting-field">
+    <Label layout="stacked" className="reporting-field">
       Reports to
       <Select value={manager || state.orchestrator || ''} onValueChange={onChange}>
         <SelectTrigger aria-label="Reports to">
@@ -152,7 +153,7 @@ export function ReportingField({
           ))}
         </SelectContent>
       </Select>
-    </label>
+    </Label>
   );
 }
 
@@ -173,7 +174,7 @@ export function RoleDetails({
           expectedOutputs: 'Expected outputs',
         }[key];
         return (
-          <label key={key}>
+          <Label layout="stacked" key={key}>
             {label}
             <Textarea
               aria-label={label}
@@ -182,7 +183,7 @@ export function RoleDetails({
               value={role[key]}
               onChange={(event) => onChange({ [key]: event.target.value })}
             />
-          </label>
+          </Label>
         );
       })}
     </details>

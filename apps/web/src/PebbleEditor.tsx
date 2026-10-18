@@ -1,3 +1,8 @@
+import { ModelSelector } from './components/ai-elements/model-selector';
+import { Label } from './components/ui/label';
+import { Checkbox } from './components/ui/checkbox';
+import { Form } from './components/ui/form';
+import { TabbedEditor } from './ui/EditorSurface';
 import { LoadingBar } from './components/ui/loading-bar';
 import { Button } from './components/ui/button';
 import { useEffect, useReducer, useState } from 'react';
@@ -28,7 +33,7 @@ import {
   RoleDetails,
   ReportingField,
 } from './ui/pebble-profile-fields';
-import { PageHeader, FormSection, Notice, Tabs } from './ui/primitives';
+import { PageHeader, FormSection, Notice } from './ui/primitives';
 import { Drawer } from './chat/Drawer';
 import { safeError } from '@hermes-client/core';
 export function PebbleEditor({
@@ -187,15 +192,13 @@ export function PebbleEditor({
     else onClose();
   };
   return (
-    <section className="entity-page" aria-label={`Edit ${bot.name}`}>
-      <PageHeader title={`Edit ${bot.name}`} subtitle={`@${bot.handle}`} onClose={close} />
-      {retired && (
-        <Notice error>
-          This pebble was removed or replaced. Your unsaved fields remain here to copy; changes
-          cannot be saved to a different pebble.
-        </Notice>
-      )}
-      <Tabs
+    <>
+      <TabbedEditor
+        className="entity-page"
+        aria-label={`Edit ${bot.name}`}
+        header={
+          <PageHeader title={`Edit ${bot.name}`} subtitle={`@${bot.handle}`} onClose={close} />
+        }
         tabs={[
           { id: 'identity', label: 'Profile' },
           { id: 'role', label: 'Role' },
@@ -209,11 +212,17 @@ export function PebbleEditor({
           setNotice('');
         }}
       >
+        {retired && (
+          <Notice error>
+            This pebble was removed or replaced. Your unsaved fields remain here to copy; changes
+            cannot be saved to a different pebble.
+          </Notice>
+        )}
         {error && <Notice error>{error}</Notice>}
         {notice && <Notice>{notice}</Notice>}
         <ProfileConflicts edit={edit} dispatch={dispatch} />
         {tab === 'identity' && (
-          <form
+          <Form
             className="profile-form"
             onSubmit={(event) => {
               event.preventDefault();
@@ -261,11 +270,11 @@ export function PebbleEditor({
                 Save profile
               </Button>
             </footer>
-          </form>
+          </Form>
         )}
         {tab === 'role' && (
           <FormSection title="Role & reporting">
-            <form
+            <Form
               onSubmit={(e) => {
                 e.preventDefault();
                 void save('role');
@@ -291,7 +300,7 @@ export function PebbleEditor({
                   Save role
                 </Button>
               </div>
-            </form>
+            </Form>
             {bot.enrolled && bot.profile !== state.orchestrator && (
               <details className="form-disclosure">
                 <summary>Make Main Pebble</summary>
@@ -340,7 +349,7 @@ export function PebbleEditor({
                 <Notice error>Tools could not be loaded. Reopen this editor to try again.</Notice>
               )
             ) : (
-              <form
+              <Form
                 onSubmit={(e) => {
                   e.preventDefault();
                   void save('tools');
@@ -349,13 +358,12 @@ export function PebbleEditor({
                 <fieldset>
                   <legend>Tools</legend>
                   {capabilities.toolsets.map((t) => (
-                    <label className="selection-row" key={String(t.name)}>
-                      <input
-                        type="checkbox"
+                    <Label className="selection-row" key={String(t.name)}>
+                      <Checkbox
                         checked={toolsets.includes(String(t.name))}
-                        onChange={(e) =>
+                        onCheckedChange={(checked) =>
                           setToolsets(
-                            e.target.checked
+                            checked === true
                               ? [...toolsets, t.name]
                               : toolsets.filter((x) => x !== t.name),
                           )
@@ -365,20 +373,19 @@ export function PebbleEditor({
                         <strong>{String(t.label || t.name)}</strong>
                         <small>{String(t.description || '')}</small>
                       </span>
-                    </label>
+                    </Label>
                   ))}
                 </fieldset>
                 <fieldset>
                   <legend>Skills</legend>
                   {capabilities.skills.map((t) => (
-                    <label className="selection-row" key={String(t.name)}>
-                      <input
-                        type="checkbox"
+                    <Label className="selection-row" key={String(t.name)}>
+                      <Checkbox
                         checked={t.required === true || skills.includes(String(t.name))}
                         disabled={t.required === true}
-                        onChange={(e) =>
+                        onCheckedChange={(checked) =>
                           setSkills(
-                            e.target.checked
+                            checked === true
                               ? [...skills, String(t.name)]
                               : skills.filter((x) => x !== t.name),
                           )
@@ -388,7 +395,7 @@ export function PebbleEditor({
                         {String(t.name)}
                         {t.required === true && <small>Required by Hermes</small>}
                       </span>
-                    </label>
+                    </Label>
                   ))}
                 </fieldset>
                 <p className="field-hint">
@@ -402,7 +409,7 @@ export function PebbleEditor({
                     Save tools & skills
                   </Button>
                 </div>
-              </form>
+              </Form>
             )}
           </FormSection>
         )}
@@ -410,9 +417,12 @@ export function PebbleEditor({
           <FormSection title="Model">
             {state.model_grant ? (
               <>
-                <p>
-                  {state.model_grant.provider} · {state.model_grant.model}
-                </p>
+                <ModelSelector
+                  value={{
+                    kind: 'read-only',
+                    label: `${state.model_grant.provider} · ${state.model_grant.model}`,
+                  }}
+                />
                 {bot.profile !== 'default' &&
                   (state.model_grant.supported ? (
                     <>
@@ -437,7 +447,7 @@ export function PebbleEditor({
             )}
           </FormSection>
         )}
-      </Tabs>
+      </TabbedEditor>
       {busy && (
         <span className="sr-only" role="status">
           Saving…
@@ -463,6 +473,6 @@ export function PebbleEditor({
           </div>
         </Drawer>
       )}
-    </section>
+    </>
   );
 }

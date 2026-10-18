@@ -1,3 +1,4 @@
+import { TabbedEditor } from './ui/EditorSurface';
 import { LoadingBar } from './components/ui/loading-bar';
 import { Button } from './components/ui/button';
 import { safeError } from '@hermes-client/core';
@@ -9,7 +10,7 @@ import { OwnerAccount } from './OwnerAccount';
 import { ConnectionsPanel } from './connections/ConnectionsPanel';
 import { RequestReview } from './chat/RequestReview';
 import { PebbleEditor } from './PebbleEditor';
-import { PageHeader, Notice, Tabs } from './ui/primitives';
+import { PageHeader, Notice } from './ui/primitives';
 type Row = Record<string, unknown>;
 export function WorkspaceSettings({
   client,
@@ -136,72 +137,68 @@ export function WorkspaceSettings({
     ? profile
     : (connectionBots[0]?.profile ?? '');
   return (
-    <section className="settings-panel entity-page" aria-label="Settings">
-      <PageHeader title="Settings" onClose={() => onNavigate(onClose)} />
-      <Tabs
-        tabs={[
-          ...(owner ? [{ id: 'account', label: 'Account' }] : []),
-          { id: 'connections', label: 'Connections' },
-          { id: 'requests', label: 'Requests' },
-        ]}
-        value={tab}
-        onChange={(id) => onNavigate(() => setTab(id as typeof tab))}
-      >
-        {error && (
-          <Notice error>
-            {error}{' '}
-            <Button
-              variant="ghost"
-              className="text-button"
-              onClick={() => setRefresh((x) => x + 1)}
-            >
-              Try again
-            </Button>
-          </Notice>
-        )}
-        {notice && <Notice>{notice}</Notice>}
-        <LoadingBar active={loading} label="Loading Settings" />
-        {tab === 'account' && owner && <OwnerAccount />}
-        {tab === 'requests' && !loading && (
-          <>
-            {!requests.length && !error && (
-              <div className="ui-empty">
-                <h2>No requests</h2>
-                <p>Changes proposed by your pebbles appear here.</p>
-              </div>
-            )}
-            {requests.map((r) => (
-              <RequestReview
-                key={String(r.id)}
-                request={r}
-                busy={busy}
-                onDecision={(a, c) => void decide(r, a, c)}
-                onInspect={() => {
-                  void client
-                    .invoke('requests.reconcile', { id: r.id })
-                    .then((value) => setNotice(String((value as Row).message)))
-                    .catch((e) => setError(safeError(e).message));
-                }}
-              />
-            ))}
-          </>
-        )}
-        {tab === 'connections' &&
-          (connectionProfile ? (
-            <ConnectionsPanel
-              key={connectionProfile}
-              client={client}
-              bots={connectionBots}
-              profile={connectionProfile}
-              revision={state.revision}
-              onProfile={setProfile}
-              onNavigate={onNavigate}
-              onDirtyChange={onDirtyChange}
+    <TabbedEditor
+      className="settings-panel entity-page"
+      aria-label="Settings"
+      header={<PageHeader title="Settings" onClose={() => onNavigate(onClose)} />}
+      tabs={[
+        ...(owner ? [{ id: 'account', label: 'Account' }] : []),
+        { id: 'connections', label: 'Connections' },
+        { id: 'requests', label: 'Requests' },
+      ]}
+      value={tab}
+      onChange={(id) => onNavigate(() => setTab(id as typeof tab))}
+    >
+      {error && (
+        <Notice error>
+          {error}{' '}
+          <Button variant="ghost" className="text-button" onClick={() => setRefresh((x) => x + 1)}>
+            Try again
+          </Button>
+        </Notice>
+      )}
+      {notice && <Notice>{notice}</Notice>}
+      <LoadingBar active={loading} label="Loading Settings" />
+      {tab === 'account' && owner && <OwnerAccount />}
+      {tab === 'requests' && !loading && (
+        <>
+          {!requests.length && !error && (
+            <div className="ui-empty">
+              <h2>No requests</h2>
+              <p>Changes proposed by your pebbles appear here.</p>
+            </div>
+          )}
+          {requests.map((r) => (
+            <RequestReview
+              key={String(r.id)}
+              request={r}
+              busy={busy}
+              onDecision={(a, c) => void decide(r, a, c)}
+              onInspect={() => {
+                void client
+                  .invoke('requests.reconcile', { id: r.id })
+                  .then((value) => setNotice(String((value as Row).message)))
+                  .catch((e) => setError(safeError(e).message));
+              }}
             />
-          ) : (
-            <p className="connections-empty">No pebbles available</p>
           ))}
-      </Tabs>
-    </section>
+        </>
+      )}
+      {tab === 'connections' &&
+        (connectionProfile ? (
+          <ConnectionsPanel
+            key={connectionProfile}
+            client={client}
+            bots={connectionBots}
+            profile={connectionProfile}
+            revision={state.revision}
+            onProfile={setProfile}
+            onNavigate={onNavigate}
+            onDirtyChange={onDirtyChange}
+          />
+        ) : (
+          <p className="connections-empty">No pebbles available</p>
+        ))}
+    </TabbedEditor>
   );
 }

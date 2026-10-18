@@ -1,11 +1,6 @@
+import { projectTimeline } from './chat/presentation';
 import { describe, it, expect } from 'vitest';
-import {
-  nativeMessages,
-  roomMessages,
-  messageDate,
-  projectTimeline,
-  withSharedFiles,
-} from './conversation';
+import { nativeMessages, roomMessages, messageDate, withSharedFiles } from './conversation';
 describe('native conversation projection', () => {
   it('retains durable identities and native timestamps without fabricating them', () => {
     const messages = nativeMessages([
@@ -38,7 +33,7 @@ describe('native conversation projection', () => {
 });
 
 describe('lossless native timeline presentation', () => {
-  it('retains source rows but omits empty/hidden reasoning and groups tools around meaningful final replies', () => {
+  it('retains native identities but excludes source records, empty/hidden reasoning and groups tools around meaningful final replies', () => {
     const source = [
       { row_id: 1, role: 'assistant', text: '', reasoning: 'private' },
       { row_id: 2, role: 'tool', text: 'Read result', name: 'read_file' },
@@ -67,7 +62,8 @@ describe('lossless native timeline presentation', () => {
     const messages = nativeMessages(source),
       items = projectTimeline(messages);
     expect(messages.map((m) => m.id)).toEqual(['1', '2', '3', '4', '5']);
-    expect(messages[0]!.source).toBe(source[0]);
+    expect(messages[0]).not.toHaveProperty('source');
+    expect(JSON.stringify(messages)).not.toContain('private');
     expect(items).toHaveLength(2);
     expect(items[0]!.kind).toBe('activity');
     expect(items[1]).toMatchObject({ kind: 'message', message: { text: 'Real final' } });

@@ -1,6 +1,9 @@
+import { Item, ItemContent, ItemTitle, ItemDescription } from '../components/ui/item';
 import { useEffect, useState } from 'react';
 import { Tabs } from '../ui/primitives';
-import { Icon } from './Icon';
+import { X } from 'lucide-react';
+import { Button } from '../components/ui/button';
+import { IconButton } from '../components/ui/icon-button';
 import { Switch } from '../components/ui/switch';
 import { FilesPanel } from './FilesPanel';
 import { ComputerPanel } from './ComputerPanel';
@@ -72,9 +75,7 @@ export function Inspector({
   return (
     <>
       <header>
-        <button className="icon-button details-close" aria-label="Close details" onClick={onClose}>
-          <Icon name="close" />
-        </button>
+        <IconButton className="details-close" label="Close details" icon={X} onClick={onClose} />
       </header>
       <div className="pc-details-identity identity-summary">
         {bot ? (
@@ -86,9 +87,9 @@ export function Inspector({
         {identity?.role.title && <p>{identity.role.title}</p>}
         {identity && <span className="handle">@{identity.handle}</span>}
         {identity && (
-          <button className="text-button" onClick={onEdit}>
+          <Button variant="quiet" className="text-button" onClick={onEdit}>
             Edit pebble
-          </button>
+          </Button>
         )}
       </div>
       <div className="inspector-body">
@@ -122,18 +123,24 @@ export function Inspector({
                     const enabled =
                       r.enabled !== false && r.paused !== true && r.state !== 'paused';
                     return (
-                      <div className="pc-routine routine" key={id} data-routine-id={id}>
-                        <div>
-                          <strong>{String(r.name ?? 'Routine')}</strong>
-                          <p>{String(r.schedule_display ?? r.schedule ?? '')}</p>
-                        </div>
+                      <Item
+                        className="pc-routine routine flex-nowrap px-0"
+                        key={id}
+                        data-routine-id={id}
+                      >
+                        <ItemContent>
+                          <ItemTitle>{String(r.name ?? 'Routine')}</ItemTitle>
+                          <ItemDescription className="text-xs">
+                            {String(r.schedule_display ?? r.schedule ?? '')}
+                          </ItemDescription>
+                        </ItemContent>
                         <Switch
                           checked={enabled}
                           aria-label={`${enabled ? 'Pause' : 'Resume'} ${String(r.name ?? 'routine')}`}
                           disabled={!!pending}
                           onCheckedChange={() => onToggle(r)}
                         />
-                      </div>
+                      </Item>
                     );
                   })}
                   {!routines.length && <p className="empty-note">No routines yet.</p>}

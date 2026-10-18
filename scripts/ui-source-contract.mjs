@@ -24,7 +24,7 @@ export function sourceContract(source) {
             exported: (element.propertyName ?? element.name).text,
           });
     }
-    if (ts.isCallExpression(node)) calls.push(node);
+    if (ts.isCallExpression(node) || ts.isNewExpression(node)) calls.push(node);
     ts.forEachChild(node, visit);
   }
   visit(file);
@@ -34,18 +34,31 @@ export function sourceContract(source) {
       !statement.modifiers?.some((modifier) => modifier.kind === ts.SyntaxKind.ExportKeyword)
     )
       continue;
+    const values = new Map(),
+      resolved = new Set();
+    function declarations(node) {
+      if (node !== statement && ts.isFunctionLike(node)) return;
+      if (ts.isVariableDeclaration(node) && ts.isIdentifier(node.name) && node.initializer)
+        values.set(node.name.text, node.initializer);
+      ts.forEachChild(node, declarations);
+    }
+    declarations(statement);
+    function render(child) {
+      if (
+        (ts.isJsxOpeningElement(child) || ts.isJsxSelfClosingElement(child)) &&
+        ts.isIdentifier(child.tagName)
+      )
+        jsx.add(child.tagName.text);
+      if (ts.isIdentifier(child) && values.has(child.text) && !resolved.has(child.text)) {
+        resolved.add(child.text);
+        render(values.get(child.text));
+      }
+      ts.forEachChild(child, render);
+    }
     function screen(node) {
       if (node !== statement && ts.isFunctionLike(node)) return;
       if (ts.isCallExpression(node)) screenCalls.push(node);
       if (ts.isReturnStatement(node) && node.expression) {
-        function render(child) {
-          if (
-            (ts.isJsxOpeningElement(child) || ts.isJsxSelfClosingElement(child)) &&
-            ts.isIdentifier(child.tagName)
-          )
-            jsx.add(child.tagName.text);
-          ts.forEachChild(child, render);
-        }
         render(node.expression);
       }
       ts.forEachChild(node, screen);
@@ -53,6 +66,12 @@ export function sourceContract(source) {
     screen(statement);
   }
   return {
+    importSources() {
+      return modules;
+    },
+    calledNames() {
+      return calls.map((call) => call.expression.getText(file));
+    },
     renders(exported, module) {
       return [...jsx].some(
         (name) => imports.get(name)?.exported === exported && imports.get(name)?.source === module,

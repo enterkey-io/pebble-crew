@@ -1,3 +1,4 @@
+import { Form } from '../components/ui/form';
 import { useEffect, useState } from 'react';
 import type { Dispatch, DragEvent, ReactNode, SetStateAction } from 'react';
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
@@ -256,7 +257,8 @@ export function OrganizationRail({
         onDragEnd={() => setOver('')}
         {...targetEvents(target, id)}
       >
-        <button
+        <Button
+          variant="quiet"
           className="pc-row-open"
           onClick={() => onOpenPebble(id)}
           aria-label={
@@ -273,7 +275,7 @@ export function OrganizationRail({
             </span>{' '}
             <small aria-hidden="true">{pebble.preview}</small>
           </span>
-        </button>
+        </Button>
         {actions ? (
           actions(id)
         ) : (
@@ -300,7 +302,8 @@ export function OrganizationRail({
           onDragEnd={() => setOver('')}
           {...targetEvents({ kind: 'crew', id })}
         >
-          <button
+          <Button
+            variant="quiet"
             className="pc-crew"
             aria-label={`${crew.name} ${crew.members.length} pebbles. Open chat`}
             onClick={() => onOpenCrew(id)}
@@ -315,7 +318,7 @@ export function OrganizationRail({
             <span>
               <strong>{crew.name}</strong> <small>{crew.members.length} pebbles</small>
             </span>
-          </button>
+          </Button>
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button
@@ -440,7 +443,8 @@ export function OrganizationRail({
                 }
               }}
             >
-              <button
+              <Button
+                variant="quiet"
                 className="pc-section-toggle"
                 aria-expanded={!section.collapsed}
                 onClick={() =>
@@ -454,7 +458,7 @@ export function OrganizationRail({
               >
                 <ChevronDown data-collapsed={section.collapsed} />
                 <span>{section.name}</span>
-              </button>
+              </Button>
               {!isSystemSection(section.id) && (
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
@@ -609,7 +613,7 @@ export function OrganizationDialog({
             Organize your sidebar. Agent profiles and chat history stay intact.
           </DialogDescription>
         </DialogHeader>
-        <form
+        <Form
           onSubmit={(event) => {
             event.preventDefault();
             save();
@@ -672,7 +676,7 @@ export function OrganizationDialog({
               {editor?.kind.startsWith('new') ? 'Create' : 'Save changes'}
             </Button>
           </div>
-        </form>
+        </Form>
         <Dialog open={discard} onOpenChange={setDiscard}>
           <DialogContent>
             <DialogTitle>Discard unsaved changes?</DialogTitle>

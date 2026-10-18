@@ -1,9 +1,12 @@
+import { Label } from '../components/ui/label';
+import { Form } from '../components/ui/form';
 import { useEffect, useReducer, useRef, useState } from 'react';
 import { ChevronDown, ExternalLink } from 'lucide-react';
 import type { BotBridgeClient } from '@hermes-client/protocol';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
 import { Checkbox } from '../components/ui/checkbox';
+import { Collapsible, CollapsibleTrigger, CollapsibleContent } from '../components/ui/collapsible';
 import { LoadingBar } from '../components/ui/loading-bar';
 import { Notice } from '../ui/primitives';
 import { permissions, probe, authFlow, keySaved, policyLabel, toolTitle } from './model';
@@ -229,7 +232,7 @@ export function ConnectionDetail({
                 Add or replace API key
               </Button>
             ) : (
-              <form
+              <Form
                 onSubmit={(event) => {
                   event.preventDefault();
                   void run(async () => {
@@ -250,7 +253,9 @@ export function ConnectionDetail({
                   });
                 }}
               >
-                <label htmlFor="connection-api-key">API key</label>
+                <Label layout="stacked" htmlFor="connection-api-key">
+                  API key
+                </Label>
                 <Input
                   ref={keyInput}
                   id="connection-api-key"
@@ -275,31 +280,35 @@ export function ConnectionDetail({
                     Cancel
                   </Button>
                 </div>
-              </form>
+              </Form>
             )}
           </div>
         )}
       </section>
       {permission && (
-        <section className="connection-section">
-          <button
-            className="connection-disclosure"
-            disabled={busy || !!authorizing}
-            aria-expanded={toolsOpen}
-            aria-controls="connection-tools"
-            onClick={() => {
-              setToolsOpen(!toolsOpen);
-              if (!toolsOpen && !tools) void run(check);
-            }}
-          >
-            <span>
-              <strong>Tool access</strong>
-              <small>{policyLabel(permission.policy)}</small>
-            </span>
-            <ChevronDown aria-hidden="true" data-open={toolsOpen} />
-          </button>
-          {toolsOpen && (
-            <div id="connection-tools" className="connection-tools">
+        <Collapsible
+          asChild
+          open={toolsOpen}
+          onOpenChange={(open) => {
+            setToolsOpen(open);
+            if (open && !tools) void run(check);
+          }}
+        >
+          <section className="connection-section">
+            <CollapsibleTrigger asChild>
+              <Button
+                variant="quiet"
+                className="connection-disclosure"
+                disabled={busy || !!authorizing}
+              >
+                <span>
+                  <strong>Tool access</strong>
+                  <small>{policyLabel(permission.policy)}</small>
+                </span>
+                <ChevronDown aria-hidden="true" data-open={toolsOpen} />
+              </Button>
+            </CollapsibleTrigger>
+            <CollapsibleContent id="connection-tools" className="connection-tools">
               {tools && draft.kind === 'native' && (
                 <>
                   <p>Keep Hermes settings, or choose an exact list.</p>
@@ -315,7 +324,7 @@ export function ConnectionDetail({
                 </>
               )}
               {tools && draft.kind === 'custom' && (
-                <form
+                <Form
                   onSubmit={(event) => {
                     event.preventDefault();
                     if (conflict) return;
@@ -356,7 +365,7 @@ export function ConnectionDetail({
                           .includes(toolQuery.toLowerCase()),
                       )
                       .map((tool, index) => (
-                        <label
+                        <Label
                           className="connection-tool"
                           key={tool.name}
                           htmlFor={`connection-tool-${index}`}
@@ -383,7 +392,7 @@ export function ConnectionDetail({
                             <strong title={tool.name}>{toolTitle(tool.name)}</strong>
                             {tool.description && <small>{tool.description}</small>}
                           </span>
-                        </label>
+                        </Label>
                       ))}
                   </fieldset>
                   {!tools.length && !draft.names.length && <p>No tools available.</p>}
@@ -392,16 +401,16 @@ export function ConnectionDetail({
                       Save changes
                     </Button>
                   </div>
-                </form>
+                </Form>
               )}
               {!tools && !busy && (
                 <Button variant="secondary" onClick={() => void run(check)}>
                   Retry
                 </Button>
               )}
-            </div>
-          )}
-        </section>
+            </CollapsibleContent>
+          </section>
+        </Collapsible>
       )}
     </div>
   );

@@ -1,3 +1,5 @@
+import { Alert, AlertDescription } from '../components/ui/alert';
+import { Typography } from '../components/ui/typography';
 import type { LucideIcon } from 'lucide-react';
 import type { ReactNode } from 'react';
 import { X, MoreHorizontal } from 'lucide-react';
@@ -17,9 +19,13 @@ import {
 
 export function Notice({ children, error = false }: { children: ReactNode; error?: boolean }) {
   return (
-    <div className={`ui-notice ${error ? 'is-error' : ''}`} role={error ? 'alert' : 'status'}>
-      {children}
-    </div>
+    <Alert
+      className={`ui-notice ${error ? 'is-error' : ''}`}
+      variant={error ? 'destructive' : 'default'}
+      role={error ? 'alert' : 'status'}
+    >
+      <AlertDescription>{children}</AlertDescription>
+    </Alert>
   );
 }
 export function PageHeader({
@@ -34,7 +40,7 @@ export function PageHeader({
   return (
     <header className="page-header">
       <div>
-        <h1>{title}</h1>
+        <Typography as="h1">{title}</Typography>
         {subtitle && <p>{subtitle}</p>}
       </div>
       <IconButton label={`Close ${title}`} icon={X} onClick={onClose} />
@@ -53,7 +59,7 @@ export function FormSection({
   return (
     <section className="form-section">
       <div className="form-section-heading">
-        <h2>{title}</h2>
+        <Typography as="h2">{title}</Typography>
         {description && <p>{description}</p>}
       </div>
       {children}

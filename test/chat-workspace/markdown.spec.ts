@@ -34,7 +34,7 @@ test('Markdown preserves code, lists, quotes and tables without widening the con
   await expect(body.locator('strong')).toHaveText('clear');
   await expect(body.locator('em')).toHaveText('emphasis');
   await expect(body.locator('del')).toHaveText('old text');
-  await expect(body.locator('.code-toolbar > span')).toHaveText('typescript');
+  await expect(body.locator('[data-slot=code-block-title]')).toHaveText('typescript');
   await expect(body.locator('pre code')).toHaveText(code, { useInnerText: false });
   await expect(body.locator('pre')).toHaveCSS('white-space', 'pre');
   await expect(body.locator('pre')).toHaveCSS('overflow-x', 'auto');

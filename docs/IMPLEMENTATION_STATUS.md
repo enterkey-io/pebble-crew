@@ -1,5 +1,12 @@
 # Installed-owner implementation status
 
+**0.7.8-preview.5 candidate:** the shared shadcn React foundation now covers the
+complete general catalog and all 21 AI patterns. Settings, Add/Edit, connections,
+navigation, transcript, composer, Markdown, approvals, private prompts and voice
+use that graph. Native profile reducers, receipt identities and the existing
+scroll controller remain the state owners. Optional native features without
+verified contracts stay inactive. See [execution decisions and verification](SHADCN_EXECUTION.md).
+
 **17 October 0.7.8-preview.4 candidate:** owner bubbles follow the selected
 Pebble's palette; Snow retains neutral gray and existing `white` identities.
 Native hierarchy context and introductions identify the same Main Pebble by

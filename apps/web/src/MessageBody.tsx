@@ -1,5 +1,20 @@
-import { memo, useMemo, useRef, useState } from 'react';
-import type { ReactNode } from 'react';
+import {
+  Table,
+  TableHeader,
+  TableBody,
+  TableRow,
+  TableHead,
+  TableCell,
+} from './components/ui/table';
+import {
+  CodeBlock as CodeSurface,
+  CodeBlockHeader,
+  CodeBlockTitle,
+  CodeBlockContent,
+  CodeBlockActions,
+  CodeBlockCopyButton,
+} from './components/ui/code-block';
+import { memo, useMemo, useState } from 'react';
 import Markdown, { defaultUrlTransform } from 'react-markdown';
 import type { Components } from 'react-markdown';
 import type { BotBridgeClient } from '@hermes-client/protocol';
@@ -15,32 +30,30 @@ import {
 import type { MessageMedia } from './chat/generated-media';
 import { remarkMedia } from './chat/media-markdown';
 
-function CodeBlock({ children, language }: { children?: ReactNode; language: string }) {
-  const code = useRef<HTMLPreElement>(null);
-  const [status, setStatus] = useState('Copy code');
+function CodeBlock({ value, language }: { value: string; language: string }) {
   return (
-    <div className="code-block">
-      <div className="code-toolbar">
-        <span>{language || 'Text'}</span>
-        <IconButton
-          label={status}
-          icon={status === 'Copied' ? Check : Copy}
-          quiet
-          onClick={() => {
-            void navigator.clipboard
-              .writeText(code.current?.textContent ?? '')
-              .then(() => setStatus('Copied'))
-              .catch(() => setStatus('Select code to copy'));
-          }}
-        />
-      </div>
-      <pre ref={code}>{children}</pre>
-    </div>
+    <CodeSurface className="code-block">
+      <CodeBlockHeader className="code-toolbar">
+        <CodeBlockTitle>
+          <span>{language || 'Text'}</span>
+        </CodeBlockTitle>
+        <CodeBlockActions>
+          <CodeBlockCopyButton label="Copy code" value={value} />
+        </CodeBlockActions>
+      </CodeBlockHeader>
+      <CodeBlockContent>{value}</CodeBlockContent>
+    </CodeSurface>
   );
 }
 
 const components: Components = {
-  pre: ({ children, node }) => {
+  table: ({ children }) => <Table scrollContainer={false}>{children}</Table>,
+  thead: ({ children }) => <TableHeader>{children}</TableHeader>,
+  tbody: ({ children }) => <TableBody>{children}</TableBody>,
+  tr: ({ children }) => <TableRow>{children}</TableRow>,
+  th: ({ children, style }) => <TableHead style={style}>{children}</TableHead>,
+  td: ({ children, style }) => <TableCell style={style}>{children}</TableCell>,
+  pre: ({ node }) => {
     const code = node?.children.find(
       (child) => child.type === 'element' && child.tagName === 'code',
     );
@@ -48,10 +61,12 @@ const components: Components = {
     const language = Array.isArray(classes)
       ? classes.find((value) => typeof value === 'string' && value.startsWith('language-'))
       : undefined;
+    const value =
+      code?.type === 'element'
+        ? code.children.flatMap((child) => (child.type === 'text' ? [child.value] : [])).join('')
+        : '';
     return (
-      <CodeBlock language={typeof language === 'string' ? language.slice(9) : ''}>
-        {children}
-      </CodeBlock>
+      <CodeBlock language={typeof language === 'string' ? language.slice(9) : ''} value={value} />
     );
   },
   img: ({ src, alt }) =>

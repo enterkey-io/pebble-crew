@@ -6,3 +6,5 @@ export * from './pairing';
 export { assessBotMode } from '@hermes-client/core';
 export * from './workspace';
 export * from './workspace-domain';
+
+export * from './conversation-domain';
