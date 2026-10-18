@@ -59,8 +59,30 @@ Task logs and screenshots are retained under `.audit/shadcn-implementation/` and
 `test-results/`. The live progress board is owner-local tooling with an SSE stream;
 it holds task status only and is not part of the plugin runtime.
 
-Final clean-checkout, workbench, phone, native and exact-package results are
-recorded after the immutable candidate completes those gates. Browser fixtures
-establish exercised UI behavior. Disposable native acceptance establishes the
-exercised Hermes contracts, not owner-host ingress or visual acceptance. Local
-WebRTC does not establish paid-provider timing or physical-phone media behavior.
+Runtime source verified: `e6937b37110f1c393c8be6ddeeb2ebbec3f94223`. Later delivery
+changes add CI, source-archive verification files and this evidence record; they
+do not change application runtime code. The tested combined archive SHA256 is
+`0c5620467188c189e1758013d70a506dfae4b870c9c50838e1b3775f1559354e`.
+
+| Gate                                          | Result                                                                                                                                      | Local evidence                                                              |
+| --------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------- |
+| Fresh pinned install and full `npm run check` | Pass; 160 unit tests, types, worker types, lint, contracts, format and production builds                                                    | `clean-install-final.log`, `clean-check-final.log`                          |
+| Dependency audit                              | Zero reported advisories after removing the unused registry CLI                                                                             | `clean-install-final.log`                                                   |
+| Full normal-release desktop journeys          | 71 passed                                                                                                                                   | `desktop-candidate.log`, `evidence/candidate-desktop/`                      |
+| Full normal-release iPhone/Android journeys   | 87 passed; seven documented inapplicable cases skipped                                                                                      | `mobile-candidate.log`, `evidence/candidate-phones/`                        |
+| Complete component and AI state workbench     | 18 passed across desktop, iPhone and Android                                                                                                | `workbench-final.log`; final owned-utility run in `workbench-owned-css.log` |
+| Structural counterexamples                    | Current source accepted; seven broken system compositions rejected; existing profile/history guard audit passed                             | `system-guard-audit.log`, `profile-guard-audit.json`                        |
+| Release/workbench separation                  | Normal build accepted; actual workbench build rejected as a release                                                                         | `check-release-ui.mjs`, `release-ui-negative.log`                           |
+| Native owner browser                          | Passed first use, profile/avatar persistence, real Bot Mode reply, idle/reconnect and login                                                 | `native-owner.log`, `test-results/owner/`                                   |
+| Plugin contracts                              | 285 passed                                                                                                                                  | `plugin-tests.log`                                                          |
+| Both pinned native revisions                  | Workspace, hierarchy, reactions and media passed; live voice/secret/session receipts passed on modern, correctly unsupported on legacy      | `native-{workspace,reactions,media}-{modern,legacy}.log`                    |
+| Exact combined archive                        | All 31 installation and 22 browser checks passed, including crash recovery, update, partial sync, historical rollback and failed activation | `package-acceptance.log`, `evidence/installed-package-acceptance.json`      |
+
+Settled desktop/iPhone/Android screenshots were opened and reviewed. Browser
+fixtures establish exercised UI behavior. Disposable native acceptance establishes
+the exercised Hermes contracts, not owner-host ingress or visual acceptance. The
+six mobile desktop-only skips and one local WebKit peer-media skip are explicit;
+iPhone voice setup and permission-failure flows still run. Local WebRTC does not
+establish paid-provider timing or physical-phone media behavior. GitHub CI is
+configured for these gates; this record describes local execution, not remote CI
+results or deployment of the owner's installation.

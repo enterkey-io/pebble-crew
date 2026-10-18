@@ -88,7 +88,7 @@ archive("workspace-plugin-preview.zip", plugin)
 source = []
 # A checkout may contain another task's unpublished drafts. Ship tracked paths only.
 
-for directory in ("apps", "packages", "plugins", "scripts", "test", "docs", ".github", "deploy"):
+for directory in ("apps", "packages", "plugins", "scripts", "test", "docs", ".github", "deploy", ".agents/skills/verify"):
     for path in (root / directory).rglob("*"):
         if (path.is_file() and not path.is_symlink() and not {"dist", "node_modules", "__pycache__", "artifacts", ".wrangler", ".local", ".superdesign"}.intersection(path.parts)
                 and path.suffix in {".ts", ".tsx", ".css", ".html", ".md", ".json", ".mjs", ".js", ".webmanifest", ".svg", ".png", ".py", ".yml", ".yaml", ".txt", ".sql", ".jsonc", ".example"}
@@ -97,7 +97,7 @@ for directory in ("apps", "packages", "plugins", "scripts", "test", "docs", ".gi
             source.append((path, str(path.relative_to(root))))
 for name in ("AGENTS.md", "README.md", "PROGRESS.md", "IMPLEMENTATION_PLAN.md", "WEB_APP_PLAN.md", "LICENSE", "release.json",
              "package.json", "package-lock.json", "tsconfig.json", "eslint.config.mjs", "vitest.config.ts",
-             "playwright.config.ts", "playwright.ui-review.config.ts", "vite.ui-lab.config.ts", "playwright.chat.config.ts", "playwright.mobile.config.ts", "playwright.avatar.config.ts", "playwright.owner.config.ts", "vite.client.config.ts", "vite.web.config.ts", ".nvmrc", ".gitignore",
+             "playwright.config.ts", "playwright.ui-review.config.ts", "vite.ui-lab.config.ts", "playwright.chat.config.ts", "playwright.mobile.config.ts", "playwright.system.config.ts", "playwright.avatar.config.ts", "playwright.owner.config.ts", "vite.client.config.ts", "vite.web.config.ts", ".nvmrc", ".gitignore",
              ".prettierrc.json", ".prettierignore"):
     source.append((root / name, name))
 archive("workspace-source-preview.zip", source)

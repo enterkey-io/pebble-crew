@@ -85,6 +85,11 @@ normal release does not expose it. General and AI catalogs provide controlled
 local states, including unavailable native operations. Those previews establish
 component behavior, not Hermes capability support.
 
+CI runs the workbench in its own job across Chromium and WebKit. The normal
+build is checked separately by `scripts/check-release-ui.mjs`, which rejects
+workbench chunks and mismatched version metadata. Source archives include the
+workbench runner and maintained verification skill.
+
 `npm run check:ui` checks the catalog tables and actual screen compositions,
 rejects raw migrated native operations and transport/persistence in AI elements,
 and prevents installing the registry scroller beside `TranscriptFollow`.
