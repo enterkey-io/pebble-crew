@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react';
 import { ShieldCheck } from 'lucide-react';
+import type { LucideIcon } from 'lucide-react';
 import { Button } from '../ui/button';
 import { Item, ItemContent, ItemTitle, ItemDescription, ItemActions } from '../ui/item';
 import { LoadingBar } from '../ui/loading-bar';
@@ -15,18 +16,20 @@ export function ApprovalSurface({
   description,
   children,
   className,
+  icon: Icon = ShieldCheck,
 }: {
   title: string;
   description: ReactNode;
   children: ReactNode;
   className?: string;
+  icon?: LucideIcon;
 }) {
   return (
     <Item asChild variant="muted" className={className}>
       <article data-slot="confirmation" className="flex-col items-stretch gap-4">
         <ItemContent>
           <ItemTitle>
-            <ShieldCheck className="size-4" aria-hidden="true" />
+            <Icon className="size-4" aria-hidden="true" />
             <h3>{title}</h3>
           </ItemTitle>
           <ItemDescription className="line-clamp-none">{description}</ItemDescription>

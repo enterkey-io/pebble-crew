@@ -3,6 +3,13 @@ export function record(value: unknown): Record<string, unknown> {
     throw new Error('Invalid voice response');
   return Object.fromEntries(Object.entries(value));
 }
+export const voiceSpeeds = [0.75, 1, 1.25, 1.5, 1.75, 2] as const;
+export type VoiceSpeed = (typeof voiceSpeeds)[number];
+export function voiceSpeed(value: unknown): VoiceSpeed {
+  const speed = voiceSpeeds.find((item) => item === value);
+  if (speed === undefined) throw new Error('Invalid voice speed');
+  return speed;
+}
 export type VoiceSettings =
   | { supported: false }
   | {
@@ -11,7 +18,8 @@ export type VoiceSettings =
       canChangeKey: boolean;
       voice: string;
       voices: string[];
-      pace: 'slower' | 'natural' | 'faster';
+      speed: VoiceSpeed;
+      setupComplete: boolean;
     };
 export function settings(value: unknown): VoiceSettings {
   const data = record(value);
@@ -22,7 +30,8 @@ export function settings(value: unknown): VoiceSettings {
     typeof data.voice !== 'string' ||
     !Array.isArray(data.voices) ||
     !data.voices.every((v): v is string => typeof v === 'string' && v.length < 80) ||
-    !['slower', 'natural', 'faster'].includes(String(data.pace))
+    typeof data.setup_complete !== 'boolean' ||
+    data.speed_control !== 'instruction'
   )
     throw new Error('Invalid voice settings');
   return {
@@ -31,7 +40,8 @@ export function settings(value: unknown): VoiceSettings {
     canChangeKey: data.can_change_key !== false,
     voice: data.voice,
     voices: data.voices,
-    pace: data.pace === 'slower' ? 'slower' : data.pace === 'faster' ? 'faster' : 'natural',
+    speed: voiceSpeed(data.speed),
+    setupComplete: data.setup_complete,
   };
 }
 export function sessionAnswer(value: unknown) {

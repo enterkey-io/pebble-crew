@@ -16,6 +16,7 @@ from fastapi.responses import JSONResponse, Response, StreamingResponse, Redirec
 
 from .native import NativeError, NativeGateway
 from .operations import BotOperations, InvalidOperation
+from .live_voice import VOICE_ERROR_CODES
 from .compatibility import check_native_adapter
 from .pairing import BrowserPairing
 from .version import VERSION
@@ -201,7 +202,7 @@ def create_app(token, origins, hosts, gateway=None, trust=None, workspace=None, 
 
     @app.exception_handler(InvalidOperation)
     async def invalid(request, error):
-        return JSONResponse({"error": "Operation unavailable or invalid. Refresh and check the connection.", "code": error.code if error.code in {"STALE_REVISION", "HANDLE_TAKEN", "INVALID_REPORTING", "MODEL_UNAVAILABLE", "REQUIRES_SETUP", "INVALID_PHOTO", "INVALID_PARAMETERS", "INVALID_ATTACHMENT", "ATTACHMENT_QUOTA"} else "INVALID_PARAMETERS"}, 409 if error.code == "STALE_REVISION" else 400)
+        return JSONResponse({"error": "Operation unavailable or invalid. Refresh and check the connection.", "code": error.code if error.code in VOICE_ERROR_CODES | {"UNSUPPORTED_COMMAND", "STALE_REVISION", "HANDLE_TAKEN", "INVALID_REPORTING", "MODEL_UNAVAILABLE", "REQUIRES_SETUP", "INVALID_PHOTO", "INVALID_PARAMETERS", "INVALID_ATTACHMENT", "ATTACHMENT_QUOTA"} else "INVALID_PARAMETERS"}, 409 if error.code == "STALE_REVISION" else 400)
 
     @app.exception_handler(NativeError)
     async def native_error(request, error):
@@ -268,8 +269,11 @@ def create_app(token, origins, hosts, gateway=None, trust=None, workspace=None, 
                 raise InvalidOperation('Operation unavailable on this route')
             if operation.startswith(("chat.", "files.", "media.", "voice.", "secrets.")) and params.get("session_id") not in client["sessions"]:
                 raise InvalidOperation("Session belongs to another connection")
-            if operation in {'voice.status', 'voice.preferences', 'voice.credential', 'voice.session', 'voice.submit'}:
+            if operation in {'voice.status', 'voice.preferences', 'voice.credential', 'voice.session', 'voice.submit', 'voice.end'}:
                 result = await voice.invoke(operation, params)
+            elif operation in {'chat.commands', 'chat.command'}:
+                from .commands import invoke as command
+                result = await command(ops, operation, params)
             elif operation in {'secrets.pending', 'secrets.respond'}:
                 sid = params.get('session_id')
                 profile = ops.sessions.get(sid)

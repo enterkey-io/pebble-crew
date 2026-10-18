@@ -66,7 +66,12 @@ export function WorkspacePanels({
           rememberWidth(352);
         }}
       />
-      <ResizablePanel id="conversation-panel" minSize={phone ? 0 : 360} className="flex min-w-0">
+      <ResizablePanel
+        id="conversation-panel"
+        minSize={phone ? 0 : 360}
+        className="flex min-h-0 min-w-0"
+        style={{ overflow: 'clip' }}
+      >
         {children}
       </ResizablePanel>
     </ResizablePanelGroup>

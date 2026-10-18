@@ -4,6 +4,7 @@ import {
   endpointUrl,
   operationRoute,
   safeError,
+  voiceErrors,
 } from '@hermes-client/core';
 import type { Endpoint } from '@hermes-client/core';
 import { readBoundedJson, record } from './json';
@@ -344,6 +345,7 @@ export class BotBridgeClient {
         /* Untrusted diagnostics never enter user-visible errors. */
       }
       const known = [
+        'UNSUPPORTED_COMMAND',
         'STALE_REVISION',
         'HANDLE_TAKEN',
         'INVALID_REPORTING',
@@ -354,7 +356,9 @@ export class BotBridgeClient {
         'INVALID_ATTACHMENT',
         'ATTACHMENT_QUOTA',
       ] as const;
-      const match = known.find((item) => item === code);
+      const match =
+        known.find((item) => item === code) ??
+        Object.keys(voiceErrors).find((item): item is keyof typeof voiceErrors => item === code);
       throw new ClientError(match ?? 'RPC_FAILED');
     }
     if (!response.ok || (response.url && response.url !== url.href)) {

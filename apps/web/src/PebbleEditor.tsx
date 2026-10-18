@@ -1,4 +1,4 @@
-import { ModelSelector } from './components/ai-elements/model-selector';
+import { VoiceSettingsEditor } from './voice/VoiceSettingsEditor';
 import { Label } from './components/ui/label';
 import { Checkbox } from './components/ui/checkbox';
 import { Form } from './components/ui/form';
@@ -44,6 +44,8 @@ export function PebbleEditor({
   onClose,
   onDirtyChange,
   retired = false,
+  initialTab = 'identity',
+  callActive = false,
 }: {
   client: BotBridgeClient;
   bot: WorkspaceBot;
@@ -52,8 +54,10 @@ export function PebbleEditor({
   onClose: () => void;
   onDirtyChange: (dirty: boolean) => void;
   retired?: boolean;
+  initialTab?: 'identity' | 'voice';
+  callActive?: boolean;
 }) {
-  const [tab, setTab] = useState('identity');
+  const [tab, setTab] = useState<string>(initialTab);
   const [edit, dispatch] = useReducer(profileReducer, undefined, () =>
     profileSession(profileValues(bot), bot.id, state.revision),
   );
@@ -113,7 +117,7 @@ export function PebbleEditor({
     onDirtyChange(dirty);
     return () => onDirtyChange(false);
   }, [dirty, onDirtyChange]);
-  async function save(section: 'profile' | 'role' | 'tools' | 'lead' | 'model') {
+  async function save(section: 'profile' | 'role' | 'tools' | 'lead') {
     if (
       busy ||
       uncertain ||
@@ -155,14 +159,7 @@ export function PebbleEditor({
           expectedRevision: state.revision,
           ...submittedTools,
         });
-      else if (section === 'lead')
-        outcome = await domain.selectMainPebble(bot.profile, state.revision);
-      else
-        outcome = await domain.selectModel(
-          bot.profile,
-          state.revision,
-          state.model_grant!.fingerprint,
-        );
+      else outcome = await domain.selectMainPebble(bot.profile, state.revision);
       if (outcome.kind !== 'confirmed') {
         setUncertain(outcome.kind === 'uncertain');
         setError(profileWriteError(outcome));
@@ -174,7 +171,7 @@ export function PebbleEditor({
       if (section === 'tools') dispatchTools({ type: 'saved', submitted: submittedTools });
       onChange(await domain.describeWorkspace());
       setNotice(
-        `${section === 'tools' ? 'Tools and skills' : section === 'role' ? 'Role' : section === 'lead' ? 'Main Pebble' : section === 'model' ? 'Model' : 'Profile'} saved.`,
+        `${section === 'tools' ? 'Tools and skills' : section === 'role' ? 'Role' : section === 'lead' ? 'Main Pebble' : 'Profile'} saved.`,
       );
     } catch (e) {
       if (!confirmed) {
@@ -203,7 +200,7 @@ export function PebbleEditor({
           { id: 'identity', label: 'Profile' },
           { id: 'role', label: 'Role' },
           { id: 'tools', label: 'Tools & skills' },
-          { id: 'model', label: 'Model' },
+          ...(client.supportsLiveVoice ? [{ id: 'voice', label: 'Voice' }] : []),
         ]}
         value={tab}
         onChange={(id) => {
@@ -413,39 +410,8 @@ export function PebbleEditor({
             )}
           </FormSection>
         )}
-        {tab === 'model' && (
-          <FormSection title="Model">
-            {state.model_grant ? (
-              <>
-                <ModelSelector
-                  value={{
-                    kind: 'read-only',
-                    label: `${state.model_grant.provider} · ${state.model_grant.model}`,
-                  }}
-                />
-                {bot.profile !== 'default' &&
-                  (state.model_grant.supported ? (
-                    <>
-                      <p className="field-hint">
-                        Use the primary profile’s selected model authorization. Other service
-                        credentials are not copied.
-                      </p>
-                      <Button
-                        variant="secondary"
-                        disabled={!!busy || uncertain}
-                        onClick={() => void save('model')}
-                      >
-                        Use this model
-                      </Button>
-                    </>
-                  ) : (
-                    <Notice>This model needs authorization in Hermes.</Notice>
-                  ))}
-              </>
-            ) : (
-              <Notice>Model information is unavailable.</Notice>
-            )}
-          </FormSection>
+        {tab === 'voice' && !retired && (
+          <VoiceSettingsEditor client={client} profile={bot.profile} callActive={callActive} />
         )}
       </TabbedEditor>
       {busy && (

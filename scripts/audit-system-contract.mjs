@@ -19,6 +19,11 @@ try {
   const tool = 'apps/web/src/components/ai-elements/tool.tsx';
   const cases = [
     [
+      'legacy voice surface override',
+      'apps/web/src/ui/product.css',
+      (source) => source + '\n.pc-voice-card { padding: 48px; }',
+    ],
+    [
       'fixed-height legacy navigation layout',
       'apps/web/src/ui/layout.css',
       (source) => source + '\n.pc-row-open { height: 36px; padding: 8px; }',

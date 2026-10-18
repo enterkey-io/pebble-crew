@@ -41,6 +41,11 @@ const migrated = [
     ['ResizablePanelGroup', 'ResizablePanel', 'ResizableHandle'],
   ],
   ['GeneralSettings.tsx', './components/ui/select', ['Select', 'SelectTrigger', 'SelectItem']],
+  ['components/ai-elements/secret-card.tsx', './confirmation', ['ApprovalSurface']],
+  ['voice/VoiceOptions.tsx', '../components/ui/select', ['Select', 'SelectTrigger', 'SelectItem']],
+  ['voice/VoiceOptions.tsx', '../components/ui/slider', ['Slider']],
+  ['voice/VoiceCallBar.tsx', '../components/ui/item', ['Item', 'ItemContent', 'ItemActions']],
+  ['voice/VoiceCallBar.tsx', '../components/ai-elements/audio-activity', ['AudioActivity']],
 ];
 for (const path of ['ui/layout.css', 'ui/product.css']) {
   requireRule(
@@ -53,10 +58,14 @@ requireRule(
   'App and avatar controls must use shared controls; native buttons belong inside the owned primitive compositions.',
 );
 requireRule(
-  !/\.pc-row-open|\.pc-row-copy|\.pc-reaction(?:\s|\.|:|\{)|\.agent-choice|\.avatar-(?:modes|shapes|colors) button/.test(
+  !/\.pc-row-open|\.pc-row-copy|\.pc-reaction(?:\s|\.|:|\{)|\.pc-(?:voice|secret)-(?:card|options|actions)|\.agent-choice|\.avatar-(?:modes|shapes|colors) button/.test(
     read('ui/layout.css') + read('ui/product.css'),
   ),
   'Remove legacy row, reaction and avatar-control CSS; Item, Bubble and Toggle own their layout and states.',
+);
+requireRule(
+  !/\.pc-(?:voice|secret)-(?:card|options|actions)/.test(read('ui/product.css')),
+  'Voice and secret surfaces must use shared kit compositions, without legacy surface overrides.',
 );
 for (const [path, module, components] of migrated) {
   const contract = sourceContract(read(path));
@@ -82,6 +91,8 @@ const operations = new Set([
   'chat.react',
   'chat.approve',
   'files.list',
+  'chat.commands',
+  'chat.command',
 ]);
 for (const path of ['App.tsx', 'voice/VoiceChat.tsx', 'chat/FilesPanel.tsx']) {
   const contract = sourceContract(read(path));

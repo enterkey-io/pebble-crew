@@ -1,3 +1,5 @@
+import { CommandSuggestions } from './chat/CommandSuggestions';
+import type { CommandSuggestionsHandle } from './chat/CommandSuggestions';
 import { Confirmation } from './components/ai-elements/confirmation';
 import {
   Attachment,
@@ -89,7 +91,16 @@ function text(value: unknown): string {
 export function App({ owner }: { owner?: OwnerConnection }) {
   const ownerRef = useRef(owner);
   ownerRef.current = owner;
+  const commandSuggestions = useRef<CommandSuggestionsHandle>(null);
+  const [commandResult, setCommandResult] = useState<{
+    sessionId: string;
+    command: string;
+    output: string;
+  }>();
   const voicePanel = useRef<VoiceChatHandle>(null);
+  const [voiceActive, setVoiceActive] = useState(false);
+  const [voiceBarTarget, setVoiceBarTarget] = useState<HTMLDivElement | null>(null);
+  const [agentSettingsTab, setAgentSettingsTab] = useState<'identity' | 'voice'>('identity');
   const [workspace, setWorkspace] = useState<WorkspaceState>();
   const [settings, setSettings] = useState(false);
   const [settingsTab, setSettingsTab] = useState<
@@ -1261,6 +1272,28 @@ export function App({ owner }: { owner?: OwnerConnection }) {
       current.current === connection &&
       selected.current === target &&
       generation === selectGeneration.current;
+    if (target.kind === 'bot' && draft.startsWith('/')) {
+      if (uploads.files.length) {
+        setError('Send files separately from commands.');
+        return;
+      }
+      setBusy(true);
+      setError('');
+      const command = draft;
+      try {
+        const output = await new ConversationDomain(client).command(target.sessionId, command);
+        if (owns()) {
+          setCommandResult({ sessionId: target.sessionId, command, output });
+          setDraft('');
+          drafts.current.set(draftKey(target), '');
+        }
+      } catch (cause) {
+        if (owns()) fail(cause);
+      } finally {
+        if (owns()) setBusy(false);
+      }
+      return;
+    }
     setBusy(true);
     setError('');
     const message = draft;
@@ -1489,6 +1522,7 @@ export function App({ owner }: { owner?: OwnerConnection }) {
       onToggle={(r) => void toggleRoutine(r)}
       onClose={() => toggleDetails(false)}
       onEdit={() => {
+        setAgentSettingsTab('identity');
         setEditProfile(selection?.kind === 'bot' ? selection.bot.profile : undefined);
         setSettingsTab('agents');
         setSettings(true);
@@ -1596,6 +1630,7 @@ export function App({ owner }: { owner?: OwnerConnection }) {
       onClose={nav ? closeNav : undefined}
       onEdit={(profile) =>
         navigate(() => {
+          setAgentSettingsTab('identity');
           setEditProfile(profile);
           setSettingsTab('agents');
           setSettings(true);
@@ -1664,6 +1699,8 @@ export function App({ owner }: { owner?: OwnerConnection }) {
         key={`${settingsTab}:${editProfile ?? ''}`}
         onDirtyChange={onDirtyChange}
         initialTab={settingsTab}
+        initialAgentTab={agentSettingsTab}
+        callActive={voiceActive}
         initialProfile={
           settingsTab === 'agents'
             ? editProfile
@@ -1712,7 +1749,7 @@ export function App({ owner }: { owner?: OwnerConnection }) {
                 : 'restoring'
           }
           reader={showLatest ? 'manual' : 'follow'}
-          className="pc-main conversation"
+          className="pc-main conversation overflow-clip"
           aria-label="Conversation"
           inert={details && phone && !settings}
         >
@@ -1779,6 +1816,26 @@ export function App({ owner }: { owner?: OwnerConnection }) {
                   )}
                 </div>
               </header>
+              {commandResult &&
+                selection?.kind === 'bot' &&
+                commandResult.sessionId === selection.sessionId && (
+                  <Alert className="mx-4 mb-2 w-auto shrink-0">
+                    <AlertDescription>
+                      <pre className="max-h-36 overflow-auto whitespace-pre-wrap font-sans text-xs">
+                        {commandResult.output}
+                      </pre>
+                    </AlertDescription>
+                    <Button
+                      variant="quiet"
+                      size="icon"
+                      aria-label="Dismiss command result"
+                      onClick={() => setCommandResult(undefined)}
+                    >
+                      <X />
+                    </Button>
+                  </Alert>
+                )}
+              <div ref={setVoiceBarTarget} className="shrink-0" data-slot="voice-call-position" />
               {error && (
                 <Alert variant="destructive" className="banner mx-4 mb-2 w-auto shrink-0">
                   <AlertDescription>
@@ -1846,6 +1903,25 @@ export function App({ owner }: { owner?: OwnerConnection }) {
                         client={client}
                         sessionId={selection.sessionId}
                         running={running}
+                        onActiveChange={setVoiceActive}
+                        barTarget={voiceBarTarget}
+                        agentName={selection.bot.name}
+                        avatar={
+                          <PebbleAvatar
+                            bot={selection.bot}
+                            workspace={workspace}
+                            client={client}
+                            state={agentStates[selection.bot.profile]}
+                          />
+                        }
+                        onOpenSettings={() =>
+                          navigate(() => {
+                            setAgentSettingsTab('voice');
+                            setEditProfile(selection.bot.profile);
+                            setSettingsTab('agents');
+                            setSettings(true);
+                          })
+                        }
                         onAccepted={(message) =>
                           setMessages((previous) =>
                             previous.some((item) => item.id === message.id)
@@ -2012,6 +2088,19 @@ export function App({ owner }: { owner?: OwnerConnection }) {
                       </ul>
                     )}
 
+                    {selection?.kind === 'bot' && (
+                      <CommandSuggestions
+                        ref={commandSuggestions}
+                        client={client}
+                        sessionId={selection.sessionId}
+                        text={draft}
+                        onChoose={(text) => {
+                          setDraft(text);
+                          drafts.current.set(draftKey(selection), text);
+                          composer.current?.focus();
+                        }}
+                      />
+                    )}
                     <PromptInputFrame
                       className="pc-composer pc-composer-row"
                       onSubmit={(e) => {
@@ -2093,6 +2182,13 @@ export function App({ owner }: { owner?: OwnerConnection }) {
                             drafts.current.set(draftKey(selected.current), e.target.value);
                         }}
                         onKeyDown={(e) => {
+                          if (
+                            !e.nativeEvent.isComposing &&
+                            commandSuggestions.current?.key(e.key)
+                          ) {
+                            e.preventDefault();
+                            return;
+                          }
                           if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
                             e.preventDefault();
                             void send();

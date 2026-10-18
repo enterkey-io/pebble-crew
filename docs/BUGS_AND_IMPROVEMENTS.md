@@ -35,11 +35,11 @@ acceptance/publication remain separate from updating the owner's installation.
 
 ## 0.7.8-preview.4 candidate
 
-| ID     | Report                                             | Change                                                                                                                                                                                   |
-| ------ | -------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| PC-068 | Existing agents infer a separate boss above Aurora | Shared native context/introduction resolves the Main Pebble and full reporting path by identity; job titles do not alter the graph.                                                      |
-| PC-069 | Voice needs guided private setup                   | Native OpenAI Live integration, private secret card, voice/pace and preview, explicit call controls and exact reply receipts. Legacy Hermes reports unsupported; no custom Grok adapter. |
-| PC-070 | Owner bubble color and White naming                | Owner bubbles use the selected Pebble palette with readable dark text. White is named Snow; existing white IDs and neutral gray owner bubbles remain.                                    |
+| ID     | Report                                             | Change                                                                                                                                                                                              |
+| ------ | -------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| PC-068 | Existing agents infer a separate boss above Aurora | Shared native context/introduction resolves the Main Pebble and full reporting path by identity; job titles do not alter the graph.                                                                 |
+| PC-069 | Voice needs guided private setup                   | Native OpenAI Live integration, private secret card, voice/requested speed and preview, explicit call controls and exact reply receipts. Legacy Hermes reports unsupported; no custom Grok adapter. |
+| PC-070 | Owner bubble color and White naming                | Owner bubbles use the selected Pebble palette with readable dark text. White is named Snow; existing white IDs and neutral gray owner bubbles remain.                                               |
 
 Publication is separate from upgrading the owner's installation. Verification
 limits and voice provenance are recorded in [the voice plan](VOICE_IMPLEMENTATION_PLAN.md).

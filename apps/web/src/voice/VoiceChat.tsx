@@ -1,11 +1,16 @@
-import { Card } from '../components/ui/card';
-import { Label } from '../components/ui/label';
-import { NativeSelect, NativeSelectOption } from '../components/ui/native-select';
+import { createPortal } from 'react-dom';
+import type { ReactNode } from 'react';
 import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from 'react';
 import type { BotBridgeClient, BridgeEvent } from '@hermes-client/protocol';
-import { Mic, MicOff, PhoneOff, Play, X } from 'lucide-react';
+
 import { Button } from '../components/ui/button';
-import { LoadingBar } from '../components/ui/loading-bar';
+import { Alert, AlertDescription } from '../components/ui/alert';
+import { VoicePanel } from './VoicePanel';
+import { VoiceCallBar } from './VoiceCallBar';
+import { choices } from './VoiceOptions';
+import type { VoiceChoices } from './VoiceOptions';
+import type { AudioActivityHandle } from '../components/ai-elements/audio-activity';
+import { voiceFailure } from './errors';
 import { ConversationDomain } from '@hermes-client/protocol';
 import type { ChatMessage } from '../conversation';
 import { record, settings as decodeSettings, sessionAnswer } from './decode';
@@ -23,19 +28,44 @@ export const VoiceChat = forwardRef<
     sessionId: string;
     running: boolean;
     onAccepted: (message: ChatMessage) => void;
+    onOpenSettings?: () => void;
+    onActiveChange?: (active: boolean) => void;
+    mode?: 'chat' | 'settings';
+    externalCallActive?: boolean;
+    barTarget?: HTMLElement | null;
+    avatar?: ReactNode;
+    agentName?: string;
   }
->(function VoiceChat({ client, sessionId, running, onAccepted }, ref) {
-  const panel = useRef<HTMLElement>(null);
+>(function VoiceChat(
+  {
+    client,
+    sessionId,
+    running,
+    onAccepted,
+    onOpenSettings,
+    onActiveChange,
+    mode = 'chat',
+    externalCallActive = false,
+    barTarget,
+    avatar,
+    agentName = 'Pebble',
+  },
+  ref,
+) {
+  const panel = useRef<HTMLDivElement>(null);
+  const audioActivity = useRef<AudioActivityHandle>(null);
+  const [value, setValue] = useState<VoiceChoices>({ voice: 'marin', speed: 1 });
+  const [step, setStep] = useState<'key' | 'settings'>('key');
+  const [notice, setNotice] = useState('');
   const [visible, setVisible] = useState(false),
     [settings, setSettings] = useState<VoiceSettings>();
   const [state, setState] = useState<'idle' | 'starting' | 'live' | 'preview'>('idle');
   const [muted, setMuted] = useState(false),
     [blockedAudio, setBlockedAudio] = useState(false);
-  const [changingKey, setChangingKey] = useState(false);
   const [saving, setSaving] = useState(false);
-  const preferenceFlight = useRef(false);
-  const [error, setError] = useState(''),
-    [caption, setCaption] = useState('');
+  const [error, setError] = useState('');
+  const [showTranscript, setShowTranscript] = useState(false);
+  const [captions, setCaptions] = useState<{ speaker: 'user' | 'assistant'; text: string }[]>([]);
   const [secret, setSecret] = useState<{ id: string; label: string; prompt: string }>();
   const live = useRef<VoiceLiveSession | undefined>(undefined),
     generation = useRef(0),
@@ -55,31 +85,42 @@ export const VoiceChat = forwardRef<
       throw new Error('Voice operation was closed.');
     return value;
   };
-  async function updatePreferences(voice: string, pace: string) {
-    if (preferenceFlight.current) return;
-    preferenceFlight.current = true;
-    setSaving(true);
+  async function savePreferences(complete: boolean, selection = value) {
+    const next = decodeSettings(await rpc('voice.preferences', { ...selection, complete }));
+    setSettings(next);
+    return next;
+  }
+  async function loadSettings() {
+    const value = decodeSettings(await rpc('voice.status'));
+    if (mounted.current) {
+      setSettings(value);
+      if (value.supported) {
+        setValue(choices(value));
+        setStep(value.configured && value.setupComplete ? 'settings' : 'key');
+      }
+    }
+    return value;
+  }
+  async function open() {
+    setVisible(true);
+    if (state !== 'idle') return;
     setError('');
+    setNotice('');
     try {
-      setSettings(decodeSettings(await rpc('voice.preferences', { voice, pace })));
-    } catch {
-      if (mounted.current) setError('Voice settings could not be saved.');
-    } finally {
-      preferenceFlight.current = false;
-      if (mounted.current) setSaving(false);
+      const value = await loadSettings();
+      if (mode === 'chat' && value.supported && value.configured && value.setupComplete)
+        await start(false, choices(value));
+    } catch (cause) {
+      setError(voiceFailure(cause));
     }
   }
   useEffect(() => {
-    if (visible || secret)
-      panel.current?.scrollIntoView({
-        block: 'end',
-        behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'instant' : 'smooth',
-      });
-  }, [visible, settings, secret]);
-  async function loadSettings() {
-    const value = decodeSettings(await rpc('voice.status'));
-    if (mounted.current) setSettings(value);
-  }
+    if (mode === 'settings') void open();
+  }, [mode, client, sessionId]);
+  useEffect(() => {
+    onActiveChange?.(state !== 'idle');
+    return () => onActiveChange?.(false);
+  }, [state, onActiveChange]);
   async function loadSecret() {
     const data = record(await rpc('secrets.pending'));
     const first = Array.isArray(data.requests) ? data.requests[0] : undefined;
@@ -110,9 +151,31 @@ export const VoiceChat = forwardRef<
     if (mounted.current) {
       setState('idle');
       setMuted(false);
-      setCaption('');
+      setCaptions([]);
       setBlockedAudio(false);
     }
+  }
+  function stopCall() {
+    const call = live.current;
+    const transcript =
+      call
+        ?.contextWindow()
+        .map((fragment) => `${fragment.speaker === 'user' ? 'User' : agentName}: ${fragment.text}`)
+        .join('\n')
+        .slice(-6000) ?? '';
+    const callId = call?.sessionId;
+    const followUp = state === 'live' && call?.connected && callId && transcript.trim();
+    end();
+    if (mode === 'chat' && state !== 'preview') setVisible(false);
+    if (followUp)
+      void client
+        .invoke('voice.end', { session_id: sessionId, call_id: callId, transcript })
+        .catch(() => {
+          if (mounted.current) {
+            setVisible(true);
+            setError('The call ended, but its text follow-up could not be confirmed.');
+          }
+        });
   }
   async function finish(result: Completion) {
     const id = receipts.current.take(result),
@@ -186,9 +249,7 @@ export const VoiceChat = forwardRef<
   }, [client, sessionId]);
   useImperativeHandle(ref, () => ({
     open() {
-      setVisible(true);
-      setError('');
-      void loadSettings().catch(() => setError('Voice settings could not be loaded.'));
+      void open();
     },
     event(event) {
       if (event.type === 'bridge.resync') {
@@ -205,17 +266,22 @@ export const VoiceChat = forwardRef<
       if (result) void finish(result);
     },
   }));
-  async function start(preview: boolean) {
+  async function start(preview: boolean, selection = value) {
     end();
     const epoch = generation.current;
     setError('');
-    setState(preview ? 'preview' : 'starting');
+    setNotice('');
+    setState('starting');
     const call = new VoiceLiveSession(
       {
+        onAudioLevel(level) {
+          if (generation.current === epoch) audioActivity.current?.update(level);
+        },
         onStarted() {
           if (generation.current !== epoch) return;
           clearTimeout(setupTimer.current);
           if (preview) {
+            setState('preview');
             call.speak(null, 'Hello. This is how I sound. Ready when you are.');
             previewTimer.current = setTimeout(end, 9000);
           } else setState('live');
@@ -235,7 +301,7 @@ export const VoiceChat = forwardRef<
         },
         onError() {
           if (generation.current === epoch) {
-            setError('The voice provider reported an error. Your work remains in chat.');
+            setError('The voice provider ended the audio connection. Your work remains in chat.');
             end();
           }
         },
@@ -247,30 +313,42 @@ export const VoiceChat = forwardRef<
         },
         onTranscript(fragment) {
           if (generation.current === epoch)
-            setCaption((text) => (text + fragment.text).slice(-180));
+            setCaptions((previous) => {
+              const last = previous.at(-1);
+              if (last?.speaker === fragment.speaker)
+                return [
+                  ...previous.slice(0, -1),
+                  { speaker: last.speaker, text: (last.text + fragment.text).slice(-4000) },
+                ];
+              return [...previous.slice(-39), { speaker: fragment.speaker, text: fragment.text }];
+            });
         },
         onAutoplayBlocked() {
           if (generation.current === epoch) setBlockedAudio(true);
         },
       },
-      async (sdp, outputOnly) =>
-        sessionAnswer(await rpc('voice.session', { sdp, preview: outputOnly })),
+      async (sdp, outputOnly) => {
+        await savePreferences(!outputOnly, selection);
+        return sessionAnswer(await rpc('voice.session', { sdp, preview: outputOnly }));
+      },
     );
     live.current = call;
     setupTimer.current = setTimeout(() => {
       if (generation.current === epoch) {
         end();
         setError(
-          'The call could not connect. Check your microphone permission and provider access.',
+          preview
+            ? 'The voice preview timed out. Try again. Preview does not use your microphone.'
+            : 'The voice connection timed out. Try again.',
         );
       }
     }, 45000);
     try {
       await call.start(preview);
-    } catch {
+    } catch (cause) {
       if (generation.current === epoch) {
         end();
-        setError('Couldn’t start voice. Check microphone permission and OpenAI live access.');
+        setError(voiceFailure(cause, preview));
       }
     }
   }
@@ -294,168 +372,115 @@ export const VoiceChat = forwardRef<
   return (
     <>
       {secretCard}
-      {visible && (
-        <Card asChild className="pc-voice-card gap-0 border-0 shadow-none">
-          <section ref={panel} aria-label="Voice chat">
-            <header>
-              <h3>Voice</h3>
-              <Button
-                type="button"
-                variant="quiet"
-                size="icon"
-                aria-label="Close voice setup"
-                onClick={() => {
-                  end();
-                  setVisible(false);
+      {visible && state === 'idle' && (
+        <VoicePanel
+          panel={panel}
+          settings={settings}
+          value={value}
+          onChange={setValue}
+          step={step}
+          busy={saving}
+          error={error}
+          embedded={mode === 'settings'}
+          previewDisabled={externalCallActive}
+          onClose={() => {
+            end();
+            setVisible(false);
+          }}
+          onKey={async (value) => {
+            const receipt = record(await rpc('voice.credential', { value }));
+            if (receipt.saved !== true) throw new Error('Save not confirmed');
+            await loadSettings();
+            setStep('settings');
+          }}
+          onUseSaved={() => setStep('settings')}
+          onReplace={() => setStep('key')}
+          onPreview={() => void start(true)}
+          onStart={() => void start(false)}
+          onSave={() => {
+            setSaving(true);
+            setError('');
+            setNotice('');
+            void savePreferences(true)
+              .then(() => setNotice('Saved.'))
+              .catch((cause) => setError(voiceFailure(cause)))
+              .finally(() => setSaving(false));
+          }}
+        />
+      )}
+      {visible &&
+        state !== 'idle' &&
+        (() => {
+          const content = (
+            <div
+              className="mx-auto grid w-full max-w-lg gap-2 px-3 pb-2"
+              data-slot="voice-call-surface"
+            >
+              <VoiceCallBar
+                state={state}
+                muted={muted}
+                activity={audioActivity}
+                avatar={avatar}
+                transcript={showTranscript}
+                onTranscript={() => setShowTranscript((value) => !value)}
+                onEnd={stopCall}
+                onMute={() => {
+                  live.current?.setMuted(!muted);
+                  setMuted(!muted);
                 }}
-              >
-                <X />
-              </Button>
-            </header>
-            {!settings && !error && <LoadingBar active label="Loading voice settings" />}
-            {settings?.supported === false && <p>This Hermes build doesn’t support live voice.</p>}
-            {settings?.supported && (!settings.configured || changingKey) && (
-              <SecretCard
-                title="OpenAI API key"
-                label="VOICE_TOOLS_OPENAI_KEY"
-                description="Saved to this Pebble’s Hermes profile. Live voice uses your OpenAI account."
-                onSkip={() =>
-                  settings?.supported && settings.configured
-                    ? setChangingKey(false)
-                    : setVisible(false)
-                }
-                onSubmit={async (value) => {
-                  const receipt = record(await rpc('voice.credential', { value }));
-                  if (receipt.saved !== true) throw new Error('Save not confirmed');
-                  setChangingKey(false);
-                  await loadSettings();
+                onSettings={() => {
+                  if (onOpenSettings) onOpenSettings();
+                  else end();
                 }}
               />
-            )}
-            {settings?.supported && settings.configured && !changingKey && (
-              <>
-                <div className="pc-voice-options">
-                  <Label layout="stacked">
-                    Voice
-                    <NativeSelect
-                      className="w-full"
-                      aria-label="Voice"
-                      value={settings.voice}
-                      disabled={state !== 'idle' || saving}
-                      onChange={(event) =>
-                        void updatePreferences(event.target.value, settings.pace)
-                      }
-                    >
-                      {!settings.voices.includes(settings.voice) && (
-                        <NativeSelectOption>{settings.voice}</NativeSelectOption>
-                      )}
-                      {settings.voices.map((voice) => (
-                        <NativeSelectOption key={voice}>{voice}</NativeSelectOption>
-                      ))}
-                    </NativeSelect>
-                  </Label>
-                  <Label layout="stacked">
-                    Speaking pace
-                    <NativeSelect
-                      className="w-full"
-                      aria-label="Speaking pace"
-                      value={settings.pace}
-                      disabled={state !== 'idle' || saving}
-                      onChange={(event) =>
-                        void updatePreferences(settings.voice, event.target.value)
-                      }
-                    >
-                      <NativeSelectOption value="slower">Slower</NativeSelectOption>
-                      <NativeSelectOption value="natural">Natural</NativeSelectOption>
-                      <NativeSelectOption value="faster">Faster</NativeSelectOption>
-                    </NativeSelect>
-                  </Label>
+              {blockedAudio && (
+                <Button
+                  variant="quiet"
+                  onClick={() => {
+                    void live.current?.audio
+                      .play()
+                      .then(() => setBlockedAudio(false))
+                      .catch(() => setError('Your browser blocked audio playback.'));
+                  }}
+                >
+                  Enable audio
+                </Button>
+              )}
+              {showTranscript && (
+                <div
+                  role="region"
+                  aria-label="Voice transcript"
+                  className="max-h-36 overflow-y-auto rounded-lg bg-muted/50 px-3 py-2 text-sm"
+                >
+                  {captions.length ? (
+                    captions.map((caption, index) => (
+                      <p key={index} className="mb-1 last:mb-0">
+                        <span className="mr-2 text-xs text-muted-foreground">
+                          {caption.speaker === 'user' ? 'You' : agentName}
+                        </span>
+                        {caption.text}
+                      </p>
+                    ))
+                  ) : (
+                    <p className="text-xs text-muted-foreground">
+                      Your conversation will appear here.
+                    </p>
+                  )}
                 </div>
-                {settings.canChangeKey && state === 'idle' && (
-                  <Button
-                    type="button"
-                    variant="quiet"
-                    size="sm"
-                    disabled={saving}
-                    onClick={() => setChangingKey(true)}
-                  >
-                    Change API key
-                  </Button>
-                )}
-                <p className="pc-voice-disclosure">
-                  Audio and recent chat context go directly to OpenAI. Calls and previews use your
-                  provider account.
-                </p>
-                {saving && <LoadingBar active label="Saving voice settings" />}
-                {state === 'idle' ? (
-                  <div className="pc-voice-actions">
-                    <Button
-                      type="button"
-                      variant="quiet"
-                      disabled={saving}
-                      onClick={() => void start(true)}
-                    >
-                      <Play />
-                      Preview
-                    </Button>
-                    <Button type="button" disabled={saving} onClick={() => void start(false)}>
-                      <Mic />
-                      Start call
-                    </Button>
-                  </div>
-                ) : (
-                  <div className="pc-voice-actions">
-                    <span role="status">
-                      {state === 'starting'
-                        ? 'Connecting'
-                        : state === 'preview'
-                          ? 'Voice preview'
-                          : muted
-                            ? 'Muted'
-                            : 'Live'}
-                    </span>
-                    {state === 'live' && (
-                      <Button
-                        type="button"
-                        variant="quiet"
-                        aria-label={muted ? 'Unmute microphone' : 'Mute microphone'}
-                        onClick={() => {
-                          live.current?.setMuted(!muted);
-                          setMuted(!muted);
-                        }}
-                      >
-                        {muted ? <MicOff /> : <Mic />}
-                      </Button>
-                    )}
-                    <Button type="button" variant="quiet" onClick={end}>
-                      <PhoneOff />
-                      End
-                    </Button>
-                  </div>
-                )}
-                {blockedAudio && (
-                  <Button
-                    type="button"
-                    onClick={() => {
-                      void live.current?.audio
-                        .play()
-                        .then(() => setBlockedAudio(false))
-                        .catch(() => setError('Your browser blocked audio playback.'));
-                    }}
-                  >
-                    Enable audio
-                  </Button>
-                )}
-                {caption && <p className="pc-voice-caption">{caption}</p>}
-              </>
-            )}
-            {error && (
-              <p role="alert" className="pc-voice-error">
-                {error}
-              </p>
-            )}
-          </section>
-        </Card>
+              )}
+              {error && (
+                <Alert>
+                  <AlertDescription>{error}</AlertDescription>
+                </Alert>
+              )}
+            </div>
+          );
+          return barTarget ? createPortal(content, barTarget) : content;
+        })()}
+      {notice && (
+        <p role="status" className="text-xs text-muted-foreground">
+          {notice}
+        </p>
       )}
     </>
   );

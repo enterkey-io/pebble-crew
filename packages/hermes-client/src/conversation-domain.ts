@@ -2,6 +2,7 @@ import { ClientError } from '@hermes-client/core';
 import type { BotBridgeClient } from './bridge';
 import { record } from './json';
 
+export type CommandSuggestion = { text: string; label: string; description: string };
 export type MessageReaction = { emoji: string; author: 'user' | 'agent' };
 export type ConversationMessage = {
   role: 'user' | 'assistant' | 'tool';
@@ -266,6 +267,41 @@ export class ConversationDomain {
   }
   async files(sessionId: string): Promise<SharedConversationFile[]> {
     return decodeSharedFiles(await this.bridge.invoke('files.list', { session_id: sessionId }));
+  }
+  async commands(
+    sessionId: string,
+    text: string,
+  ): Promise<{ items: CommandSuggestion[]; replaceFrom: number }> {
+    const data = record(await this.bridge.invoke('chat.commands', { session_id: sessionId, text }));
+    if (
+      !Array.isArray(data.items) ||
+      !Number.isSafeInteger(data.replace_from) ||
+      typeof data.replace_from !== 'number' ||
+      data.replace_from < 0 ||
+      data.replace_from > text.length ||
+      data.items.length > 100
+    )
+      throw new ClientError('INVALID_RESPONSE');
+    const items = data.items.map((raw) => {
+      const item = record(raw);
+      if (
+        typeof item.text !== 'string' ||
+        typeof item.label !== 'string' ||
+        typeof item.description !== 'string' ||
+        item.text.length > 250 ||
+        item.label.length > 250 ||
+        item.description.length > 300
+      )
+        throw new ClientError('INVALID_RESPONSE');
+      return { text: item.text, label: item.label, description: item.description };
+    });
+    return { items, replaceFrom: data.replace_from };
+  }
+  async command(sessionId: string, text: string): Promise<string> {
+    const data = record(await this.bridge.invoke('chat.command', { session_id: sessionId, text }));
+    if (typeof data.output !== 'string' || data.output.length > 64000)
+      throw new ClientError('INVALID_RESPONSE');
+    return data.output;
   }
   async open(profile: string): Promise<BotConversation> {
     return decodeBotConversation(await this.bridge.invoke('bot.open', { profile }));

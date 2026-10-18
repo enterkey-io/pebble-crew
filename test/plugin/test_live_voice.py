@@ -67,9 +67,50 @@ class VoiceBoundaryTests(unittest.IsolatedAsyncioTestCase):
             response = await http.post('/v1/rpc', headers={**headers, 'Origin': 'https://evil.invalid', 'X-Bot-Connection': first}, json={'operation': 'voice.credential', 'params': {'session_id': 'live-alpha', 'value': 'synthetic'}})
             self.assertEqual(response.status_code, 403)
 
+    async def test_call_followup_is_hidden_single_use_and_refuses_preview_or_foreign_calls(self):
+        import time
+        self.voice.calls['actual-call'] = {'session_id': 'live-alpha', 'preview': False, 'expires': time.monotonic() + 60, 'followed_up': False}
+        params = {'session_id': 'live-alpha', 'call_id': 'actual-call', 'transcript': 'User: We have not decided yet.'}
+        with patch('bot_web.live_voice.supported', return_value=True):
+            await self.voice.invoke('voice.end', params)
+            self.assertEqual(await self.voice.invoke('voice.end', params), {'submitted': False})
+            for call_id, call in [('preview', {'session_id': 'live-alpha', 'preview': True}), ('foreign', {'session_id': 'another-chat', 'preview': False})]:
+                self.voice.calls[call_id] = {**call, 'expires': time.monotonic() + 60, 'followed_up': False}
+                with self.assertRaises(InvalidOperation):
+                    await self.voice.invoke('voice.end', {**params, 'call_id': call_id})
+        submits = [call for call in self.native.calls if call[0] == 'prompt.submit']
+        self.assertEqual(len(submits), 1)
+        method, request = submits[0]
+        self.assertEqual(method, 'prompt.submit')
+        self.assertEqual(request['display_kind'], 'hidden')
+        self.assertEqual(request['voice_context'], params['transcript'])
+        self.assertIn('Do not use tools', request['text'])
+
     async def test_expired_secret_cannot_be_answered(self):
         native = NativeGateway()
         native.secrets['expired'] = {'id': 'expired', 'session_id': 'live-alpha', 'label': 'TEST_KEY', 'prompt': 'Test', 'expires': 0}
         with self.assertRaises(InvalidOperation):
             await native.secret_prompt('secrets.respond', {'session_id': 'live-alpha', 'id': 'expired', 'value': 'test'})
         self.assertEqual(native.secrets, {})
+
+class ProviderErrorTests(unittest.TestCase):
+    def test_provider_http_failures_remain_specific_without_echoing_private_bodies(self):
+        import io
+        import urllib.error
+        from bot_web.live_voice import create_session
+        native = SimpleNamespace(_live_section=lambda: {}, _resolve_credentials=lambda _: ('synthetic-private-key', 'https://provider.invalid/v1'), build_session_config=lambda _: {'instructions': 'Native instructions'})
+        for status, code in [(401, 'VOICE_KEY_REJECTED'), (403, 'VOICE_ACCESS_DENIED'), (404, 'VOICE_MODEL_UNAVAILABLE'), (429, 'VOICE_LIMIT_REACHED'), (500, 'VOICE_PROVIDER_UNAVAILABLE'), (400, 'VOICE_OFFER_REJECTED')]:
+            error = urllib.error.HTTPError('https://private.invalid', status, 'private body', {}, io.BytesIO(b'secret vendor detail'))
+            with patch.dict('sys.modules', {'tools.voice_live': native}), patch('bot_web.live_voice.urllib.request.urlopen', side_effect=error), self.assertRaises(InvalidOperation) as caught:
+                create_session('v=0\r\n', 'Synthetic', False)
+            self.assertEqual(caught.exception.code, code)
+            self.assertNotIn('private', str(caught.exception))
+            self.assertNotIn('secret', str(caught.exception))
+
+    def test_native_session_builder_errors_are_not_relabeled_as_microphone_failures(self):
+        import urllib.error
+        from bot_web.live_voice import create_session
+        native = SimpleNamespace(_live_section=lambda: {}, _resolve_credentials=lambda _: ('', 'https://provider.invalid/v1'))
+        with patch.dict('sys.modules', {'tools.voice_live': native}), self.assertRaises(InvalidOperation) as caught:
+            create_session('v=0\r\n', 'Synthetic', False)
+        self.assertEqual(caught.exception.code, 'VOICE_KEY_REQUIRED')

@@ -1,5 +1,6 @@
 // Copyright (c) 2025 Nous Research. MIT. See UPSTREAM.md.
 import { record } from './decode';
+import { VoiceStartError } from './errors';
 /**
  * GPT-Live voice chat: the full-duplex voice frontend that DELEGATES to Hermes.
  *
@@ -29,6 +30,7 @@ export interface VoiceLiveHandlers {
   /** GPT-Live asked the backend (Hermes) for help. `context` is the recent
    *  transcript window, newest last — the delegation itself carries no text. */
   onStarted?: () => void;
+  onAudioLevel?: (level: number) => void;
   onAutoplayBlocked?: () => void;
   onDelegation: (delegationId: string, context: LiveTranscriptFragment[]) => void;
   /** Vendor-side error. `fatal` when the session is gone. */
@@ -140,7 +142,8 @@ export class VoiceLiveSession {
   private eventCounter = 0;
   private transcript: LiveTranscriptFragment[] = [];
   private speakingProbe: null | number = null;
-  private analyser: null | AnalyserNode = null;
+  private inputAnalyser: null | AnalyserNode = null;
+  private outputAnalyser: null | AnalyserNode = null;
   private audioContext: null | AudioContext = null;
   private lastSpeaking = false;
   sessionId: null | string = null;
@@ -196,7 +199,16 @@ export class VoiceLiveSession {
       throw new Error('GPT-Live session already started');
     }
 
+    if (typeof RTCPeerConnection === 'undefined') throw new VoiceStartError('transport', null);
     const connection = new RTCPeerConnection();
+    if (this.handlers.onAudioLevel || this.handlers.onSpeakingChange) {
+      try {
+        this.audioContext = new AudioContext();
+        void this.audioContext.resume().catch(() => undefined);
+      } catch {
+        // Audio still plays when a browser has no level analyser.
+      }
+    }
     this.peer = connection;
 
     connection.addEventListener('track', (event) => {
@@ -207,7 +219,7 @@ export class VoiceLiveSession {
       const stream = new MediaStream([event.track]);
       this.audio.srcObject = stream;
       void this.audio.play().catch(() => this.handlers.onAutoplayBlocked?.());
-      if (this.handlers.onSpeakingChange) this.armSpeakingProbe(stream);
+      this.armAudioProbe(stream, 'output');
     });
     connection.addEventListener('connectionstatechange', () => {
       if (
@@ -221,13 +233,18 @@ export class VoiceLiveSession {
     if (preview) {
       connection.addTransceiver('audio', { direction: 'recvonly' });
     } else {
-      this.microphone = await navigator.mediaDevices.getUserMedia({
-        audio: { autoGainControl: true, echoCancellation: true, noiseSuppression: true },
-      });
+      try {
+        this.microphone = await navigator.mediaDevices.getUserMedia({
+          audio: { autoGainControl: true, echoCancellation: true, noiseSuppression: true },
+        });
+      } catch (cause) {
+        throw new VoiceStartError('microphone', cause);
+      }
       if (this.finalized) {
         this.microphone.getTracks().forEach((track) => track.stop());
         return;
       }
+      this.armAudioProbe(this.microphone, 'input');
       for (const track of this.microphone.getAudioTracks())
         connection.addTrack(track, this.microphone);
     }
@@ -253,44 +270,55 @@ export class VoiceLiveSession {
     }
 
     if (this.finalized) return;
-    const response = await this.exchange(sdp, preview);
+    let response;
+    try {
+      response = await this.exchange(sdp, preview);
+    } catch (cause) {
+      throw new VoiceStartError('provider', cause);
+    }
     if (this.finalized) return;
 
     this.sessionId = response.session?.id ?? null;
-    await connection.setRemoteDescription({ sdp: response.transport.sdp, type: 'answer' });
+    try {
+      await connection.setRemoteDescription({ sdp: response.transport.sdp, type: 'answer' });
+    } catch (cause) {
+      throw new VoiceStartError('transport', cause);
+    }
   }
 
-  private armSpeakingProbe(stream: MediaStream): void {
+  private armAudioProbe(stream: MediaStream, direction: 'input' | 'output'): void {
+    const context = this.audioContext;
+    if (!context) return;
     try {
-      const context = new AudioContext();
       const source = context.createMediaStreamSource(stream);
       const analyser = context.createAnalyser();
-      analyser.fftSize = 512;
+      analyser.fftSize = 256;
       source.connect(analyser);
-      this.audioContext = context;
-      this.analyser = analyser;
-      const buffer = new Uint8Array(analyser.frequencyBinCount);
-      let quietFrames = 0;
-
+      if (direction === 'input') this.inputAnalyser = analyser;
+      else this.outputAnalyser = analyser;
+      if (this.speakingProbe) return;
+      const buffer = new Uint8Array(256);
+      const level = (node: AnalyserNode | null) => {
+        if (!node) return 0;
+        node.getByteTimeDomainData(buffer);
+        let energy = 0;
+        for (const sample of buffer) energy += ((sample - 128) / 128) ** 2;
+        return Math.min(1, Math.sqrt(energy / buffer.length) * 5);
+      };
       this.speakingProbe = window.setInterval(() => {
-        analyser.getByteTimeDomainData(buffer);
-        let peak = 0;
-
-        for (const sample of buffer) {
-          peak = Math.max(peak, Math.abs(sample - 128));
-        }
-
-        const loud = peak > 6;
-        quietFrames = loud ? 0 : quietFrames + 1;
-        const speaking = loud || quietFrames < 4;
-
+        const input = this.microphone?.getAudioTracks().some((track) => track.enabled)
+          ? level(this.inputAnalyser)
+          : 0;
+        const output = level(this.outputAnalyser);
+        this.handlers.onAudioLevel?.(Math.max(input, output));
+        const speaking = output > 0.03;
         if (speaking !== this.lastSpeaking) {
           this.lastSpeaking = speaking;
           this.handlers.onSpeakingChange?.(speaking);
         }
-      }, 100);
+      }, 50);
     } catch {
-      // No analyser → no speaking indicator; the conversation still works.
+      // A level indicator is optional; audio transport remains usable.
     }
   }
 
@@ -447,7 +475,9 @@ export class VoiceLiveSession {
       this.speakingProbe = null;
     }
 
-    this.analyser?.disconnect();
+    this.inputAnalyser?.disconnect();
+    this.outputAnalyser?.disconnect();
+    this.handlers.onAudioLevel?.(0);
     void this.audioContext?.close().catch(() => undefined);
     this.microphone?.getTracks().forEach((track) => track.stop());
     this.events?.close();

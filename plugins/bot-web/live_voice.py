@@ -7,14 +7,20 @@ from copy import deepcopy
 import json
 import re
 import threading
+import time
 import urllib.request
+import urllib.error
+import socket
 
 from .operations import InvalidOperation, fields, identifier
+
+VOICE_ERROR_CODES = {'VOICE_KEY_REJECTED', 'VOICE_PROVIDER_UNREACHABLE', 'VOICE_INVALID_ANSWER', 'VOICE_KEY_REQUIRED', 'VOICE_SETUP_FAILED', 'VOICE_ACCESS_DENIED', 'VOICE_OFFER_REJECTED', 'VOICE_MODEL_UNAVAILABLE', 'VOICE_LIMIT_REACHED', 'VOICE_PROVIDER_TIMEOUT', 'VOICE_PROVIDER_UNAVAILABLE'}
 
 _CONFIG = threading.Lock()
 PACE_START = '[Pebble Crew delivery]'
 PACE_END = '[/Pebble Crew delivery]'
-PACES = {'slower': 'Speak a little more slowly, with natural pauses.',
+SPEEDS = (0.75, 1, 1.25, 1.5, 1.75, 2)
+LEGACY_PACES = {'slower': 'Speak a little more slowly, with natural pauses.',
          'natural': 'Speak at a natural conversational pace.',
          'faster': 'Speak a little faster, remaining clear and conversational.'}
 
@@ -33,23 +39,32 @@ def preferences():
     status = native.resolve_gpt_live_status()
     live = native._live_section()
     instructions = str(live.get('instructions') or '')
-    pace = next((key for key, value in PACES.items() if f'{PACE_START}\n{value}\n{PACE_END}' in instructions), 'natural')
+    legacy = next((key for key, value in LEGACY_PACES.items() if f'{PACE_START}\n{value}\n{PACE_END}' in instructions), 'natural')
+    speed = live.get('pebble_speed', {'slower': 0.75, 'natural': 1, 'faster': 1.25}[legacy])
+    speed = speed if type(speed) in (int, float) and speed in SPEEDS else 1
     return {'supported': True, 'provider': 'openai', 'configured': status['available'],
-            'voice': status['voice'], 'voices': list(native.GPT_LIVE_VOICES), 'pace': pace, 'can_change_key': not bool(live.get('api_key'))}
+            'voice': status['voice'], 'voices': list(native.GPT_LIVE_VOICES), 'speed': speed, 'speed_control': 'instruction', 'setup_complete': live.get('pebble_setup_complete') is True, 'can_change_key': not bool(live.get('api_key'))}
 
 
-def save_preferences(voice, pace):
+def speed_instruction(speed):
+    return f'Aim for {speed:g} times your normal speaking speed. Keep pronunciation clear and natural.'
+
+
+def save_preferences(voice, speed, complete):
     from tools import voice_live as native
     from hermes_cli.config import _CONFIG_LOCK, read_user_config_raw, save_config
-    if voice not in native.GPT_LIVE_VOICES or pace not in PACES:
-        raise ValueError('Choose a supported voice and pace')
+    if voice not in native.GPT_LIVE_VOICES or type(speed) not in (int, float) or speed not in SPEEDS or type(complete) is not bool:
+        raise ValueError('Choose a supported voice and speed')
     with _CONFIG_LOCK:
         config = deepcopy(read_user_config_raw() or {})
         live = config.setdefault('voice', {}).setdefault('gpt_live', {})
         instructions = str(live.get('instructions') or '')
         instructions = re.sub(re.escape(PACE_START) + r'.*?' + re.escape(PACE_END), '', instructions, flags=re.S).strip()
-        live['instructions'] = f'{instructions}\n\n{PACE_START}\n{PACES[pace]}\n{PACE_END}'.strip()
+        live['instructions'] = f'{instructions}\n\n{PACE_START}\n{speed_instruction(speed)}\n{PACE_END}'.strip()
         live['voice'] = voice
+        live['pebble_speed'] = speed
+        if complete:
+            live['pebble_setup_complete'] = True
         save_config(config)
         actual = read_user_config_raw() or {}
         if actual.get('voice', {}).get('gpt_live') != live:
@@ -62,7 +77,7 @@ def create_session(sdp, name, preview, history=None):
     live = native._live_section()
     key, base = native._resolve_credentials(live)
     if not key:
-        raise ValueError('Set up an OpenAI voice key first')
+        raise InvalidOperation('Set up an OpenAI voice key first', 'VOICE_KEY_REQUIRED')
     # Preserve native delegation/backchannel/interrupt policy and owner instructions;
     # replace only the generic frontend identity for this ephemeral session.
     session = native.build_session_config(history if not preview else None)
@@ -71,16 +86,31 @@ def create_session(sdp, name, preview, history=None):
         f'You are the speaking voice of {name}, the selected Hermes agent.', 1)
     if preview:
         session['instructions'] = 'This is a short voice preview. Read the supplied sample once, then wait silently. Do not delegate or ask questions.'
+        session['instructions'] += '\n' + speed_instruction(preferences()['speed'])
         session['input'] = []
     request = urllib.request.Request(f'{base}/live/sessions', data=json.dumps({
         'session': session, 'transport': {'type': 'webrtc', 'sdp': sdp}}).encode(),
         headers={'Authorization': f'Bearer {key}', 'Content-Type': 'application/json'}, method='POST')
     # Never echo/log vendor bodies, SDP or keys on errors.
-    with urllib.request.urlopen(request, timeout=30) as response:
-        value = json.loads(response.read(256_000))
+    try:
+        with urllib.request.urlopen(request, timeout=30) as response:
+            value = json.loads(response.read(256_000))
+    except urllib.error.HTTPError as error:
+        code = {401: 'VOICE_KEY_REJECTED', 403: 'VOICE_ACCESS_DENIED', 404: 'VOICE_MODEL_UNAVAILABLE',
+                429: 'VOICE_LIMIT_REACHED'}.get(error.code, 'VOICE_PROVIDER_UNAVAILABLE' if error.code >= 500 else 'VOICE_OFFER_REJECTED')
+        error.close()
+        raise InvalidOperation('Voice provider refused the session', code) from None
+    except (TimeoutError, socket.timeout):
+        raise InvalidOperation('Voice provider timed out', 'VOICE_PROVIDER_TIMEOUT') from None
+    except urllib.error.URLError:
+        raise InvalidOperation('Voice provider could not be reached', 'VOICE_PROVIDER_UNREACHABLE') from None
+    except (ValueError, TypeError):
+        raise InvalidOperation('Invalid voice provider answer', 'VOICE_INVALID_ANSWER') from None
+    if not isinstance(value, dict) or not isinstance(value.get('session'), dict) or not isinstance(value.get('session', {}).get('id'), str) or not value['session']['id']:
+        raise InvalidOperation('Invalid voice answer', 'VOICE_INVALID_ANSWER')
     transport = value.get('transport', {})
-    if transport.get('type') != 'webrtc' or not isinstance(transport.get('sdp'), str) or len(transport['sdp']) > 128_000:
-        raise ValueError('Invalid voice answer')
+    if not isinstance(transport, dict) or transport.get('type') != 'webrtc' or not isinstance(transport.get('sdp'), str) or len(transport['sdp']) > 128_000:
+        raise InvalidOperation('Invalid voice answer', 'VOICE_INVALID_ANSWER')
     return {'session': {'id': str(value.get('session', {}).get('id') or '')[:256]},
             'transport': {'type': 'webrtc', 'sdp': transport['sdp']}}
 
@@ -89,6 +119,7 @@ class LiveVoice:
     def __init__(self, ops):
         self.ops = ops
         self.inflight = set()
+        self.calls = {}
 
     async def invoke(self, operation, params):
         if not supported():
@@ -99,6 +130,22 @@ class LiveVoice:
         profile = self.ops.sessions.get(sid)
         if not profile or await self.ops.stamp(profile) != self.ops.session_incarnations.get(sid):
             raise InvalidOperation('Reopen this Pebble before using voice')
+        if operation == 'voice.end':
+            fields(params, ['session_id', 'call_id', 'transcript'])
+            call_id, transcript = params['call_id'], params['transcript']
+            if not isinstance(call_id, str) or not isinstance(transcript, str) or not transcript.strip() or len(transcript) > 6000:
+                raise InvalidOperation('Invalid call follow-up')
+            call = self.calls.get(call_id)
+            if not call or call['session_id'] != sid or call['preview'] or call['expires'] < time.monotonic():
+                raise InvalidOperation('Call follow-up unavailable')
+            if call['followed_up']:
+                return {'submitted': False}
+            # Consume before dispatch. A timed-out accepted turn is never retried.
+            call['followed_up'] = True
+            receipt = await self.ops.gateway.call('prompt.submit', {'session_id': sid,
+                'text': 'The live voice call has ended. Send one brief, natural follow-up in this text chat, in your existing personality. Refer only to the actual discussion in the voice context. If a decision was left open, offer to pick it up when the owner is ready. Do not claim actions happened or treat discussion as approval. Do not use tools, make changes, or start tasks. Do not invent unfinished work.',
+                'surface': 'voice-live', 'voice_context': transcript, 'display_kind': 'hidden', 'queued': True})
+            return {'submitted': True, **receipt}
         if operation == 'voice.submit':
             fields(params, ['session_id', 'text', 'context'])
             text, context = params['text'], params['context']
@@ -108,7 +155,7 @@ class LiveVoice:
             # receipt of a queued turn, and only speaks an exactly matching completion.
             return await self.ops.gateway.call('prompt.submit', {'session_id': sid,
                 'text': text, 'surface': 'voice-live', 'voice_context': context, 'queued': True})
-        allowed = {'voice.status': ['session_id'], 'voice.preferences': ['session_id', 'voice', 'pace'],
+        allowed = {'voice.status': ['session_id'], 'voice.preferences': ['session_id', 'voice', 'speed', 'complete'],
                    'voice.credential': ['session_id', 'value'], 'voice.session': ['session_id', 'sdp', 'preview']}
         if operation not in allowed:
             raise InvalidOperation('Unsupported voice operation')
@@ -137,7 +184,7 @@ class LiveVoice:
                 if operation == 'voice.status':
                     return preferences()
                 if operation == 'voice.preferences':
-                    return save_preferences(params['voice'], params['pace'])
+                    return save_preferences(params['voice'], params['speed'], params['complete'])
                 if operation == 'voice.credential':
                     value = params['value']
                     if not isinstance(value, str) or not re.fullmatch(r'[\x21-\x7e]{8,4096}', value):
@@ -161,9 +208,16 @@ class LiveVoice:
             result = await asyncio.to_thread(execute)
             if await self.ops.stamp(profile) != self.ops.session_incarnations.get(sid):
                 raise InvalidOperation('This Pebble changed during setup')
+            if operation == 'voice.session':
+                self.calls = {key: value for key, value in self.calls.items() if value['expires'] > time.monotonic()}
+                if len(self.calls) >= 64:
+                    self.calls.pop(next(iter(self.calls)))
+                self.calls[result['session']['id']] = {'session_id': sid, 'preview': params['preview'], 'expires': time.monotonic() + 14400, 'followed_up': False}
             return result
-        except Exception as error:
-            raise InvalidOperation('Voice setup failed. Check the selected profile’s voice configuration and provider access.') from error
+        except InvalidOperation:
+            raise
+        except Exception:
+            raise InvalidOperation('Voice setup could not be confirmed', 'VOICE_SETUP_FAILED') from None
         finally:
             self.inflight.discard(sid)
 

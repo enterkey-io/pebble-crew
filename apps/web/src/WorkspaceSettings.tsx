@@ -23,7 +23,11 @@ export function WorkspaceSettings({
   initialProfile,
   onDirtyChange,
   onNavigate,
+  initialAgentTab,
+  callActive = false,
 }: {
+  initialAgentTab?: 'identity' | 'voice';
+  callActive?: boolean;
   onDirtyChange: (dirty: boolean) => void;
   onNavigate: (action: () => void) => void;
   owner?: boolean;
@@ -118,6 +122,8 @@ export function WorkspaceSettings({
     return bot ? (
       <PebbleEditor
         retired={retired}
+        initialTab={initialAgentTab ?? 'identity'}
+        callActive={callActive}
         key={bot.id}
         client={client}
         bot={bot}

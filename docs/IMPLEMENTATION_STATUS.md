@@ -12,7 +12,7 @@ Pebble's palette; Snow retains neutral gray and existing `white` identities.
 Native hierarchy context and introductions identify the same Main Pebble by
 handle and full reporting path. The voice integration reuses Hermes's pinned
 GPT-Live session builder, credentials, WebRTC protocol and native prompt surface.
-It adds private inline setup, saved voice/pace, output-only preview, call controls
+It adds private inline setup, saved voice/requested speed, output-only preview, call controls
 and receipt-matched final results. Native 0.21.0 keeps text chat and reports voice
 unsupported; Grok live is not offered under the native-support requirement.
 

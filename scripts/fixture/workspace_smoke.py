@@ -169,14 +169,15 @@ async def verify(home, model_port):
             assert (await voice.invoke('voice.credential', {'session_id': sid, 'value': 'synthetic-voice-only-key'})) == {'saved': True, 'validated': False}
             status = await voice.invoke('voice.status', {'session_id': sid})
             assert status['configured'], status
-            status = await voice.invoke('voice.preferences', {'session_id': sid, 'voice': status['voices'][1], 'pace': 'slower'})
-            assert status['pace'] == 'slower', status
+            status = await voice.invoke('voice.preferences', {'session_id': sid, 'voice': status['voices'][1], 'speed': 0.75, 'complete': True})
+            assert status['speed'] == 0.75 and status['setup_complete'], status
             for preview in (True, False):
                 answer = await voice.invoke('voice.session', {'session_id': sid, 'sdp': 'v=0\r\nsynthetic-offer\r\n', 'preview': preview})
                 assert answer['transport']['sdp'] == 'v=0\r\nsynthetic-answer\r\n'
                 sent = WorkspaceModel.live_requests[-1]
                 assert sent['transport']['sdp'] == 'v=0\r\nsynthetic-offer\r\n'
                 assert sent['session']['audio']['output']['voice'] == status['voice']
+                assert '0.75 times your normal speaking speed' in sent['session']['instructions']
                 assert 'synthetic-voice-only-key' not in json.dumps(sent)
             assert (home / '.env').read_bytes() == before_env, 'Voice credential changed the primary profile'
             start = len(WorkspaceModel.requests)
@@ -192,6 +193,29 @@ async def verify(home, model_port):
                         break
             assert WorkspaceModel.requests[start:] and all(r.get('model') == 'fixture-model' for r in WorkspaceModel.requests[start:])
             assert 'live spoken conversation' in json.dumps(WorkspaceModel.requests[start:]), 'Native Live surface note omitted'
+            followup = await voice.invoke('voice.end', {'session_id': sid, 'call_id': 'synthetic-live', 'transcript': 'User: We could change the project next week. No decision yet.\nAssistant: We can decide later.'})
+            assert followup['submitted'] is True
+            assert await voice.invoke('voice.end', {'session_id': sid, 'call_id': 'synthetic-live', 'transcript': 'replay'}) == {'submitted': False}
+            async with asyncio.timeout(60):
+                while True:
+                    event = await queue.get()
+                    if event.get('type') == 'message.complete' and event.get('session_id') == sid and event.get('payload', {}).get('persisted_turn', {}).get('user_row_id') == followup['user_row_id']:
+                        break
+            history = await ops.invoke('chat.history', {'session_id': sid})
+            assert not any(str(row.get('row_id')) == str(followup['user_row_id']) or 'The live voice call has ended' in str(row.get('text', '')) for row in history['messages']), 'Call-end instruction became a visible owner message'
+        # Native completion is profile/session scoped and does not invoke a model.
+        from bot_web.commands import invoke as command
+        command_chat = await ops.invoke('bot.open', {'profile': 'engineer'})
+        command_sid = command_chat['session_id']
+        before_commands = len(WorkspaceModel.requests)
+        available = await command(ops, 'chat.commands', {'session_id': command_sid, 'text': '/'})
+        assert any(item['text'].strip().lstrip('/') == 'model' for item in available['items']), available
+        receipt = await command(ops, 'chat.command', {'session_id': command_sid, 'text': '/model fixture-model-command --session --provider custom:fixture'})
+        assert isinstance(receipt['output'], str) and receipt['output'], receipt
+        assert not any(request.get('messages') or request.get('input') for request in WorkspaceModel.requests[before_commands:]), 'Native command was submitted as a model prompt'
+        status = await native.call('session.status', {'session_id': command_sid})
+        assert 'fixture-model-command' in status['output'], status
+        await command(ops, 'chat.command', {'session_id': command_sid, 'text': '/model fixture-model --session --provider custom:fixture'})
         current = await workspace.invoke('workspace.describe', {})
         created = await workspace.invoke('agent.create', {'name': 'new-researcher', 'display_name': 'New Researcher', 'soul': 'SYNTHETIC_NEW_RESEARCHER_PERSONALITY', 'role': 'Research synthetic fixtures', 'model_source': 'default', 'model_fingerprint': model['fingerprint'], 'skills': [], 'toolsets': ['workspace', 'skills'], 'manager': 'default', 'team': None, 'expected_revision': current['revision']})
         assert created['state'] == 'completed', created

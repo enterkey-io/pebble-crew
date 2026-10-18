@@ -1,11 +1,12 @@
-import { Card } from '../ui/card';
-import { Form } from '../ui/form';
-import { Label } from '../ui/label';
 import { useRef, useState } from 'react';
 import { KeyRound, ShieldCheck } from 'lucide-react';
+import { ApprovalSurface } from './confirmation';
+import { Form } from '../ui/form';
+import { Label } from '../ui/label';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
 import { LoadingBar } from '../ui/loading-bar';
+import { Alert, AlertDescription } from '../ui/alert';
 
 export function SecretCard({
   title,
@@ -24,9 +25,8 @@ export function SecretCard({
   const [busy, setBusy] = useState(false),
     [error, setError] = useState('');
   return (
-    <Card asChild className="pc-secret-card gap-0 border-0 shadow-none">
+    <ApprovalSurface title={title} description={description} icon={KeyRound}>
       <Form
-        className="pc-secret-card"
         aria-label={title}
         onSubmit={(event) => {
           event.preventDefault();
@@ -36,18 +36,10 @@ export function SecretCard({
           setBusy(true);
           setError('');
           void onSubmit(value)
-            .catch(() =>
-              setError('Couldn’t confirm. Check your Hermes secret storage, then try again.'),
-            )
+            .catch(() => setError('The key could not be saved. Try again.'))
             .finally(() => setBusy(false));
         }}
       >
-        <div className="pc-secret-heading">
-          <KeyRound size={18} />
-          <span>Secrets</span>
-        </div>
-        <h3>{title}</h3>
-        <p>{description}</p>
         <Label layout="stacked">
           {label}
           <Input
@@ -61,12 +53,16 @@ export function SecretCard({
             aria-label={label}
           />
         </Label>
-        {busy && <LoadingBar active label="Submitting secret" />}
-        {error && <p role="alert">{error}</p>}
-        <footer>
-          <small>
-            <ShieldCheck size={15} />
-            Kept out of this conversation
+        {busy && <LoadingBar active label="Saving secret" />}
+        {error && (
+          <Alert>
+            <AlertDescription>{error}</AlertDescription>
+          </Alert>
+        )}
+        <div className="flex flex-wrap items-center justify-end gap-2">
+          <small className="mr-auto flex items-center gap-1.5 text-xs text-muted-foreground">
+            <ShieldCheck className="size-3.5" />
+            Kept out of chat
           </small>
           <Button type="button" variant="quiet" onClick={onSkip} disabled={busy}>
             Skip
@@ -74,8 +70,8 @@ export function SecretCard({
           <Button type="submit" disabled={busy}>
             Submit
           </Button>
-        </footer>
+        </div>
       </Form>
-    </Card>
+    </ApprovalSurface>
   );
 }
