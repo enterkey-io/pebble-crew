@@ -14,6 +14,11 @@ The original 20 primitives came from the official
 primitives. Existing customized sources were preserved during that import.
 The MIT notice remains in [licenses/shadcn-ui.txt](licenses/shadcn-ui.txt).
 
+The CLI is an import tool, not a project dependency. Its unchanged utility source
+is owned in `ui/shadcn-utilities.css` (formatting/header only); the original SHA256
+is recorded there. Keeping that CSS beside the other owned sources removes the
+CLI's unused registry/glob dependency chain from ordinary builds and packages.
+
 The complete inventory and intended uses live in the executable
 [`catalog.ts`](../apps/web/src/ui-lab/catalog.ts) manifest and
 [coverage ledger](SHADCN_COVERAGE.md). `node scripts/sync-ui-catalog.mjs --check`
@@ -43,24 +48,23 @@ primitives without an AI SDK runtime or model provider dependency.
 
 Dependencies are pinned in the manifests and lockfile:
 
-| Dependency             | Version | Purpose                                                         |
-| ---------------------- | ------- | --------------------------------------------------------------- |
-| radix-ui               | 1.8.1   | Accessible behavior, focus, portals and menus                   |
-| @shadcn/react          | 0.3.1   | Questionnaire and standalone scroller primitives                |
-| shadcn                 | 4.22.0  | Registry CLI and official CSS utilities; development dependency |
-| Tailwind               | 4.3.3   | Semantic theme utilities                                        |
-| Motion                 | 14.3.0  | Existing layout and message motion                              |
-| Lucide React           | 1.58.0  | Interface icons                                                 |
-| cmdk                   | 1.1.1   | Search and command pickers                                      |
-| date-fns               | 4.4.0   | Date formatting                                                 |
-| react-day-picker       | 10.0.2  | Calendar behavior                                               |
-| input-otp              | 1.5.0   | Code input                                                      |
-| embla-carousel-react   | 8.6.0   | Media carousel                                                  |
-| react-resizable-panels | 4.14.5  | Resizable surfaces                                              |
-| recharts               | 3.8.0   | Reserved chart presentation                                     |
-| shiki                  | 4.5.0   | Local code highlighting                                         |
-| sonner                 | 2.0.8   | Notifications                                                   |
-| vaul                   | 1.1.2   | Touch drawers                                                   |
+| Dependency             | Version | Purpose                                          |
+| ---------------------- | ------- | ------------------------------------------------ |
+| radix-ui               | 1.8.1   | Accessible behavior, focus, portals and menus    |
+| @shadcn/react          | 0.3.1   | Questionnaire and standalone scroller primitives |
+| Tailwind               | 4.3.3   | Semantic theme utilities                         |
+| Motion                 | 14.3.0  | Existing layout and message motion               |
+| Lucide React           | 1.58.0  | Interface icons                                  |
+| cmdk                   | 1.1.1   | Search and command pickers                       |
+| date-fns               | 4.4.0   | Date formatting                                  |
+| react-day-picker       | 10.0.2  | Calendar behavior                                |
+| input-otp              | 1.5.0   | Code input                                       |
+| embla-carousel-react   | 8.6.0   | Media carousel                                   |
+| react-resizable-panels | 4.14.5  | Resizable surfaces                               |
+| recharts               | 3.8.0   | Reserved chart presentation                      |
+| shiki                  | 4.5.0   | Local code highlighting                          |
+| sonner                 | 2.0.8   | Notifications                                    |
+| vaul                   | 1.1.2   | Touch drawers                                    |
 
 Heavy specimens are loaded with the workbench. Its standalone upstream scroller
 is not an additional controller for the installed transcript: `TranscriptFollow`

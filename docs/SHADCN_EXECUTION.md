@@ -18,6 +18,10 @@ React application. It does not migrate to Vue or add a hosted application servic
   preserved. React compositions cover Vue catalog equivalents; no Base UI,
   second theme, next-themes store or AI SDK runtime was introduced. Dependencies
   are pinned. See [provenance](UI_COMPONENT_PROVENANCE.md).
+  The registry CLI was removed after import; its CSS utilities are owned beside
+  the components. This removes the unneeded glob dependency chain affected by
+  [GHSA-vfj7-8cjw-p6xm](https://github.com/advisories/GHSA-vfj7-8cjw-p6xm)
+  instead of downgrading the design system or applying a forced dependency fix.
 - **D3–D5, native authority:** `ConversationDomain` decodes existing native rows,
   reactions, public commentary, shared files and exact approval targets. Unknown
   structured outputs retain bounded generic Tool rendering. Reusable AI elements
