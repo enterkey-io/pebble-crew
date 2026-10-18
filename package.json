@@ -1,6 +1,6 @@
 {
   "name": "pebble-crew",
-  "version": "0.7.8-preview.5",
+  "version": "0.7.8-preview.6",
   "private": true,
   "type": "module",
   "workspaces": [

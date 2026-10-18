@@ -28,10 +28,16 @@ test('owner bubbles use the phone width while short messages stay compact', asyn
       const style = getComputedStyle(node);
       return node.clientWidth - parseFloat(style.paddingLeft) - parseFloat(style.paddingRight);
     });
-    const long = (await page.locator('.pc-message.user').first().boundingBox())!;
-    const short = (await page.locator('.pc-message.user').last().boundingBox())!;
-    expect(long.width / available).toBeGreaterThan(0.84);
-    expect(long.width / available).toBeLessThan(0.91);
+    const long = (await page
+      .locator('[data-message-role="user"] [data-slot="bubble"]')
+      .first()
+      .boundingBox())!;
+    const short = (await page
+      .locator('[data-message-role="user"] [data-slot="bubble"]')
+      .last()
+      .boundingBox())!;
+    expect(long.width / available).toBeGreaterThan(0.79);
+    expect(long.width / available).toBeLessThan(0.81);
     expect(short.width).toBeLessThan(available * 0.6);
     expect(Math.abs(long.x + long.width - short.x - short.width)).toBeLessThan(1);
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(

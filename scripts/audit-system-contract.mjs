@@ -19,6 +19,11 @@ try {
   const tool = 'apps/web/src/components/ai-elements/tool.tsx';
   const cases = [
     [
+      'legacy chat layout override',
+      'apps/web/src/ui/layout.css',
+      (source) => source + '\n.pc-bubble { padding: 13px 16px 8px; }',
+    ],
+    [
       'unused shared import',
       app,
       (source) =>
@@ -70,7 +75,7 @@ try {
       throw new Error(`Guard failed to reject ${name}: ${result.stdout}${result.stderr}`);
     console.log(`Rejected: ${name}`);
   }
-  console.log('Current source accepted; all seven negative controls rejected.');
+  console.log(`Current source accepted; all ${cases.length} negative controls rejected.`);
 } finally {
   rmSync(directory, { recursive: true, force: true });
 }

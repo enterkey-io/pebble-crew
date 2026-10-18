@@ -12,16 +12,18 @@ const migrated = [
   ['App.tsx', './components/ai-elements/chat', ['Chat', 'ChatViewport']],
   ['App.tsx', './components/ai-elements/prompt-input', ['PromptInputFrame', 'PromptInputField']],
   ['App.tsx', './components/ai-elements/confirmation', ['Confirmation']],
-  [
-    'chat/Transcript.tsx',
-    '../components/ai-elements/message',
-    ['MessageBubble', 'MessageMetadata'],
-  ],
+  ['chat/Transcript.tsx', '../components/ai-elements/message', ['Message']],
   ['chat/Transcript.tsx', '../components/ai-elements/tool', ['Tool']],
   ['chat/Transcript.tsx', '../components/ai-elements/chain-of-thought', ['ChainOfThought']],
   ['PebbleEditor.tsx', './ui/EditorSurface', ['TabbedEditor']],
   ['WorkspaceSettings.tsx', './ui/EditorSurface', ['TabbedEditor']],
 ];
+for (const path of ['ui/layout.css', 'ui/product.css']) {
+  requireRule(
+    !/\.pc-(?:bubble|message)(?:[-\s.{:]|$)/m.test(read(path)),
+    `${path}: legacy chat geometry must not override the shared Message and Bubble composition.`,
+  );
+}
 for (const [path, module, components] of migrated) {
   const contract = sourceContract(read(path));
   for (const component of components)

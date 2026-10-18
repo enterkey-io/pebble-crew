@@ -11,7 +11,7 @@ test('connection recovery retains the visible conversation without a red interru
   const input = page.getByLabel('Message', { exact: true });
   await expect(input).toBeEnabled();
   await input.fill('An unsent message');
-  const bubble = (await page.locator('.pc-bubble').first().elementHandle())!;
+  const bubble = (await page.locator('[data-slot="message-response"]').first().elementHandle())!;
   let reconnecting = false;
   let resume = () => {};
   const waiting = new Promise<void>((resolve) => {

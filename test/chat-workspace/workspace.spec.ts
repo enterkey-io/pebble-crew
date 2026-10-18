@@ -49,7 +49,7 @@ test('populated production workspace: layout, drafts, scroll, crew authors and r
   expect(await log.evaluate((n) => n.scrollTop)).toBe(0);
   await page.getByRole('button', { name: 'Research crew', exact: false }).click();
   await expect(log).toContainText('I have the notes ready.');
-  await expect(log.locator('.message-author')).toHaveText(['Arlo', 'Mica']);
+  await expect(log.locator('[data-slot="message-header"]')).toHaveText(['Arlo', 'Mica']);
   await input.fill('Crew draft');
   await page.getByRole('button', { name: /^Arlo .*Bot Chat$/ }).click();
   await expect(input).toHaveValue('Draft for Arlo');

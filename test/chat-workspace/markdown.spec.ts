@@ -21,7 +21,7 @@ test('Markdown preserves code, lists, quotes and tables without widening the con
           '1. Review the draft\n2. Share it\n   - With the crew\n   - With the owner',
           '- [x] Sources checked\n- [ ] Review pending',
           '| Item | Status |\n| --- | --- |\n| ' + 'Wide column '.repeat(18) + ' | Ready |',
-          '| A | B | C | D | E | F | G | H |\n| --- | --- | --- | --- | --- | --- | --- | --- |\n| 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 |',
+          '| First heading | Second heading | Third heading | Fourth heading | Fifth heading | Sixth heading | Seventh heading | Eighth heading |\n| --- | --- | --- | --- | --- | --- | --- | --- |\n| 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 |',
           '<script>window.UNSAFE_MARKDOWN = true</script>',
         ].join('\n\n'),
       },
@@ -47,7 +47,7 @@ test('Markdown preserves code, lists, quotes and tables without widening the con
     expect((await header.boundingBox())!.height).toBeLessThan(48);
   expect(
     await body
-      .locator('table')
+      .locator('[data-slot="table-container"]')
       .nth(1)
       .evaluate((node) => node.scrollWidth > node.clientWidth),
   ).toBe(true);

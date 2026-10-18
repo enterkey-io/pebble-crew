@@ -19,6 +19,22 @@ service manager. Do not use an incidental named profile or sticky CLI selection
 as proof of the root installation or primary agent. Preserve profiles, SOUL,
 memory, skills, channels, history, roles and photos. Never create a starter bot.
 
+Before invoking Hermes, confirm the effective UID/GID matches the installation's
+service account. Check scheduled health checks, cleanup and update jobs as well
+as the foreground service. Set their execution identity explicitly, including
+container/Kubernetes jobs; the account need not be named `hermes` or use UID 1000.
+Setting HERMES_HOME alone does not select the Unix account. Even a status command
+can create a native environment's `.leases` directory before this plugin loads.
+
+If Hermes reports an unwritable install-state `.leases` path, inspect that exact
+directory, its parent and the caller identity before changing anything. Correct
+any wrong-account job first. If an ownership repair is needed, restrict it to the
+confirmed mismatched lease directory/entries and the verified installation owner;
+do not recursively change the installation or HERMES_HOME, relax modes globally,
+delete active lease files, or bypass Hermes's checks. Verify a harmless command
+as the service account and recheck after the corrected job runs. A successful
+manual check alone does not verify the scheduler's identity.
+
 This preview supports native revisions `29112bef…` (0.21.0) and `af0cd4df…`
 (0.21.7) on Linux/macOS. Package metadata 0.0.0 is not itself a rejection. An
 untested native surface needs maintainer revalidation; do not downgrade Hermes,
@@ -72,13 +88,13 @@ installation.
 
 ## 3. Obtain the immutable combined release
 
-Candidate: `v0.7.8-preview.5`. If these assets are not published, stop and report
+Candidate: `v0.7.8-preview.6`. If these assets are not published, stop and report
 that the candidate is unavailable. Do not substitute main or an API-only package.
 
-- [Manifest](https://github.com/enterkey-io/pebble-crew/releases/download/v0.7.8-preview.5/workspace-manifest.json)
-- [SHA256SUMS](https://github.com/enterkey-io/pebble-crew/releases/download/v0.7.8-preview.5/SHA256SUMS)
-- [Complete plugin](https://github.com/enterkey-io/pebble-crew/releases/download/v0.7.8-preview.5/workspace-plugin-preview.zip)
-- [Source](https://github.com/enterkey-io/pebble-crew/releases/download/v0.7.8-preview.5/workspace-source-preview.zip)
+- [Manifest](https://github.com/enterkey-io/pebble-crew/releases/download/v0.7.8-preview.6/workspace-manifest.json)
+- [SHA256SUMS](https://github.com/enterkey-io/pebble-crew/releases/download/v0.7.8-preview.6/SHA256SUMS)
+- [Complete plugin](https://github.com/enterkey-io/pebble-crew/releases/download/v0.7.8-preview.6/workspace-plugin-preview.zip)
+- [Source](https://github.com/enterkey-io/pebble-crew/releases/download/v0.7.8-preview.6/workspace-source-preview.zip)
 
 Verify size and SHA-256 against both manifest and checksum file. Reject absolute
 archive paths, traversal, symlinks and entries escaping private staging. The
@@ -206,7 +222,7 @@ with `hermes bot-web setup-link` (use `--renew-setup` only if it expired).
 remaining seconds). Its output contains the private file path, never the secret.
 
 Event parsing and legacy access controls are specified in
-[the wire protocol](https://github.com/enterkey-io/pebble-crew/blob/v0.7.8-preview.5/docs/WIRE_PROTOCOL.md).
+[the wire protocol](https://github.com/enterkey-io/pebble-crew/blob/v0.7.8-preview.6/docs/WIRE_PROTOCOL.md).
 Never use global revocation for diagnostic cleanup: use DELETE `/v1/connect`
 with the probe's own lease. Global revocation now requires `hermes bot-web revoke
 --all` or the operator-only HTTP body `{"all":true}`.

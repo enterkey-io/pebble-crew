@@ -10,7 +10,7 @@ async function recordFrames(page: import('@playwright/test').Page) {
     const start = performance.now();
     Object.assign(window, { __messageFrames: samples, __messageFramesDone: false });
     const sample = (now: number) => {
-      const rows = pane.querySelectorAll<HTMLElement>('.pc-message');
+      const rows = pane.querySelectorAll<HTMLElement>('[data-message-id]');
       const last = rows.item(rows.length - 1);
       samples.push({
         top: pane.scrollTop,
@@ -49,7 +49,9 @@ test('new user messages and first reply text move the viewport through intermedi
   await input.press('Enter');
   const user = await readFrames(page);
   expect(new Set(user.map((frame) => Math.round(frame.top))).size).toBeGreaterThan(3);
-  await expect(page.locator('.pc-message.user').last()).toContainText('A longer new message');
+  await expect(page.locator('[data-message-role="user"]').last()).toContainText(
+    'A longer new message',
+  );
   await emit(page, 'message.start');
   await recordFrames(page);
   await emit(page, 'message.delta', {
@@ -108,7 +110,7 @@ test('reduced motion settles at the latest message without an entrance', async (
   await expect(input).toBeEnabled();
   await input.fill('A reduced motion message. '.repeat(10));
   await input.press('Enter');
-  await expect(page.locator('.pc-message.user').last()).toHaveCSS('opacity', '1');
+  await expect(page.locator('[data-message-role="user"]').last()).toHaveCSS('opacity', '1');
   const distance = await page
     .getByRole('log')
     .evaluate((node) => node.scrollHeight - node.clientHeight - node.scrollTop);

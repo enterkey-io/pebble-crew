@@ -226,7 +226,7 @@ test('tool calls are grouped, empty reasoning rows are omitted, final sidecars a
   await ready(page);
   const log = page.getByRole('log');
   await expect(log.locator('.activity-group')).toHaveCount(1);
-  await expect(log.locator('.message')).toHaveCount(1);
+  await expect(log.locator('[data-slot="message"]')).toHaveCount(1);
   await expect(log).toContainText('The final answer.');
   await expect(log).not.toContainText('PRIVATE_REASONING');
   await log.getByText('2 tool calls', { exact: true }).click();
@@ -471,12 +471,11 @@ test('chat proportions, restrained header hover, new avatar choices and minimal 
   const base = await header.evaluate((n) => getComputedStyle(n).backgroundColor);
   await header.hover();
   await expect(header).toHaveCSS('background-color', base);
-  const user = page.locator('.pc-message.user').first();
-  expect(await user.evaluate((n) => getComputedStyle(n).maxWidth)).toBe('50%');
-  await expect(page.locator('.pc-message.assistant .pc-bubble').first()).toHaveCSS(
-    'background-color',
-    'rgb(32, 32, 34)',
-  );
+  const user = page.locator('[data-message-role="user"] [data-slot="bubble"]').first();
+  expect(await user.evaluate((n) => getComputedStyle(n).maxWidth)).toBe('80%');
+  await expect(
+    page.locator('[data-message-role="assistant"] [data-slot="message-response"]').first(),
+  ).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
   await emit(page, 'message.start');
   const activity = page.locator('.pc-activity');
   await expect(activity).toHaveText('Thinking');

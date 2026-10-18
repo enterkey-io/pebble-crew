@@ -4,6 +4,41 @@ Track owner reports here through implementation, verification and release. A
 published fix is separate from updating and verifying the owner's installation.
 New reports receive a stable ID; later work updates the existing entry.
 
+## PC-072 — chat retained legacy layout after the component migration
+
+Owner report confirmed: preview.5 rendered only shared bubble-content and
+metadata wrappers. Legacy CSS still owned row widths, bubble padding/radius,
+in-bubble timestamps and floating actions. The shared component import checks
+and behavior tests did not establish completion of the presentation migration.
+
+The preview.6 correction replaces that path with the complete shadcn Message
+composition: the owner's muted Bubble, an unboxed agent response and actions
+and timestamps in MessageFooter. Markdown uses Typography, Code Block and Table
+without product CSS overrides. Receipt identity, native reactions, selected
+Pebble colors and the single viewport controller remain feature responsibilities.
+The standard Bubble's 80-percent maximum replaces the old per-device width rules.
+Legacy presentation rules and unused bubble tokens are removed. A structural
+negative control rejects their reintroduction; installed browser journeys check
+the actual geometry and stable live/final response elements. Verification and
+release of this candidate remain in progress.
+
+## PC-071 — recurring native lease ownership (18 October)
+
+The owner reported root-owned `.leases` directories inside otherwise correctly
+owned Hermes environments, then identified and corrected a scheduled job running
+as root. The checked native launcher creates this directory under the invoking
+account before plugin loading, which fits the reported mechanism. The specific
+job's execution and filesystem history have not been independently inspected.
+
+The install guide now requires checking scheduled-job identities as well as the
+service identity, with narrowly scoped repair guidance. Owner-host verification
+remains pending: check after the corrected job runs. Public `/version.json`
+initially reported `0.7.8-preview.1` on 18 October, then changed to
+`0.7.8-preview.5` during the investigation. That confirms the newer served version;
+it does not verify the scheduler's execution account or the browser's mounted
+assets. No owner-host files, services, credentials or models were changed by this
+investigation.
+
 ## 0.7.8-preview.4 candidate
 
 | ID     | Report                                             | Change                                                                                                                                                                                   |

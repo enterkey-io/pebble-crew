@@ -47,7 +47,7 @@ test('reactions can be added, replaced, removed and restored without sending a m
     await expect(emoji).toHaveCSS('border-top-width', '0px');
     await expect(emoji).toHaveCSS('box-shadow', 'none');
   }
-  const bubble = (await row.locator('.pc-bubble').boundingBox())!;
+  const bubble = (await row.locator('[data-slot="bubble-content"]').boundingBox())!;
   const reactions = (await row.locator('.pc-reactions').boundingBox())!;
   expect(reactions.x - bubble.x).toBeGreaterThan(0);
   expect(reactions.x - bubble.x).toBeLessThan(24);

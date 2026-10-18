@@ -1,5 +1,3 @@
-import type * as React from 'react';
-import { cn } from '../../lib/utils';
 import type { CSSProperties, ReactNode } from 'react';
 import { Message as Frame, MessageContent, MessageHeader, MessageFooter } from '../ui/message';
 import { Bubble, BubbleContent } from '../ui/bubble';
@@ -19,12 +17,12 @@ export function Message({
   id: string;
   role: 'user' | 'agent' | 'member';
   state: MessagePhase;
-  author?: string;
+  author?: string | undefined;
   children: ReactNode;
   metadata?: ReactNode;
   actions?: ReactNode;
   reactions?: ReactNode;
-  style?: CSSProperties;
+  style?: CSSProperties | undefined;
   className?: string;
 }) {
   return (
@@ -36,30 +34,24 @@ export function Message({
     >
       <MessageContent>
         {author && <MessageHeader>{author}</MessageHeader>}
-        <div className="relative max-w-full min-w-0">
-          <Bubble variant="muted" align={role === 'user' ? 'end' : 'start'} className="max-w-full">
-            <MessageBubble style={style}>{children}</MessageBubble>
+        {role === 'user' ? (
+          <Bubble variant="muted" align="end">
+            <BubbleContent style={style}>{children}</BubbleContent>
+            {reactions}
           </Bubble>
-          {reactions}
-        </div>
-        {metadata && <MessageFooter className="min-h-4 tabular-nums">{metadata}</MessageFooter>}
-        {actions}
+        ) : (
+          <div data-slot="message-response" className="relative min-w-0">
+            {children}
+            {reactions}
+          </div>
+        )}
+        {(metadata || actions) && (
+          <MessageFooter className="min-h-8 gap-1 px-0 tabular-nums [@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:[&_button]:size-11">
+            {actions}
+            {metadata && <span className="ml-1 whitespace-nowrap">{metadata}</span>}
+          </MessageFooter>
+        )}
       </MessageContent>
     </Frame>
   );
-}
-
-/** The product keeps its receipt-keyed outer row; this slot shares bubble anatomy. */
-export function MessageBubble({ className, children, ...props }: React.ComponentProps<'article'>) {
-  return (
-    <BubbleContent asChild className={cn('w-auto border-0', className)}>
-      <article {...props}>{children}</article>
-    </BubbleContent>
-  );
-}
-export function MessageMetadata({
-  className,
-  ...props
-}: React.ComponentProps<typeof MessageFooter>) {
-  return <MessageFooter className={cn('px-0', className)} {...props} />;
 }

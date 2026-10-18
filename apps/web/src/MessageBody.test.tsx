@@ -14,7 +14,7 @@ describe('private bot message rendering', () => {
         />
       </TooltipProvider>,
     );
-    expect(html).toContain('<h2>Result</h2>');
+    expect(html).toMatch(/<h2\b[^>]*>Result<\/h2>/);
     expect(html).toContain('<strong>Done</strong>');
     expect(html).toContain('Copy code');
     expect(html).toContain('echo &quot;hello&quot;');

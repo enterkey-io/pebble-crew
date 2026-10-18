@@ -1,8 +1,25 @@
 # Shared UI implementation
 
-Candidate: `0.7.8-preview.5`. Baseline: `291fab771b803edce4a4b63061303eb181af0a96`.
+Current correction: `0.7.8-preview.6`. Original candidate: `0.7.8-preview.5`.
+Baseline: `291fab771b803edce4a4b63061303eb181af0a96`.
 This implements the [Astra plan](SHADCN_IMPLEMENTATION_PLAN.md) in the existing
 React application. It does not migrate to Vue or add a hosted application service.
+
+## Chat migration correction
+
+The preview.5 completion claim was too broad. Its transcript used inner shared
+wrappers while legacy product CSS retained bubble geometry, timestamps and
+floating actions. Passing import and behavior checks did not establish replacement
+of that layout. The owner identified the incomplete migration after installation.
+
+Preview.6 renders the complete shared composition documented in the official
+[Message pattern](https://ui.shadcn.com/docs/ai-elements/radix/message): an owner
+Bubble, unboxed agent Markdown and MessageFooter actions. Old desktop/phone
+bubble geometry, metadata/action overrides and unused bubble tokens are deleted.
+Typography, Code Block and Table now own Markdown presentation. Native receipt
+identity, reactions, selected-Pebble colors and TranscriptFollow are retained.
+An installed geometry journey and a negative legacy-CSS control cover the previous
+gap. Candidate verification is in progress; the record below describes preview.5.
 
 ## Decisions
 

@@ -25,7 +25,7 @@ test('tooltips wait on first hover, stay warm between controls, and open on focu
   await expect(page.getByRole('tooltip')).toHaveText('Search Pebble Crew');
   const copy = page.getByLabel('Copy message', { exact: true }).last();
   const next = (await copy.boundingBox())!;
-  const message = (await page.locator('.pc-bubble').last().boundingBox())!;
+  const message = (await page.locator('[data-slot="message-response"]').last().boundingBox())!;
   await page.mouse.move(message.x + 20, message.y + message.height / 2, { steps: 3 });
   await page.clock.runFor(170);
   await page.mouse.move(next.x + next.width / 2, next.y + next.height / 2, { steps: 3 });

@@ -36,8 +36,12 @@ history.
 Card and Attachment support `asChild` to retain native section/list semantics.
 Label owns stacked field alignment; Textarea supports caller-controlled sizing.
 Table can defer its horizontal viewport to the existing Markdown scroll owner.
-Message metadata and reaction placement share the same primitives as the
-component workbench. Production-specific layout stays in the feature surfaces.
+The installed transcript and workbench render the same complete Message
+composition: an end-aligned Bubble for owner text, unboxed agent Markdown and
+MessageFooter actions/metadata. Message and Bubble own layout. Feature code owns
+native receipt identities, reactions, selected-Pebble colors and entrance motion;
+product CSS cannot override message geometry. Markdown uses Typography, Code
+Block and Table directly, including their own horizontal overflow behavior.
 
 Form, Number Field, Tags Input, Data Table, Date Picker, Stepper and Typography
 are local semantic compositions. Pin Input and Range Calendar reuse the code

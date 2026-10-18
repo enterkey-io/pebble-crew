@@ -39,7 +39,7 @@ test('a reaction arriving during a streamed reply never projects partial native 
   ).toBeVisible();
   expect(historyReads).toBe(0);
   await expect(
-    page.locator('.pc-bubble').filter({ hasText: 'Still writing this reply.' }),
+    page.locator('[data-slot="message-response"]').filter({ hasText: 'Still writing this reply.' }),
   ).toHaveCount(1);
   await emit(page, 'message.complete', {
     status: 'done',
@@ -47,7 +47,7 @@ test('a reaction arriving during a streamed reply never projects partial native 
   });
   await expect(page.locator('[data-message-id="901"]')).toBeVisible();
   await expect(
-    page.locator('.pc-bubble').filter({ hasText: 'Still writing this reply.' }),
+    page.locator('[data-slot="message-response"]').filter({ hasText: 'Still writing this reply.' }),
   ).toHaveCount(1);
 });
 
@@ -76,10 +76,10 @@ test('native activity describes the work and a reply keeps its bubble and footer
   const reply = 'Your research is ready.';
   await emit(page, 'message.delta', { text: reply });
   await expect(activity).toHaveText('Writing');
-  const streaming = page.locator('.pc-message.streaming');
+  const streaming = page.locator('[data-message-phase="live"]');
   await expect(streaming.locator('time')).toBeVisible();
   await expect(streaming.locator('.caret')).toHaveCount(0);
-  const bubble = (await streaming.locator('.pc-bubble').elementHandle())!;
+  const bubble = (await streaming.locator('[data-slot="message-response"]').elementHandle())!;
   const before = (await bubble.boundingBox())!;
   const rowHeight = (await streaming.boundingBox())!.height;
   const final = {
@@ -101,12 +101,11 @@ test('native activity describes the work and a reply keeps its bubble and footer
   const committed = page.locator('[data-message-id="901"]');
   await expect(committed.locator('time')).toBeVisible();
   expect(await bubble.evaluate((node) => node.isConnected)).toBe(true);
-  expect((await committed.locator('.pc-bubble').boundingBox())!.height).toBeCloseTo(
-    before.height,
-    0,
-  );
+  expect(
+    (await committed.locator('[data-slot="message-response"]').boundingBox())!.height,
+  ).toBeCloseTo(before.height, 0);
   expect((await committed.boundingBox())!.height).toBeCloseTo(rowHeight, 0);
-  await expect(page.locator('.pc-message.streaming')).toHaveCount(0);
+  await expect(page.locator('[data-message-phase="live"]')).toHaveCount(0);
   await expect(activity).toHaveCount(0);
   await page.screenshot({ animations: 'disabled', path: 'test-results/reply-completed.png' });
 });

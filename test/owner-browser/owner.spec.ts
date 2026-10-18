@@ -310,7 +310,7 @@ test('private first use, native onboarding, idle keepalive, reconnection, settin
   await page.getByRole('button', { name: 'Add pebble', exact: true }).click();
   await expect(page.locator('.chat-title')).toContainText('Hazel', { timeout: 30000 });
   await expect(page.getByRole('log')).toContainText('Native fixture reply', { timeout: 30000 });
-  await expect(page.getByRole('log').locator('.message.user')).toHaveCount(0);
+  await expect(page.getByRole('log').locator('[data-message-role="user"]')).toHaveCount(0);
   await page.reload();
   await expect(page.getByRole('button', { name: /^Hazel .*Bot Chat$/ })).toBeVisible();
   await page.getByRole('button', { name: 'Actions for Hazel', exact: true }).click();
@@ -338,20 +338,20 @@ test('private first use, native onboarding, idle keepalive, reconnection, settin
   await page.getByRole('button', { name: 'Create pebble', exact: true }).click();
   await expect(page.locator('.chat-title')).toContainText('Nova', { timeout: 30000 });
   await expect(page.getByRole('log')).toContainText('Native fixture reply', { timeout: 30000 });
-  await expect(page.getByRole('log').locator('.message.user')).toHaveCount(0);
+  await expect(page.getByRole('log').locator('[data-message-role="user"]')).toHaveCount(0);
   expect(errors).toEqual([]);
   expect(sends).toBe(0);
   await page.screenshot({ animations: 'disabled', path: 'test-results/owner-workspace.png' });
   await page.clock.resume();
   await page.getByLabel('Message', { exact: true }).fill('nativereaction');
   await page.getByRole('button', { name: 'Send message', exact: true }).click();
-  const mine = page.locator('.pc-message.user').filter({ hasText: 'nativereaction' });
+  const mine = page.locator('[data-message-role="user"]').filter({ hasText: 'nativereaction' });
   await expect(mine.getByRole('button', { name: '👍 · Nova', exact: true })).toBeVisible({
     timeout: 30000,
   });
   await expect(page.locator('.pc-activity')).toHaveCount(0, { timeout: 30000 });
   const reply = page
-    .locator('.pc-message.assistant')
+    .locator('[data-message-role="assistant"]')
     .filter({ hasText: 'Native fixture reply' })
     .last();
   await reply.hover();

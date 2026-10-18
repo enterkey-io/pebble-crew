@@ -33,10 +33,9 @@ test('private voice setup, Snow and selected-Pebble message colors', async ({
   });
   await page.goto('/');
   await expect(page.getByLabel('Message', { exact: true })).toBeEnabled();
-  await expect(page.locator('.pc-message.user .pc-bubble').last()).toHaveCSS(
-    'background-color',
-    'rgb(52, 52, 54)',
-  );
+  await expect(
+    page.locator('[data-message-role="user"] [data-slot="bubble-content"]').last(),
+  ).toHaveCSS('background-color', 'rgb(32, 32, 35)');
   await page.getByRole('button', { name: 'Voice chat', exact: true }).click();
   await expect(page.getByRole('form', { name: 'OpenAI API key' })).toBeVisible();
   const card = page.getByRole('form', { name: 'OpenAI API key' });
@@ -71,14 +70,12 @@ test('private voice setup, Snow and selected-Pebble message colors', async ({
     await page.getByRole('button', { name: 'Toggle navigation', exact: true }).click();
   await page.getByRole('button', { name: /^Mica .*Bot Chat$/ }).click();
   await expect(page.locator('.pc-chat-identity')).toContainText('Mica');
-  await expect(page.locator('.pc-message.user .pc-bubble').last()).toHaveCSS(
-    'background-color',
-    'rgb(155, 191, 232)',
-  );
-  await expect(page.locator('.pc-message.user .pc-bubble').last()).toHaveCSS(
-    'color',
-    'rgb(16, 17, 18)',
-  );
+  await expect(
+    page.locator('[data-message-role="user"] [data-slot="bubble-content"]').last(),
+  ).toHaveCSS('background-color', 'rgb(155, 191, 232)');
+  await expect(
+    page.locator('[data-message-role="user"] [data-slot="bubble-content"]').last(),
+  ).toHaveCSS('color', 'rgb(16, 17, 18)');
   await page.screenshot({ path: info.outputPath('selected-pebble-bubbles.png') });
 });
 

@@ -2,6 +2,7 @@ import { BubbleReactions } from '../components/ui/bubble';
 import { useRef, useState } from 'react';
 import { SmilePlus } from 'lucide-react';
 import { Button } from '../components/ui/button';
+import { Tooltip, TooltipContent, TooltipTrigger } from '../components/ui/tooltip';
 import {
   DropdownMenu,
   DropdownMenuTrigger,
@@ -35,17 +36,22 @@ export function ReactionPicker({
         if (open) setContainer(trigger.current?.closest('main') ?? null);
       }}
     >
-      <DropdownMenuTrigger asChild>
-        <Button
-          ref={trigger}
-          variant="quiet"
-          size="icon-sm"
-          aria-label="React to message"
-          disabled={disabled || pending}
-        >
-          <SmilePlus />
-        </Button>
-      </DropdownMenuTrigger>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <DropdownMenuTrigger asChild>
+            <Button
+              ref={trigger}
+              variant="ghost"
+              size="icon-sm"
+              aria-label="React to message"
+              disabled={disabled || pending}
+            >
+              <SmilePlus />
+            </Button>
+          </DropdownMenuTrigger>
+        </TooltipTrigger>
+        <TooltipContent>React to message</TooltipContent>
+      </Tooltip>
       <DropdownMenuContent
         container={container}
         onInteractOutside={(event) => {
@@ -91,7 +97,7 @@ export function MessageReactions({
   const [pending, setPending] = useState(false);
   if (!reactions.length) return null;
   return (
-    <BubbleReactions className="pc-reactions translate-y-0" aria-label="Reactions">
+    <BubbleReactions className="pc-reactions translate-y-1/2" aria-label="Reactions">
       {[...new Set(reactions.map((r) => r.emoji))].map((emoji) => {
         const matching = reactions.filter((r) => r.emoji === emoji);
         const own = matching.some((r) => r.author === 'user');

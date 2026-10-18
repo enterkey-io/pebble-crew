@@ -8,7 +8,7 @@ import {
 } from '../components/ui/attachment';
 import { FileText } from 'lucide-react';
 import { fileSize } from './FilesPanel';
-import { MessageBubble, MessageMetadata } from '../components/ai-elements/message';
+import { Message } from '../components/ai-elements/message';
 import { ChainOfThought } from '../components/ai-elements/chain-of-thought';
 import { Tool } from '../components/ai-elements/tool';
 import { useLayoutEffect, useState } from 'react';
@@ -121,80 +121,89 @@ export function Transcript({
         previous = group;
         return (
           <motion.div
-            className={`pc-message message-group ${m.role}${live ? ' streaming' : ''}`}
+            className="message-group"
             initial={entering && !reduced ? { opacity: 0, y: 10 } : false}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.22, ease: [0.22, 1, 0.36, 1] }}
             data-message-id={m.id ?? `pending-${i}`}
+            data-message-role={m.role}
+            data-message-phase={live ? 'live' : 'committed'}
             key={key}
           >
-            {label && <p className="pc-date date-divider">{group}</p>}
-            <div className="pc-bubble-wrap">
-              <MessageBubble
-                className={`pc-bubble message ${m.role}`}
-                style={m.role === 'user' ? ownerBubbleStyle(ownerColor) : undefined}
-              >
-                {crew && m.role === 'assistant' && (
-                  <strong className="message-author">
-                    {m.author ? authorName(m.author) : live ? title : 'Crew member'}
-                  </strong>
-                )}
-                {m.role === 'tool' && <small className="message-author">Tool</small>}
-                {m.text.trim() &&
-                  (m.role === 'user' ? (
-                    <p>{m.text}</p>
-                  ) : (
-                    <MessageBody
-                      text={m.text}
-                      client={client}
-                      sessionId={sessionId}
-                      rowId={m.id}
-                      conversationKey={conversationKey}
-                    />
-                  ))}
-                {m.files?.map((file) => (
-                  <Attachment key={file.id} className="message-file my-1" size="sm" state="done">
-                    <AttachmentMedia>
-                      <FileText />
-                    </AttachmentMedia>
-                    <AttachmentContent>
-                      <AttachmentTitle>{file.name}</AttachmentTitle>
-                      <AttachmentDescription>{fileSize(file.size)}</AttachmentDescription>
-                    </AttachmentContent>
-                    <AttachmentTrigger
-                      aria-label={`Download ${file.name}`}
-                      onClick={() => onDownloadFile(file)}
-                    />
-                  </Attachment>
-                ))}
-                <MessageMetadata className="pc-message-meta message-meta">
-                  {date && (
-                    <time dateTime={date.toISOString()}>
-                      {date.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' })}
-                    </time>
-                  )}
-                </MessageMetadata>
-              </MessageBubble>
-              <MessageReactions
-                id={m.id ?? ''}
-                reactions={m.reactions ?? []}
-                agentName={title}
-                onReact={react}
-              />
-            </div>
-            {(m.text.trim() || m.files?.length) && (
-              <div className="pc-message-actions">
-                {!crew && onReact && m.id && (
-                  <ReactionPicker
-                    id={m.id}
-                    reactions={m.reactions ?? []}
-                    onReact={onReact}
-                    disabled={!react}
+            {label && <p className="mb-4 text-center text-xs text-muted-foreground">{group}</p>}
+            <Message
+              id={m.id ?? `pending-${i}`}
+              role={m.role === 'user' ? 'user' : crew ? 'member' : 'agent'}
+              state={live ? 'live' : 'committed'}
+              author={
+                crew && m.role === 'assistant'
+                  ? m.author
+                    ? authorName(m.author)
+                    : live
+                      ? title
+                      : 'Crew member'
+                  : undefined
+              }
+              style={m.role === 'user' ? ownerBubbleStyle(ownerColor) : undefined}
+              metadata={
+                date && (
+                  <time dateTime={date.toISOString()}>
+                    {date.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' })}
+                  </time>
+                )
+              }
+              reactions={
+                <MessageReactions
+                  id={m.id ?? ''}
+                  reactions={m.reactions ?? []}
+                  agentName={title}
+                  onReact={react}
+                />
+              }
+              actions={
+                (m.text.trim() || m.files?.length) && (
+                  <>
+                    {!crew && onReact && m.id && (
+                      <ReactionPicker
+                        id={m.id}
+                        reactions={m.reactions ?? []}
+                        onReact={onReact}
+                        disabled={!react}
+                      />
+                    )}
+                    {m.text.trim() && <CopyMessage text={m.text} />}
+                  </>
+                )
+              }
+            >
+              {m.text.trim() &&
+                (m.role === 'user' ? (
+                  <p className="whitespace-pre-wrap">{m.text}</p>
+                ) : (
+                  <MessageBody
+                    text={m.text}
+                    client={client}
+                    sessionId={sessionId}
+                    rowId={m.id}
+                    conversationKey={conversationKey}
                   />
-                )}
-                {m.text.trim() && <CopyMessage text={m.text} />}
-              </div>
-            )}
+                ))}
+              {m.files?.map((file) => (
+                <Attachment key={file.id} className="message-file my-1" size="sm" state="done">
+                  <AttachmentMedia>
+                    <FileText />
+                  </AttachmentMedia>
+                  <AttachmentContent>
+                    <AttachmentTitle>{file.name}</AttachmentTitle>
+                    <AttachmentDescription>{fileSize(file.size)}</AttachmentDescription>
+                  </AttachmentContent>
+                  <AttachmentTrigger
+                    aria-label={`Download ${file.name}`}
+                    onClick={() => onDownloadFile(file)}
+                  />
+                </Attachment>
+              ))}
+            </Message>
           </motion.div>
         );
       })}

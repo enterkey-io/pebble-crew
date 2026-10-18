@@ -297,85 +297,6 @@
   flex-direction: column;
   gap: 20px;
 }
-.pc-date {
-  color: var(--muted-foreground);
-  font-size: 12px;
-  text-align: center;
-  padding: 10px 0 6px;
-}
-.pc-message {
-  position: relative;
-  max-width: 88%;
-  align-self: flex-start;
-}
-.pc-message.user {
-  align-self: flex-end;
-  max-width: 50%;
-}
-.pc-bubble {
-  border-radius: 18px;
-  padding: 13px 16px 8px;
-  background: var(--bubble);
-  font-size: 15px;
-  line-height: 1.55;
-}
-.pc-bubble-wrap {
-  position: relative;
-}
-.pc-message.user .pc-bubble {
-  background: var(--bubble-owner);
-}
-.pc-bubble p {
-  white-space: pre-wrap;
-  overflow-wrap: anywhere;
-}
-.pc-bubble p + p {
-  margin-top: 12px;
-}
-.pc-message-meta {
-  display: flex;
-  align-items: center;
-  justify-content: flex-end;
-  gap: 5px;
-  height: 20px;
-  margin-top: 3px;
-  padding-top: 2px;
-  font-size: 12px;
-  color: var(--muted-foreground);
-}
-.pc-message-meta svg {
-  width: 13px;
-  height: 13px;
-}
-.pc-message.user .pc-bubble[style] .pc-message-meta {
-  color: inherit;
-}
-.pc-message-actions {
-  display: flex;
-  position: absolute;
-  top: -16px;
-  right: 10px;
-  padding: 0 2px;
-  background: var(--popover);
-  border-radius: 9px;
-  opacity: 0;
-  pointer-events: none;
-  transition: opacity var(--motion-hover);
-}
-.pc-message:hover .pc-message-actions,
-.pc-message:focus-within .pc-message-actions,
-.pc-message:has(.pc-message-actions [aria-expanded='true']) .pc-message-actions {
-  opacity: 1;
-  pointer-events: auto;
-}
-.pc-message-actions [data-slot='button'] {
-  width: 28px;
-  height: 28px;
-}
-.pc-message-actions svg {
-  width: 14px;
-  height: 14px;
-}
 .pc-reaction-picker {
   display: grid;
   grid-template-columns: repeat(4, 44px);
@@ -393,14 +314,6 @@
 }
 .pc-reaction-picker [data-selected='true'] {
   background: var(--accent);
-}
-.pc-reactions {
-  position: absolute;
-  bottom: -11px;
-  left: 12px;
-  display: flex;
-  gap: 4px;
-  z-index: 1;
 }
 .pc-reaction {
   display: inline-flex;
@@ -1085,16 +998,6 @@
     padding: 8px 16px 20px;
     gap: 18px;
   }
-  .pc-message {
-    max-width: 94%;
-  }
-  .pc-message.user {
-    max-width: 88%;
-  }
-  .pc-bubble {
-    font-size: 14px;
-    padding: 12px 14px 7px;
-  }
   .pc-composer-wrap {
     padding: 8px 12px 12px;
   }
@@ -1159,20 +1062,6 @@
     height: 44px;
   }
   .pc-pin-actions {
-    height: 44px;
-  }
-  .pc-message-actions {
-    position: static;
-    display: flex;
-    justify-content: end;
-    opacity: 1;
-    pointer-events: auto;
-    background: transparent;
-    height: 44px;
-    margin-top: 4px;
-  }
-  .pc-message-actions button {
-    width: 44px;
     height: 44px;
   }
 }
