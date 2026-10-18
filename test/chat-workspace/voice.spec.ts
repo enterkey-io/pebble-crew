@@ -124,6 +124,9 @@ test('real browser WebRTC preview and call preserve native receipt ownership and
     'The standalone local-peer probe produces zero ICE candidates in automated WebKit. Real Safari media requires separate acceptance.',
   );
   let setupComplete = false;
+  let holdStatus = false,
+    statusPending = false,
+    releaseStatus = () => {};
   const followups: string[] = [];
   const messages = [{ row_id: 1, role: 'assistant', text: 'Ready.', timestamp: 1700000000 }];
   await installFixture(context, { voice: true, messages });
@@ -193,6 +196,11 @@ test('real browser WebRTC preview and call preserve native receipt ownership and
     if (operation === 'secrets.pending')
       return route.fulfill({ json: { result: { requests: [] } } });
     if (operation === 'voice.preferences' && params.complete) setupComplete = true;
+    if (operation === 'voice.status' && holdStatus)
+      await new Promise<void>((resolve) => {
+        statusPending = true;
+        releaseStatus = resolve;
+      });
     if (['voice.status', 'voice.preferences'].includes(operation))
       return route.fulfill({
         json: {
@@ -346,7 +354,12 @@ test('real browser WebRTC preview and call preserve native receipt ownership and
   await expect.poll(() => followups.length).toBe(1);
   expect(followups[0]).toContain('Check the report.');
   await expect(page.getByRole('button', { name: 'Start call', exact: true })).not.toBeVisible();
+  holdStatus = true;
   await page.getByRole('button', { name: 'Voice chat', exact: true }).click();
+  await expect(page.locator('[data-slot=voice-call-bar]')).toBeVisible();
+  await expect(page.locator('[data-slot=card][aria-label="Voice settings"]')).toHaveCount(0);
+  await expect.poll(() => statusPending).toBe(true);
+  releaseStatus();
   await expect(page.getByRole('button', { name: 'Mute microphone' })).toBeVisible();
   expect(await page.evaluate(() => window.__voiceTest.micReads())).toBe(2);
   await page.getByRole('button', { name: 'Stop voice call' }).click();

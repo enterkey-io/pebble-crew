@@ -5,6 +5,7 @@ import type { BotBridgeClient, BridgeEvent } from '@hermes-client/protocol';
 
 import { Button } from '../components/ui/button';
 import { Alert, AlertDescription } from '../components/ui/alert';
+import { LoadingBar } from '../components/ui/loading-bar';
 import { VoicePanel } from './VoicePanel';
 import { VoiceCallBar } from './VoiceCallBar';
 import { choices } from './VoiceOptions';
@@ -59,6 +60,7 @@ export const VoiceChat = forwardRef<
   const [value, setValue] = useState<VoiceChoices>({ voice: 'marin', speed: 1 });
   const [step, setStep] = useState<'key' | 'settings'>('key');
   const [notice, setNotice] = useState('');
+  const [opening, setOpening] = useState(false);
   const [visible, setVisible] = useState(false),
     [settings, setSettings] = useState<VoiceSettings>();
   const [state, setState] = useState<'idle' | 'starting' | 'live' | 'preview'>('idle');
@@ -93,8 +95,8 @@ export const VoiceChat = forwardRef<
     return next;
   }
   useEffect(() => {
-    if (mode === 'chat' && visible && state === 'idle') onSetupChange?.();
-  }, [mode, visible, state, step, value, settings, onSetupChange]);
+    if (mode === 'chat' && visible && state === 'idle' && !opening) onSetupChange?.();
+  }, [mode, visible, state, step, value, settings, opening, onSetupChange]);
   async function loadSettings() {
     const value = decodeSettings(await rpc('voice.status'));
     if (mounted.current) {
@@ -108,15 +110,20 @@ export const VoiceChat = forwardRef<
   }
   async function open() {
     setVisible(true);
-    if (state !== 'idle') return;
+    if (state !== 'idle' || opening) return;
     setError('');
     setNotice('');
+    setOpening(true);
+    const epoch = generation.current;
     try {
       const value = await loadSettings();
+      setOpening(false);
       if (mode === 'chat' && value.supported && value.configured && value.setupComplete)
         await start(false, choices(value));
     } catch (cause) {
-      setError(voiceFailure(cause));
+      if (mounted.current && generation.current === epoch) setError(voiceFailure(cause));
+    } finally {
+      if (mounted.current && generation.current === epoch) setOpening(false);
     }
   }
   useEffect(() => {
@@ -154,6 +161,7 @@ export const VoiceChat = forwardRef<
     active.current = false;
     receipts.current = new DelegationReceipts();
     if (mounted.current) {
+      setOpening(false);
       setState('idle');
       setMuted(false);
       setCaptions([]);
@@ -377,7 +385,13 @@ export const VoiceChat = forwardRef<
   return (
     <>
       {secretCard}
-      {visible && state === 'idle' && (
+      {visible &&
+        opening &&
+        state === 'idle' &&
+        !(settings?.supported && settings.setupComplete) && (
+          <LoadingBar active label="Loading voice settings" />
+        )}
+      {visible && !opening && state === 'idle' && (
         <VoicePanel
           panel={panel}
           settings={settings}
@@ -414,7 +428,8 @@ export const VoiceChat = forwardRef<
         />
       )}
       {visible &&
-        state !== 'idle' &&
+        (state !== 'idle' ||
+          (opening && mode === 'chat' && settings?.supported && settings.setupComplete)) &&
         (() => {
           const content = (
             <div
@@ -422,7 +437,7 @@ export const VoiceChat = forwardRef<
               data-slot="voice-call-surface"
             >
               <VoiceCallBar
-                state={state}
+                state={state === 'idle' ? 'starting' : state}
                 muted={muted}
                 activity={audioActivity}
                 avatar={avatar}
