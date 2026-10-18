@@ -25,23 +25,6 @@ acceptance passed. Screenshot review caught and corrected a touch tooltip left
 over the conversation, with failing-before/passing-after phone coverage. Package
 acceptance/publication remain separate from updating the owner's installation.
 
-## PC-071 — recurring native lease ownership (18 October)
-
-The owner reported root-owned `.leases` directories inside otherwise correctly
-owned Hermes environments, then identified and corrected a scheduled job running
-as root. The checked native launcher creates this directory under the invoking
-account before plugin loading, which fits the reported mechanism. The specific
-job's execution and filesystem history have not been independently inspected.
-
-The install guide now requires checking scheduled-job identities as well as the
-service identity, with narrowly scoped repair guidance. Owner-host verification
-remains pending: check after the corrected job runs. Public `/version.json`
-initially reported `0.7.8-preview.1` on 18 October, then changed to
-`0.7.8-preview.5` during the investigation. That confirms the newer served version;
-it does not verify the scheduler's execution account or the browser's mounted
-assets. No owner-host files, services, credentials or models were changed by this
-investigation.
-
 ## 0.7.8-preview.4 candidate
 
 | ID     | Report                                             | Change                                                                                                                                                                                   |
