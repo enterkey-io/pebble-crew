@@ -2382,16 +2382,20 @@ export function App({ owner }: { owner?: OwnerConnection }) {
             document={!!documentReader.state}
             onFrame={restoreDetailsAnchor}
           >
-            {documentReader.state ? (
+            <div
+              id="pebble-details"
+              className="pc-details details-panel"
+              style={documentReader.state ? { display: 'none' } : undefined}
+              inert={!!documentReader.state}
+            >
+              {detailsContent}
+            </div>
+            {documentReader.state && (
               <DocumentReader
                 state={documentReader.state}
                 onClose={documentReader.close}
                 onRetry={documentReader.open}
               />
-            ) : (
-              <div id="pebble-details" className="pc-details details-panel">
-                {detailsContent}
-              </div>
             )}
           </DetailsDock>
         </WorkspacePanels>

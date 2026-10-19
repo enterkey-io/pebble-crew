@@ -121,3 +121,48 @@ test('agents open only current live documents and reconnect does not reopen a cl
   await expect(composer).toBeEnabled({ timeout: 10000 });
   await expect(reader).toHaveCount(0);
 });
+
+test('Files opens a shared text preview and returns to the same details tab', async ({
+  page,
+  context,
+}) => {
+  await installFixture(context);
+  const id = 'a'.repeat(43);
+  await page.route('**/v1/rpc', async (route) => {
+    if (route.request().postDataJSON().operation === 'files.list')
+      return route.fulfill({
+        json: {
+          result: { files: [{ id, name: 'notes.txt', size: 19, kind: 'file', state: 'sent' }] },
+        },
+      });
+    return route.fallback();
+  });
+  await page.route('**/v1/files/read', async (route) => {
+    expect(route.request().postDataJSON().params.id).toBe(id);
+    return route.fulfill({
+      body: 'Plain owner notes.',
+      headers: { 'content-type': 'application/octet-stream' },
+    });
+  });
+  await page.goto('/');
+  await expect(page.getByLabel('Message', { exact: true })).toBeEnabled();
+  await page.getByRole('button', { name: /Show details/ }).click();
+  const details = page.locator('.details-panel');
+  await details.getByRole('tab', { name: 'Files', exact: true }).click();
+  await details.getByRole('button', { name: 'View notes.txt', exact: true }).click();
+  const reader = page.getByRole('region', { name: 'Document viewer', exact: true });
+  await expect(reader.locator('pre')).toHaveText('Plain owner notes.');
+  await expect
+    .poll(
+      async () =>
+        (await page.getByRole('complementary', { name: 'Document', exact: true }).boundingBox())!
+          .width,
+    )
+    .toBeGreaterThan(page.viewportSize()!.width < 768 ? page.viewportSize()!.width - 1 : 500);
+  await page.getByRole('button', { name: 'Close document', exact: true }).click();
+  await expect(details.getByRole('tab', { name: 'Files', exact: true })).toHaveAttribute(
+    'aria-selected',
+    'true',
+  );
+  await expect(details.getByRole('button', { name: 'View notes.txt', exact: true })).toBeVisible();
+});
