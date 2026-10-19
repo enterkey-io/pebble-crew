@@ -353,6 +353,9 @@ test('private first use, native onboarding, idle keepalive, reconnection, settin
   expect(sends).toBe(0);
   await page.screenshot({ animations: 'disabled', path: 'test-results/owner-workspace.png' });
   await page.clock.resume();
+  // Lease-expiry proof deliberately advanced the browser clock. Live document
+  // request timestamps now need the same wall clock as the native fixture.
+  await page.clock.setSystemTime(new Date());
   await page.getByLabel('Message', { exact: true }).fill('nativereaction');
   await page.getByRole('button', { name: 'Send message', exact: true }).click();
   const mine = page.locator('[data-message-role="user"]').filter({ hasText: 'nativereaction' });
