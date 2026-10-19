@@ -90,7 +90,7 @@ test('agents open only current live documents and reconnect does not reopen a cl
   await expect(composer).toBeEnabled();
   const payload = {
     name: 'Review.md',
-    text: '# Requested review\n\nHere is the plan.',
+    text: '# Requested review\n\n' + 'A long plan.\n\n'.repeat(150),
     format: 'markdown',
     request_id: '12345678-1234-1234-1234-123456789abc',
     expires_at: Date.now() + 60000,
@@ -107,6 +107,19 @@ test('agents open only current live documents and reconnect does not reopen a cl
           .width,
     )
     .toBeGreaterThan(page.viewportSize()!.width < 768 ? page.viewportSize()!.width - 1 : 500);
+  await reader.locator('.pc-document-scroll').evaluate((node) => {
+    node.scrollTop = 500;
+  });
+  await emit(page, 'document.open', {
+    ...payload,
+    name: 'Next.md',
+    text: '# Next document\n\n' + 'New plan.\n\n'.repeat(150),
+    request_id: '12345678-1234-1234-1234-123456789abe',
+  });
+  await expect(reader.getByRole('heading', { name: 'Next document', exact: true })).toBeVisible();
+  await expect
+    .poll(() => reader.locator('.pc-document-scroll').evaluate((node) => node.scrollTop))
+    .toBe(0);
   await page.getByRole('button', { name: 'Close document', exact: true }).click();
   await expect(reader).toHaveCount(0);
   await emit(page, 'document.open', payload);

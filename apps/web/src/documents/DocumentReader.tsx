@@ -1,4 +1,12 @@
-import { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+} from 'react';
 import type { SharedDocument } from '@hermes-client/protocol';
 import { decodeDocument, DOCUMENT_LIMIT, documentFormat } from '@hermes-client/protocol';
 import { Download, X } from 'lucide-react';
@@ -98,6 +106,10 @@ export function DocumentReader({
 }) {
   const name = state.kind === 'ready' ? state.document.name : state.name;
   const heading = useRef<HTMLHeadingElement>(null);
+  const scroll = useRef<HTMLDivElement>(null);
+  useLayoutEffect(() => {
+    if (scroll.current) scroll.current.scrollTop = 0;
+  }, [name]);
   useEffect(() => {
     heading.current?.focus({ preventScroll: true });
   }, [name]);
@@ -143,7 +155,10 @@ export function DocumentReader({
         <IconButton label="Close document" icon={X} onClick={onClose} />
       </header>
       <LoadingBar active={state.kind === 'loading'} label="Loading document" />
-      <div className="pc-document-scroll min-h-0 flex-1 overflow-auto overscroll-contain px-5 pb-8 pt-3">
+      <div
+        ref={scroll}
+        className="pc-document-scroll min-h-0 flex-1 overflow-auto overscroll-contain px-5 pb-8 pt-3"
+      >
         {state.kind === 'error' ? (
           <Alert variant="destructive">
             <AlertDescription>
