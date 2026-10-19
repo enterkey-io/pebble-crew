@@ -429,4 +429,61 @@ test('private first use, native onboarding, idle keepalive, reconnection, settin
     animations: 'disabled',
     path: 'test-results/native-agent-media-phone.png',
   });
+  await page.getByLabel('Message', { exact: true }).fill('nativedocument');
+  await page.getByRole('button', { name: 'Send message', exact: true }).click();
+  const reader = page.getByRole('region', { name: 'Document viewer', exact: true });
+  await expect(reader.getByRole('heading', { name: 'Project plan', exact: true })).toBeVisible({
+    timeout: 30000,
+  });
+  await expect(reader.getByText('Native document proof', { exact: true })).toBeVisible();
+  await page.screenshot({ animations: 'disabled', path: 'test-results/native-document-phone.png' });
+  await page.getByRole('button', { name: 'Close document', exact: true }).click();
+  await expect(page.getByLabel('Message', { exact: true })).toBeEnabled();
+  await expect(page.getByRole('button', { name: 'View plan.md', exact: true })).toBeEnabled({
+    timeout: 30000,
+  });
+  await page.setViewportSize({ width: 1440, height: 1000 });
+  await page.getByRole('button', { name: 'View plan.md', exact: true }).click();
+  await expect(reader.getByText('Native document proof', { exact: true })).toBeVisible();
+  await page.screenshot({
+    animations: 'disabled',
+    path: 'test-results/native-document-desktop.png',
+  });
+  await page.getByRole('button', { name: 'Close document', exact: true }).click();
+  // The chart and existing editor share actual native persistence, including
+  // an explicitly unattached newly created agent and a manager change.
+  await page.setViewportSize({ width: 1440, height: 1000 });
+  await page.getByLabel('Message', { exact: true }).fill('Keep this native draft');
+  await page.getByRole('button', { name: 'Your account', exact: true }).click();
+  await page.getByRole('menuitem', { name: 'Org chart', exact: true }).click();
+  const org = page.getByRole('region', { name: 'Org chart', exact: true });
+  await expect(org.getByRole('heading', { name: 'Unattached', exact: true })).toBeVisible();
+  await org.getByRole('button', { name: 'Edit Nova', exact: true }).click();
+  await page.getByRole('tab', { name: 'Role', exact: true }).click();
+  const manager = page.getByRole('combobox', { name: 'Reports to', exact: true });
+  await expect(manager).toContainText('No manager');
+  await manager.click();
+  await page.getByRole('option', { name: 'Alpha Stone', exact: true }).click();
+  await page
+    .getByLabel('Instructions', { exact: true })
+    .fill('Verify results and report to Alpha Stone.');
+  await page.getByRole('button', { name: 'Save role', exact: true }).click();
+  await expect(
+    page.getByRole('tabpanel', { name: 'Role', exact: true }).getByRole('status'),
+  ).toHaveText('Role saved.');
+  await page.getByRole('button', { name: 'Close Edit Nova', exact: true }).click();
+  await expect(org.getByRole('button', { name: 'Edit Nova', exact: true })).toBeVisible();
+  await page.screenshot({ animations: 'disabled', path: 'test-results/native-org-desktop.png' });
+  await org.getByRole('button', { name: 'Close Org chart', exact: true }).click();
+  await expect(page.getByLabel('Message', { exact: true })).toHaveValue('Keep this native draft');
+  await page.reload();
+  await page.getByRole('button', { name: 'Your account', exact: true }).click();
+  await page.getByRole('menuitem', { name: 'Org chart', exact: true }).click();
+  await org.getByRole('button', { name: 'Edit Nova', exact: true }).click();
+  await page.getByRole('tab', { name: 'Role', exact: true }).click();
+  await expect(manager).toContainText('Alpha Stone');
+  await expect(page.getByLabel('Instructions', { exact: true })).toHaveValue(
+    'Verify results and report to Alpha Stone.',
+  );
+  expect(errors).toEqual([]);
 });

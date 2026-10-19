@@ -151,7 +151,7 @@ export function PebbleEditor({
           handle,
           appearance: look,
           role,
-          manager: bot.profile === state.orchestrator ? null : manager || state.orchestrator,
+          manager: bot.profile === state.orchestrator ? null : manager || null,
           photo: photo ? { kind: 'replace', data: photo } : { kind: 'preserve' },
         });
       else if (section === 'role')
@@ -159,7 +159,7 @@ export function PebbleEditor({
           profile: bot.profile,
           expectedRevision: state.revision,
           role,
-          manager: bot.profile === state.orchestrator ? null : manager || state.orchestrator,
+          manager: bot.profile === state.orchestrator ? null : manager || null,
           team: team || null,
         });
       else if (section === 'tools')
@@ -296,8 +296,8 @@ export function PebbleEditor({
               <details className="form-disclosure">
                 <summary>Make Main Pebble</summary>
                 <p>
-                  {bot.name} will coordinate your pebbles. The current Main Pebble will report to
-                  them.
+                  {bot.name} will coordinate your pebbles. Existing reporting relationships stay in
+                  place; the selected pebble becomes managerless.
                 </p>
                 <Button
                   variant="secondary"

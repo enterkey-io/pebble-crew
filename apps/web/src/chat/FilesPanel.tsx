@@ -8,7 +8,9 @@ import type { SharedConversationFile as SharedFile } from '@hermes-client/protoc
 import { ConversationDomain } from '@hermes-client/protocol';
 import { Item, ItemContent, ItemTitle, ItemDescription } from '../components/ui/item';
 import { IconButton } from '../components/ui/icon-button';
-import { Download } from 'lucide-react';
+import { Download, Eye } from 'lucide-react';
+import { documentFormat } from '@hermes-client/protocol';
+import { useDocumentActions } from '../documents/DocumentReader';
 export function fileSize(size: number) {
   return size < 1024
     ? `${size} B`
@@ -27,6 +29,7 @@ export function FilesPanel({
   version: number;
   focusId?: string | undefined;
 }) {
+  const openDocument = useDocumentActions();
   const [files, setFiles] = useState<SharedFile[]>([]),
     [loading, setLoading] = useState(true),
     [error, setError] = useState(''),
@@ -99,6 +102,18 @@ export function FilesPanel({
                   <ItemTitle className="break-all">{file.name}</ItemTitle>
                   <ItemDescription className="text-xs">{fileSize(file.size)}</ItemDescription>
                 </ItemContent>
+                {documentFormat(file.name) && openDocument && (
+                  <IconButton
+                    label={`View ${file.name}`}
+                    icon={Eye}
+                    onClick={() =>
+                      openDocument({
+                        name: file.name,
+                        load: () => client.downloadFile(sessionId, file.id),
+                      })
+                    }
+                  />
+                )}
                 <IconButton
                   label={`Download ${file.name}`}
                   icon={Download}

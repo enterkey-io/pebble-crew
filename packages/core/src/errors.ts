@@ -32,6 +32,7 @@ export type ErrorCode =
   | 'STALE_REVISION'
   | 'HANDLE_TAKEN'
   | 'INVALID_REPORTING'
+  | 'UPDATE_REQUIRED'
   | 'MODEL_UNAVAILABLE'
   | 'REQUIRES_SETUP'
   | 'INVALID_ATTACHMENT'
@@ -50,6 +51,7 @@ export type ErrorCode =
   | 'RPC_FAILED';
 
 const messages: Record<ErrorCode, string> = {
+  UPDATE_REQUIRED: 'Refresh Pebble Crew before editing reporting relationships.',
   ...voiceErrors,
   UNSUPPORTED_COMMAND:
     'This command is not supported in Pebble Crew. Use a command from the suggestions or run it in Hermes.',

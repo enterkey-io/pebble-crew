@@ -27,6 +27,7 @@ export class BotBridgeClient {
   #connection = '';
   #existingAgents = false;
   #workspace = false;
+  #reporting = false;
   #attachments = false;
   #generatedMedia = false;
   #computer = false;
@@ -95,6 +96,7 @@ export class BotBridgeClient {
       !!data.capabilities && record(data.capabilities).existing_agents === true;
     this.#connection = data.connection;
     this.#existingAgents = existingAgents;
+    this.#reporting = !!data.capabilities && record(data.capabilities).reporting === 1;
     this.#workspace = !!data.capabilities && record(data.capabilities).workspace === true;
     this.#attachments = !!data.capabilities && record(data.capabilities).attachments === true;
     this.#generatedMedia =
@@ -108,10 +110,23 @@ export class BotBridgeClient {
   async invoke(operation: string, params: Readonly<Record<string, unknown>>): Promise<unknown> {
     if (!this.#connection) throw new ClientError('DISCONNECTED');
     const generation = this.#lifetime.capture();
+    const payload =
+      this.#reporting &&
+      [
+        'bots.profile.update',
+        'agent.onboard',
+        'roles.update',
+        'agent.create',
+        'workspace.initialize',
+        'workspace.set_orchestrator',
+      ].includes(operation)
+        ? { ...params, reporting_version: 1 }
+        : params;
     return this.#withSlot(async () => {
       this.#lifetime.assertCurrent(generation);
-      return record(await this.#request(operationRoute(operation), 'POST', { operation, params }))
-        .result;
+      return record(
+        await this.#request(operationRoute(operation), 'POST', { operation, params: payload }),
+      ).result;
     });
   }
 
@@ -439,11 +454,7 @@ export class BotBridgeClient {
     this.#lifetime.close();
     this.#token = '';
     this.#connection = '';
-    this.#existingAgents = false;
-    this.#attachments = false;
-    this.#generatedMedia = false;
-    this.#computer = false;
-    this.#workspace = false;
+    // Negotiated features describe the server, not the lifetime of this lease.
     for (const controller of this.#active) controller.abort();
     this.#active.clear();
   }

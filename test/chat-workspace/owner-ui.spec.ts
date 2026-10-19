@@ -68,11 +68,12 @@ test('menus open beside their work, connection stays visible, search has neutral
   await page.getByRole('button', { name: 'Your account', exact: true }).click();
   const account = page.locator('[data-placement="account"]');
   await expect(account.getByRole('menuitem')).toHaveText([
+    'Org chart',
     'Settings',
     'Show hidden pebbles',
     'Sign out',
   ]);
-  await expect(account.locator('[role="menuitem"] svg')).toHaveCount(3);
+  await expect(account.locator('[role="menuitem"] svg')).toHaveCount(4);
   const insets = await account.locator('[role="menuitem"]').evaluateAll((items) =>
     items.map((item) => {
       const c = getComputedStyle(item);

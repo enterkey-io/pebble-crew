@@ -80,6 +80,7 @@ function decodeBot(value: unknown) {
     enrolled: boolean(data.enrolled),
     canonical: boolean(data.canonical),
     manager: reference(data.manager),
+    ...optional(data, 'manager_id', reference),
     team: reference(data.team),
     appearance: decodeAppearance(data.appearance),
     role: decodeRole(data.role),
@@ -146,6 +147,15 @@ export function decodeWorkspaceSnapshot(value: unknown) {
     orchestrator: reference(data.orchestrator),
     bots,
     teams,
+    ...optional(data, 'reporting', (value) => {
+      const policy = record(value);
+      if (policy.version !== 1) throw new ClientError('UNSUPPORTED');
+      return {
+        version: 1 as const,
+        management_enabled: boolean(policy.management_enabled),
+        policy_revision: counter(policy.policy_revision),
+      };
+    }),
     ...optional(data, 'welcome', (v) => member(v, ['submitting', 'accepted', 'uncertain'])),
     ...optional(data, 'model_grant', (v) => (v === null ? null : decodeModelGrant(v))),
   };

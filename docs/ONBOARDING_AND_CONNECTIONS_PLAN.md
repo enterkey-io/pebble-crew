@@ -1,5 +1,7 @@
 # Primary-agent onboarding and connections
 
+> Reporting contract update: [org chart phase one](ORG_AND_WORK_IMPLEMENTATION_PLAN.md) supersedes universal root-path and per-change Main Pebble approval rules below. Unattached branches are valid; existing relationships are preserved. Main Pebble has owner-revocable authority over reporting and job instructions. Historical sections remain research context.
+
 > This is the original design/acceptance plan. For current implementation and
 > verification status, see [IMPLEMENTATION_STATUS.md](IMPLEMENTATION_STATUS.md).
 > Historical preview limitations below describe the planning baseline.

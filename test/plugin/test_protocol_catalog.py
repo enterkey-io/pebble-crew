@@ -134,7 +134,7 @@ class ProfilePhotoRouteTests(unittest.IsolatedAsyncioTestCase):
     async def params(self, profile, kind='photo', photo=None):
         state = await self.workspace.invoke('workspace.describe', {})
         bot = next(bot for bot in state['bots'] if bot['profile'] == profile)
-        return {'profile': profile, 'id': bot['id'], 'name': bot['name'], 'handle': bot['handle'],
+        return {'reporting_version': 1, 'profile': profile, 'id': bot['id'], 'name': bot['name'], 'handle': bot['handle'],
             'appearance': {**bot['appearance'], 'kind': kind}, 'role': bot['role'],
             'manager': bot['manager'], 'photo': photo, 'expected_revision': state['revision']}
 
@@ -162,3 +162,12 @@ class ProfilePhotoRouteTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(response.status_code, 400)
         self.assertEqual(response.json()['code'], 'INVALID_PHOTO')
         self.assertEqual(self.native.assets, {})
+
+    async def test_old_browser_reporting_writes_are_refused_before_native_mutations(self):
+        params = await self.params('amy',kind='shape')
+        params.pop('reporting_version')
+        self.native.calls.clear()
+        result = await self.http.post('/v1/rpc',json={'operation':'bots.profile.update','params':params},headers=self.headers)
+        self.assertEqual(result.status_code,400)
+        self.assertEqual(result.json()['code'],'UPDATE_REQUIRED')
+        self.assertFalse(any(method in {'profiles.configure','profiles.set_asset'} for method,_ in self.native.calls))

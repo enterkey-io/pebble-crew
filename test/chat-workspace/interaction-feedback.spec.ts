@@ -58,6 +58,33 @@ test('completion settles activity without moving the lane and stops its shimmer 
   await emit(page, 'tool.start', { name: 'read_file' });
   await expect(page.locator('.pc-activity')).toHaveText('Reading files');
   await expect(page.locator('.pc-activity')).toHaveCSS('opacity', '1');
+  await emit(page, 'message.delta', { text: '\n' });
+  await expect(page.locator('.pc-activity')).toHaveText('Reading files');
+  await emit(page, 'message.delta', { text: 'I found the answer.' });
+  await expect(page.locator('[data-message-phase="live"]')).toContainText('I found the answer.');
+  await expect(page.locator('.pc-activity')).toHaveCount(0);
+  await expect(page.locator('.pc-activity-lane [role="status"]')).toBeEmpty();
+  await expect(page.getByRole('button', { name: 'Stop', exact: true })).toBeEnabled();
+  await page.screenshot({
+    path: test.info().outputPath('reply-without-redundant-status.png'),
+    animations: 'disabled',
+  });
+  await emit(page, 'tool.start', { name: 'read_file' });
+  await expect(page.locator('.pc-activity')).toHaveText('Reading files');
+  await expect(page.locator('.pc-activity')).toHaveCSS('opacity', '1');
+  await page.route('**/v1/rpc', async (route) => {
+    if (route.request().postDataJSON().operation !== 'chat.history') return route.fallback();
+    await route.fulfill({
+      json: {
+        result: {
+          messages: [
+            { row_id: 1, role: 'assistant', text: 'Earlier message.' },
+            { row_id: 901, role: 'assistant', text: '\nI found the answer.' },
+          ],
+        },
+      },
+    });
+  });
   const lane = (await page.locator('.pc-activity-lane').boundingBox())!;
   const frames = page.evaluate(async () => {
     const samples: { elapsed: number; opacity: number; animation: string; status: string }[] = [];
@@ -75,7 +102,10 @@ test('completion settles activity without moving the lane and stops its shimmer 
     }
     return samples;
   });
-  await emit(page, 'message.complete', { status: 'done' });
+  await emit(page, 'message.complete', {
+    status: 'done',
+    persisted_turn: { final_assistant_row_id: 901 },
+  });
   const sampled = await frames;
   const settling = sampled.filter((frame) => frame.opacity > 0 && frame.opacity < 0.95);
   expect(settling.length, JSON.stringify(sampled)).toBeGreaterThan(0);

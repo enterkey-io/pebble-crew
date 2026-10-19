@@ -20,6 +20,7 @@ export function fixtureState(): WorkspaceState {
     id: 'synthetic-owner',
     revision: 1,
     initialized: true,
+    reporting: { version: 1, management_enabled: true, policy_revision: 0 },
     orchestrator: 'arlo',
     teams: [
       { id: 'operations', name: 'Operations' },
@@ -224,6 +225,7 @@ export async function installFixture(
             live_voice: options.voice === true,
             secrets: options.voice === true,
             workspace: true,
+            reporting: 1,
             existing_agents: true,
             attachments: options.attachments !== false,
             generated_media: true,
@@ -282,6 +284,24 @@ export async function installFixture(
         organization,
         crew_chats: crewChats,
       };
+    }
+    if (operation === 'reporting.describe') result = { workspace: state, changes: [] };
+    if (operation === 'reporting.policy') {
+      if (
+        params.expected_revision !== state.revision ||
+        !state.reporting ||
+        params.policy_revision !== state.reporting.policy_revision
+      ) {
+        await route.fulfill({ status: 400, json: { code: 'STALE_REVISION' } });
+        return;
+      }
+      state.reporting = {
+        version: 1,
+        management_enabled: params.enabled,
+        policy_revision: state.reporting.policy_revision + 1,
+      };
+      state.revision++;
+      result = { state: 'completed' };
     }
     if (operation === 'organization.get') result = organization;
     if (operation === 'organization.save') {

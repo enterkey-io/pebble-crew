@@ -65,7 +65,7 @@ export function NewPebble({
   );
   const [step, setStep] = useState<Step>({ kind: 'choose' });
   const [edit, dispatch] = useReducer(profileReducer, undefined, () =>
-    profileSession(emptyProfile(state.orchestrator || '')),
+    profileSession(emptyProfile()),
   );
   const value = edit.draft,
     { role, manager } = value;
@@ -138,7 +138,7 @@ export function NewPebble({
       appearance: value.appearance,
       photo: value.photo ? { kind: 'replace', data: value.photo } : { kind: 'preserve' },
       role,
-      manager: manager || next.orchestrator,
+      manager: manager || null,
       expectedRevision: next.revision,
     });
     if (result.kind !== 'confirmed') {
@@ -204,7 +204,7 @@ export function NewPebble({
           model_fingerprint: model.fingerprint,
           skills: [],
           toolsets: ['workspace', 'skills'],
-          manager: manager || latest.orchestrator,
+          manager: manager || null,
           team: null,
           expected_revision: latest.revision,
         };

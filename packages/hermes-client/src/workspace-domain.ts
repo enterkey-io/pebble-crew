@@ -63,7 +63,15 @@ async function write<T>(action: () => Promise<T>): Promise<WriteOutcome<T>> {
   } catch (error) {
     const { code } = safeError(error);
     // Other failures can follow a native asset or metadata write. Never replay them.
-    if (['STALE_REVISION', 'HANDLE_TAKEN', 'INVALID_REPORTING', 'INVALID_PHOTO'].includes(code))
+    if (
+      [
+        'UPDATE_REQUIRED',
+        'STALE_REVISION',
+        'HANDLE_TAKEN',
+        'INVALID_REPORTING',
+        'INVALID_PHOTO',
+      ].includes(code)
+    )
       return { kind: 'refused', reason: code };
     return { kind: 'uncertain', evidence: { code } };
   }

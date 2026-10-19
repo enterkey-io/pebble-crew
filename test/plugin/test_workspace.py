@@ -40,6 +40,11 @@ class WorkspaceTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(detection['profile'], 'default')
         self.assertEqual(detection['bot']['name'], 'Aurora')
         await self.service.invoke('workspace.initialize', {'profile': 'default', 'handle': 'aurora', 'appearance': {'kind': 'shape', 'shape': 'petal', 'color': 'white'}, 'photo': None, 'expected_revision': detection['revision']})
+        # These historical fixtures intentionally model an attached agent.
+        from bot_web.reporting import assign
+        state = self.store.read()
+        assign(state, 'amy', 'default')
+        self.store.save(state, state['revision'])
 
     async def asyncTearDown(self):
         self.store.db.close()
@@ -158,7 +163,7 @@ class WorkspaceTests(unittest.IsolatedAsyncioTestCase):
         context = json.loads(live_context(self.store, 'default').split('\n', 1)[1])
         self.assertFalse(context['is_main_pebble'])
         self.assertEqual(context['main_pebble']['handle'], '@amy')
-        self.assertEqual(context['your_manager'], context['main_pebble'])
+        self.assertIsNone(context['your_manager'])
 
     async def test_indirect_manager_is_distinct_from_the_main_pebble(self):
         self.native.profiles.append({'name': 'grace', 'is_default': False,
@@ -168,7 +173,8 @@ class WorkspaceTests(unittest.IsolatedAsyncioTestCase):
         state = self.store.read()
         state['bots']['default']['role']['title'] = 'Chief of Staff'
         state['bots']['grace']['role']['title'] = 'Executive Assistant'
-        state['bots']['amy'].update(handle='chloe', manager='grace')
+        state['bots']['amy'].update(handle='chloe', manager='grace', manager_id=state['bots']['grace']['id'])
+        state['bots']['grace'].update(manager='default', manager_id=state['bots']['default']['id'])
         self.store.save(state, state['revision'])
         context = json.loads(live_context(self.store, 'amy').split('\n', 1)[1])
         self.assertEqual(context['main_pebble']['handle'], '@aurora')

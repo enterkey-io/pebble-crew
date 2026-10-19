@@ -7,7 +7,7 @@ Each journey uses the actual production web bundle. Existing bridge fixtures rep
 | Add and edit pebbles                    | [Profiles](profiles.md)         |
 | Messages, reactions and restoration     | [Chat](chat.md)                 |
 | Settings and external connections       | [Connections](connections.md)   |
-| Pebbles, sections and Crew chats        | [Organization](organization.md) |
+| Org chart, pebbles, sections and Crews   | [Organization](organization.md) |
 | Private key entry and native live voice | [Voice](voice.md)               |
 
 The complete component vocabulary uses the actual app entry at `/system` in an

@@ -2,7 +2,7 @@ import { Alert, AlertDescription } from '../components/ui/alert';
 import { Typography } from '../components/ui/typography';
 import type { LucideIcon } from 'lucide-react';
 import type { ReactNode } from 'react';
-import { X, MoreHorizontal } from 'lucide-react';
+import { X, MoreHorizontal, Menu as MenuIcon } from 'lucide-react';
 import { IconButton } from '../components/ui/icon-button';
 import { Button } from '../components/ui/button';
 import { Tabs as RootTabs, TabsList, TabsTrigger, TabsContent } from '../components/ui/tabs';
@@ -28,14 +28,25 @@ export function PageHeader({
   title,
   subtitle,
   onClose,
+  onNavigate,
 }: {
   title: string;
   subtitle?: string;
   onClose: () => void;
+  onNavigate?: () => void;
 }) {
   return (
     <header className="page-header">
-      <div>
+      {onNavigate && (
+        <IconButton
+          quiet
+          className="mobile-nav"
+          label="Toggle navigation"
+          icon={MenuIcon}
+          onClick={onNavigate}
+        />
+      )}
+      <div className="min-w-0 flex-1">
         <Typography as="h1">{title}</Typography>
         {subtitle && <p>{subtitle}</p>}
       </div>

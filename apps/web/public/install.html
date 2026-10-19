@@ -1,4 +1,4 @@
-<!doctype html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="referrer" content="no-referrer"><title>Install Pebble Crew</title><link rel="stylesheet" href="/install.css"></head><body><header><a href="/">← Back to app</a></header><main><section class="owner-note"><p class="eyebrow">FOR THE OWNER</p><h1>Give this page to your Hermes agent.</h1><p>Your agent installs the plugin on your Hermes host, sets up reliable startup and a private web address, then gives you one private setup link. Open it to create your administrator login and bring in your existing primary agent.</p><p>The plugin includes the web app. Your conversations, memory, service credentials and login stay on your infrastructure. No pairing conversation is needed.</p><a href="/install.md">Read or copy the plain-text instructions ↗</a></section><nav aria-label="Installer downloads"><a href="https://github.com/enterkey-io/pebble-crew/releases/download/v0.7.8-preview.15/workspace-manifest.json">Package manifest</a><a href="https://github.com/enterkey-io/pebble-crew/releases/download/v0.7.8-preview.15/workspace-plugin-preview.zip">Complete plugin</a><a href="https://github.com/enterkey-io/pebble-crew/releases/download/v0.7.8-preview.15/workspace-source-preview.zip">Source code</a></nav><article><h1>Install Pebble Crew</h1>
+<!doctype html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="referrer" content="no-referrer"><title>Install Pebble Crew</title><link rel="stylesheet" href="/install.css"></head><body><header><a href="/">← Back to app</a></header><main><section class="owner-note"><p class="eyebrow">FOR THE OWNER</p><h1>Give this page to your Hermes agent.</h1><p>Your agent installs the plugin on your Hermes host, sets up reliable startup and a private web address, then gives you one private setup link. Open it to create your administrator login and bring in your existing primary agent.</p><p>The plugin includes the web app. Your conversations, memory, service credentials and login stay on your infrastructure. No pairing conversation is needed.</p><a href="/install.md">Read or copy the plain-text instructions ↗</a></section><nav aria-label="Installer downloads"><a href="https://github.com/enterkey-io/pebble-crew/releases/download/v0.7.8-preview.16/workspace-manifest.json">Package manifest</a><a href="https://github.com/enterkey-io/pebble-crew/releases/download/v0.7.8-preview.16/workspace-plugin-preview.zip">Complete plugin</a><a href="https://github.com/enterkey-io/pebble-crew/releases/download/v0.7.8-preview.16/workspace-source-preview.zip">Source code</a></nav><article><h1>Install Pebble Crew</h1>
 <p>For the owner&#x27;s Hermes installation agent: install the <strong>combined plugin</strong> on the</p>
 <p>owner&#x27;s Hermes host. It includes the web app, owner login and native Bot Mode</p>
 <p>integration. Finish supervision and HTTPS verification, then give the owner **one</p>
@@ -58,12 +58,12 @@
 <p>requirement before promising a URL. A terminal or <code>nohup</code> process is not a finished</p>
 <p>installation.</p>
 <h2>3. Obtain the immutable combined release</h2>
-<p>Candidate: <code>v0.7.8-preview.15</code>. If these assets are not published, stop and report</p>
+<p>Candidate: <code>v0.7.8-preview.16</code>. If these assets are not published, stop and report</p>
 <p>that the candidate is unavailable. Do not substitute main or an API-only package.</p>
-<p class="bullet">• <a href="https://github.com/enterkey-io/pebble-crew/releases/download/v0.7.8-preview.15/workspace-manifest.json" rel="noreferrer">Manifest</a></p>
-<p class="bullet">• <a href="https://github.com/enterkey-io/pebble-crew/releases/download/v0.7.8-preview.15/SHA256SUMS" rel="noreferrer">SHA256SUMS</a></p>
-<p class="bullet">• <a href="https://github.com/enterkey-io/pebble-crew/releases/download/v0.7.8-preview.15/workspace-plugin-preview.zip" rel="noreferrer">Complete plugin</a></p>
-<p class="bullet">• <a href="https://github.com/enterkey-io/pebble-crew/releases/download/v0.7.8-preview.15/workspace-source-preview.zip" rel="noreferrer">Source</a></p>
+<p class="bullet">• <a href="https://github.com/enterkey-io/pebble-crew/releases/download/v0.7.8-preview.16/workspace-manifest.json" rel="noreferrer">Manifest</a></p>
+<p class="bullet">• <a href="https://github.com/enterkey-io/pebble-crew/releases/download/v0.7.8-preview.16/SHA256SUMS" rel="noreferrer">SHA256SUMS</a></p>
+<p class="bullet">• <a href="https://github.com/enterkey-io/pebble-crew/releases/download/v0.7.8-preview.16/workspace-plugin-preview.zip" rel="noreferrer">Complete plugin</a></p>
+<p class="bullet">• <a href="https://github.com/enterkey-io/pebble-crew/releases/download/v0.7.8-preview.16/workspace-source-preview.zip" rel="noreferrer">Source</a></p>
 <p>Verify size and SHA-256 against both manifest and checksum file. Reject absolute</p>
 <p>archive paths, traversal, symlinks and entries escaping private staging. The</p>
 <p>installable directory is <code>bot-web/</code>, including <code>web-runtime/</code>. The repository root</p>
@@ -154,7 +154,7 @@ hermes bot-web verify --public</code></pre>
 <p><code>setup-link</code> returns <code>expires</code> (Unix epoch milliseconds) and <code>expires_in</code> (whole</p>
 <p>remaining seconds). Its output contains the private file path, never the secret.</p>
 <p>Event parsing and legacy access controls are specified in</p>
-<p><a href="https://github.com/enterkey-io/pebble-crew/blob/v0.7.8-preview.15/docs/WIRE_PROTOCOL.md" rel="noreferrer">the wire protocol</a>.</p>
+<p><a href="https://github.com/enterkey-io/pebble-crew/blob/v0.7.8-preview.16/docs/WIRE_PROTOCOL.md" rel="noreferrer">the wire protocol</a>.</p>
 <p>Never use global revocation for diagnostic cleanup: use DELETE <code>/v1/connect</code></p>
 <p>with the probe&#x27;s own lease. Global revocation now requires `hermes bot-web revoke</p>
 <p>--all<code> or the operator-only HTTP body </code>{&quot;all&quot;:true}`.</p>
@@ -170,6 +170,11 @@ hermes bot-web verify --public</code></pre>
 <p>restores the previous release. Explicit rollback is:</p>
 <pre><code>hermes bot-web rollback
 hermes bot-web verify --public</code></pre>
+<p>This release adds owner-local reporting metadata and a document presentation tool.</p>
+<p>The reporting migration saves a private backup before updating metadata. Preserve</p>
+<p>that backup and the previous release. Historical integrations that cannot read the</p>
+<p>new reporting contract are refused before activation; do not force a tree-only</p>
+<p>downgrade or restore native conversations/personas to bypass this check.</p>
 <p>This preview supports code updates with unchanged owner/workspace data schemas;</p>
 <p>unsupported data migrations are refused. Keep previous snapshots and code backups</p>
 <p>until verification passes. Do not restore native history/personality stores as</p>

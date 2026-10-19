@@ -11,17 +11,18 @@ export const CommandSuggestions = forwardRef<
   CommandSuggestionsHandle,
   {
     client: BotBridgeClient;
+    enabled: boolean;
     sessionId: string;
     text: string;
     onChoose: (text: string) => void;
   }
->(function CommandSuggestions({ client, sessionId, text, onChoose }, ref) {
+>(function CommandSuggestions({ client, enabled, sessionId, text, onChoose }, ref) {
   const [items, setItems] = useState<Suggestion[]>([]),
     [index, setIndex] = useState(0);
   const [start, setStart] = useState(1),
     [loading, setLoading] = useState(false),
     [dismissed, setDismissed] = useState('');
-  const visible = text.startsWith('/') && !text.includes('\n') && dismissed !== text;
+  const visible = enabled && text.startsWith('/') && !text.includes('\n') && dismissed !== text;
   useEffect(() => {
     let current = true;
     setItems([]);

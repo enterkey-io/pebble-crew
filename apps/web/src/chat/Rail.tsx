@@ -2,7 +2,17 @@ import { Button } from '../components/ui/button';
 import { useState } from 'react';
 import type { Dispatch, SetStateAction } from 'react';
 import { LayoutGroup, motion, useReducedMotion } from 'motion/react';
-import { Search, Plus, X, MoreHorizontal, Settings2, Eye, EyeOff, LogOut } from 'lucide-react';
+import {
+  Search,
+  Plus,
+  X,
+  MoreHorizontal,
+  Settings2,
+  Network,
+  Eye,
+  EyeOff,
+  LogOut,
+} from 'lucide-react';
 import { AgentAvatar } from '../AgentAvatar';
 import { Menu } from '../ui/primitives';
 import type { MenuItem } from '../ui/primitives';
@@ -118,6 +128,7 @@ export function Rail({
   onEdit,
   pendingPins,
   onSettings,
+  onOrgChart,
   onPin,
   onVisibility,
   onDelete,
@@ -145,6 +156,7 @@ export function Rail({
   onEdit: (profile: string) => void;
   pendingPins: Record<string, boolean>;
   onSettings: () => void;
+  onOrgChart: () => void;
   onPin: (b: WorkspaceBot, pinned: boolean) => void;
   onVisibility: (b: WorkspaceBot, hidden: boolean) => void;
   onDelete: (b: WorkspaceBot) => void;
@@ -459,6 +471,7 @@ export function Rail({
           label="Your account"
           placement="account"
           items={[
+            { label: 'Org chart', icon: Network, action: onOrgChart },
             { label: 'Settings', icon: Settings2, action: onSettings },
             {
               label: hidden ? 'Hide hidden pebbles' : 'Show hidden pebbles',

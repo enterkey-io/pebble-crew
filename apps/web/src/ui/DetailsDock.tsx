@@ -15,28 +15,32 @@ export function DetailsDock({
   open,
   children,
   onFrame,
+  document = false,
 }: {
   open: boolean;
   children: ReactNode;
   onFrame: () => void;
+  document?: boolean;
 }) {
   const phone = useMedia('(max-width:767px)'),
     wide = useMedia('(min-width:1400px)');
-  const target = phone ? window.innerWidth : wide ? 320 : 288;
+  const target = phone ? window.innerWidth : document ? (wide ? 560 : 400) : wide ? 320 : 288;
   const reduce = useReducedMotion();
   const width = useMotionValue(open ? target : 0);
   const panel = useRef<HTMLElement>(null);
   useEffect(() => {
-    if (open && phone) {
+    if (open && phone && !document) {
       const frame = requestAnimationFrame(() => {
         const activeTab = panel.current?.querySelector<HTMLElement>(
           '[role="tab"][data-state="active"]',
         );
-        (activeTab ?? panel.current?.querySelector<HTMLElement>('button'))?.focus();
+        (activeTab ?? panel.current?.querySelector<HTMLElement>('button'))?.focus({
+          preventScroll: true,
+        });
       });
       return () => cancelAnimationFrame(frame);
     }
-  }, [open, phone]);
+  }, [open, phone, document]);
   useEffect(() => {
     const update = () => frame.postRender(onFrame);
     const stop = width.on('change', update);
@@ -56,7 +60,7 @@ export function DetailsDock({
     <motion.aside
       ref={panel}
       className="pc-details-slot"
-      aria-label="Conversation details"
+      aria-label={document ? 'Document' : 'Conversation details'}
       style={{ width }}
       inert={!open}
       aria-hidden={!open}

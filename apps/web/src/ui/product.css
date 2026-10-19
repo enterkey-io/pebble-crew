@@ -1148,3 +1148,18 @@
 .pc-call-button {
   flex-shrink: 0;
 }
+
+.pc-document-reader {
+  height: 100%;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  background: var(--details);
+}
+.pc-document-scroll {
+  scrollbar-gutter: stable;
+}
+.pc-document-scroll .message-body {
+  font-size: 14px;
+  line-height: 1.8;
+}

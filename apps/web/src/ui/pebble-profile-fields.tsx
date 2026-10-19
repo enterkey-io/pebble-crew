@@ -147,11 +147,15 @@ export function ReportingField({
   return (
     <Label layout="stacked" className="reporting-field">
       Reports to
-      <Select value={manager || state.orchestrator || ''} onValueChange={onChange}>
+      <Select
+        value={manager || '__none__'}
+        onValueChange={(value) => onChange(value === '__none__' ? '' : value)}
+      >
         <SelectTrigger aria-label="Reports to">
           <SelectValue placeholder="Choose a pebble" />
         </SelectTrigger>
         <SelectContent>
+          <SelectItem value="__none__">No manager</SelectItem>
           {choices.map((bot) => (
             <SelectItem key={bot.id} value={bot.profile}>
               {bot.name}

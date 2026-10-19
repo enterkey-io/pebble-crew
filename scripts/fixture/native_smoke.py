@@ -84,7 +84,7 @@ class Model(BaseHTTPRequestHandler):
             Model.saw_native_tool = True
         text = "Native fixture reply"
         latest_user = next((m for m in reversed(data.get("messages", [])) if m.get("role") == "user"), {})
-        if 'nativegeneratedmedia' in str(latest_user.get('content')):
+        if 'nativegeneratedmedia' in str(latest_user.get('content')) or 'nativedocument' in str(latest_user.get('content')):
             import re
             context = '\n'.join(str(message.get('content')) for message in data.get('messages', []))
             target = re.search(r'host-visible generated output directory (.+?) \(create it', context)
@@ -98,6 +98,7 @@ class Model(BaseHTTPRequestHandler):
             for index, height in enumerate([56, 94, 138, 172]):
                 drawing.rounded_rectangle((32 + index * 68, 210 - height, 72 + index * 68, 210), radius=6, fill='#a8b99a')
             image.save(output / 'chart one.png')
+            (output / 'plan.md').write_text('# Project plan\n\n**Native document proof**\n\n- Preserve existing personalities\n- Verify before release\n\n```python\nprint(42)\n```\n')
             (output / 'figures.csv').write_bytes(b'column,value\n' * 110000)
             text = 'Here are the results.\n\n![Project chart](<' + str(output / 'chart one.png') + '>)\n\n[Download figures](<' + str(output / 'figures.csv') + '>)'
         tools = data.get("tools", [])
@@ -137,7 +138,22 @@ class Model(BaseHTTPRequestHandler):
             text = "Slow fixture reply"
         message = {"role": "assistant", "content": text}
         finish = "stop"
-        if discover_reaction:
+        document_turn = 'nativedocument' in str(latest_user.get('content'))
+        document_results = json.dumps(Model.tool_results)
+        if document_turn and 'requested' not in document_results:
+            if 'pebble_open_document' not in tool_names and 'parameters' not in document_results:
+                assert 'tool_describe(names=[\"pebble_open_document\"])' in json.dumps(data).replace('\\\"', '\"'), 'Document discovery guidance missing'
+                name, arguments = 'tool_describe', {'names': ['pebble_open_document']}
+            else:
+                assert 'pebble_open_document' in json.dumps(data), 'Document tool schema missing'
+                name, arguments = 'pebble_open_document', {'path': str(output / 'plan.md')}
+            message = {'role': 'assistant', 'content': None, 'tool_calls': [{'id': 'fixture-document', 'type': 'function', 'function': {'name': name, 'arguments': json.dumps(arguments)}}]}
+            finish = 'tool_calls'
+        elif document_turn:
+            assert 'requested' in document_results and 'true' in document_results, document_results
+            text = 'Here is the [Project plan](<' + str(output / 'plan.md') + '>).'
+            message = {'role': 'assistant', 'content': text}
+        elif discover_reaction:
             Model.reaction_describe_requested = True
             message = {'role': 'assistant', 'content': None, 'tool_calls': [{'id': 'fixture-reaction-describe',
                 'type': 'function', 'function': {'name': 'tool_describe', 'arguments': json.dumps({'names': ['pebble_react']})}}]}
@@ -180,7 +196,7 @@ class Model(BaseHTTPRequestHandler):
         self.end_headers()
         if data.get("stream"):
             delta = {"role": "assistant", "content": text}
-            if handoff or approval or attachment or reaction or discover_reaction:
+            if finish == 'tool_calls':
                 delta = {"role": "assistant", "tool_calls": [{"index": 0, **message["tool_calls"][0]}]}
             for delta, reason in [(delta, None), ({}, finish)]:
                 chunk = {**output, "object": "chat.completion.chunk", "choices": [{"index": 0,

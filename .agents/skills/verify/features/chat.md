@@ -14,6 +14,10 @@ Run `CI=1 npx playwright test --config playwright.chat.config.ts live-feedback.s
 
 `interaction-feedback.spec.ts` samples activity settlement and send/stop glyph
 frames, real label changes, cancellation, held gestures and reduced motion.
+It also checks that visible reply text replaces the activity label while later
+tool work remains visible. `connection-recovery.spec.ts` holds a replacement
+handshake to verify stable composer controls, typography, focus and draft editing,
+with sending blocked until recovery. Both run through their phone wrappers.
 `startup.spec.ts` holds authentication, connection and native opening separately
 to reject transient empty-picker screens, then checks unavailable defaults,
 selected pebble/room restoration, replaced identities and post-mount resize
@@ -53,3 +57,10 @@ and the browser's Web Animations timeline diverge; advancing four minutes can
 schedule a normal exit animation four minutes ahead. Keep motion proof in the
 real-frame production journeys instead of interpreting that clock mismatch as
 a native completion failure.
+
+Document reader: `documents.spec.ts` runs on desktop and both phone projects.
+Open a generated Markdown link with View; verify headings/table/code, plain text,
+retry, draft retention and no remote image request. Agent live requests open only
+once, expire and do not reopen after reconnection. The native owner journey asks
+the deterministic local model to discover and invoke `pebble_open_document`,
+checks the mobile reader, then reopens the saved link on desktop.

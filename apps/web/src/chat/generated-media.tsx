@@ -1,7 +1,7 @@
 import { createContext, lazy, Suspense, useContext, useEffect, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 import type { BotBridgeClient, DownloadedMedia } from '@hermes-client/protocol';
-import { Download, File, RotateCw } from 'lucide-react';
+import { Download, Eye, File, RotateCw } from 'lucide-react';
 import { IconButton } from '../components/ui/icon-button';
 import { LoadingBar } from '../components/ui/loading-bar';
 import {
@@ -13,6 +13,9 @@ import {
 } from '../components/ui/attachment';
 import { Button } from '../components/ui/button';
 import { Dialog, DialogTrigger } from '../components/ui/dialog';
+
+import { documentFormat } from '@hermes-client/protocol';
+import { useDocumentActions } from '../documents/DocumentReader';
 
 const ImageViewerContent = lazy(() => import('../components/ui/image-viewer'));
 
@@ -50,8 +53,18 @@ function save(file: DownloadedMedia) {
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
+function decodeName(source: string) {
+  try {
+    return decodeURIComponent(source).split('/').pop() || 'File';
+  } catch {
+    return 'File';
+  }
+}
+
 export function GeneratedFile({ source, children }: { source: string; children: ReactNode }) {
   const media = useContext(MessageMediaContext);
+  const openDocument = useDocumentActions();
+  const name = decodeName(source);
   const [state, setState] = useState<'ready' | 'loading' | 'error'>('ready');
   const request = useRef<AbortController | undefined>(undefined);
   useEffect(() => {
@@ -81,32 +94,49 @@ export function GeneratedFile({ source, children }: { source: string; children: 
   }
   return (
     <Attachment
-      asChild
       size="sm"
       state={state === 'error' ? 'error' : state === 'loading' ? 'processing' : 'done'}
       className="generated-file flex-nowrap text-left"
     >
-      <button
-        type="button"
+      <AttachmentMedia>
+        <File aria-hidden="true" />
+      </AttachmentMedia>
+      <AttachmentContent>
+        <AttachmentTitle>{children}</AttachmentTitle>
+        {state === 'error' && (
+          <AttachmentDescription>File unavailable · Try again</AttachmentDescription>
+        )}
+      </AttachmentContent>
+      {documentFormat(name) && openDocument && (
+        <IconButton
+          label={`View ${name}`}
+          icon={Eye}
+          disabled={media?.kind !== 'saved'}
+          onClick={() => {
+            if (media?.kind !== 'saved') return;
+            openDocument({
+              name,
+              load: async (signal) => {
+                const reference = await referenceKey(source);
+                return (
+                  await media.client.downloadMedia(media.sessionId, media.rowId, reference, signal)
+                ).blob;
+              },
+            });
+          }}
+        />
+      )}
+      <IconButton
+        label={
+          typeof children === 'string' && /^download /i.test(children)
+            ? children
+            : `Download ${name}`
+        }
+        icon={Download}
         disabled={media?.kind !== 'saved' || state === 'loading'}
         onClick={() => void download()}
-      >
-        <AttachmentMedia asChild>
-          <span>
-            <File aria-hidden="true" />
-          </span>
-        </AttachmentMedia>
-        <AttachmentContent asChild>
-          <span>
-            <AttachmentTitle>{children}</AttachmentTitle>
-            {state === 'error' && (
-              <AttachmentDescription>File unavailable · Try again</AttachmentDescription>
-            )}
-          </span>
-        </AttachmentContent>
-        {state === 'error' ? <RotateCw aria-hidden="true" /> : <Download aria-hidden="true" />}
-        <LoadingBar as="span" active={state === 'loading'} label="Downloading file" />
-      </button>
+      />
+      <LoadingBar as="span" active={state === 'loading'} label="Downloading file" />
     </Attachment>
   );
 }

@@ -17,6 +17,24 @@ from native_smoke import Model, load_plugin, isolated_user_environment
 ROOT = Path(__file__).resolve().parents[2]
 
 
+def has_applied_reporting(value, depth=0):
+    if depth > 12:
+        return False
+    if isinstance(value, dict):
+        if any(c.get('state') == 'applied' and c.get('change', {}).get('profile') == 'engineer'
+               for c in value.get('reporting_changes', []) if isinstance(c, dict)):
+            return True
+        return any(has_applied_reporting(v, depth + 1) for v in value.values())
+    if isinstance(value, list):
+        return any(has_applied_reporting(v, depth + 1) for v in value)
+    if isinstance(value, str):
+        try:
+            return has_applied_reporting(json.loads(value), depth + 1)
+        except (ValueError, TypeError):
+            return False
+    return False
+
+
 class WorkspaceModel(Model):
     requests = []
     proposed = False
@@ -24,6 +42,8 @@ class WorkspaceModel(Model):
     handed = False
     room_handed = False
     live_requests = []
+    reporting_step = 0
+    reporting_applied = False
 
     def do_POST(self):
         payload = self.rfile.read(int(self.headers['Content-Length']))
@@ -40,10 +60,45 @@ class WorkspaceModel(Model):
         names = {t.get('function', {}).get('name') for t in data.get('tools', [])}
         user = str(next((m.get('content') for m in reversed(data.get('messages', [])) if m.get('role') == 'user'), ''))
         name, arguments, reply = None, None, None
-        if 'Synthetic room routing proof' in user and 'SYNTHETIC_EXISTING_AURORA_PERSONALITY' in json.dumps(data.get('messages', [])):
+        if 'Synthetic org update' in user:
+            step = WorkspaceModel.reporting_step
+            WorkspaceModel.reporting_step += 1
+            if step == 0:
+                if 'tool_describe' in names:
+                    name, arguments = 'tool_describe', {'names': ['workspace_agents']}
+                else:
+                    # This conversation may already carry the enabled schema
+                    # from its earlier enrollment proposal.
+                    assert 'workspace_agents' in names and 'agent.reporting.update' in json.dumps(data['tools'])
+                    WorkspaceModel.reporting_step += 1
+                    name, arguments = 'workspace_agents', {'action': 'describe', 'spec': {}}
+            elif step == 1:
+                assert 'agent.reporting.update' in json.dumps(data), 'Deferred reporting schema not received'
+                name, arguments = 'workspace_agents', {'action': 'describe', 'spec': {}}
+            elif step == 2:
+                marker = 'Current owner workspace metadata (not a replacement for your SOUL):\n'
+                contents = [m.get('content') for m in data.get('messages', [])]
+                context = max((json.JSONDecoder().raw_decode(c.rsplit(marker, 1)[1])[0]
+                    for c in contents if isinstance(c, str) and marker in c), key=lambda c: c['workspace_revision'])
+                engineer = next(b for b in context['directory'] if b['profile'] == 'engineer')
+                assert context['management']['can_manage'] is True
+                name, arguments = 'workspace_agents', {'action':'agent.reporting.update', 'spec':{
+                    'profile':'engineer', 'id':engineer['id'], 'manager':'default',
+                    'manager_id':context['main_pebble']['id'],
+                    'instructions':'SYNTHETIC_REPORTING_INSTRUCTIONS: verify the result and report blockers to Aurora.',
+                    'expected_revision':context['workspace_revision'], 'policy_revision':context['management']['policy_revision']}}
+            elif has_applied_reporting(data):
+                WorkspaceModel.reporting_applied = True
+                reply = 'Synthetic org management applied'
+            else:
+                time.sleep(0.35)
+                name, arguments = 'workspace_agents', {'action':'describe','spec':{}}
+        elif 'Synthetic room routing proof' in user and 'SYNTHETIC_EXISTING_AURORA_PERSONALITY' in json.dumps(data.get('messages', [])):
             WorkspaceModel.room_handed = True
             reply = '@maker Room handoff proof'
-        if 'Synthetic public-handle handoff' in user and not WorkspaceModel.handed and 'message_agent' in names:
+        if 'Synthetic org update' in user:
+            pass
+        elif 'Synthetic public-handle handoff' in user and not WorkspaceModel.handed and 'message_agent' in names:
             WorkspaceModel.handed = True
             name, arguments = 'message_agent', {'target': 'maker', 'message': 'Public handle routing proof'}
         elif 'Synthetic new-agent model verification' in user and not WorkspaceModel.described:
@@ -54,8 +109,13 @@ class WorkspaceModel(Model):
         elif not WorkspaceModel.proposed and 'workspace_agents' in names:
             WorkspaceModel.proposed = True
             name, arguments = 'workspace_agents', {'action': 'agent.enable', 'spec': {'profile': 'engineer', 'initialize_chat': True}}
+        if name and name not in names and 'tool_call' in names:
+            definition = next(t['function'] for t in data['tools'] if t.get('function', {}).get('name') == 'tool_call')
+            nested = {'name': name, 'arguments': arguments}
+            arguments = {'calls': [nested]} if 'calls' in definition.get('parameters', {}).get('properties', {}) else nested
+            name = 'tool_call'
         if name or reply:
-            message = {'role': 'assistant', 'content': reply} if reply else {'role': 'assistant', 'content': None, 'tool_calls': [{'id': 'workspace-propose', 'type': 'function', 'function': {'name': name, 'arguments': json.dumps(arguments)}}]}
+            message = {'role': 'assistant', 'content': reply} if reply else {'role': 'assistant', 'content': None, 'tool_calls': [{'id': 'workspace-propose-'+str(len(self.requests)), 'type': 'function', 'function': {'name': name, 'arguments': json.dumps(arguments)}}]}
             reason = 'stop' if reply else 'tool_calls'
             response = {'created': int(time.time()), 'id': 'fixture-proposal', 'object': 'chat.completion', 'model': 'fixture-model', 'choices': [{'index': 0, 'message': message, 'finish_reason': reason}], 'usage': {'prompt_tokens': 1, 'completion_tokens': 1, 'total_tokens': 2}}
             self.send_response(200)
@@ -114,12 +174,37 @@ async def verify(home, model_port):
         assert 'Current owner workspace metadata' in all_payloads and '@aurora' in all_payloads, 'Live identity missing from native turn'
         requests = store.requests()
         if not requests:
-            print(json.dumps({'history': await ops.invoke('chat.history', {'session_id': opened['session_id']}), 'fixture_tool_results': [m for r in WorkspaceModel.requests for m in r.get('messages', []) if m.get('role') == 'tool']}))
+            print(json.dumps({'history': await ops.invoke('chat.history', {'session_id': opened['session_id']}), 'fixture_tool_names': [[t.get('function',{}).get('name') for t in r.get('tools',[])] for r in WorkspaceModel.requests], 'fixture_tool_results': [m for r in WorkspaceModel.requests for m in r.get('messages', []) if m.get('role') == 'tool']}))
         assert len(requests) == 1 and requests[0]['actor'] == 'default' and requests[0]['state'] == 'pending', requests
         assert not any(r['name'] == 'engineer' for r in await ops.roster()), 'Model proposal executed before owner approval'
         approved = await workspace.invoke('requests.approve', {'id': requests[0]['id'], 'fingerprint': requests[0]['fingerprint']})
         assert approved['state'] == 'completed', approved
         assert any(r['name'] == 'engineer' for r in await ops.roster())
+        # An actual deferred native tool controls an existing agent without an owner
+        # approval or browser. Only the deterministic loopback model receives this.
+        from bot_web.reporting import drain, receipts
+        async def apply_reporting():
+            while True:
+                await asyncio.sleep(0.1)
+                await drain(workspace)
+        worker = asyncio.create_task(apply_reporting())
+        try:
+            await ops.invoke('chat.send', {'session_id': opened['session_id'], 'text':'Synthetic org update'})
+            async with asyncio.timeout(60):
+                while True:
+                    event = await queue.get()
+                    if event.get('type') == 'message.complete' and event.get('session_id') == opened['session_id']:
+                        break
+            assert receipts(store)[0]['state'] == 'applied', receipts(store)
+            assert store.read()['bots']['engineer']['manager'] == 'default'
+            assert 'SYNTHETIC_REPORTING_INSTRUCTIONS' in store.read()['bots']['engineer']['role']['responsibilities']
+            assert WorkspaceModel.reporting_step >= 3 and WorkspaceModel.reporting_applied, 'Native model did not observe an applied receipt after schema discovery'
+        finally:
+            worker.cancel()
+            try:
+                await worker
+            except asyncio.CancelledError:
+                pass
         # Genuinely new native identity, with one explicitly approved model grant.
         current = await workspace.invoke('workspace.describe', {})
         model = current['model_grant']
@@ -296,7 +381,7 @@ async def verify(home, model_port):
         persisted = WorkspaceStore(home / 'bot-web' / 'workspace.sqlite')
         assert persisted.read()['bots']['default']['id'] == root['id']
         persisted.db.close()
-        print(json.dumps({'workspace': 'pass', 'revision': native.build['revision'], 'native_primary': 'pass', 'same_soul': 'pass', 'real_model_management_proposal': 'pass', 'caller_binding': 'pass', 'owner_approval': 'pass', 'live_public_handle_context': 'pass', 'new_agent_distinct_persona_and_real_model_turn': 'pass', 'single_provider_grant': 'pass', 'named_profile_management_context': 'pass', 'public_handle_native_dm': 'pass', 'public_handle_native_room_handoff': 'pass', 'metadata_merge': 'pass', 'stale_write_rejected': 'pass', 'native_live_profile_secret_settings_and_receipts': 'pass' if supports_live() else 'unsupported-on-legacy', 'model': 'synthetic-loopback-only'}))
+        print(json.dumps({'workspace': 'pass', 'revision': native.build['revision'], 'native_primary': 'pass', 'same_soul': 'pass', 'real_model_management_proposal': 'pass', 'real_main_pebble_reporting_and_applied_receipt': 'pass', 'caller_binding': 'pass', 'owner_approval': 'pass', 'live_public_handle_context': 'pass', 'new_agent_distinct_persona_and_real_model_turn': 'pass', 'single_provider_grant': 'pass', 'named_profile_management_context': 'pass', 'public_handle_native_dm': 'pass', 'public_handle_native_room_handoff': 'pass', 'metadata_merge': 'pass', 'stale_write_rejected': 'pass', 'native_live_profile_secret_settings_and_receipts': 'pass' if supports_live() else 'unsupported-on-legacy', 'model': 'synthetic-loopback-only'}))
     finally:
         store.db.close()
         await native.stop()
@@ -314,7 +399,7 @@ def main():
         shutil.copytree(ROOT / 'plugins/bot-web', home / 'plugins/bot-web', ignore=shutil.ignore_patterns('__pycache__'))
         (home / '.env').write_text('UNRELATED_TEST_KEY=synthetic-do-not-clone\n')
         (home / 'SOUL.md').write_text('SYNTHETIC_EXISTING_AURORA_PERSONALITY\n')
-        (home / 'config.yaml').write_text('auth:\n  adopt_external_logins: false\nmodel:\n  default: fixture-model\n  provider: custom:fixture\nproviders:\n  fixture:\n    base_url: http://127.0.0.1:' + str(model.server_port) + '/v1\n    api_key: fixture-only\nagent:\n  max_turns: 3\n  bot_mode_protocol: true\n  stream: false\ntools:\n  tool_search:\n    enabled: \'off\'\nplugins:\n  enabled: [bot-web]\n  entries:\n    bot-web:\n      enabled: true\n')
+        (home / 'config.yaml').write_text('auth:\n  adopt_external_logins: false\nmodel:\n  default: fixture-model\n  provider: custom:fixture\nproviders:\n  fixture:\n    base_url: http://127.0.0.1:' + str(model.server_port) + '/v1\n    api_key: fixture-only\nagent:\n  max_turns: 12\n  coding_context: off\n  bot_mode_protocol: true\n  stream: false\ntoolsets:\n  - terminal\ntools:\n  tool_search:\n    enabled: \'off\'\nplugins:\n  enabled: [bot-web]\n  entries:\n    bot-web:\n      enabled: true\n')
         load_plugin(ROOT)
         try:
             asyncio.run(verify(home, model.server_port))

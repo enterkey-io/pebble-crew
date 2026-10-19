@@ -70,7 +70,7 @@ export function ExistingPebbleSetup({
           setBot(found);
           dispatch({
             type: 'receive',
-            values: profileValues(found, next.orchestrator || '', true),
+            values: profileValues(found, '', true),
             identity: found.id,
             revision: next.revision,
           });
@@ -104,7 +104,7 @@ export function ExistingPebbleSetup({
         appearance: value.appearance,
         photo: value.photo ? { kind: 'replace', data: value.photo } : { kind: 'preserve' },
         role,
-        manager: profile === state.orchestrator ? null : manager || state.orchestrator,
+        manager: profile === state.orchestrator ? null : manager || null,
         expectedRevision: revision,
       });
       if (result.kind !== 'confirmed') {

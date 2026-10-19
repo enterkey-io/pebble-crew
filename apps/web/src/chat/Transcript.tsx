@@ -1,3 +1,7 @@
+import { documentFormat } from '@hermes-client/protocol';
+import { useDocumentActions } from '../documents/DocumentReader';
+import { IconButton } from '../components/ui/icon-button';
+import { Eye } from 'lucide-react';
 import {
   Attachment,
   AttachmentMedia,
@@ -59,6 +63,7 @@ export function Transcript({
   footer?: ReactNode;
 }) {
   const reduced = useReducedMotion();
+  const openDocument = useDocumentActions();
   const displayed: ChatMessage[] = stream
     ? [...messages, { ...reply, id: reply.renderKey, role: 'assistant', text: stream }]
     : messages;
@@ -199,6 +204,18 @@ export function Transcript({
                     <AttachmentTitle>{file.name}</AttachmentTitle>
                     <AttachmentDescription>{fileSize(file.size)}</AttachmentDescription>
                   </AttachmentContent>
+                  {documentFormat(file.name) && openDocument && client && sessionId && (
+                    <IconButton
+                      label={`View ${file.name}`}
+                      icon={Eye}
+                      onClick={() =>
+                        openDocument({
+                          name: file.name,
+                          load: () => client.downloadFile(sessionId, file.id),
+                        })
+                      }
+                    />
+                  )}
                   <AttachmentTrigger
                     aria-label={`Download ${file.name}`}
                     onClick={() => onDownloadFile(file)}
@@ -212,7 +229,7 @@ export function Transcript({
       {footer}
       <ActivityLine
         key={conversationKey}
-        active={!!conversationKey && running}
+        active={!!conversationKey && running && !!activity}
         label={activity === 'Stop requested' ? 'Stopping' : activity}
       />
     </div>

@@ -68,7 +68,8 @@ class RuntimeLifecycleTests(unittest.TestCase):
         legacy = self.legacy(self.paths['alpha'])
         self.assertEqual(host.runtime_evidence(legacy)['contract'], 'legacy-b642cce')
         host.preflight_runtimes(self.source)
-        host.preflight_runtimes(legacy)
+        with self.assertRaisesRegex(ValueError, 'unverified'):
+            host.preflight_runtimes(legacy)
         (legacy / 'runtime.py').write_text('unknown customization')
         self.assertIsNone(host.runtime_evidence(legacy)['contract'])
         with self.assertRaisesRegex(ValueError, 'unverified'):
@@ -190,7 +191,7 @@ class RuntimeLifecycleTests(unittest.TestCase):
         active = self.install(self.source)
         with patch.object(setup, '__file__', str(self.source / 'setup.py')):
             runtime = self.source / 'runtime.py'
-            runtime.write_text(runtime.read_text().replace('Describe your workspace', 'Inspect your workspace'))
+            runtime.write_text(runtime.read_text() + '\nPACKAGE_UPDATE_FIXTURE = True\n')
             before = host.runtime_evidence(active)['sha256']
             with contextlib.redirect_stdout(io.StringIO()):
                 result = setup.sync_runtime(native_idle=True, source_package=True)
@@ -200,19 +201,17 @@ class RuntimeLifecycleTests(unittest.TestCase):
             self.assertTrue(all(host.runtime_evidence(path)['sha256'] == result['source']['sha256']
                                 for path in self.paths.values()))
 
-    def test_sync_from_real_pre_contract_release_restores_legacy_payload(self):
+    def test_historical_tree_only_rollback_refuses_new_reporting_runtimes(self):
         active = self.install(self.source)
+        before = {name: host.runtime_evidence(path)['sha256'] for name, path in self.paths.items()}
         self.legacy(active)
         (active / 'protocol-catalog.json').unlink()
-        legacy = host.runtime_evidence(active)
-        self.assertEqual(legacy['contract'], 'legacy-b642cce')
+        self.assertEqual(host.runtime_evidence(active)['contract'], 'legacy-b642cce')
         with contextlib.redirect_stdout(io.StringIO()):
-            result = setup.sync_runtime(native_idle=True)
-        self.assertTrue(result['complete'])
-        for destination in self.paths.values():
-            self.assertFalse((destination / 'runtime-contract.json').exists())
-            self.assertFalse((destination / 'protocol-catalog.json').exists())
-            self.assertEqual(host.runtime_evidence(destination)['sha256'], legacy['sha256'])
+            with self.assertRaisesRegex(ValueError, 'unverified'):
+                setup.sync_runtime(native_idle=True)
+        for name, destination in self.paths.items():
+            self.assertEqual(host.runtime_evidence(destination)['sha256'], before[name])
 
     def test_linked_runtime_and_backup_contents_are_refused(self):
         self.install(self.source)

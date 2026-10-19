@@ -598,6 +598,18 @@
       "accepted": [
         "rpc"
       ]
+    },
+    "reporting.describe": {
+      "preferred": "rpc",
+      "accepted": [
+        "rpc"
+      ]
+    },
+    "reporting.policy": {
+      "preferred": "rpc",
+      "accepted": [
+        "rpc"
+      ]
     }
   }
 }

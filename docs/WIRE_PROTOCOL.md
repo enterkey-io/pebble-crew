@@ -207,3 +207,21 @@ the save verdict; `submitted=true` alone is not proof of storage or provider
 validation. Requests expire and are removed on native cancellation/disconnection.
 `voice.setup` asks the current chat to open its private voice setup controls.
 Neither event is persisted as a chat message.
+
+## Live document presentation
+
+`document.open` is an additive live event in v0.7.8-preview.16. It is delivered
+only to browsers that opened the emitting native direct Bot Chat. Its payload
+contains `request_id` (UUID), `expires_at` (epoch milliseconds), `name`, `format`
+(`markdown` or `text`) and UTF-8 `text` (at most 256 KiB). It contains no server
+path or credential. Clients ignore expired, repeated and other-conversation
+requests. Historical message replay does not open documents. An ordinary saved
+Markdown file link remains the way to reopen a closed document.
+
+The enabled `pebble_open_document` native tool explicitly shares an output file
+from the caller’s generated output directory. Dispatch identity, live UI session,
+canonical Bot Chat lineage and profile home must agree. Private paths, remote
+URLs, symlinks, hard links, binary data and oversized documents are refused.
+Viewer rendering uses the shared Markdown components with raw HTML disabled and
+remote images represented as links. It neither executes content nor fetches
+remote images. This is a read-only preview; the file remains on Hermes.

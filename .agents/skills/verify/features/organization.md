@@ -19,3 +19,25 @@ Run `unsectioned.spec.ts` in both production browser configurations for the hist
 ## Gotchas
 
 The reference entry now imports the production app, but a version match alone does not prove every deployed asset or native runtime copy matches. A 0.00001px browser rounding difference is not a user-visible layout defect. Use a deliberate subpixel tolerance while keeping meaningful overlap/target requirements strict.
+
+
+## Org chart and reporting
+
+Open Your account → Org chart. The Main Pebble reports to the owner; other
+agents may be unattached, with real subtrees beneath them. Hidden agents keep
+named cards and remain selectable as managers. Editing a card opens the shared
+Profile/Role editor. Returning to chat preserves the draft and reading position.
+
+Run `org-chart.spec.ts` in both production browser configurations. These journeys
+edit reporting/Instructions, retain hidden cards and an unsent draft, and revoke
+Main Pebble management. Inspect the settled desktop, iPhone and Android captures.
+Native owner browser acceptance saves a reporting change through the chart and
+checks it after reload.
+
+Run `scripts/fixture/workspace_smoke.py` with each pinned native source installed
+in its own prepared environment: Python 3.14 for af0cd4df, Python 3.12 for
+29112bef. It uses disposable profiles and a deterministic local model to invoke
+Main Pebble management and observe an applied receipt without a browser approval.
+Unit reporting checks cover authority, revocation, stale edits, cycles, identity
+replacement, migration backup and interrupted-application receipts. Install/update
+checks remain model-free; native acceptance is separate and synthetic.

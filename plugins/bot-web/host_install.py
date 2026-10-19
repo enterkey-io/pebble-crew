@@ -355,7 +355,7 @@ def preflight_runtimes(source):
             runtime = runtime_evidence(path)
         except (OSError, ValueError) as error:
             raise ValueError(f'Runtime compatibility is unverified for {profile}; inspect runtime-status before activation') from error
-        if runtime['contract'] not in host['accepts'] or host['contract'] not in runtime['accepts']:
+        if runtime['contract'] not in host['accepts']:
             raise ValueError(f'Runtime compatibility is unverified for {profile}; preserve the active host and inspect runtime-status')
 
 

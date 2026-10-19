@@ -205,6 +205,7 @@ def main():
 
     runtime_paths = {}
     runtime_original = {}
+    runtime_previous = {}
     protected_files = {}
 
     class Control(BaseHTTPRequestHandler):
@@ -236,11 +237,12 @@ def main():
                     for profile in ('alpha', 'beta'):
                         snapshot = rpc('workspace.describe', {})
                         bot = next(row for row in snapshot['bots'] if row['profile'] == profile)
-                        rpc('agent.onboard', {'profile': profile, 'id': bot['id'], 'name': profile.title(),
+                        rpc('agent.onboard', {'reporting_version': 1, 'profile': profile, 'id': bot['id'], 'name': profile.title(),
                             'handle': profile, 'appearance': bot['appearance'], 'photo': None,
                             'role': bot['role'], 'manager': snapshot['orchestrator'], 'expected_revision': snapshot['revision']})
                         path = Path(get_profile_dir(profile)) / 'plugins/bot-web'
                         runtime_paths[profile] = path
+                        runtime_previous[profile] = tool_marker(path)
                         inventory = json.loads((state / 'releases' / active / 'release.json').read_text())['files']
                         old_names = historical_inventory()
                         for name in inventory:
@@ -263,8 +265,8 @@ def main():
                                 protected_files[path] = hashlib.sha256(path.read_bytes()).hexdigest()
                     runtime = plugin / 'runtime.py'
                     original = runtime.read_text()
-                    modified = original.replace('Describe your workspace or propose a team change for owner approval.',
-                        'Inspect your workspace or propose a team change for owner approval.')
+                    modified = original.replace('Read your workspace. The authorized Main Pebble',
+                        'Inspect your workspace. The authorized Main Pebble')
                     assert modified != original
                     runtime.write_text(modified)
                     pending = runtime_paths['beta'].with_name('.bot-web-next')
@@ -303,18 +305,32 @@ def main():
                     checks['public_https_cli_stream_and_heartbeat'] = result['ready']
                 elif self.path == '/rollback':
                     turns = Model.turns
-                    legacy = historical_rollback_release()
+                    previous = json.loads((state / 'install.json').read_text())
+                    historical_rollback_release()
+                    before = {name: tool_marker(path) for name, path in runtime_paths.items()}
+                    refused = cli('rollback', expect_failure=True)
+                    checks['tree_only_downgrade_refused_before_activation'] = (
+                        'unverified' in refused.stderr
+                        and json.loads((state / 'install.json').read_text())['active_release'] == active
+                        and all(tool_marker(path) == before[name] for name, path in runtime_paths.items()))
+                    assert checks['tree_only_downgrade_refused_before_activation']
+                    # Restore the real previous compatible release pointer after
+                    # exercising the historical tree-only negative control.
+                    temporary = state / '.fixture-install.json'
+                    temporary.write_text(json.dumps(previous))
+                    temporary.chmod(0o600)
+                    os.replace(temporary, state / 'install.json')
                     cli('rollback')
                     restored = cli('sync-runtime', '--native-idle')
                     assert restored['complete']
-                    checks['rollback_copies_exact_pre_contract_runtime'] = all(
-                        not (path / 'runtime-contract.json').exists() and not (path / 'protocol-catalog.json').exists()
+                    checks['rollback_copies_compatible_reporting_runtime'] = all(
+                        json.loads((path / 'runtime-contract.json').read_text())['contract'] == 'workspace-runtime-v2'
                         for path in runtime_paths.values())
                     checks['rollback_restores_actual_runtime_tool_marker'] = all(
-                        tool_marker(path) == runtime_original[name] for name, path in runtime_paths.items())
+                        tool_marker(path) == runtime_previous[name] for name, path in runtime_paths.items())
                     checks['rollback_runs_zero_model_turns'] = Model.turns == turns
                     current = json.loads((state / 'install.json').read_text())['active_release']
-                    assert current == legacy
+                    assert current == previous['previous_release']
                     checks['explicit_rollback_restores_previous_release'] = current != active
                     checks['rollback_preserves_login_keys'] = hashlib.sha256(settings.read_bytes()).hexdigest() == key_digest
                     active = current
@@ -337,7 +353,7 @@ def main():
                         ready()
                         checks['failed_activation_runs_zero_model_turns'] = Model.turns == turns
                         checks['failed_activation_preserves_profile_runtime'] = all(
-                            tool_marker(path) == runtime_original[name] for name, path in runtime_paths.items())
+                            tool_marker(path) == runtime_previous[name] for name, path in runtime_paths.items())
                     finally:
                         bundle.write_bytes(previous_bundle)
                         inventory.write_bytes(previous_inventory)

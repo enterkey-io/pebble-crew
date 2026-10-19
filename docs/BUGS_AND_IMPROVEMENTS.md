@@ -4,6 +4,30 @@ Track owner reports here through implementation, verification and release. A
 published fix is separate from updating and verifying the owner's installation.
 New reports receive a stable ID; later work updates the existing entry.
 
+## Unreleased org chart phase one
+
+| ID     | Report                                                              | Change                                                                                                                                                                                                                                                                                                             |
+| ------ | ------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| PC-085 | Reporting structure and expectations are hard to inspect and manage | Org chart in the account menu, shared card editing, unattached branches, current manager/direct-report context, and owner-revocable Main Pebble management with durable receipts. Implemented locally with native, production browser and exact-package verification. Not released or installed on the owner host. |
+
+Verification: 172 client unit checks, 307 plugin checks, both pinned native Hermes builds, desktop/iPhone/Android journeys, native owner persistence and exact-package install/update/rollback checks passed. Evidence is kept in `.audit/org-phase1/evidence/proof.json`.
+
+## Document viewing
+
+| ID     | Report                                            | Planned behavior                                                                                                                                                                                                                                                                                                                 |
+| ------ | ------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| PC-084 | Markdown and text attachments only offer Download | Add View beside Download, opening an in-app side panel with formatted Markdown/plain text. Let agents request opening a verified conversation file; preserve chat position and drafts. Implemented in preview.16. Native direct-chat sharing is an explicit tool action; normal Markdown links remain available to reopen files. |
+
+## Unreleased reply activity
+
+| ID     | Report                                                        | Change                                                                                                                                            |
+| ------ | ------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------- |
+| PC-082 | Writing status duplicates the reply already appearing         | Hide the activity label as reply text appears. Keep thinking, tool work and stopping visible, with a stable activity lane.                        |
+| PC-083 | Reconnecting removes composer controls and distorts the field | Retain negotiated features and the mounted, editable draft field while offline. Disable send, attachment, voice and command requests until ready. |
+
+Implemented locally. Browser verification and publication are separate from
+updating the owner's installation.
+
 ## 0.7.8-preview.15 role editing and shared voice setup
 
 | ID     | Report                                                    | Change                                                                                                                                                                            |

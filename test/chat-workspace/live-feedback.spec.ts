@@ -75,7 +75,7 @@ test('native activity describes the work and a reply keeps its bubble and footer
   await expect(activity).toHaveText('Compressing context');
   const reply = 'Your research is ready.';
   await emit(page, 'message.delta', { text: reply });
-  await expect(activity).toHaveText('Writing');
+  await expect(activity).toHaveCount(0);
   const streaming = page.locator('[data-message-phase="live"]');
   await expect(streaming.locator('time')).toBeVisible();
   await expect(streaming.locator('.caret')).toHaveCount(0);

@@ -78,13 +78,24 @@ def create_app(token, origins, hosts, gateway=None, trust=None, workspace=None, 
     async def lifespan(app):
         check_native_adapter()
         await native.start()
+        if workspace:
+            from .reporting import recover
+            recover(workspace.store)
         async def watch_roster():
             revision = None
+            next_snapshot = 0
             while True:
-                await asyncio.sleep(4)
-                if not workspace or not any(c.get('streaming') for c in clients.values()):
+                await asyncio.sleep(1)
+                if workspace:
+                    from .reporting import drain
+                    try:
+                        await drain(workspace)
+                    except Exception:
+                        pass  # Pending receipts remain durable for the next tick.
+                if not workspace or time.monotonic() < next_snapshot or not any(c.get('streaming') for c in clients.values()):
                     continue
                 try:
+                    next_snapshot = time.monotonic() + 4
                     snapshot = await workspace.invoke('workspace.snapshot', {})
                     if snapshot['revision'] != revision:
                         revision = snapshot['revision']
@@ -202,7 +213,7 @@ def create_app(token, origins, hosts, gateway=None, trust=None, workspace=None, 
 
     @app.exception_handler(InvalidOperation)
     async def invalid(request, error):
-        return JSONResponse({"error": "Operation unavailable or invalid. Refresh and check the connection.", "code": error.code if error.code in VOICE_ERROR_CODES | {"UNSUPPORTED_COMMAND", "STALE_REVISION", "HANDLE_TAKEN", "INVALID_REPORTING", "MODEL_UNAVAILABLE", "REQUIRES_SETUP", "INVALID_PHOTO", "INVALID_PARAMETERS", "INVALID_ATTACHMENT", "ATTACHMENT_QUOTA"} else "INVALID_PARAMETERS"}, 409 if error.code == "STALE_REVISION" else 400)
+        return JSONResponse({"error": "Operation unavailable or invalid. Refresh and check the connection.", "code": error.code if error.code in VOICE_ERROR_CODES | {"UPDATE_REQUIRED", "UNSUPPORTED_COMMAND", "STALE_REVISION", "HANDLE_TAKEN", "INVALID_REPORTING", "MODEL_UNAVAILABLE", "REQUIRES_SETUP", "INVALID_PHOTO", "INVALID_PARAMETERS", "INVALID_ATTACHMENT", "ATTACHMENT_QUOTA"} else "INVALID_PARAMETERS"}, 409 if error.code == "STALE_REVISION" else 400)
 
     @app.exception_handler(NativeError)
     async def native_error(request, error):
@@ -226,7 +237,7 @@ def create_app(token, origins, hosts, gateway=None, trust=None, workspace=None, 
                                "expires": request.scope.get("bot.ticket_expires"), "ended": None}
         build = getattr(native, "build", None) or {}
         return {"connection": connection, "protocol": "hermes-bot-web.v1", "bridge_version": VERSION,
-                "capabilities": {"existing_agents": True, "owner_login": owner_trust is not None, "workspace": bool(workspace), "attachments": bool(files), "generated_media": True, "reactions": True, "live_voice": live_voice_supported(), "secrets": bool(getattr(native, "build", None) and native.build.get("server_requests")), "computer": computer.supported},
+                "capabilities": {"existing_agents": True, "owner_login": owner_trust is not None, "workspace": bool(workspace), "reporting": 1 if workspace else None, "attachments": bool(files), "generated_media": True, "reactions": True, "live_voice": live_voice_supported(), "secrets": bool(getattr(native, "build", None) and native.build.get("server_requests")), "computer": computer.supported},
                 "hermes_version": build.get("version"), "hermes_revision": build.get("revision")}
 
     @app.post("/v1/renew")
@@ -322,6 +333,9 @@ def create_app(token, origins, hosts, gateway=None, trust=None, workspace=None, 
                 action = {"connections.auth_start": "start", "connections.auth_status": "status", "connections.auth_cancel": "cancel"}[operation]
                 result = await native.call("bot_web.connections.oauth", {**params, "action": action, **({"callback": public_callback} if action == "start" else {})})
             else:
+                if operation in {'bots.profile.update', 'agent.onboard', 'roles.update', 'agent.create', 'workspace.initialize', 'workspace.set_orchestrator'}:
+                    if params.pop('reporting_version', None) != 1:
+                        raise InvalidOperation('Refresh Pebble Crew before editing reporting relationships', 'UPDATE_REQUIRED')
                 result = await (workspace.invoke(operation, params) if workspace and workspace.handles(operation) else ops.invoke(operation, params))
             if operation == "bot.open":
                 client["sessions"].add(result["session_id"])

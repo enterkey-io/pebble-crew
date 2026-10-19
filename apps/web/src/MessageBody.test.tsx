@@ -24,11 +24,13 @@ describe('private bot message rendering', () => {
   });
   it('rejects executable and relative links while making explicit web links safe to open', () => {
     const html = renderToStaticMarkup(
-      <MessageBody
-        text={
-          '[unsafe](javascript:alert%281%29) [relative](/settings) [reference](https://example.test/docs)'
-        }
-      />,
+      <TooltipProvider>
+        <MessageBody
+          text={
+            '[unsafe](javascript:alert%281%29) [relative](/settings) [reference](https://example.test/docs)'
+          }
+        />
+      </TooltipProvider>,
     );
     expect(html).not.toContain('javascript:');
     expect(html).not.toContain('href="/settings"');
