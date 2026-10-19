@@ -6,10 +6,11 @@ New reports receive a stable ID; later work updates the existing entry.
 
 ## 0.7.8-preview.14 voice choices
 
-| ID     | Report                                   | Change                                                                                                                             |
-| ------ | ---------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
-| PC-076 | Speed affects preview but not live calls | Removed the unreliable speed control and app-generated delivery hint. Native voice selection and owner instructions remain intact. |
-| PC-077 | Voice names make choices hard to compare | Group native choices under Female and Male using documented metadata; unclassified/custom choices remain under Other.              |
+| ID     | Report                                               | Change                                                                                                                             |
+| ------ | ---------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
+| PC-076 | Speed affects preview but not live calls             | Removed the unreliable speed control and app-generated delivery hint. Native voice selection and owner instructions remain intact. |
+| PC-077 | Voice names make choices hard to compare             | Group native choices under Female and Male using documented metadata; unclassified/custom choices remain under Other.              |
+| PC-078 | Mobile voice errors or reopened navigation disappear | A dialog removed by its parent does not issue a second close notification. Focus restoration preserves a newer open dialog.        |
 
 Implemented and verified locally with source checks, desktop/phone browser flows,
 and isolated native acceptance. Release-package verification and publication are

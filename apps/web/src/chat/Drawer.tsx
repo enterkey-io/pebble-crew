@@ -35,12 +35,13 @@ export function Drawer({
   request.current = requestClose;
   useOverlayHistory(true, () => request.current());
   function afterClose(event: Event) {
-    if (close.current() === false) {
+    if (!open && close.current() === false) {
       event.preventDefault();
       setOpen(true);
       return;
     }
     event.preventDefault();
+    if (document.querySelector('[role="dialog"][data-state="open"]')) return;
     const previous = trigger.current;
     if (previous instanceof HTMLElement && previous.isConnected) previous.focus();
     else document.querySelector<HTMLElement>('.chat-title,.rail-toolbar button')?.focus();
