@@ -172,7 +172,8 @@ test('agent switching retains the current conversation until the replacement is 
     await expect.poll(() => waiting).toBe(true);
     await expect(page.locator('.chat-title')).toContainText('Arlo');
     await expect(message).toHaveValue('Keep the Arlo draft');
-    await expect(message).toBeDisabled();
+    await expect(message).toHaveJSProperty('readOnly', true);
+    await expect(page.getByRole('button', { name: 'Send message', exact: true })).toBeDisabled();
     await expect(
       page.getByRole('heading', { name: 'Choose a conversation', exact: true }),
     ).toHaveCount(0);
