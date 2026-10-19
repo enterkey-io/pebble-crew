@@ -89,7 +89,7 @@ async def invoke(service, operation, params, state, profiles):
         raise InvalidOperation('Agent identity changed')
     if type(params['expected_revision']) is not int or params['expected_revision'] != state['revision']:
         raise InvalidOperation('This profile changed elsewhere. Review it before saving.', 'STALE_REVISION')
-    from .workspace import appearance, normalize_photo, bounded
+    from .workspace import appearance, normalize_photo, bounded, ROLE_TEXT_LIMITS
     name = bounded(params['name'], 80, False).strip()
     if not name:
         raise InvalidOperation('Enter a name')
@@ -100,7 +100,7 @@ async def invoke(service, operation, params, state, profiles):
     if isinstance(params['role'], dict) and set(params['role']) != set(role_fields):
         role_fields += ['responsibilities', 'boundaries', 'expectedOutputs']
     fields(params['role'], role_fields)
-    role.update({k: bounded(v, 1000) for k, v in params['role'].items()})
+    role.update({k: bounded(v, ROLE_TEXT_LIMITS[k]) for k, v in params['role'].items()})
     if 'manager' in params:
         bot['manager'] = identifier(params['manager']) if params['manager'] is not None else None
     if operation == 'agent.onboard':

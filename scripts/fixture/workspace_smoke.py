@@ -12,7 +12,7 @@ import sys
 import tempfile
 import time
 import threading
-from native_smoke import Model, load_plugin
+from native_smoke import Model, load_plugin, isolated_user_environment
 
 ROOT = Path(__file__).resolve().parents[2]
 
@@ -155,6 +155,10 @@ async def verify(home, model_port):
         if supports_live():
             from hermes_cli.web_server_profiles import _config_profile_scope
             from hermes_cli.config import read_user_config_raw, save_config
+            with _config_profile_scope('default'):
+                config = read_user_config_raw() or {}
+                config.setdefault('voice', {}).setdefault('gpt_live', {})['base_url'] = 'http://127.0.0.1:' + str(model_port) + '/v1'
+                save_config(config)
             with _config_profile_scope('engineer'):
                 config = read_user_config_raw() or {}
                 config.setdefault('auxiliary', {})['voice_chat'] = {'model': 'must-not-use-auxiliary-voice-reasoner'}
@@ -182,7 +186,11 @@ async def verify(home, model_port):
                 assert sent['session']['audio']['output']['voice'] == status['voice']
                 assert '[Pebble Crew delivery]' not in sent['session']['instructions']
                 assert 'synthetic-voice-only-key' not in json.dumps(sent)
-            assert (home / '.env').read_bytes() == before_env, 'Voice credential changed the primary profile'
+            assert before_env in (home / '.env').read_bytes(), 'Voice credential changed unrelated primary secrets'
+            with _config_profile_scope('default'):
+                from hermes_cli.config import load_env
+                assert load_env()['VOICE_TOOLS_OPENAI_KEY'] == 'synthetic-voice-only-key'
+            assert (await voice.invoke('voice.status', {'session_id': opened['session_id']}))['key_confirmed'], 'Primary did not reuse the approved shared voice account'
             start = len(WorkspaceModel.requests)
             accepted = await voice.invoke('voice.submit', {'session_id': sid, 'text': 'Synthetic live voice request', 'context': 'User: check this synthetic request'})
             assert type(accepted.get('user_row_id')) is int, accepted
@@ -300,12 +308,13 @@ def main():
         home.mkdir()
         os.environ.clear()
         os.environ.update(PATH=f'{Path(sys.executable).parent}:/usr/bin:/bin', HERMES_HOME=str(home), HERMES_RUNTIME_DIR=str(Path(directory) / 'runtime'), PYTHONPYCACHEPREFIX=str(Path(directory) / 'pycache'), PYTHONUNBUFFERED='1', NO_PROXY='127.0.0.1,localhost', HERMES_NO_AUTO_INSTALL='1')
+        os.environ.update(isolated_user_environment(directory))
         model = ThreadingHTTPServer(('127.0.0.1', 0), WorkspaceModel)
         threading.Thread(target=model.serve_forever, daemon=True).start()
         shutil.copytree(ROOT / 'plugins/bot-web', home / 'plugins/bot-web', ignore=shutil.ignore_patterns('__pycache__'))
         (home / '.env').write_text('UNRELATED_TEST_KEY=synthetic-do-not-clone\n')
         (home / 'SOUL.md').write_text('SYNTHETIC_EXISTING_AURORA_PERSONALITY\n')
-        (home / 'config.yaml').write_text('model:\n  default: fixture-model\n  provider: custom:fixture\nproviders:\n  fixture:\n    base_url: http://127.0.0.1:' + str(model.server_port) + '/v1\n    api_key: fixture-only\nagent:\n  max_turns: 3\n  bot_mode_protocol: true\n  stream: false\ntools:\n  tool_search:\n    enabled: \'off\'\nplugins:\n  enabled: [bot-web]\n  entries:\n    bot-web:\n      enabled: true\n')
+        (home / 'config.yaml').write_text('auth:\n  adopt_external_logins: false\nmodel:\n  default: fixture-model\n  provider: custom:fixture\nproviders:\n  fixture:\n    base_url: http://127.0.0.1:' + str(model.server_port) + '/v1\n    api_key: fixture-only\nagent:\n  max_turns: 3\n  bot_mode_protocol: true\n  stream: false\ntools:\n  tool_search:\n    enabled: \'off\'\nplugins:\n  enabled: [bot-web]\n  entries:\n    bot-web:\n      enabled: true\n')
         load_plugin(ROOT)
         try:
             asyncio.run(verify(home, model.server_port))

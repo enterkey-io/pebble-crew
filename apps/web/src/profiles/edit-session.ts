@@ -1,4 +1,5 @@
 import type { Appearance, Role, WorkspaceBot } from '@hermes-client/protocol';
+import { roleInstructionFields } from '@hermes-client/protocol';
 
 export type ProfileValues = {
   name: string;
@@ -139,7 +140,7 @@ export function profileReducer(edit: ProfileSession, event: ProfileEvent): Profi
     if (equal(draft[key], incoming[key])) conflicts.delete(key);
   }
   fields.forEach(merge);
-  for (const key of roleFields) {
+  for (const key of ['title', 'description'] as const) {
     const merged = mergeOwned(
       edit.baseline.role[key],
       edit.draft.role[key],
@@ -148,6 +149,21 @@ export function profileReducer(edit: ProfileSession, event: ProfileEvent): Profi
     draft.role[key] = merged.value;
     if (merged.conflict) conflicts.add(`role.${key}`);
     if (equal(draft.role[key], event.values.role[key])) conflicts.delete(`role.${key}`);
+  }
+  const sameInstructions = (a: Role, b: Role) =>
+    roleInstructionFields.every((key) => a[key] === b[key]);
+  const instructionsDirty = !sameInstructions(edit.baseline.role, edit.draft.role);
+  const instructionsConflict =
+    instructionsDirty &&
+    !sameInstructions(edit.baseline.role, incoming.role) &&
+    !sameInstructions(edit.draft.role, incoming.role);
+  for (const key of roleInstructionFields) {
+    if (!instructionsDirty) draft.role[key] = incoming.role[key];
+  }
+  const instructionsMatchIncoming = sameInstructions(draft.role, incoming.role);
+  for (const key of roleInstructionFields) {
+    if (instructionsConflict) conflicts.add(`role.${key}`);
+    if (instructionsMatchIncoming) conflicts.delete(`role.${key}`);
   }
   if (edit.draft.photo && !equal(edit.baseline.appearance, event.values.appearance))
     conflicts.add('appearance');

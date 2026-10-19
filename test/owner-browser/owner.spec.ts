@@ -207,13 +207,20 @@ test('private first use, native onboarding, idle keepalive, reconnection, settin
       .getByRole('navigation', { name: 'Pebbles', includeHidden: true })
       .locator('.agent-avatar img'),
   ).toHaveCount(1);
-  await page.getByRole('tab', { name: 'Role', exact: true }).click();
   await page.getByLabel('Title', { exact: true }).fill('Team lead');
   await page.getByLabel('Description', { exact: true }).fill('Coordinates synthetic research');
+  await page.getByRole('button', { name: 'Save profile', exact: true }).click();
+  await expect(page.getByText('Profile saved.', { exact: true })).toBeVisible();
+  await page.getByRole('tab', { name: 'Role', exact: true }).click();
+  await page.getByLabel('Instructions', { exact: true }).fill('Coordinate synthetic research.');
   await page.getByRole('button', { name: 'Save role', exact: true }).click();
   await expect(
     page.getByRole('tabpanel', { name: 'Role', exact: true }).getByRole('status'),
   ).toHaveText('Role saved.');
+  await expect(page.getByLabel('Instructions', { exact: true })).toHaveValue(
+    'Coordinate synthetic research.',
+  );
+  await page.getByRole('tab', { name: 'Profile', exact: true }).click();
   await expect(page.getByLabel('Title', { exact: true })).toHaveValue('Team lead');
   await page.getByRole('button', { name: 'Close Edit Alpha', exact: true }).click();
   await page.getByRole('button', { name: 'Your account' }).click();
@@ -293,10 +300,11 @@ test('private first use, native onboarding, idle keepalive, reconnection, settin
   await page.getByLabel('Description', { exact: true }).fill('Synthetic existing researcher');
   await page.getByRole('combobox', { name: 'Reports to', exact: true }).click();
   await page.getByRole('option', { name: 'Beta', exact: true }).click();
-  await page.getByText('Responsibilities & boundaries', { exact: true }).click();
-  await page.getByLabel('Responsibilities', { exact: true }).fill('Summarize sources');
-  await page.getByLabel('Boundaries', { exact: true }).fill('Ask before publishing');
-  await page.getByLabel('Expected outputs', { exact: true }).fill('A research brief');
+  const instructions =
+    'Summarize sources.\n' +
+    'Keep sources attributable. '.repeat(60) +
+    '\nAsk before publishing. Return a research brief.';
+  await page.getByLabel('Instructions', { exact: true }).fill(instructions);
   const beforeSetupRecovery = tickets;
   await page.evaluate(() => window.dispatchEvent(new Event('offline')));
   await expect.poll(() => tickets).toBeGreaterThan(beforeSetupRecovery);
@@ -305,9 +313,7 @@ test('private first use, native onboarding, idle keepalive, reconnection, settin
   await expect(page.getByRole('combobox', { name: 'Reports to', exact: true })).toContainText(
     'Beta',
   );
-  await expect(page.getByLabel('Responsibilities', { exact: true })).toHaveValue(
-    'Summarize sources',
-  );
+  await expect(page.getByLabel('Instructions', { exact: true })).toHaveValue(instructions);
   await expect(page.locator('.banner[role="alert"]')).toHaveCount(0);
   await page.getByRole('button', { name: 'seed', exact: true }).click();
   await page.getByRole('button', { name: 'Moss', exact: true }).click();
@@ -323,17 +329,13 @@ test('private first use, native onboarding, idle keepalive, reconnection, settin
   await expect(page.getByRole('button', { name: /^Hazel .*Bot Chat$/ })).toBeVisible();
   await page.getByRole('button', { name: 'Actions for Hazel', exact: true }).click();
   await page.getByRole('menuitem', { name: 'Edit pebble', exact: true }).click();
+  await page.getByRole('tab', { name: 'Role', exact: true }).click();
   await expect(page.getByRole('combobox', { name: 'Reports to', exact: true })).toContainText(
     'Beta',
   );
-  await page.getByText('Responsibilities & boundaries', { exact: true }).click();
-  await expect(page.getByLabel('Responsibilities', { exact: true })).toHaveValue(
-    'Summarize sources',
-  );
-  await expect(page.getByLabel('Boundaries', { exact: true })).toHaveValue('Ask before publishing');
-  await expect(page.getByLabel('Expected outputs', { exact: true })).toHaveValue(
-    'A research brief',
-  );
+  await expect(page.getByLabel('Instructions', { exact: true })).toHaveValue(instructions);
+  await expect(page.getByLabel('Boundaries', { exact: true })).toHaveCount(0);
+  await expect(page.getByLabel('Expected outputs', { exact: true })).toHaveCount(0);
   await page.getByRole('button', { name: 'Close Edit Hazel', exact: true }).click();
   await page.getByRole('button', { name: 'New', exact: true }).click();
   await page.getByRole('menuitem', { name: 'New pebble', exact: true }).click();

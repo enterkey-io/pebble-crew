@@ -7,13 +7,23 @@ from test_security import ROOT
 from bot_web.payload import payload_paths, source_inventory, PRE_VOICE_FILES
 
 class PayloadImportTests(unittest.TestCase):
+    def test_shared_voice_source_is_shipped_and_an_omitted_dependency_is_rejected(self):
+        with tempfile.TemporaryDirectory() as directory:
+            source = Path(directory) / 'plugin'
+            shutil.copytree(ROOT / 'plugins/bot-web', source, ignore=shutil.ignore_patterns('__pycache__'))
+            self.assertIn((source / 'voice_credentials.py').resolve(), payload_paths(source))
+            path = source / 'payload.py'
+            path.write_text(path.read_text().replace("FILES = PRE_VOICE_FILES + ('live_voice.py', 'commands.py', 'voice_credentials.py')", "FILES = PRE_VOICE_FILES + ('live_voice.py', 'commands.py')"))
+            with self.assertRaisesRegex(ValueError, 'omits local import: voice_credentials.py'):
+                payload_paths(source)
+
     def test_commands_are_shipped_and_the_historical_omission_is_rejected(self):
         with tempfile.TemporaryDirectory() as directory:
             source = Path(directory) / 'plugin'
             shutil.copytree(ROOT / 'plugins/bot-web', source, ignore=shutil.ignore_patterns('__pycache__'))
             self.assertIn((source / 'commands.py').resolve(), payload_paths(source))
             path = source / 'payload.py'
-            path.write_text(path.read_text().replace("FILES = PRE_VOICE_FILES + ('live_voice.py', 'commands.py')", "FILES = PRE_VOICE_FILES + ('live_voice.py',)"))
+            path.write_text(path.read_text().replace("FILES = PRE_VOICE_FILES + ('live_voice.py', 'commands.py', 'voice_credentials.py')", "FILES = PRE_VOICE_FILES + ('live_voice.py',)"))
             with self.assertRaisesRegex(ValueError, 'omits local import: commands.py'):
                 payload_paths(source)
 

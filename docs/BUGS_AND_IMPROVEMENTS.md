@@ -4,6 +4,27 @@ Track owner reports here through implementation, verification and release. A
 published fix is separate from updating and verifying the owner's installation.
 New reports receive a stable ID; later work updates the existing entry.
 
+## 0.7.8-preview.15 role editing and shared voice setup
+
+| ID     | Report                                                    | Change                                                                                                                                                                            |
+| ------ | --------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| PC-080 | Role has cramped, unclear responsibilities/boundary boxes | One optional Instructions field for the job, steps and limits. Older saved text carries over; Title/Description stay in Profile.                                                  |
+| PC-081 | Voice asks to approve the same saved key again            | One persistent owner-wide native credential choice; each pebble keeps its own voice. Completed replacement requests do not replay on tab changes. No key copies between profiles. |
+
+Source, browser, native and exact-package verification passed. Publication is
+separate from updating the owner's installation.
+
+## 0.7.8-preview.15 chat photo viewer
+
+| ID     | Report                               | Change                                                                                                        |
+| ------ | ------------------------------------ | ------------------------------------------------------------------------------------------------------------- |
+| PC-079 | Chat photos cannot open at full size | Borderless viewer with wheel, Ctrl/Cmd shortcuts, pinch zoom, drag-to-pan, fit controls and accessible close. |
+
+Implemented locally with clean source checks, desktop/iPhone/Android browser
+journeys and screenshot review. These exercise the production bundle with a
+synthetic Hermes boundary; physical-device gestures and owner acceptance remain
+separate. Publication does not update the owner's Hermes.
+
 ## 0.7.8-preview.14 voice choices
 
 | ID     | Report                                               | Change                                                                                                                             |

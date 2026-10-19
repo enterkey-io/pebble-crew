@@ -11,7 +11,7 @@ PRE_VOICE_FILES = (
 )
 
 
-FILES = PRE_VOICE_FILES + ('live_voice.py', 'commands.py')
+FILES = PRE_VOICE_FILES + ('live_voice.py', 'commands.py', 'voice_credentials.py')
 
 def source_inventory(source):
     """Read a known literal inventory without importing inspected/rollback code."""
@@ -34,7 +34,7 @@ def source_inventory(source):
                 bases = [item.value for item in tree.body if isinstance(item, ast.Assign)
                          and any(isinstance(target, ast.Name) and target.id == 'PRE_VOICE_FILES' for target in item.targets)]
                 suffix = ast.literal_eval(node.value.right)
-                if len(bases) == 1 and ast.literal_eval(bases[0]) == PRE_VOICE_FILES and suffix in (('live_voice.py',), ('live_voice.py', 'commands.py')):
+                if len(bases) == 1 and ast.literal_eval(bases[0]) == PRE_VOICE_FILES and suffix in (('live_voice.py',), ('live_voice.py', 'commands.py'), ('live_voice.py', 'commands.py', 'voice_credentials.py')):
                     return PRE_VOICE_FILES + suffix
     raise ValueError("Unknown code inventory")
 

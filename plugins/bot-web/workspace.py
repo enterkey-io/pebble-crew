@@ -21,6 +21,7 @@ from .native import NativeError
 SHAPES = {'pebble', 'beacon', 'petal', 'kite', 'arch', 'cairn', 'seed', 'dune', 'flint', 'drift'}
 COLORS = {'iris', 'citron', 'clay', 'lagoon', 'rose', 'sky', 'white', 'umber', 'moss', 'ocean', 'heather', 'sienna'}
 ACTIONS = {'agent.enable', 'agent.create', 'agent.update', 'agent.attach', 'agent.hide', 'agent.delete'}
+ROLE_TEXT_LIMITS = {'title': 1000, 'description': 1000, 'responsibilities': 12000, 'boundaries': 1000, 'expectedOutputs': 1000}
 
 
 def workspace_path():
@@ -39,6 +40,7 @@ class WorkspaceStore:
         self.db.executescript('''
             CREATE TABLE IF NOT EXISTS workspace(id INTEGER PRIMARY KEY CHECK(id=1), revision INTEGER NOT NULL, data TEXT NOT NULL);
             CREATE TABLE IF NOT EXISTS requests(id TEXT PRIMARY KEY, actor TEXT NOT NULL, action TEXT NOT NULL, spec TEXT NOT NULL, fingerprint TEXT NOT NULL, state TEXT NOT NULL, result TEXT, created INTEGER NOT NULL, UNIQUE(actor,fingerprint));
+            CREATE TABLE IF NOT EXISTS voice_credential(id INTEGER PRIMARY KEY CHECK(id=1), profile TEXT NOT NULL, fingerprint TEXT NOT NULL);
         ''')
         from .presentation import init_store
         init_store(self.db)
@@ -177,7 +179,7 @@ class WorkspaceService:
                         team['name'] = section_name.strip()
                     state['bots'][name]['team'] = section_id
             native_role = meta.get('workspaceRole')
-            if isinstance(native_role, dict) and set(native_role) == set(state['bots'][name]['role']) and all(isinstance(v, str) and len(v) <= 1000 for v in native_role.values()):
+            if isinstance(native_role, dict) and set(native_role) == set(ROLE_TEXT_LIMITS) and all(isinstance(v, str) and len(v) <= ROLE_TEXT_LIMITS[k] for k, v in native_role.items()):
                 state['bots'][name]['role'] = deepcopy(native_role)
             await bind(self, row, state['bots'][name], stamps.get(name))
         if changed or json.dumps(state, sort_keys=True) != before:
@@ -545,7 +547,7 @@ class WorkspaceService:
         elif operation in {'roles.update', 'agent.update'}:
             role = params['role']
             fields(role, ['title', 'description', 'responsibilities', 'boundaries', 'expectedOutputs'])
-            role = {key: bounded(value, 1000) for key, value in role.items()}
+            role = {key: bounded(value, ROLE_TEXT_LIMITS[key]) for key, value in role.items()}
             if params['team'] is not None and params['team'] not in {t['id'] for t in state['teams']}:
                 raise InvalidOperation('Team unavailable')
             state['bots'][profile].update(role=role, manager=params['manager'], team=params['team'])

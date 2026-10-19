@@ -63,6 +63,7 @@ export function PebbleEditor({
   onVoiceReady?: (() => void) | undefined;
 }) {
   const [tab, setTab] = useState<string>(initialTab);
+  const [resolvedVoiceRequest, setResolvedVoiceRequest] = useState<VoiceSettingsRequest>();
   useEffect(() => {
     setTab(voiceRequest ? 'voice' : initialTab);
   }, [voiceRequest, initialTab]);
@@ -248,16 +249,6 @@ export function PebbleEditor({
                   description={role.description}
                   onChange={(change) => setRole((old) => ({ ...old, ...change }))}
                 />
-                <ReportingField
-                  state={state}
-                  profile={bot.profile}
-                  manager={manager}
-                  onChange={setManager}
-                />
-                <RoleDetails
-                  role={role}
-                  onChange={(patch) => setRole((old) => ({ ...old, ...patch }))}
-                />
               </PebbleProfileFields>
             </div>
             <footer className="profile-footer">
@@ -285,11 +276,6 @@ export function PebbleEditor({
                 void save('role');
               }}
             >
-              <RoleBasics
-                title={role.title}
-                description={role.description}
-                onChange={(patch) => setRole((old) => ({ ...old, ...patch }))}
-              />
               <ReportingField
                 state={state}
                 profile={bot.profile}
@@ -424,6 +410,8 @@ export function PebbleEditor({
             profile={bot.profile}
             callActive={callActive}
             request={voiceRequest}
+            requestResolved={!!voiceRequest && resolvedVoiceRequest === voiceRequest}
+            onCredentialConfirmed={() => setResolvedVoiceRequest(voiceRequest)}
             onReady={onVoiceReady}
             onClose={close}
           />

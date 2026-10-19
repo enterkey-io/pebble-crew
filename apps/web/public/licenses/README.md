@@ -11,3 +11,9 @@ The embedded pako implementation carries its MIT notice in pako-mit.md.
 
 The live voice transport and delegation helpers adapt Hermes af0cd4df under its
 MIT license. See [the source paths, changes and notice](hermes-live.md).
+
+## Photo viewer
+
+react-zoom-pan-pinch 4.2.0 supplies photo zoom and pan gestures under the MIT
+license. See [its notice](react-zoom-pan-pinch.md) and
+[source](https://github.com/BetterTyped/react-zoom-pan-pinch).

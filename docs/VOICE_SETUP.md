@@ -1,5 +1,21 @@
 # Voice setup in chat
 
+## 0.7.8-preview.15 implementation
+
+The owner approves a saved voice key once for this Hermes installation. The
+integration keeps a reference to its native credential source and a private
+approval fingerprint, never a second copy of the key. Reopening settings, changing
+pebbles and restarting the bridge retain that choice. Each pebble's voice stays
+in its own native configuration. A changed key or endpoint requires approval
+again; a missing source returns to private setup.
+
+Replacing the shared key writes only Hermes's dedicated `VOICE_TOOLS_OPENAI_KEY`
+slot in the default profile through its native secure-save lifecycle. Other
+profiles' credentials and reasoning-provider keys remain intact. The value never
+appears in chat, model context, browser storage or the app's metadata store.
+
+## Earlier research
+
 Research and proposed product flow, 17 October 2026. This extends the
 [live integration plan](VOICE_IMPLEMENTATION_PLAN.md). No credential, provider
 call, microphone or owner configuration was used during this research.

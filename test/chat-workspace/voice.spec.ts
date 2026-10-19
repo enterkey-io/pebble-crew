@@ -1,8 +1,98 @@
 import { test, expect } from '@playwright/test';
 import { writeFile } from 'node:fs/promises';
-import { installFixture } from './fixtures';
+import { installFixture, emit } from './fixtures';
 
 test.use({ serviceWorkers: 'block' });
+
+test('saved voice key approval survives reopening and reload across agents with separate voices', async ({
+  page,
+  context,
+}, info) => {
+  await installFixture(context, { voice: true });
+  let accepted = false,
+    approvals = 0;
+  const voices = new Map<string, string>();
+  await page.route('**/v1/rpc', async (route) => {
+    const { operation, params } = route.request().postDataJSON();
+    if (operation === 'voice.credential')
+      return route.fulfill({ json: { result: { saved: true, validated: false } } });
+    if (operation === 'voice.preferences') {
+      if (!accepted) approvals++;
+      accepted = true;
+      voices.set(params.session_id, params.voice);
+    }
+    if (operation === 'voice.status' || operation === 'voice.preferences')
+      return route.fulfill({
+        json: {
+          result: {
+            supported: true,
+            configured: true,
+            voice: voices.get(params.session_id) ?? 'marin',
+            voices: ['marin', 'cedar'],
+            setup_complete: voices.has(params.session_id),
+            key_confirmed: accepted,
+          },
+        },
+      });
+    if (operation === 'secrets.pending')
+      return route.fulfill({ json: { result: { requests: [] } } });
+    await route.fallback();
+  });
+  const openVoice = async (name: string) => {
+    const actions = page.getByRole('button', { name: `Actions for ${name}`, exact: true });
+    if (!(await actions.isVisible()))
+      await page.getByRole('button', { name: 'Toggle navigation', exact: true }).click();
+    await actions.click();
+    await page.getByRole('menuitem', { name: 'Edit pebble', exact: true }).click();
+    await page.getByRole('tab', { name: 'Voice', exact: true }).click();
+  };
+  await page.goto('/');
+  await expect(page.getByLabel('Message', { exact: true })).toBeEnabled();
+  await openVoice('Mica');
+  await page.getByRole('button', { name: 'Use saved key', exact: true }).click();
+  await page.getByRole('combobox', { name: 'Voice', exact: true }).click();
+  await page.getByRole('option', { name: 'Cedar', exact: true }).click();
+  await page.getByRole('button', { name: 'Save', exact: true }).click();
+  await expect(page.getByText('Saved.', { exact: true })).toBeVisible();
+  await page.getByRole('button', { name: 'Close Edit Mica', exact: true }).click();
+  await openVoice('Mica');
+  await expect(page.getByRole('combobox', { name: 'Voice', exact: true })).toContainText('Cedar');
+  await expect(page.getByRole('button', { name: 'Use saved key', exact: true })).toHaveCount(0);
+  await expect(page.getByRole('form', { name: 'OpenAI API key' })).toHaveCount(0);
+  await page.screenshot({
+    path: info.outputPath('voice-shared-key-mica.png'),
+    animations: 'disabled',
+  });
+  await page.getByRole('button', { name: 'Close Edit Mica', exact: true }).click();
+  await openVoice('Rowan');
+  await expect(page.getByRole('combobox', { name: 'Voice', exact: true })).toContainText('Marin');
+  await expect(page.getByRole('button', { name: 'Use saved key', exact: true })).toHaveCount(0);
+  await expect(page.getByRole('form', { name: 'OpenAI API key' })).toHaveCount(0);
+  await page.getByRole('button', { name: 'Save', exact: true }).click();
+  await expect(page.getByText('Saved.', { exact: true })).toBeVisible();
+  await page.screenshot({
+    path: info.outputPath('voice-shared-key-rowan.png'),
+    animations: 'disabled',
+  });
+  await page.getByRole('button', { name: 'Close Edit Rowan', exact: true }).click();
+  await page.reload();
+  await expect(page.getByLabel('Message', { exact: true })).toBeEnabled();
+  await openVoice('Mica');
+  await expect(page.getByRole('combobox', { name: 'Voice', exact: true })).toContainText('Cedar');
+  await expect(page.getByRole('button', { name: 'Use saved key', exact: true })).toHaveCount(0);
+  expect(approvals).toBe(1);
+  expect(voices.get('session-mica')).toBe('cedar');
+  expect(voices.get('session-rowan')).toBe('marin');
+  await page.getByRole('button', { name: 'Close Edit Mica', exact: true }).click();
+  await emit(page, 'voice.setup', { replace_key: true });
+  await page.getByLabel('API key', { exact: true }).fill('synthetic-replacement-key');
+  await page.getByRole('button', { name: 'Submit', exact: true }).click();
+  await expect(page.getByRole('combobox', { name: 'Voice', exact: true })).toBeVisible();
+  await page.getByRole('tab', { name: 'Profile', exact: true }).click();
+  await page.getByRole('tab', { name: 'Voice', exact: true }).click();
+  await expect(page.getByRole('combobox', { name: 'Voice', exact: true })).toBeVisible();
+  await expect(page.getByRole('form', { name: 'OpenAI API key' })).toHaveCount(0);
+});
 
 test('private voice setup, Snow and selected-Pebble message colors', async ({
   page,
@@ -671,7 +761,7 @@ test('Preview reports a saved-key rejection without requesting or blaming the mi
   await expect(page.getByRole('button', { name: 'Preview', exact: true })).toHaveCount(0);
   await expect(page.locator('[data-slot=confirmation]')).toContainText('OpenAI API key');
   await expect(page.getByLabel('Voice settings', { exact: true })).toContainText(
-    'Saved keys are never displayed',
+    'all your pebbles',
   );
   await page.getByRole('button', { name: 'Use saved key', exact: true }).click();
   await page.getByRole('combobox', { name: 'Voice', exact: true }).click();

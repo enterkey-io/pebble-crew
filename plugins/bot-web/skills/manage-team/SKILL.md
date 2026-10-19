@@ -25,6 +25,11 @@ propose a change, use exactly one of the following actions and spec fields:
   never a clone. Configuration is not proof of a successful runtime turn.
 - `agent.update`: `profile`, `role`, `manager`, `team`, `expected_revision`.
   Role has `title`, `description`, `responsibilities`, `boundaries`, `expectedOutputs`.
+  The owner edits one optional Instructions field. Put the complete job, steps
+  and limits in `responsibilities` (up to 12,000 characters), with `boundaries`
+  and `expectedOutputs` empty. Preserve older separate fields when changing
+  unrelated metadata. These instructions supplement the existing Hermes setup;
+  do not rewrite SOUL, memory or skills to change a job assignment.
 - `agent.hide`: `profile`, `id`, `hidden` (true to hide, false to unhide),
   `expected_revision`. Reversible; preserves the whole profile and its crews.
 - `agent.delete`: `profile`, `id`, `expected_revision`. This proposes permanent

@@ -37,7 +37,7 @@ For phone proof of the same behavior, run:
 CI=1 npx playwright test --config playwright.mobile.config.ts setup-continuity.spec.ts --grep 'existing pebble setup'
 ```
 
-Use ARIA labels and existing fixture helpers for exploratory cases. The flow above opens New, New pebble, Add existing Hermes agent, chooses Existing Example, edits Name, Description, Reports to and Responsibilities, then interrupts the stream. It must keep the dialog and values, reconnect, and show no transient red interruption banner. The existing Messages/Settings UI must remain mounted. This is a real production UI with the external bridge boundary simulated, not native persistence proof.
+Use ARIA labels and existing fixture helpers for exploratory cases. The flow above opens New, New pebble, Add existing Hermes agent, chooses Existing Example, edits Name, Description, Reports to and Instructions, then interrupts the stream. It must keep the dialog and values, reconnect, and show no transient red interruption banner. The existing Messages/Settings UI must remain mounted. This is a real production UI with the external bridge boundary simulated, not native persistence proof.
 
 Run `npm run test:owner-browser` when a profile, avatar, setup or chat contract changes. Run `node scripts/test-installed-plugin.mjs` against the final packaged archive for install, update, rollback or supervision changes. Prepare its explicit native paths and package first. Do not repackage or rebuild while a native or installed-package run uses those files.
 

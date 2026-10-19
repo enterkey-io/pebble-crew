@@ -345,6 +345,7 @@ export function NewPebble({
                     onChange={(manager) => dispatch({ type: 'change', patch: { manager } })}
                   />
                   <RoleDetails
+                    context="new"
                     role={role}
                     onChange={(change) =>
                       dispatch({ type: 'change', patch: { role: { ...role, ...change } } })

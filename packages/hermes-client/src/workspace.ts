@@ -1,5 +1,6 @@
 import { APPEARANCE_COLORS, ClientError, SHAPES } from '@hermes-client/core';
 import { record } from './json';
+import { ROLE_INSTRUCTIONS_LIMIT } from './role-instructions';
 
 function text(value: unknown, limit: number, blank = true): string {
   if (typeof value !== 'string' || [...value].length > limit || (!blank && !value.trim()))
@@ -60,7 +61,7 @@ export function decodeRole(value: unknown) {
   return {
     title: text(data.title, 1000),
     description: text(data.description, 1000),
-    responsibilities: text(data.responsibilities, 1000),
+    responsibilities: text(data.responsibilities, ROLE_INSTRUCTIONS_LIMIT),
     boundaries: text(data.boundaries, 1000),
     expectedOutputs: text(data.expectedOutputs, 1000),
   };

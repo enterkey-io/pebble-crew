@@ -31,6 +31,8 @@ export const VoiceChat = forwardRef<
     onAccepted: (message: ChatMessage) => void;
     onOpenSettings?: (request: VoiceSettingsRequest) => void;
     settingsRequest?: VoiceSettingsRequest | undefined;
+    requestResolved?: boolean;
+    onCredentialConfirmed?: () => void;
     onReady?: (() => void) | undefined;
     onDismiss?: (() => void) | undefined;
     onActiveChange?: (active: boolean) => void;
@@ -48,6 +50,8 @@ export const VoiceChat = forwardRef<
     onAccepted,
     onOpenSettings,
     settingsRequest,
+    requestResolved = false,
+    onCredentialConfirmed,
     onReady,
     onDismiss,
     onActiveChange,
@@ -117,7 +121,8 @@ export const VoiceChat = forwardRef<
     if (mode === 'chat' && (state !== 'idle' || opening)) return;
     if (mode === 'settings') end();
     setError(
-      settingsRequest?.kind === 'failure' || settingsRequest?.kind === 'key-failure'
+      !requestResolved &&
+        (settingsRequest?.kind === 'failure' || settingsRequest?.kind === 'key-failure')
         ? settingsRequest.message
         : '',
     );
@@ -126,7 +131,8 @@ export const VoiceChat = forwardRef<
     const epoch = generation.current;
     try {
       const value = await loadSettings(
-        settingsRequest?.kind === 'replace-key' || settingsRequest?.kind === 'key-failure',
+        !requestResolved &&
+          (settingsRequest?.kind === 'replace-key' || settingsRequest?.kind === 'key-failure'),
       );
       setOpening(false);
       if (mode === 'chat') {
@@ -502,12 +508,16 @@ export const VoiceChat = forwardRef<
             if (receipt.saved !== true) throw new Error('Save not confirmed');
             await savePreferences(false);
             setStep('settings');
+            onCredentialConfirmed?.();
           }}
           onUseSaved={() => {
             setSaving(true);
             setError('');
             void savePreferences(false)
-              .then(() => setStep('settings'))
+              .then(() => {
+                setStep('settings');
+                onCredentialConfirmed?.();
+              })
               .catch((cause) => setError(voiceFailure(cause)))
               .finally(() => setSaving(false));
           }}

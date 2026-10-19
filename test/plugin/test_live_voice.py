@@ -94,6 +94,12 @@ class VoiceBoundaryTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(native.secrets, {})
 
 class ProviderErrorTests(unittest.TestCase):
+    def setUp(self):
+        approved = patch('bot_web.live_voice.resolve_source', return_value={
+            'key': 'synthetic-private-key', 'base': 'https://provider.invalid/v1', 'confirmed': True})
+        approved.start()
+        self.addCleanup(approved.stop)
+
     def test_legacy_app_pace_is_removed_from_both_session_kinds_without_config_writes(self):
         from bot_web.live_voice import create_session, without_pebble_delivery
         owner = '  Keep the owner pronunciation rules.  '
@@ -149,6 +155,14 @@ class ProviderErrorTests(unittest.TestCase):
         import urllib.error
         from bot_web.live_voice import create_session
         native = SimpleNamespace(_live_section=lambda: {}, _resolve_credentials=lambda _: ('', 'https://provider.invalid/v1'))
-        with patch.dict('sys.modules', {'tools': SimpleNamespace(voice_live=native), 'tools.voice_live': native}), self.assertRaises(InvalidOperation) as caught:
+        with patch.dict('sys.modules', {'tools': SimpleNamespace(voice_live=native), 'tools.voice_live': native}), patch('bot_web.live_voice.resolve_source', return_value={'key': '', 'base': 'https://provider.invalid/v1', 'confirmed': False}), self.assertRaises(InvalidOperation) as caught:
             create_session('v=0\r\n', 'Synthetic', False)
         self.assertEqual(caught.exception.code, 'VOICE_KEY_REQUIRED')
+
+    def test_unconfirmed_changed_key_never_reaches_the_provider(self):
+        from bot_web.live_voice import create_session
+        native = SimpleNamespace(_live_section=lambda: {})
+        with patch.dict('sys.modules', {'tools': SimpleNamespace(voice_live=native)}), patch('bot_web.live_voice.resolve_source', return_value={'key': 'changed-key', 'base': 'https://provider.invalid/v1', 'confirmed': False}), patch('bot_web.live_voice.urllib.request.urlopen') as send, self.assertRaises(InvalidOperation) as caught:
+            create_session('v=0\r\n', 'Synthetic', False)
+        self.assertEqual(caught.exception.code, 'VOICE_KEY_REQUIRED')
+        send.assert_not_called()

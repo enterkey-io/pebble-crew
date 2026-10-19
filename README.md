@@ -106,7 +106,7 @@ Native Mac/Windows/iOS clients are later applications using the same owner-side
 contracts; their frameworks have not been selected. Project website: [pebblecrew.com](https://pebblecrew.com).
 
 Live voice uses Hermes’s native OpenAI GPT-Live mode on the supported 0.21.7
-build. The owner can enter a key privately in chat, choose a voice and pace,
+build. The owner can enter a key privately in chat and choose a voice per pebble,
 preview without a microphone, then start a continuous call. Keys remain in native
 Hermes storage; audio and bounded chat context go to OpenAI. Native agent tools,
 reasoning models, approvals and canonical Bot Chat remain authoritative. See

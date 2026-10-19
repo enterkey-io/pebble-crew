@@ -1,6 +1,12 @@
 import { Label } from '../components/ui/label';
+import { useId } from 'react';
 import type { ReactNode } from 'react';
 import type { BotBridgeClient } from '@hermes-client/protocol';
+import {
+  roleInstructions,
+  withRoleInstructions,
+  ROLE_INSTRUCTIONS_LIMIT,
+} from '@hermes-client/protocol';
 import type {
   Appearance,
   Role,
@@ -9,6 +15,7 @@ import type {
 import { AvatarChooser } from '../AgentAvatar';
 import { Input } from '../components/ui/input';
 import { Textarea } from '../components/ui/textarea';
+import { Field, FieldLabel, FieldDescription } from '../components/ui/field';
 import {
   Select,
   SelectContent,
@@ -160,32 +167,32 @@ export function ReportingField({
 export function RoleDetails({
   role,
   onChange,
+  context = 'existing',
 }: {
   role: Role;
   onChange: (patch: Partial<Role>) => void;
+  context?: 'existing' | 'new';
 }) {
+  const id = useId();
   return (
-    <details className="form-disclosure">
-      <summary>Responsibilities & boundaries</summary>
-      {(['responsibilities', 'boundaries', 'expectedOutputs'] as const).map((key) => {
-        const label = {
-          responsibilities: 'Responsibilities',
-          boundaries: 'Boundaries',
-          expectedOutputs: 'Expected outputs',
-        }[key];
-        return (
-          <Label layout="stacked" key={key}>
-            {label}
-            <Textarea
-              aria-label={label}
-              rows={3}
-              maxLength={1000}
-              value={role[key]}
-              onChange={(event) => onChange({ [key]: event.target.value })}
-            />
-          </Label>
-        );
-      })}
-    </details>
+    <Field>
+      <FieldLabel htmlFor={id}>
+        Instructions <span className="font-normal text-muted-foreground">(optional)</span>
+      </FieldLabel>
+      <FieldDescription id={`${id}-help`}>
+        {context === 'new'
+          ? 'Describe their job, steps to follow and limits.'
+          : 'Adds to this agent’s Hermes instructions. Their personality and memory stay in place.'}
+      </FieldDescription>
+      <Textarea
+        id={id}
+        aria-label="Instructions"
+        aria-describedby={`${id}-help`}
+        rows={8}
+        maxLength={ROLE_INSTRUCTIONS_LIMIT}
+        value={roleInstructions(role)}
+        onChange={(event) => onChange(withRoleInstructions(role, event.target.value))}
+      />
+    </Field>
   );
 }

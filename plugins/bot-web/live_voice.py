@@ -13,6 +13,7 @@ import urllib.error
 import socket
 
 from .operations import InvalidOperation, fields, identifier
+from .voice_credentials import resolve_source, confirm_source, save_shared_key
 
 VOICE_ERROR_CODES = {'VOICE_KEY_REJECTED', 'VOICE_PROVIDER_UNREACHABLE', 'VOICE_INVALID_ANSWER', 'VOICE_KEY_REQUIRED', 'VOICE_SETUP_FAILED', 'VOICE_PREFERENCES_FAILED', 'VOICE_ACCESS_DENIED', 'VOICE_OFFER_REJECTED', 'VOICE_MODEL_UNAVAILABLE', 'VOICE_LIMIT_REACHED', 'VOICE_RATE_LIMITED', 'VOICE_CREDITS_EXHAUSTED', 'VOICE_SPEND_LIMIT_REACHED', 'VOICE_QUOTA_EXHAUSTED', 'VOICE_PROVIDER_TIMEOUT', 'VOICE_PROVIDER_UNAVAILABLE'}
 
@@ -34,8 +35,9 @@ def preferences():
     from tools import voice_live as native
     status = native.resolve_gpt_live_status()
     live = native._live_section()
-    return {'supported': True, 'provider': 'openai', 'configured': status['available'],
-            'voice': status['voice'], 'voices': list(native.GPT_LIVE_VOICES), 'setup_complete': live.get('pebble_setup_complete') is True, 'key_confirmed': bool(status['available']) and (live.get('pebble_key_confirmed') is True or live.get('pebble_setup_complete') is True), 'can_change_key': not bool(live.get('api_key'))}
+    source = resolve_source()
+    return {'supported': True, 'provider': 'openai', 'configured': bool(source['key']),
+            'voice': status['voice'], 'voices': list(native.GPT_LIVE_VOICES), 'setup_complete': source['confirmed'] and live.get('pebble_setup_complete') is True, 'key_confirmed': source['confirmed'], 'can_change_key': source['can_change_key']}
 
 
 def without_pebble_delivery(instructions):
@@ -55,15 +57,18 @@ def save_preferences(voice, complete):
         if config['voice'].get('gpt_live') is None:
             config['voice']['gpt_live'] = {}
         live = config.setdefault('voice', {}).setdefault('gpt_live', {})
+        source = resolve_source()
+        if not source['key']:
+            raise InvalidOperation('Set up an OpenAI voice key first', 'VOICE_KEY_REQUIRED')
         if isinstance(live.get('instructions'), str):
             live['instructions'] = without_pebble_delivery(live['instructions'])
         live['voice'] = voice
         live.pop('pebble_speed', None)
-        if preferences()['configured']:
-            live['pebble_key_confirmed'] = True
+        live['pebble_key_confirmed'] = True
         if complete:
             live['pebble_setup_complete'] = True
         save_config(config, preserve_keys={('voice', 'gpt_live', key) for key in ('voice', 'instructions', 'pebble_key_confirmed', 'pebble_setup_complete') if key in live})
+        confirm_source(source['profile'], source['key'], source['base'])
         actual = preferences()
         saved = (read_user_config_raw() or {}).get('voice', {}).get('gpt_live', {})
         if actual['voice'] != voice or (complete and not actual['setup_complete']) or (live.get('pebble_key_confirmed') is True and not actual['key_confirmed']) or saved.get('instructions') != live.get('instructions') or 'pebble_speed' in saved:
@@ -73,10 +78,12 @@ def save_preferences(voice, complete):
 
 def create_session(sdp, name, preview, history=None):
     from tools import voice_live as native
-    live = native._live_section()
-    key, base = native._resolve_credentials(live)
+    source = resolve_source()
+    key, base = source['key'], source['base']
     if not key:
         raise InvalidOperation('Set up an OpenAI voice key first', 'VOICE_KEY_REQUIRED')
+    if not source['confirmed']:
+        raise InvalidOperation('Approve the saved voice key first', 'VOICE_KEY_REQUIRED')
     # Preserve native delegation/backchannel/interrupt policy and owner instructions;
     # replace only the generic frontend identity for this ephemeral session.
     session = native.build_session_config(history if not preview else None)
@@ -208,13 +215,9 @@ class LiveVoice:
                         raise ValueError('Invalid credential')
                     # Do not overwrite a higher-precedence inline voice key or a
                     # reasoning-provider key. Native lifecycle owns storage/refusals.
-                    from tools import voice_live as native
-                    if native._live_section().get('api_key'):
+                    if not resolve_source()['can_change_key']:
                         raise ValueError('Voice already has an explicitly configured key')
-                    from hermes_cli.config import save_env_value_secure, load_env
-                    receipt = save_env_value_secure('VOICE_TOOLS_OPENAI_KEY', value)
-                    if receipt.get('success') is not True or load_env().get('VOICE_TOOLS_OPENAI_KEY') != value:
-                        raise ValueError('Native secret save not confirmed')
+                    save_shared_key(value)
                     return {'saved': True, 'validated': False}
                 sdp = params['sdp']
                 if not isinstance(sdp, str) or not sdp.startswith('v=0') or len(sdp) > 48_000 or type(params['preview']) is not bool:

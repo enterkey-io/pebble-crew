@@ -11,6 +11,8 @@ export function VoiceSettingsEditor({
   profile,
   callActive,
   request,
+  requestResolved,
+  onCredentialConfirmed,
   onReady,
   onClose,
 }: {
@@ -18,6 +20,8 @@ export function VoiceSettingsEditor({
   profile: string;
   callActive: boolean;
   request?: VoiceSettingsRequest | undefined;
+  requestResolved: boolean;
+  onCredentialConfirmed: () => void;
   onReady?: (() => void) | undefined;
   onClose: () => void;
 }) {
@@ -53,6 +57,8 @@ export function VoiceSettingsEditor({
       onAccepted={() => undefined}
       mode="settings"
       settingsRequest={request}
+      requestResolved={requestResolved}
+      onCredentialConfirmed={onCredentialConfirmed}
       onReady={onReady}
       onDismiss={onClose}
       externalCallActive={callActive}

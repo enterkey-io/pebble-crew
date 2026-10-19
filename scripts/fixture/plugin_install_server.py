@@ -20,7 +20,7 @@ import urllib.request
 from urllib.parse import urlsplit
 from zipfile import ZipFile
 
-from native_smoke import Model
+from native_smoke import Model, isolated_user_environment
 
 
 def main():
@@ -56,12 +56,13 @@ def main():
         HOME=str(directory), HERMES_HOME=str(home), PYTHONPATH=args.source,
         HERMES_RUNTIME_DIR=str(directory / 'native-runtime'), PYTHONDONTWRITEBYTECODE='1',
         HERMES_NO_AUTO_INSTALL='1', HERMES_GUEST_ONBOARDING='0', NO_PROXY='127.0.0.1,localhost')
+    os.environ.update(isolated_user_environment(directory))
     sys.path.insert(0, args.source)
     model = ThreadingHTTPServer(('127.0.0.1', 0), Model)
     Model.audit_requests = True
     threading.Thread(target=model.serve_forever, daemon=True).start()
     from hermes_cli.profiles import create_profile
-    config = ("model:\n  default: fixture-model\n  provider: custom:fixture\nproviders:\n"
+    config = ("auth:\n  adopt_external_logins: false\nmodel:\n  default: fixture-model\n  provider: custom:fixture\nproviders:\n"
         f"  fixture:\n    base_url: http://127.0.0.1:{model.server_port}/v1\n    api_key: fixture-only\n"
         "agent:\n  max_turns: 3\n  bot_mode_protocol: true\napprovals:\n  mode: manual\ntoolsets:\n  - terminal\n")
     (home / 'config.yaml').write_text(config)

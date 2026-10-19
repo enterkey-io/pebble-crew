@@ -862,10 +862,6 @@
     top: var(--app-viewport-top, 0px);
     inset-inline: 0;
   }
-  [data-slot='dialog-content'] {
-    top: calc(var(--app-viewport-top, 0px) + var(--app-viewport-height, 100dvh) / 2);
-    max-height: calc(var(--app-viewport-height, 100dvh) - 24px);
-  }
   [data-slot='sheet-content'] {
     top: var(--app-viewport-top, 0px);
     bottom: auto;

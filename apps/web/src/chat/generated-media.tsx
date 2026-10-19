@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useRef, useState } from 'react';
+import { createContext, lazy, Suspense, useContext, useEffect, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 import type { BotBridgeClient, DownloadedMedia } from '@hermes-client/protocol';
 import { Download, File, RotateCw } from 'lucide-react';
@@ -12,6 +12,9 @@ import {
   AttachmentDescription,
 } from '../components/ui/attachment';
 import { Button } from '../components/ui/button';
+import { Dialog, DialogTrigger } from '../components/ui/dialog';
+
+const ImageViewerContent = lazy(() => import('../components/ui/image-viewer'));
 
 export type MessageMedia =
   | { kind: 'pending'; identity: string }
@@ -118,6 +121,7 @@ export function GeneratedImage({ source, alt }: { source: string; alt: string })
   const host = useRef<HTMLSpanElement>(null);
   const [visible, setVisible] = useState(false);
   const [attempt, setAttempt] = useState(0);
+  const [viewer, setViewer] = useState<{ key: string; open: boolean }>();
   const [loaded, setState] = useState<ImageState>({ kind: 'loading', key });
   const state: ImageState = loaded.key === key ? loaded : { kind: 'loading', key };
   const resource = useRef<{ key: string; url: string } | undefined>(undefined);
@@ -169,19 +173,42 @@ export function GeneratedImage({ source, alt }: { source: string; alt: string })
     <span className="message-image" ref={host}>
       {state.kind === 'ready' && state.file.blob.type.startsWith('image/') ? (
         <>
-          <img
-            src={state.url}
-            alt={alt || state.file.name}
-            loading="lazy"
-            decoding="async"
-            onError={() => {
-              if (resource.current?.url === state.url) {
-                URL.revokeObjectURL(resource.current.url);
-                resource.current = undefined;
-              }
-              setState({ kind: 'error', key });
-            }}
-          />
+          <Dialog
+            open={viewer?.key === key && viewer.open}
+            onOpenChange={(open) => setViewer({ key, open })}
+          >
+            <DialogTrigger asChild>
+              <Button
+                variant="quiet"
+                className="message-image-open block size-full cursor-zoom-in rounded-none p-0"
+                aria-label={`View ${alt || state.file.name}`}
+              >
+                <img
+                  src={state.url}
+                  alt={alt || state.file.name}
+                  loading="lazy"
+                  decoding="async"
+                  onError={() => {
+                    if (resource.current?.url === state.url) {
+                      URL.revokeObjectURL(resource.current.url);
+                      resource.current = undefined;
+                    }
+                    setState({ kind: 'error', key });
+                  }}
+                />
+              </Button>
+            </DialogTrigger>
+            {viewer?.key === key && (
+              <Suspense fallback={<LoadingBar as="span" active label="Opening image" />}>
+                <ImageViewerContent
+                  src={state.url}
+                  alt={alt || state.file.name}
+                  open={viewer.open}
+                  onOpenChange={(open) => setViewer({ key, open })}
+                />
+              </Suspense>
+            )}
+          </Dialog>
           <IconButton
             className="message-image-download"
             label={`Download ${state.file.name}`}

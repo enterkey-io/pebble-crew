@@ -10,7 +10,12 @@ Use New in the left rail, then New pebble. Choose Add existing Hermes agent or C
 
 ## Driving it with Playwright
 
-Run `CI=1 npx playwright test --config playwright.chat.config.ts owner-ui.spec.ts setup-continuity.spec.ts profile-recovery.spec.ts`. Drive Name, Handle, Title, Description, Reports to, Responsibilities, avatar and photo controls through their labels. Save, reopen and assert persistence. Run the mapped continuity specs on `playwright.mobile.config.ts` too.
+Run `CI=1 npx playwright test --config playwright.chat.config.ts owner-ui.spec.ts setup-continuity.spec.ts profile-recovery.spec.ts role-instructions.spec.ts`. Drive Name, Handle, Title, Description, Reports to, Instructions, avatar and photo controls through their labels. Title and Description live in Profile; Role contains reporting and one optional Instructions field. Save, reopen and assert persistence. Run the mapped continuity and instruction specs on `playwright.mobile.config.ts` too.
+
+The instruction journey preserves all older role text, measures label/field
+separation, retains a whole instruction draft across an agent's concurrent edit,
+and saves/reopens text longer than the old 1,000-character field limit. Native
+owner acceptance exercises that larger value while preserving the existing SOUL.
 
 Native persistence is covered by `npm run test:owner-browser` using synthetic profiles, original SOUL sentinels and a local model. It must preserve persona/model data and reject reporting cycles before native writes.
 

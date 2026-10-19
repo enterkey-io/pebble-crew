@@ -72,7 +72,7 @@ export function VoicePanel({
             {settings.configured && step === 'key' && (
               <div className="grid gap-3">
                 <p className="text-sm text-muted-foreground">
-                  An OpenAI key is saved in Hermes. Saved keys are never displayed.
+                  Use the OpenAI key saved in Hermes for all your pebbles.
                 </p>
                 <Button onClick={onUseSaved} disabled={busy}>
                   Use saved key
@@ -86,7 +86,7 @@ export function VoicePanel({
                 description={
                   settings.configured
                     ? 'Enter a new OpenAI API key for voice.'
-                    : 'Saved privately in this Pebble’s Hermes profile.'
+                    : 'Saved privately in Hermes for all your pebbles.'
                 }
                 onSubmit={onKey}
                 onSkip={onClose}

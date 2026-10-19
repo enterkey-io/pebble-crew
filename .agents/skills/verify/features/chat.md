@@ -28,6 +28,13 @@ inspect settled screenshots. Images above the restored latest-message viewport
 load when scrolled into view; approach the stable image frame before asserting
 decoded pixels.
 
+`image-viewer.spec.ts` opens an original chat photo in the shared borderless
+dialog, exercises wheel/keyboard zoom, pan, fit, backdrop/Escape/Back dismissal
+and draft/image preservation through reconnect. Its phone wrapper additionally
+checks touch pinch/pan, resized viewports and reduced motion. Inspect settled
+desktop, iPhone and Android captures. Touch-event checks do not prove physical
+device gestures; mobile WebKit does not expose a mouse-wheel driver.
+
 `scripts/fixture/media_smoke.py` verifies actual native assistant provenance and
 bounded reads in isolated default/named profiles on both supported Hermes builds,
 including database replacement between chunks. It asserts zero model turns.

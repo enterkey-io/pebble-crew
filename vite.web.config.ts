@@ -2,10 +2,11 @@ import { defineConfig } from 'vite';
 import { resolve } from 'node:path';
 import tailwindcss from '@tailwindcss/vite';
 import { appearancePlugin } from './scripts/appearance-plugin';
+import { imageViewerStylesPlugin } from './scripts/image-viewer-styles-plugin';
 
 export default defineConfig({
   root: 'apps/web',
-  plugins: [tailwindcss(), appearancePlugin()],
+  plugins: [tailwindcss(), appearancePlugin(), imageViewerStylesPlugin()],
   resolve: {
     alias: {
       '@': new URL('./apps/web/src', import.meta.url).pathname,

@@ -1,5 +1,19 @@
 # Installed-owner implementation status
 
+**0.7.8-preview.15 candidate:** voice uses one persistent owner-wide reference to
+Hermes's saved credential, with a separate voice choice for each pebble. Existing
+explicit approvals are reused. Completed key-replacement requests do not replay
+when switching editor tabs. Keys remain in native Hermes storage.
+
+Role editing uses one optional Instructions field for the job, steps and limits.
+Existing role text carries over. Title and Description stay in Profile, and
+Hermes personality and memory files remain intact. Chat photos open in a
+borderless viewer with wheel, keyboard, pinch and drag controls.
+
+Source, desktop, phone and isolated native checks passed. The release gate tests
+the final archive before publication. Publishing does not upgrade an owner's
+Hermes installation.
+
 **0.7.8-preview.14 candidate:** voice selection groups
 native choices under Female, Male and Other (unclassified/custom voices). The
 unreliable speed control is removed from preview and live settings. Explicit

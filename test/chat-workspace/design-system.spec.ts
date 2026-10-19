@@ -64,7 +64,7 @@ test('shared design system: account settings, connections, requests, editor and 
   await accessible(page);
   await page.screenshot({ animations: 'disabled', path: 'test-results/edit-pebble-profile.png' });
   await page.getByRole('tab', { name: 'Role', exact: true }).click();
-  await page.getByLabel('Title', { exact: true }).fill('Executive coordinator');
+  await page.getByLabel('Instructions', { exact: true }).fill('Coordinate the team.');
   await page.getByRole('button', { name: 'Save role', exact: true }).click();
   await expect(page.getByText('Role saved.', { exact: true })).toBeVisible();
   await accessible(page);
@@ -84,7 +84,7 @@ test('editor preserves drafts across events and unrelated saves, resolves confli
   await page.getByRole('menuitem', { name: 'Edit pebble', exact: true }).click();
   await page.getByLabel('Handle', { exact: true }).fill('my-mica');
   await page.getByRole('tab', { name: 'Role', exact: true }).click();
-  await page.getByLabel('Title', { exact: true }).fill('My unsaved title');
+  await page.getByLabel('Instructions', { exact: true }).fill('My saved role instructions');
   await page.getByRole('button', { name: 'Save role', exact: true }).click();
   await expect(page.getByText('Role saved.', { exact: true })).toBeVisible();
   await page.getByRole('tab', { name: 'Profile', exact: true }).click();

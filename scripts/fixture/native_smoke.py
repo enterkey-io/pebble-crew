@@ -18,6 +18,18 @@ import threading
 import time
 
 
+def isolated_user_environment(directory):
+    root = Path(directory)
+    binary = root / 'fixture-bin'
+    binary.mkdir(exist_ok=True)
+    keychain = binary / 'security'
+    keychain.write_text('#!/bin/sh\nexit 1\n')
+    keychain.chmod(0o700)
+    return {'HOME': str(root), 'XDG_CONFIG_HOME': str(root / '.config'),
+            'CLAUDE_CONFIG_DIR': str(root / '.claude'),
+            'PATH': str(binary) + ':' + os.environ.get('PATH', f'{Path(sys.executable).parent}:/usr/bin:/bin')}
+
+
 def load_plugin(root):
     spec = importlib.util.spec_from_file_location("bot_web", root / "plugins/bot-web/__init__.py",
         submodule_search_locations=[str(root / "plugins/bot-web")])
@@ -183,7 +195,7 @@ def seed(home, port):
     from hermes_cli.profiles import create_profile
     from hermes_state import SessionDB
 
-    config = ("model:\n  default: fixture-model\n  provider: custom:fixture\nproviders:\n"
+    config = ("auth:\n  adopt_external_logins: false\nmodel:\n  default: fixture-model\n  provider: custom:fixture\nproviders:\n"
               f"  fixture:\n    base_url: http://127.0.0.1:{port}/v1\n    api_key: fixture-only\n"
               "agent:\n  max_turns: 3\n  bot_mode_protocol: true\n"
               "approvals:\n  mode: manual\n"
@@ -480,6 +492,8 @@ def main():
             HERMES_HOME=str(home), HERMES_RUNTIME_DIR=str(Path(directory) / "runtime"),
             PYTHONPYCACHEPREFIX=str(Path(directory) / "pycache"), PYTHONUNBUFFERED="1",
             NO_PROXY="127.0.0.1,localhost", HERMES_NO_AUTO_INSTALL="1")
+        os.environ.update(isolated_user_environment(directory))
+        (home / 'config.yaml').write_text('auth:\n  adopt_external_logins: false\n')
         model = ThreadingHTTPServer(("127.0.0.1", 0), Model)
         thread = threading.Thread(target=model.serve_forever, daemon=True)
         thread.start()
