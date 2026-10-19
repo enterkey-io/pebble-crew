@@ -7,7 +7,7 @@ describe('voice boundaries', () => {
   it('distinguishes output-only provider failure from microphone permission', () => {
     expect(
       voiceFailure(new VoiceStartError('provider', new ClientError('VOICE_KEY_REJECTED')), true),
-    ).toContain('rejected the saved API key');
+    ).toContain('rejected this saved key');
     expect(
       voiceFailure(new VoiceStartError('provider', new Error('PRIVATE VENDOR BODY')), true),
     ).not.toContain('PRIVATE');

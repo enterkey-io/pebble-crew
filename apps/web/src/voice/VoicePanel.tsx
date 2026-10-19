@@ -1,6 +1,8 @@
 import type { RefObject } from 'react';
-import { AudioLines, Mic, Play, X } from 'lucide-react';
-import { Card, CardHeader, CardTitle, CardAction, CardContent } from '../components/ui/card';
+import { Mic, Play, Square } from 'lucide-react';
+import { AudioActivity } from '../components/ai-elements/audio-activity';
+import type { AudioActivityHandle } from '../components/ai-elements/audio-activity';
+import { Card, CardContent } from '../components/ui/card';
 import { Button } from '../components/ui/button';
 import { Alert, AlertDescription } from '../components/ui/alert';
 import { LoadingBar } from '../components/ui/loading-bar';
@@ -17,8 +19,13 @@ export function VoicePanel({
   step,
   busy,
   error,
-  embedded,
   previewDisabled,
+  previewState,
+  activity,
+  onStopPreview,
+  startIntent,
+  audioBlocked,
+  onEnableAudio,
   onClose,
   onKey,
   onUseSaved,
@@ -30,11 +37,16 @@ export function VoicePanel({
   settings: VoiceSettings | undefined;
   value: VoiceChoices;
   onChange: (value: VoiceChoices) => void;
-  step: 'key' | 'settings';
+  step: 'key' | 'replacement' | 'settings';
   busy: boolean;
   error: string;
-  embedded: boolean;
   previewDisabled: boolean;
+  previewState: 'idle' | 'starting' | 'playing';
+  activity: RefObject<AudioActivityHandle | null>;
+  onStopPreview: () => void;
+  startIntent: boolean;
+  audioBlocked: boolean;
+  onEnableAudio: () => void;
   onClose: () => void;
   onKey: (value: string) => Promise<void>;
   onUseSaved: () => void;
@@ -46,31 +58,18 @@ export function VoicePanel({
     <Card
       ref={panel}
       aria-label="Voice settings"
-      className={`w-full gap-4 border-0 shadow-none ${embedded ? 'bg-transparent py-0' : ''}`}
+      className="w-full gap-4 border-0 bg-transparent py-0 shadow-none"
     >
-      {!embedded && (
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2 text-sm font-medium">
-            <AudioLines className="size-4" />
-            Voice
-          </CardTitle>
-          <CardAction>
-            <Button variant="quiet" size="icon" aria-label="Close voice setup" onClick={onClose}>
-              <X />
-            </Button>
-          </CardAction>
-        </CardHeader>
-      )}
-      <CardContent className={`grid gap-4 ${embedded ? 'px-0' : ''}`}>
+      <CardContent className="grid gap-4 px-0">
         {!settings && <LoadingBar active label="Loading voice settings" />}
         {settings?.supported === false && (
           <p className="text-sm text-muted-foreground">
             This Hermes build doesn’t support live voice.
           </p>
         )}
-        {settings?.supported && step === 'key' && (
+        {settings?.supported && step !== 'settings' && (
           <>
-            {settings.configured && (
+            {settings.configured && step === 'key' && (
               <div className="grid gap-3">
                 <p className="text-sm text-muted-foreground">
                   An OpenAI key is saved in Hermes. Saved keys are never displayed.
@@ -86,12 +85,17 @@ export function VoicePanel({
                 label="API key"
                 description={
                   settings.configured
-                    ? 'Enter a new key only to replace the saved one.'
+                    ? 'Enter a new OpenAI API key for voice.'
                     : 'Saved privately in this Pebble’s Hermes profile.'
                 }
                 onSubmit={onKey}
                 onSkip={onClose}
               />
+            )}
+            {!settings.canChangeKey && step === 'replacement' && (
+              <p className="text-sm text-muted-foreground">
+                Ask your Pebble to update the OpenAI key saved in this profile.
+              </p>
             )}
           </>
         )}
@@ -105,27 +109,43 @@ export function VoicePanel({
             <VoiceOptions
               value={value}
               voices={settings.voices}
-              disabled={busy}
+              disabled={busy || previewState !== 'idle'}
               onChange={onChange}
             />
-            <div className="flex justify-end">
+            <div className="flex items-center justify-end gap-3">
+              <div className="min-w-0 max-w-20 flex-1">
+                {previewState === 'starting' ? (
+                  <LoadingBar active label="Preparing voice preview" />
+                ) : previewState === 'playing' ? (
+                  <AudioActivity ref={activity} />
+                ) : null}
+              </div>
               <div className="flex items-center gap-2">
-                <Button variant="quiet" disabled={busy || previewDisabled} onClick={onPreview}>
-                  <Play />
-                  Preview
+                <Button
+                  variant="quiet"
+                  disabled={busy || previewDisabled}
+                  onClick={previewState === 'idle' ? onPreview : onStopPreview}
+                >
+                  {previewState === 'idle' ? <Play /> : <Square />}
+                  {previewState === 'idle' ? 'Preview' : 'Stop preview'}
                 </Button>
-                {embedded ? (
-                  <Button disabled={busy} onClick={onSave}>
+                {!startIntent ? (
+                  <Button disabled={busy || previewState !== 'idle'} onClick={onSave}>
                     Save
                   </Button>
                 ) : (
-                  <Button disabled={busy} onClick={onStart}>
+                  <Button disabled={busy || previewState !== 'idle'} onClick={onStart}>
                     <Mic />
                     Start call
                   </Button>
                 )}
               </div>
             </div>
+            {audioBlocked && (
+              <Button variant="quiet" onClick={onEnableAudio}>
+                Enable preview audio
+              </Button>
+            )}
             <p className="text-xs leading-relaxed text-muted-foreground">
               Calls and previews use your OpenAI account. Call audio and recent chat context go to
               OpenAI.

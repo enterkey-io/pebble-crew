@@ -4,15 +4,22 @@ import type { BotBridgeClient } from '@hermes-client/protocol';
 import { VoiceChat } from './VoiceChat';
 import { LoadingBar } from '../components/ui/loading-bar';
 import { Alert, AlertDescription } from '../components/ui/alert';
+import type { VoiceSettingsRequest } from './decode';
 
 export function VoiceSettingsEditor({
   client,
   profile,
   callActive,
+  request,
+  onReady,
+  onClose,
 }: {
   client: BotBridgeClient;
   profile: string;
   callActive: boolean;
+  request?: VoiceSettingsRequest | undefined;
+  onReady?: (() => void) | undefined;
+  onClose: () => void;
 }) {
   const [session, setSession] = useState(''),
     [error, setError] = useState('');
@@ -45,6 +52,9 @@ export function VoiceSettingsEditor({
       running={false}
       onAccepted={() => undefined}
       mode="settings"
+      settingsRequest={request}
+      onReady={onReady}
+      onDismiss={onClose}
       externalCallActive={callActive}
     />
   );

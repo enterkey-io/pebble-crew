@@ -1,4 +1,5 @@
 import { VoiceSettingsEditor } from './voice/VoiceSettingsEditor';
+import type { VoiceSettingsRequest } from './voice/decode';
 import { Label } from './components/ui/label';
 import { Checkbox } from './components/ui/checkbox';
 import { Form } from './components/ui/form';
@@ -46,6 +47,8 @@ export function PebbleEditor({
   retired = false,
   initialTab = 'identity',
   callActive = false,
+  voiceRequest,
+  onVoiceReady,
 }: {
   client: BotBridgeClient;
   bot: WorkspaceBot;
@@ -56,8 +59,13 @@ export function PebbleEditor({
   retired?: boolean;
   initialTab?: 'identity' | 'voice';
   callActive?: boolean;
+  voiceRequest?: VoiceSettingsRequest | undefined;
+  onVoiceReady?: (() => void) | undefined;
 }) {
   const [tab, setTab] = useState<string>(initialTab);
+  useEffect(() => {
+    setTab(voiceRequest ? 'voice' : initialTab);
+  }, [voiceRequest, initialTab]);
   const [edit, dispatch] = useReducer(profileReducer, undefined, () =>
     profileSession(profileValues(bot), bot.id, state.revision),
   );
@@ -411,7 +419,14 @@ export function PebbleEditor({
           </FormSection>
         )}
         {tab === 'voice' && !retired && (
-          <VoiceSettingsEditor client={client} profile={bot.profile} callActive={callActive} />
+          <VoiceSettingsEditor
+            client={client}
+            profile={bot.profile}
+            callActive={callActive}
+            request={voiceRequest}
+            onReady={onVoiceReady}
+            onClose={close}
+          />
         )}
       </TabbedEditor>
       {busy && (

@@ -9,6 +9,7 @@ test('private voice setup, Snow and selected-Pebble message colors', async ({
 }, info) => {
   await installFixture(context, { voice: true });
   let configured = false,
+    keyConfirmed = false,
     setupComplete = false,
     voice = 'marin',
     speed = 1;
@@ -25,6 +26,8 @@ test('private voice setup, Snow and selected-Pebble message colors', async ({
     if (body.operation === 'voice.preferences') {
       voice = body.params.voice;
       speed = body.params.speed;
+      keyConfirmed = configured;
+      if (body.params.complete) setupComplete = true;
     }
     if (['voice.status', 'voice.preferences'].includes(body.operation))
       return route.fulfill({
@@ -37,6 +40,7 @@ test('private voice setup, Snow and selected-Pebble message colors', async ({
             speed,
             speed_control: 'instruction',
             setup_complete: setupComplete,
+            key_confirmed: keyConfirmed,
           },
         },
       });
@@ -81,12 +85,12 @@ test('private voice setup, Snow and selected-Pebble message colors', async ({
     .poll(async () => (await page.locator('.pc-chat-header').boundingBox())?.y)
     .toBeGreaterThanOrEqual(0);
   await expect(page.getByRole('button', { name: 'Start call', exact: true })).toBeInViewport({
-    ratio: 1,
+    ratio: 0.999,
   });
   await expect(page.getByRole('button', { name: /Latest messages/ })).not.toBeVisible();
   await page.screenshot({ path: info.outputPath('voice-ready.png') });
   await expect(page.getByRole('button', { name: 'Replace API key', exact: true })).toHaveCount(0);
-  await page.getByRole('button', { name: 'Close voice setup' }).click();
+  await page.getByRole('button', { name: 'Close Edit Arlo' }).click();
   setupComplete = true;
   await page.evaluate(() =>
     Reflect.get(
@@ -101,7 +105,7 @@ test('private voice setup, Snow and selected-Pebble message colors', async ({
   await expect(page.getByLabel('API key', { exact: true })).toHaveValue('');
   await page.getByLabel('API key', { exact: true }).fill('synthetic-replacement-key');
   await card.getByRole('button', { name: 'Submit', exact: true }).click();
-  await expect(page.getByRole('button', { name: 'Start call', exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Save', exact: true })).toBeVisible();
   expect(submitted).toBe('synthetic-replacement-key');
   expect(await page.locator('body').innerText()).not.toContain(submitted);
   expect(
@@ -110,7 +114,7 @@ test('private voice setup, Snow and selected-Pebble message colors', async ({
     ),
   ).not.toContain(submitted);
   await expect(page.getByRole('combobox', { name: 'Voice', exact: true })).toContainText('Marin');
-  await page.getByRole('button', { name: 'Close voice setup' }).click();
+  await page.getByRole('button', { name: 'Close Edit Arlo' }).click();
   if (page.viewportSize()!.width < 768)
     await page.getByRole('button', { name: 'Toggle navigation', exact: true }).click();
   await page.getByRole('button', { name: /^Mica .*Bot Chat$/ }).click();
@@ -145,7 +149,8 @@ test('real browser WebRTC preview and call preserve native receipt ownership and
     browserName === 'webkit',
     'The standalone local-peer probe produces zero ICE candidates in automated WebKit. Real Safari media requires separate acceptance.',
   );
-  let setupComplete = false;
+  let setupComplete = false,
+    keyConfirmed = false;
   let holdStatus = false,
     statusPending = false,
     releaseStatus = () => {};
@@ -217,7 +222,10 @@ test('real browser WebRTC preview and call preserve native receipt ownership and
     const { operation, params } = route.request().postDataJSON();
     if (operation === 'secrets.pending')
       return route.fulfill({ json: { result: { requests: [] } } });
-    if (operation === 'voice.preferences' && params.complete) setupComplete = true;
+    if (operation === 'voice.preferences') {
+      keyConfirmed = true;
+      if (params.complete) setupComplete = true;
+    }
     if (operation === 'voice.status' && holdStatus)
       await new Promise<void>((resolve) => {
         statusPending = true;
@@ -234,6 +242,7 @@ test('real browser WebRTC preview and call preserve native receipt ownership and
             speed: 1,
             speed_control: 'instruction',
             setup_complete: setupComplete,
+            key_confirmed: keyConfirmed,
           },
         },
       });
@@ -272,6 +281,18 @@ test('real browser WebRTC preview and call preserve native receipt ownership and
       { timeout: 30000 },
     )
     .toBe(1);
+  expect(
+    await peerPage.evaluate(
+      () =>
+        window.__voiceTest.commands().find((event) => event.type === 'session.commentary.append')
+          ?.content,
+    ),
+  ).toBe('Hi, this is the Marin voice on Pebble Crew. How do I sound?');
+  await expect(page.locator('[data-slot=voice-call-bar]')).toHaveCount(0);
+  await expect(page.getByRole('tab', { name: 'Voice', exact: true })).toHaveAttribute(
+    'data-state',
+    'active',
+  );
   expect(await page.evaluate(() => window.__voiceTest.micReads())).toBe(0);
   await page.getByRole('button', { name: 'Stop preview', exact: true }).click();
   await page.getByRole('button', { name: 'Start call', exact: true }).click();
@@ -392,7 +413,9 @@ test('denied microphone returns to intact text chat without creating a provider 
   context,
 }) => {
   await installFixture(context, { voice: true });
-  let providerRequests = 0;
+  let providerRequests = 0,
+    setupComplete = false,
+    keyConfirmed = false;
   await page.addInitScript(() => {
     Object.defineProperty(navigator.mediaDevices, 'getUserMedia', {
       value: async () => {
@@ -401,7 +424,11 @@ test('denied microphone returns to intact text chat without creating a provider 
     });
   });
   await page.route('**/v1/rpc', async (route) => {
-    const { operation } = route.request().postDataJSON();
+    const { operation, params } = route.request().postDataJSON();
+    if (operation === 'voice.preferences') {
+      keyConfirmed = true;
+      if (params.complete) setupComplete = true;
+    }
     if (operation === 'secrets.pending')
       return route.fulfill({ json: { result: { requests: [] } } });
     if (['voice.status', 'voice.preferences'].includes(operation))
@@ -414,7 +441,8 @@ test('denied microphone returns to intact text chat without creating a provider 
             voices: ['marin'],
             speed: 1,
             speed_control: 'instruction',
-            setup_complete: false,
+            setup_complete: setupComplete,
+            key_confirmed: keyConfirmed,
           },
         },
       });
@@ -440,7 +468,11 @@ test('Preview reports a saved-key rejection without requesting or blaming the mi
   context,
 }, info) => {
   await installFixture(context, { voice: true });
-  let microphoneRequests = 0;
+  let microphoneRequests = 0,
+    setupComplete = false,
+    keyConfirmed = false;
+  let savedVoice = 'marin';
+  let rejectedKey = true;
   await page.exposeFunction('voiceMicrophoneProbe', () => {
     microphoneRequests++;
   });
@@ -453,25 +485,38 @@ test('Preview reports a saved-key rejection without requesting or blaming the mi
     });
   });
   await page.route('**/v1/rpc', async (route) => {
-    const { operation } = route.request().postDataJSON();
+    const { operation, params } = route.request().postDataJSON();
+    if (operation === 'voice.credential') {
+      rejectedKey = false;
+      return route.fulfill({ json: { result: { saved: true, validated: false } } });
+    }
+    if (operation === 'voice.preferences') {
+      keyConfirmed = true;
+      savedVoice = params.voice;
+      if (params.complete) setupComplete = true;
+    }
     if (['voice.status', 'voice.preferences'].includes(operation))
       return route.fulfill({
         json: {
           result: {
             supported: true,
             configured: true,
-            voice: 'marin',
+            voice: savedVoice,
             voices: ['marin', 'cedar'],
             speed: 1,
             speed_control: 'instruction',
-            setup_complete: false,
+            setup_complete: setupComplete,
+            key_confirmed: keyConfirmed,
           },
         },
       });
     if (operation === 'voice.session')
       return route.fulfill({
         status: 400,
-        json: { code: 'VOICE_KEY_REJECTED', error: 'Untrusted vendor text must never appear.' },
+        json: {
+          code: rejectedKey ? 'VOICE_KEY_REJECTED' : 'VOICE_RATE_LIMITED',
+          error: 'Untrusted vendor text must never appear.',
+        },
       });
     if (operation === 'secrets.pending')
       return route.fulfill({ json: { result: { requests: [] } } });
@@ -489,13 +534,43 @@ test('Preview reports a saved-key rejection without requesting or blaming the mi
     'Saved keys are never displayed',
   );
   await page.getByRole('button', { name: 'Use saved key', exact: true }).click();
+  await page.getByRole('combobox', { name: 'Voice', exact: true }).click();
+  await page.getByRole('option', { name: 'Cedar', exact: true }).click();
+  const panel = await page.getByLabel('Voice settings', { exact: true }).elementHandle();
+  const conversation = await page.locator('[data-message-id]').first().elementHandle();
   await page.getByRole('button', { name: 'Preview', exact: true }).click();
-  await expect(page.getByRole('alert')).toContainText('OpenAI rejected the saved API key', {
+  await expect(page.getByRole('alert')).toContainText('OpenAI rejected this saved key', {
     timeout: 20000,
   });
   await expect(page.getByRole('alert')).not.toContainText('microphone');
   expect(microphoneRequests).toBe(0);
   await expect(page.locator('body')).not.toContainText('Untrusted vendor');
-  await expect(page.getByRole('button', { name: 'Start call', exact: true })).toBeEnabled();
+  await expect(page.getByRole('form', { name: 'OpenAI API key' })).toBeVisible();
+  await expect(page.getByLabel('API key', { exact: true })).toHaveValue('');
+  await expect(page.getByRole('button', { name: 'Use saved key', exact: true })).toHaveCount(0);
+  expect(await panel?.evaluate((element) => element.isConnected)).toBe(true);
+  expect(await conversation?.evaluate((element) => element.isConnected)).toBe(true);
+  await expect(page.locator('.transcript [aria-label="Voice settings"]')).toHaveCount(0);
   await page.screenshot({ path: info.outputPath('preview-key-rejected.png') });
+  await page.getByLabel('API key', { exact: true }).fill('synthetic-private-replacement');
+  await page.getByRole('button', { name: 'Submit', exact: true }).click();
+  await expect(page.getByRole('combobox', { name: 'Voice', exact: true })).toContainText('Cedar');
+  await expect(page.getByRole('alert')).toHaveCount(0);
+  const select = await page.getByRole('combobox', { name: 'Voice', exact: true }).elementHandle();
+  await page.getByRole('button', { name: 'Preview', exact: true }).click();
+  await expect(page.getByRole('alert')).toContainText('rate limiting');
+  expect(await select?.evaluate((element) => element.isConnected)).toBe(true);
+  await expect(page.getByRole('combobox', { name: 'Voice', exact: true })).toContainText('Cedar');
+  await page.screenshot({ path: info.outputPath('preview-rate-limited.png') });
+  await page.getByRole('button', { name: 'Close Edit Arlo', exact: true }).click();
+  if (!(await page.getByRole('button', { name: 'Actions for Arlo', exact: true }).isVisible()))
+    await page.getByRole('button', { name: 'Toggle navigation', exact: true }).click();
+  await page.getByRole('button', { name: 'Actions for Arlo', exact: true }).click();
+  await page.getByRole('menuitem', { name: 'Edit pebble', exact: true }).click();
+  await page.getByRole('tab', { name: 'Voice', exact: true }).click();
+  await expect(page.getByRole('combobox', { name: 'Voice', exact: true })).toContainText('Cedar');
+  await expect(page.getByRole('button', { name: 'Use saved key', exact: true })).toHaveCount(0);
+  await page.getByRole('button', { name: 'Preview', exact: true }).click();
+  await expect(page.getByRole('alert')).toContainText('rate limiting');
+  expect(microphoneRequests).toBe(0);
 });

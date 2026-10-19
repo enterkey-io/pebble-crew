@@ -72,13 +72,13 @@ installation.
 
 ## 3. Obtain the immutable combined release
 
-Candidate: `v0.7.8-preview.11`. If these assets are not published, stop and report
+Candidate: `v0.7.8-preview.12`. If these assets are not published, stop and report
 that the candidate is unavailable. Do not substitute main or an API-only package.
 
-- [Manifest](https://github.com/enterkey-io/pebble-crew/releases/download/v0.7.8-preview.11/workspace-manifest.json)
-- [SHA256SUMS](https://github.com/enterkey-io/pebble-crew/releases/download/v0.7.8-preview.11/SHA256SUMS)
-- [Complete plugin](https://github.com/enterkey-io/pebble-crew/releases/download/v0.7.8-preview.11/workspace-plugin-preview.zip)
-- [Source](https://github.com/enterkey-io/pebble-crew/releases/download/v0.7.8-preview.11/workspace-source-preview.zip)
+- [Manifest](https://github.com/enterkey-io/pebble-crew/releases/download/v0.7.8-preview.12/workspace-manifest.json)
+- [SHA256SUMS](https://github.com/enterkey-io/pebble-crew/releases/download/v0.7.8-preview.12/SHA256SUMS)
+- [Complete plugin](https://github.com/enterkey-io/pebble-crew/releases/download/v0.7.8-preview.12/workspace-plugin-preview.zip)
+- [Source](https://github.com/enterkey-io/pebble-crew/releases/download/v0.7.8-preview.12/workspace-source-preview.zip)
 
 Verify size and SHA-256 against both manifest and checksum file. Reject absolute
 archive paths, traversal, symlinks and entries escaping private staging. The
@@ -206,7 +206,7 @@ with `hermes bot-web setup-link` (use `--renew-setup` only if it expired).
 remaining seconds). Its output contains the private file path, never the secret.
 
 Event parsing and legacy access controls are specified in
-[the wire protocol](https://github.com/enterkey-io/pebble-crew/blob/v0.7.8-preview.11/docs/WIRE_PROTOCOL.md).
+[the wire protocol](https://github.com/enterkey-io/pebble-crew/blob/v0.7.8-preview.12/docs/WIRE_PROTOCOL.md).
 Never use global revocation for diagnostic cleanup: use DELETE `/v1/connect`
 with the probe's own lease. Global revocation now requires `hermes bot-web revoke
 --all` or the operator-only HTTP body `{"all":true}`.
@@ -333,9 +333,9 @@ reloading once loads the new assets, with no pairing or new administrator setup.
 
 The supported 0.21.7 build includes native OpenAI live conversation. The older
 0.21.0 build does not. Do not configure or test a paid provider during installation
-or upgrade. After login, the owner selects Voice in a Pebble's composer. Missing
-credentials open a private field in chat; keys must never be pasted as messages.
-The first opening asks for a key (or explicit reuse of a saved key), then voice and speed. Saved keys are never returned to the browser. Voice and requested speed save in that Pebble's native profile; GPT-Live uses delivery instructions, so the speed is a target rather than an exact playback multiplier. Later openings start a compact call bar at the top of chat. Its settings button opens the Pebble's Voice tab. A stopped call with a transcript requests one text follow-up; previews never do. Calls and previews
+or upgrade. After login, the owner selects Voice in a Pebble's composer. Setup opens the same Voice tab used by Edit Pebble. Missing or rejected
+credentials open a private field there; keys must never be pasted as messages.
+The first opening asks for a key (or explicit reuse of a saved key), then voice and speed. The saved-key choice is remembered across entry points. Preview stays in that tab and speaks one named sample without microphone access or an interactive call. A rejected key immediately reopens private entry; no refresh is needed. Rate limits, credits, spending limits and quota have separate safe messages when identified by the provider. Saved keys are never returned to the browser. Voice and requested speed save in that Pebble's native profile; GPT-Live uses delivery instructions, so the speed is a target rather than an exact playback multiplier. Later openings start a compact call bar at the top of chat. Its settings button opens the Pebble's Voice tab. A stopped call with a transcript requests one text follow-up; previews never do. Calls and previews
 start only on the owner's action. No Grok live provider is offered: this Hermes
 build's separate xAI transcription/speech output is not a live conversation mode.
 

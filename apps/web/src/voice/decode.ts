@@ -15,6 +15,7 @@ export type VoiceSettings =
   | {
       supported: true;
       configured: boolean;
+      keyConfirmed: boolean;
       canChangeKey: boolean;
       voice: string;
       voices: string[];
@@ -37,6 +38,7 @@ export function settings(value: unknown): VoiceSettings {
   return {
     supported: true,
     configured: data.configured,
+    keyConfirmed: data.configured && (data.key_confirmed === true || data.setup_complete === true),
     canChangeKey: data.can_change_key !== false,
     voice: data.voice,
     voices: data.voices,
@@ -44,6 +46,12 @@ export function settings(value: unknown): VoiceSettings {
     setupComplete: data.setup_complete,
   };
 }
+export type VoiceSettingsRequest =
+  | { kind: 'settings' }
+  | { kind: 'start' }
+  | { kind: 'replace-key' }
+  | { kind: 'key-failure'; message: string }
+  | { kind: 'failure'; message: string };
 export function sessionAnswer(value: unknown) {
   const data = record(value),
     session = record(data.session),

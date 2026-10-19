@@ -1,12 +1,19 @@
 export const voiceErrors = {
   VOICE_KEY_REQUIRED: 'Add an OpenAI API key to use voice.',
-  VOICE_KEY_REJECTED: 'OpenAI rejected the saved API key. Replace it to try again.',
+  VOICE_KEY_REJECTED: 'OpenAI rejected this saved key.',
   VOICE_ACCESS_DENIED:
     'This OpenAI project does not have live voice access. Check its model permissions.',
   VOICE_MODEL_UNAVAILABLE:
     'The configured live voice model or endpoint is unavailable. Check voice settings in Hermes.',
   VOICE_LIMIT_REACHED:
-    'OpenAI’s voice limit was reached. Check your account’s usage and billing, then try again.',
+    'OpenAI limited this request. Try again later, or check your project’s limits if it continues.',
+  VOICE_RATE_LIMITED: 'OpenAI is rate limiting voice requests. Wait a moment before trying again.',
+  VOICE_CREDITS_EXHAUSTED:
+    'Your OpenAI organization has no prepaid credits remaining. Add credits to use voice.',
+  VOICE_SPEND_LIMIT_REACHED:
+    'Your OpenAI project or organization reached its spending limit. Update that limit to use voice.',
+  VOICE_QUOTA_EXHAUSTED:
+    'Your OpenAI project or organization has no available API quota. Check its usage limits and billing.',
   VOICE_PROVIDER_UNAVAILABLE: 'OpenAI live voice is temporarily unavailable. Try again shortly.',
   VOICE_OFFER_REJECTED:
     'OpenAI rejected the voice connection request. Check the configured model and endpoint in Hermes.',
@@ -16,6 +23,7 @@ export const voiceErrors = {
   VOICE_INVALID_ANSWER: 'The voice provider returned an invalid connection response.',
   VOICE_SETUP_FAILED:
     'Hermes could not confirm voice setup. Check this Pebble’s voice configuration.',
+  VOICE_PREFERENCES_FAILED: 'Hermes could not save your voice settings.',
 } as const;
 
 export type ErrorCode =

@@ -6,9 +6,11 @@ journeys. The mobile runner imports the same journeys.
 - Private setup: field is masked, submission clears it, no value in messages or
   browser persistence, voice/numeric speed survive saving. Key replacement is requested by the agent, starts empty and never appears as a voice-settings action.
 - Palette: selected-Pebble owner bubbles, dark text, neutral Snow exception.
-- First use: shared private ApprovalSurface before voice choices; explicit reuse of a saved key, then voice/speed. Saved setup starts a call directly on the next opening. Voice lives in the Pebble editor; no read-only Model tab.
+- First use: one canonical Voice tab in the Pebble editor, using the shared private ApprovalSurface before voice choices. Explicit saved-key reuse is remembered by the native profile. Saved setup starts a call directly on the next opening; there is no separate chat setup form or read-only Model tab.
 - Call bar: Pebble avatar at the top, real audio-amplitude bars, settings, transcript toggle, mute and stop. End stops local tracks immediately and requests one text follow-up only for a real call with a transcript; previews never do.
-- Failures: Preview never requests or blames the microphone. Safe provider codes preserve key/access/limit/network distinctions without returning vendor bodies.
+- Preview stays in the Voice tab and speaks the selected voice name in one sample, without a call bar, microphone or agent delegation. Stop preview stays available. A rejected key immediately opens empty private key entry; replacement preserves the selected voice and requires no reload.
+- Failures: Preview never requests or blames the microphone. Safe provider codes distinguish rate, credit, spending and quota limits without returning vendor bodies. Unknown limits stay neutral.
+- Mobile return: the shared details-navigation journey closes Edit and Details, then checks the restored composer height and field/send-control centers. Inspect composer-after-details.png on both phones.
 - Local WebRTC: output-only preview never requests microphone; live delegation
   matches native row receipts; unrelated replies are not spoken; mute and End
   stop the synthetic microphone. No paid provider or physical capture is used.
@@ -23,6 +25,8 @@ app code; this installation produced zero WebKit candidates while Chromium
 connected. The iPhone UI and permission-failure journeys remain exercised. This
 is not evidence that physical Safari/provider calls pass or fail. Real media
 acceptance requires the owner's configured provider and explicit real-device use.
+
+`scripts/fixture/voice_preferences_smoke.py` verifies actual native default and nondefault voice saves, null config sections, saved-key acknowledgment and unrelated-setting preservation without any provider or model calls. Run it with the newer pinned native Python before the workspace fixture.
 
 `test/plugin/test_live_voice.py` covers connection/session isolation, changed
 profile rejection, single-use/expired prompts and normal-model voice submission.

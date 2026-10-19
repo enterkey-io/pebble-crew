@@ -52,7 +52,22 @@ test('details uses an edit icon and keeps the Files tab selected through reconne
   await dialog.getByRole('button', { name: 'Close Edit Arlo', exact: true }).click();
   await expect(files).toHaveAttribute('aria-selected', 'true');
   await details.getByRole('button', { name: 'Close details', exact: true }).click();
+  await expect
+    .poll(async () => (await page.locator('.pc-details-slot').boundingBox())?.width ?? 1)
+    .toBeLessThan(0.5);
   await expect(page.getByLabel('Message', { exact: true })).toBeEnabled();
+  const composer = page.locator('[data-slot="prompt-input"]').last();
+  await expect.poll(async () => (await composer.boundingBox())?.height ?? 1000).toBeLessThan(85);
+  const field = page.getByLabel('Message', { exact: true });
+  await field.fill('Ready');
+  const inputBox = await field.boundingBox();
+  const sendBox = await page
+    .getByRole('button', { name: 'Send message', exact: true })
+    .boundingBox();
+  expect(
+    Math.abs(inputBox!.y + inputBox!.height / 2 - (sendBox!.y + sendBox!.height / 2)),
+  ).toBeLessThan(2);
+  await page.screenshot({ path: info.outputPath('composer-after-details.png') });
 });
 
 test('a failed file load offers retry without claiming the conversation has no files', async ({

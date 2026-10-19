@@ -169,6 +169,9 @@ async def verify(home, model_port):
             assert (await voice.invoke('voice.credential', {'session_id': sid, 'value': 'synthetic-voice-only-key'})) == {'saved': True, 'validated': False}
             status = await voice.invoke('voice.status', {'session_id': sid})
             assert status['configured'], status
+            status = await voice.invoke('voice.preferences', {'session_id': sid, 'voice': status['voices'][0], 'speed': 1, 'complete': False})
+            assert status['voice'] == status['voices'][0] and status['speed'] == 1 and status['key_confirmed'] and not status['setup_complete'], status
+            assert (await voice.invoke('voice.status', {'session_id': sid}))['key_confirmed'], 'Saved-key confirmation was lost between voice entry points'
             status = await voice.invoke('voice.preferences', {'session_id': sid, 'voice': status['voices'][1], 'speed': 0.75, 'complete': True})
             assert status['speed'] == 0.75 and status['setup_complete'], status
             for preview in (True, False):

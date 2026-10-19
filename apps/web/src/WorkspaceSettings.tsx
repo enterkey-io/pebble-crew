@@ -25,9 +25,13 @@ export function WorkspaceSettings({
   onNavigate,
   initialAgentTab,
   callActive = false,
+  voiceRequest,
+  onVoiceReady,
 }: {
   initialAgentTab?: 'identity' | 'voice';
   callActive?: boolean;
+  voiceRequest?: import('./voice/decode').VoiceSettingsRequest | undefined;
+  onVoiceReady?: ((profile: string) => void) | undefined;
   onDirtyChange: (dirty: boolean) => void;
   onNavigate: (action: () => void) => void;
   owner?: boolean;
@@ -124,6 +128,8 @@ export function WorkspaceSettings({
         retired={retired}
         initialTab={initialAgentTab ?? 'identity'}
         callActive={callActive}
+        voiceRequest={voiceRequest}
+        onVoiceReady={onVoiceReady ? () => onVoiceReady(bot.profile) : undefined}
         key={bot.id}
         client={client}
         bot={bot}

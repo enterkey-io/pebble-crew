@@ -94,6 +94,23 @@ class VoiceBoundaryTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(native.secrets, {})
 
 class ProviderErrorTests(unittest.TestCase):
+    def test_429_distinguishes_rate_credit_spend_and_quota_without_exposing_body(self):
+        import io
+        import urllib.error
+        from bot_web.live_voice import create_session
+        native = SimpleNamespace(_live_section=lambda: {}, _resolve_credentials=lambda _: ('synthetic-key', 'https://provider.invalid/v1'), build_session_config=lambda _: {'instructions': 'Native instructions'})
+        cases = [('rate_limit_exceeded', 'VOICE_RATE_LIMITED'), ('slow_down', 'VOICE_RATE_LIMITED'),
+                 ('credit_balance_exhausted', 'VOICE_CREDITS_EXHAUSTED'), ('project_spend_limit_exceeded', 'VOICE_SPEND_LIMIT_REACHED'),
+                 ('organization_spend_limit_exceeded', 'VOICE_SPEND_LIMIT_REACHED'), ('organization_usage_limit_exceeded', 'VOICE_QUOTA_EXHAUSTED'),
+                 ('insufficient_quota', 'VOICE_QUOTA_EXHAUSTED'), ('unknown-private-value', 'VOICE_LIMIT_REACHED')]
+        for vendor, code in cases:
+            body = json.dumps({'error': {'code': vendor, 'message': 'PRIVATE synthetic key and vendor details'}}).encode()
+            error = urllib.error.HTTPError('https://provider.invalid', 429, 'private', {}, io.BytesIO(body))
+            with patch.dict('sys.modules', {'tools': SimpleNamespace(voice_live=native), 'tools.voice_live': native}), patch('bot_web.live_voice.urllib.request.urlopen', side_effect=error), self.assertRaises(InvalidOperation) as caught:
+                create_session('v=0\r\n', 'Synthetic', False)
+            self.assertEqual(caught.exception.code, code)
+            self.assertNotIn('PRIVATE', str(caught.exception))
+
     def test_provider_http_failures_remain_specific_without_echoing_private_bodies(self):
         import io
         import urllib.error

@@ -8,6 +8,13 @@ export class VoiceStartError extends Error {
     super('Voice connection failed');
   }
 }
+export function rejectedVoiceKey(cause: unknown): boolean {
+  const reason = cause instanceof VoiceStartError ? cause.reason : cause;
+  return (
+    reason instanceof ClientError &&
+    (reason.code === 'VOICE_KEY_REJECTED' || reason.code === 'VOICE_KEY_REQUIRED')
+  );
+}
 
 export function voiceFailure(cause: unknown, preview = false): string {
   const reason = cause instanceof VoiceStartError ? cause.reason : cause;

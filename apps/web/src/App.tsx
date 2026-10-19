@@ -1,3 +1,4 @@
+import { useComposerSize } from './chat/use-composer-size';
 import { CommandSuggestions } from './chat/CommandSuggestions';
 import type { CommandSuggestionsHandle } from './chat/CommandSuggestions';
 import { Confirmation } from './components/ai-elements/confirmation';
@@ -47,6 +48,7 @@ import { RequestReview } from './chat/RequestReview';
 import { DetailsDock } from './ui/DetailsDock';
 import { VoiceChat } from './voice/VoiceChat';
 import type { VoiceChatHandle } from './voice/VoiceChat';
+import type { VoiceSettingsRequest } from './voice/decode';
 import { File, Image, AudioLines, Menu as MenuIcon, RefreshCw, X } from 'lucide-react';
 import { Button } from './components/ui/button';
 import { IconButton } from './components/ui/icon-button';
@@ -101,6 +103,7 @@ export function App({ owner }: { owner?: OwnerConnection }) {
   const [voiceActive, setVoiceActive] = useState(false);
   const [voiceBarTarget, setVoiceBarTarget] = useState<HTMLDivElement | null>(null);
   const [agentSettingsTab, setAgentSettingsTab] = useState<'identity' | 'voice'>('identity');
+  const [voiceSettingsRequest, setVoiceSettingsRequest] = useState<VoiceSettingsRequest>();
   const [workspace, setWorkspace] = useState<WorkspaceState>();
   const [settings, setSettings] = useState(false);
   const [settingsTab, setSettingsTab] = useState<
@@ -300,11 +303,7 @@ export function App({ owner }: { owner?: OwnerConnection }) {
   const [pickingAgents, setPickingAgents] = useState(false);
   const transcriptPane = useRef<HTMLDivElement>(null);
   const composer = useRef<HTMLTextAreaElement>(null);
-  const prepareVoiceSetup = useCallback(() => {
-    followLatest.current = true;
-    setShowLatest(false);
-    requestAnimationFrame(() => transcriptFollow.current?.follow());
-  }, []);
+
   const followLatest = useRef(true);
   const focusOnReady = useRef(false);
   const drafts = useRef(new Map<string, string>());
@@ -585,12 +584,13 @@ export function App({ owner }: { owner?: OwnerConnection }) {
     if (content) observer.observe(content);
     return () => observer.disconnect();
   }, [client, selection, pickingAgents, settings, starting]);
-  useLayoutEffect(() => {
-    const input = composer.current;
-    if (!input) return;
-    input.style.height = 'auto';
-    input.style.height = `${Math.min(input.scrollHeight, 170)}px`;
-  }, [draft, selection, pickingAgents, starting]);
+  useComposerSize(
+    composer,
+    draft,
+    selection ? draftKey(selection) : '',
+    !pickingAgents && !starting && (!settings || settingsTab === 'agents'),
+  );
+
   useLayoutEffect(() => {
     if (
       focusOnReady.current &&
@@ -1706,6 +1706,12 @@ export function App({ owner }: { owner?: OwnerConnection }) {
         initialTab={settingsTab}
         initialAgentTab={agentSettingsTab}
         callActive={voiceActive}
+        voiceRequest={agentSettingsTab === 'voice' ? voiceSettingsRequest : undefined}
+        onVoiceReady={(profile) => {
+          if (selected.current?.kind !== 'bot' || selected.current.bot.profile !== profile) return;
+          setSettings(false);
+          requestAnimationFrame(() => voicePanel.current?.open());
+        }}
         initialProfile={
           settingsTab === 'agents'
             ? editProfile
@@ -1909,7 +1915,6 @@ export function App({ owner }: { owner?: OwnerConnection }) {
                         sessionId={selection.sessionId}
                         running={running}
                         onActiveChange={setVoiceActive}
-                        onSetupChange={prepareVoiceSetup}
                         barTarget={voiceBarTarget}
                         agentName={selection.bot.name}
                         avatar={
@@ -1920,8 +1925,9 @@ export function App({ owner }: { owner?: OwnerConnection }) {
                             state={agentStates[selection.bot.profile]}
                           />
                         }
-                        onOpenSettings={() =>
+                        onOpenSettings={(request) =>
                           navigate(() => {
+                            setVoiceSettingsRequest(request);
                             setAgentSettingsTab('voice');
                             setEditProfile(selection.bot.profile);
                             setSettingsTab('agents');
@@ -2210,8 +2216,6 @@ export function App({ owner }: { owner?: OwnerConnection }) {
                           disabled={blocked}
                           onClick={() => {
                             voicePanel.current?.open();
-                            followLatest.current = true;
-                            requestAnimationFrame(jumpToLatest);
                           }}
                         />
                       )}

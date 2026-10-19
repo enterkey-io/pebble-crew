@@ -14,7 +14,7 @@ import socket
 
 from .operations import InvalidOperation, fields, identifier
 
-VOICE_ERROR_CODES = {'VOICE_KEY_REJECTED', 'VOICE_PROVIDER_UNREACHABLE', 'VOICE_INVALID_ANSWER', 'VOICE_KEY_REQUIRED', 'VOICE_SETUP_FAILED', 'VOICE_ACCESS_DENIED', 'VOICE_OFFER_REJECTED', 'VOICE_MODEL_UNAVAILABLE', 'VOICE_LIMIT_REACHED', 'VOICE_PROVIDER_TIMEOUT', 'VOICE_PROVIDER_UNAVAILABLE'}
+VOICE_ERROR_CODES = {'VOICE_KEY_REJECTED', 'VOICE_PROVIDER_UNREACHABLE', 'VOICE_INVALID_ANSWER', 'VOICE_KEY_REQUIRED', 'VOICE_SETUP_FAILED', 'VOICE_PREFERENCES_FAILED', 'VOICE_ACCESS_DENIED', 'VOICE_OFFER_REJECTED', 'VOICE_MODEL_UNAVAILABLE', 'VOICE_LIMIT_REACHED', 'VOICE_RATE_LIMITED', 'VOICE_CREDITS_EXHAUSTED', 'VOICE_SPEND_LIMIT_REACHED', 'VOICE_QUOTA_EXHAUSTED', 'VOICE_PROVIDER_TIMEOUT', 'VOICE_PROVIDER_UNAVAILABLE'}
 
 _CONFIG = threading.Lock()
 PACE_START = '[Pebble Crew delivery]'
@@ -43,7 +43,7 @@ def preferences():
     speed = live.get('pebble_speed', {'slower': 0.75, 'natural': 1, 'faster': 1.25}[legacy])
     speed = speed if type(speed) in (int, float) and speed in SPEEDS else 1
     return {'supported': True, 'provider': 'openai', 'configured': status['available'],
-            'voice': status['voice'], 'voices': list(native.GPT_LIVE_VOICES), 'speed': speed, 'speed_control': 'instruction', 'setup_complete': live.get('pebble_setup_complete') is True, 'can_change_key': not bool(live.get('api_key'))}
+            'voice': status['voice'], 'voices': list(native.GPT_LIVE_VOICES), 'speed': speed, 'speed_control': 'instruction', 'setup_complete': live.get('pebble_setup_complete') is True, 'key_confirmed': bool(status['available']) and (live.get('pebble_key_confirmed') is True or live.get('pebble_setup_complete') is True), 'can_change_key': not bool(live.get('api_key'))}
 
 
 def speed_instruction(speed):
@@ -57,19 +57,26 @@ def save_preferences(voice, speed, complete):
         raise ValueError('Choose a supported voice and speed')
     with _CONFIG_LOCK:
         config = deepcopy(read_user_config_raw() or {})
+        if config.get('voice') is None:
+            config['voice'] = {}
+        if config['voice'].get('gpt_live') is None:
+            config['voice']['gpt_live'] = {}
         live = config.setdefault('voice', {}).setdefault('gpt_live', {})
         instructions = str(live.get('instructions') or '')
         instructions = re.sub(re.escape(PACE_START) + r'.*?' + re.escape(PACE_END), '', instructions, flags=re.S).strip()
         live['instructions'] = f'{instructions}\n\n{PACE_START}\n{speed_instruction(speed)}\n{PACE_END}'.strip()
         live['voice'] = voice
         live['pebble_speed'] = speed
+        if preferences()['configured']:
+            live['pebble_key_confirmed'] = True
         if complete:
             live['pebble_setup_complete'] = True
-        save_config(config)
-        actual = read_user_config_raw() or {}
-        if actual.get('voice', {}).get('gpt_live') != live:
+        save_config(config, preserve_keys={('voice', 'gpt_live', key) for key in ('voice', 'instructions', 'pebble_speed', 'pebble_key_confirmed', 'pebble_setup_complete') if key in live})
+        actual = preferences()
+        saved = (read_user_config_raw() or {}).get('voice', {}).get('gpt_live', {})
+        if actual['voice'] != voice or actual['speed'] != speed or (complete and not actual['setup_complete']) or (live.get('pebble_key_confirmed') is True and not actual['key_confirmed']) or saved.get('instructions') != live['instructions']:
             raise ValueError('Hermes did not confirm the settings save')
-    return preferences()
+    return actual
 
 
 def create_session(sdp, name, preview, history=None):
@@ -91,13 +98,31 @@ def create_session(sdp, name, preview, history=None):
     request = urllib.request.Request(f'{base}/live/sessions', data=json.dumps({
         'session': session, 'transport': {'type': 'webrtc', 'sdp': sdp}}).encode(),
         headers={'Authorization': f'Bearer {key}', 'Content-Type': 'application/json'}, method='POST')
-    # Never echo/log vendor bodies, SDP or keys on errors.
+    # Only a known error code leaves this boundary; never return/log vendor bodies.
     try:
         with urllib.request.urlopen(request, timeout=30) as response:
             value = json.loads(response.read(256_000))
     except urllib.error.HTTPError as error:
         code = {401: 'VOICE_KEY_REJECTED', 403: 'VOICE_ACCESS_DENIED', 404: 'VOICE_MODEL_UNAVAILABLE',
                 429: 'VOICE_LIMIT_REACHED'}.get(error.code, 'VOICE_PROVIDER_UNAVAILABLE' if error.code >= 500 else 'VOICE_OFFER_REJECTED')
+        if error.code == 429:
+            try:
+                body = json.loads(error.read(8192))
+                detail = body.get('error') if isinstance(body, dict) else None
+                detail = detail if isinstance(detail, dict) else {}
+                vendor_code = detail.get('code')
+                code = {'rate_limit_exceeded': 'VOICE_RATE_LIMITED', 'slow_down': 'VOICE_RATE_LIMITED',
+                        'credit_balance_exhausted': 'VOICE_CREDITS_EXHAUSTED',
+                        'organization_spend_limit_exceeded': 'VOICE_SPEND_LIMIT_REACHED',
+                        'project_spend_limit_exceeded': 'VOICE_SPEND_LIMIT_REACHED',
+                        'organization_usage_limit_exceeded': 'VOICE_QUOTA_EXHAUSTED',
+                        'insufficient_quota': 'VOICE_QUOTA_EXHAUSTED'}.get(vendor_code, code) if isinstance(vendor_code, str) else code
+                if code == 'VOICE_LIMIT_REACHED' and detail.get('type') == 'insufficient_quota':
+                    code = 'VOICE_QUOTA_EXHAUSTED'
+                elif code == 'VOICE_LIMIT_REACHED' and detail.get('type') == 'rate_limit_error':
+                    code = 'VOICE_RATE_LIMITED'
+            except (ValueError, OSError):
+                pass
         error.close()
         raise InvalidOperation('Voice provider refused the session', code) from None
     except (TimeoutError, socket.timeout):
@@ -217,7 +242,8 @@ class LiveVoice:
         except InvalidOperation:
             raise
         except Exception:
-            raise InvalidOperation('Voice setup could not be confirmed', 'VOICE_SETUP_FAILED') from None
+            code = 'VOICE_PREFERENCES_FAILED' if operation == 'voice.preferences' else 'VOICE_SETUP_FAILED'
+            raise InvalidOperation('Voice setup could not be confirmed', code) from None
         finally:
             self.inflight.discard(sid)
 

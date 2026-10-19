@@ -11,11 +11,11 @@ import { VoiceCallBar } from './VoiceCallBar';
 import { choices } from './VoiceOptions';
 import type { VoiceChoices } from './VoiceOptions';
 import type { AudioActivityHandle } from '../components/ai-elements/audio-activity';
-import { voiceFailure } from './errors';
+import { rejectedVoiceKey, voiceFailure } from './errors';
 import { ConversationDomain } from '@hermes-client/protocol';
 import type { ChatMessage } from '../conversation';
 import { record, settings as decodeSettings, sessionAnswer } from './decode';
-import type { VoiceSettings } from './decode';
+import type { VoiceSettings, VoiceSettingsRequest } from './decode';
 import { VoiceLiveSession } from './live-session';
 import { DelegationReceipts, delegationPrompt } from './delegations';
 import type { Completion } from './delegations';
@@ -29,8 +29,10 @@ export const VoiceChat = forwardRef<
     sessionId: string;
     running: boolean;
     onAccepted: (message: ChatMessage) => void;
-    onOpenSettings?: () => void;
-    onSetupChange?: () => void;
+    onOpenSettings?: (request: VoiceSettingsRequest) => void;
+    settingsRequest?: VoiceSettingsRequest | undefined;
+    onReady?: (() => void) | undefined;
+    onDismiss?: (() => void) | undefined;
     onActiveChange?: (active: boolean) => void;
     mode?: 'chat' | 'settings';
     externalCallActive?: boolean;
@@ -45,7 +47,9 @@ export const VoiceChat = forwardRef<
     running,
     onAccepted,
     onOpenSettings,
-    onSetupChange,
+    settingsRequest,
+    onReady,
+    onDismiss,
     onActiveChange,
     mode = 'chat',
     externalCallActive = false,
@@ -58,7 +62,7 @@ export const VoiceChat = forwardRef<
   const panel = useRef<HTMLDivElement>(null);
   const audioActivity = useRef<AudioActivityHandle>(null);
   const [value, setValue] = useState<VoiceChoices>({ voice: 'marin', speed: 1 });
-  const [step, setStep] = useState<'key' | 'settings'>('key');
+  const [step, setStep] = useState<'key' | 'replacement' | 'settings'>('key');
   const [notice, setNotice] = useState('');
   const [opening, setOpening] = useState(false);
   const [visible, setVisible] = useState(false),
@@ -94,41 +98,56 @@ export const VoiceChat = forwardRef<
     setSettings(next);
     return next;
   }
-  useEffect(() => {
-    if (mode === 'chat' && visible && state === 'idle' && !opening) onSetupChange?.();
-  }, [mode, visible, state, step, value, settings, opening, onSetupChange]);
   async function loadSettings(requestKey = false) {
     const value = decodeSettings(await rpc('voice.status'));
     if (mounted.current) {
       setSettings(value);
       if (value.supported) {
         setValue(choices(value));
-        setStep(!requestKey && value.configured && value.setupComplete ? 'settings' : 'key');
+        setStep(
+          requestKey ? 'replacement' : value.configured && value.keyConfirmed ? 'settings' : 'key',
+        );
       }
     }
     return value;
   }
   async function open() {
     setVisible(true);
-    if (state !== 'idle' || opening) return;
-    setError('');
+    if (mode === 'chat' && (state !== 'idle' || opening)) return;
+    if (mode === 'settings') end();
+    setError(
+      settingsRequest?.kind === 'failure' || settingsRequest?.kind === 'key-failure'
+        ? settingsRequest.message
+        : '',
+    );
     setNotice('');
     setOpening(true);
     const epoch = generation.current;
     try {
-      const value = await loadSettings();
+      const value = await loadSettings(
+        settingsRequest?.kind === 'replace-key' || settingsRequest?.kind === 'key-failure',
+      );
       setOpening(false);
-      if (mode === 'chat' && value.supported && value.configured && value.setupComplete)
-        await start(false, choices(value));
+      if (mode === 'chat') {
+        if (value.supported && value.configured && value.setupComplete)
+          await start(false, choices(value));
+        else {
+          setVisible(false);
+          onOpenSettings?.({ kind: 'start' });
+        }
+      }
     } catch (cause) {
-      if (mounted.current && generation.current === epoch) setError(voiceFailure(cause));
+      if (mounted.current && generation.current === epoch) {
+        if (mode === 'chat') onOpenSettings?.({ kind: 'failure', message: voiceFailure(cause) });
+        else setError(voiceFailure(cause));
+      }
     } finally {
       if (mounted.current && generation.current === epoch) setOpening(false);
     }
   }
   useEffect(() => {
     if (mode === 'settings') void open();
-  }, [mode, client, sessionId]);
+  }, [mode, client, sessionId, settingsRequest]);
   useEffect(() => {
     onActiveChange?.(state !== 'idle');
     return () => onActiveChange?.(false);
@@ -246,7 +265,7 @@ export const VoiceChat = forwardRef<
   });
   useEffect(() => {
     mounted.current = true;
-    if (client.supportsSecrets) void loadSecret().catch(() => undefined);
+    if (mode === 'chat' && client.supportsSecrets) void loadSecret().catch(() => undefined);
     const timer = setInterval(() => {
       void drain();
     }, 500);
@@ -271,10 +290,9 @@ export const VoiceChat = forwardRef<
       }
       if (event.session_id !== sessionId) return;
       if (event.type === 'voice.setup') {
-        setVisible(true);
-        void loadSettings(event.payload?.replace_key === true).catch(() =>
-          setError('Voice settings could not be loaded.'),
-        );
+        onOpenSettings?.({
+          kind: event.payload?.replace_key === true ? 'replace-key' : 'settings',
+        });
       }
       if (event.type === 'secret.changed') void loadSecret().catch(() => undefined);
       const result = receipts.current.observe(event);
@@ -284,21 +302,39 @@ export const VoiceChat = forwardRef<
   async function start(preview: boolean, selection = value) {
     end();
     const epoch = generation.current;
+    const reportFailure = (message: string, keyRejected = false) => {
+      if (mode === 'chat') {
+        setVisible(false);
+        onOpenSettings?.({ kind: keyRejected ? 'key-failure' : 'failure', message });
+      } else {
+        if (keyRejected) setStep('replacement');
+        setError(message);
+      }
+    };
     setError('');
     setNotice('');
     setState('starting');
+    let previewHeard = false;
     const call = new VoiceLiveSession(
       {
         onAudioLevel(level) {
           if (generation.current === epoch) audioActivity.current?.update(level);
+        },
+        onSpeakingChange(speaking) {
+          if (!preview || generation.current !== epoch) return;
+          if (speaking) previewHeard = true;
+          if (!previewHeard) return;
+          clearTimeout(previewTimer.current);
+          previewTimer.current = setTimeout(end, speaking ? 30000 : 1500);
         },
         onStarted() {
           if (generation.current !== epoch) return;
           clearTimeout(setupTimer.current);
           if (preview) {
             setState('preview');
-            call.speak(null, 'Hello. This is how I sound. Ready when you are.');
-            previewTimer.current = setTimeout(end, 9000);
+            const voiceName = selection.voice.charAt(0).toUpperCase() + selection.voice.slice(1);
+            call.speak(null, `Hi, this is the ${voiceName} voice on Pebble Crew. How do I sound?`);
+            previewTimer.current = setTimeout(end, 30000);
           } else setState('live');
         },
         onDelegation(id, context) {
@@ -351,7 +387,7 @@ export const VoiceChat = forwardRef<
     setupTimer.current = setTimeout(() => {
       if (generation.current === epoch) {
         end();
-        setError(
+        reportFailure(
           preview
             ? 'The voice preview timed out. Try again. Preview does not use your microphone.'
             : 'The voice connection timed out. Try again.',
@@ -363,7 +399,7 @@ export const VoiceChat = forwardRef<
     } catch (cause) {
       if (generation.current === epoch) {
         end();
-        setError(voiceFailure(cause, preview));
+        reportFailure(voiceFailure(cause, preview), rejectedVoiceKey(cause));
       }
     }
   }
@@ -387,13 +423,18 @@ export const VoiceChat = forwardRef<
   return (
     <>
       {secretCard}
+      {mode === 'chat' && visible && state === 'idle' && !opening && error && (
+        <Alert>
+          <AlertDescription>{error}</AlertDescription>
+        </Alert>
+      )}
       {visible &&
         opening &&
         state === 'idle' &&
         !(settings?.supported && settings.setupComplete) && (
           <LoadingBar active label="Loading voice settings" />
         )}
-      {visible && !opening && state === 'idle' && (
+      {mode === 'settings' && visible && !opening && (
         <VoicePanel
           panel={panel}
           settings={settings}
@@ -402,21 +443,55 @@ export const VoiceChat = forwardRef<
           step={step}
           busy={saving}
           error={error}
-          embedded={mode === 'settings'}
           previewDisabled={externalCallActive}
+          previewState={
+            state === 'starting' ? 'starting' : state === 'preview' ? 'playing' : 'idle'
+          }
+          activity={audioActivity}
+          onStopPreview={end}
+          startIntent={
+            (settingsRequest?.kind === 'start' ||
+              settingsRequest?.kind === 'failure' ||
+              settingsRequest?.kind === 'key-failure') &&
+            !!onReady
+          }
+          audioBlocked={blockedAudio}
+          onEnableAudio={() => {
+            void live.current?.audio
+              .play()
+              .then(() => setBlockedAudio(false))
+              .catch(() => setError('Your browser blocked audio playback.'));
+          }}
           onClose={() => {
             end();
             setVisible(false);
+            onDismiss?.();
           }}
           onKey={async (value) => {
+            setError('');
+            setNotice('');
             const receipt = record(await rpc('voice.credential', { value }));
             if (receipt.saved !== true) throw new Error('Save not confirmed');
-            await loadSettings();
+            await savePreferences(false);
             setStep('settings');
           }}
-          onUseSaved={() => setStep('settings')}
+          onUseSaved={() => {
+            setSaving(true);
+            setError('');
+            void savePreferences(false)
+              .then(() => setStep('settings'))
+              .catch((cause) => setError(voiceFailure(cause)))
+              .finally(() => setSaving(false));
+          }}
           onPreview={() => void start(true)}
-          onStart={() => void start(false)}
+          onStart={() => {
+            setSaving(true);
+            setError('');
+            void savePreferences(true)
+              .then(() => onReady?.())
+              .catch((cause) => setError(voiceFailure(cause)))
+              .finally(() => setSaving(false));
+          }}
           onSave={() => {
             setSaving(true);
             setError('');
@@ -428,7 +503,8 @@ export const VoiceChat = forwardRef<
           }}
         />
       )}
-      {visible &&
+      {mode === 'chat' &&
+        visible &&
         (state !== 'idle' ||
           (opening && mode === 'chat' && settings?.supported && settings.setupComplete)) &&
         (() => {
@@ -450,7 +526,7 @@ export const VoiceChat = forwardRef<
                   setMuted(!muted);
                 }}
                 onSettings={() => {
-                  if (onOpenSettings) onOpenSettings();
+                  if (onOpenSettings) onOpenSettings({ kind: 'settings' });
                   else end();
                 }}
               />
