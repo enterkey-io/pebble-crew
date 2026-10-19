@@ -6,7 +6,12 @@ export default defineConfig({
   testDir: 'test/mobile',
   timeout: 60000,
   workers: 1,
-  use: { colorScheme: 'dark', baseURL: 'http://127.0.0.1:8097', trace: 'retain-on-failure' },
+  use: {
+    colorScheme: 'dark',
+    baseURL: 'http://127.0.0.1:8097',
+    trace: 'retain-on-failure',
+    screenshot: 'only-on-failure',
+  },
   projects: [
     { name: 'iphone-webkit', use: { ...devices['iPhone 13'], browserName: 'webkit' } },
     { name: 'android-chromium', use: { ...devices['Pixel 7'], browserName: 'chromium' } },

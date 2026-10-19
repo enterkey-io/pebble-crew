@@ -551,6 +551,12 @@ test('denied microphone returns to intact text chat without creating a provider 
     setupComplete = false,
     keyConfirmed = false;
   await page.addInitScript(() => {
+    const schedule = window.setTimeout.bind(window);
+    // Browser cleanup tasks may run after the next frame opens the error panel.
+    Object.defineProperty(window, 'setTimeout', {
+      value: (callback: TimerHandler, delay?: number, ...args: unknown[]) =>
+        schedule(callback, delay === undefined || delay === 0 ? 200 : delay, ...args),
+    });
     Object.defineProperty(navigator.mediaDevices, 'getUserMedia', {
       value: async () => {
         throw new DOMException('Denied', 'NotAllowedError');
@@ -589,6 +595,8 @@ test('denied microphone returns to intact text chat without creating a provider 
   await page.getByRole('button', { name: 'Voice chat', exact: true }).click();
   await page.getByRole('button', { name: 'Use saved key', exact: true }).click();
   await page.getByRole('button', { name: 'Start call', exact: true }).click();
+  await expect(page.getByRole('alert')).toContainText('Microphone access is blocked');
+  await page.waitForTimeout(300);
   await expect(page.getByRole('alert')).toContainText('Microphone access is blocked');
   await expect(page.getByRole('button', { name: 'Start call', exact: true })).toBeEnabled();
   await expect(field).toHaveValue('Keep my unsent draft');
