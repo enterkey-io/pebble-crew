@@ -42,7 +42,7 @@ export function Disclosure({
           />
         </Button>
       </CollapsibleTrigger>
-      <CollapsibleContent data-slot="disclosure-content" className="overflow-hidden">
+      <CollapsibleContent data-slot="disclosure-content" className="overflow-clip">
         <div
           data-slot="disclosure-body"
           className={cn(
