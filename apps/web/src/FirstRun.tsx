@@ -1,5 +1,6 @@
 import { Label } from './components/ui/label';
 import { Form } from './components/ui/form';
+import { Disclosure } from './components/ui/disclosure';
 import { Input } from './components/ui/input';
 import { Button } from './components/ui/button';
 import { useEffect, useRef, useState } from 'react';
@@ -195,14 +196,13 @@ export function FirstRun({
               <p className="pair-wait" role="status">
                 Waiting for your Hermes agent to approve…
               </p>
-              <details>
-                <summary>What will my agent do?</summary>
+              <Disclosure title="What will my agent do?">
                 <p>On your Hermes host, it runs:</p>
                 <code>
                   hermes bot-web approve {code} --app-origin {location.origin}
                 </code>
                 <p>Only approve a code that you see in your own browser.</p>
-              </details>
+              </Disclosure>
               <Button variant="secondary" onClick={cancel}>
                 Cancel request
               </Button>

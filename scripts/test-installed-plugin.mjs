@@ -162,6 +162,9 @@ try {
       ...(process.env.WORKSPACE_PLUGIN_ARCHIVE
         ? ['--archive', process.env.WORKSPACE_PLUGIN_ARCHIVE]
         : []),
+      ...(process.env.WORKSPACE_PREVIOUS_ARCHIVE
+        ? ['--previous-archive', process.env.WORKSPACE_PREVIOUS_ARCHIVE]
+        : []),
     ],
     { env: { ...process.env, PYTHONPATH: source }, stdio: ['ignore', 'pipe', 'pipe'] },
   );
@@ -321,6 +324,30 @@ try {
     checks[kind + '_crash_recovers_without_pairing_and_keeps_draft'] = true;
     console.log('Crash recovery passed:', kind);
   }
+  if (process.env.WORKSPACE_PREVIOUS_ARCHIVE) {
+    await control('contract-upgrade');
+    await page.reload();
+    await expect(message).toBeEnabled();
+    await expect(page.getByText('Native fixture reply', { exact: true }).last()).toBeVisible();
+    const metadata = await page.request.get(origin + '/version.json');
+    expect((await metadata.json()).tag).toBe(
+      JSON.parse(await readFile('release.json', 'utf8')).tag,
+    );
+    checks.actual_preview15_upgrade_serves_candidate_version = true;
+    checks.actual_preview15_upgrade_preserves_login_and_native_history = true;
+    await expect(page.locator('.pc-rail-footer .personal-avatar img')).toHaveAttribute(
+      'src',
+      accountImage,
+    );
+    checks.actual_preview15_upgrade_preserves_account_photo = true;
+    console.log('Actual preview.15 to candidate host-first upgrade passed.');
+  }
+  await message.fill('Unsent native owner draft\nkept after refreshing');
+  await page.reload();
+  await expect(message).toBeEnabled();
+  await expect(message).toHaveValue('Unsent native owner draft\nkept after refreshing');
+  checks.owner_draft_survives_full_page_reload = true;
+  await message.fill('');
   await control('update');
   await expect(message).toBeEnabled();
   await page.reload();

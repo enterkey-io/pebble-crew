@@ -155,6 +155,8 @@ def sync_runtime(*, native_idle=False, source_package=False):
             running = host.runtime_evidence(host.release_dir(directory, active))
             if (report['source']['contract'] not in running['accepts']
                 or running['contract'] not in report['source']['accepts']):
+                if running['contract'] in report['source']['accepts']:
+                    raise ValueError('The active host cannot accept the new runtime yet. Activate the verified host with hermes bot-web update first, then run hermes bot-web sync-runtime --native-idle and restart stopped native processes. No runtime copies were changed.')
                 raise ValueError('The staged runtime and active host have no tested compatibility; preserve both until a migration is available')
         host.preflight_runtimes(source)
         host.private_dir(receipt_root.parent)

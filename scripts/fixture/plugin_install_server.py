@@ -33,6 +33,7 @@ def main():
     parser.add_argument('--bridge-port', required=True)
     parser.add_argument('--cert', required=True)
     parser.add_argument('--archive', type=Path)
+    parser.add_argument('--previous-archive', type=Path)
     args = parser.parse_args()
     project = Path(__file__).resolve().parents[2]
     directory = args.directory.resolve()
@@ -50,7 +51,18 @@ def main():
         zipped.extractall(unpack)
     plugin = home / 'plugins/bot-web'
     plugin.parent.mkdir()
-    shutil.copytree(unpack / 'bot-web', plugin)
+    initial_plugin = unpack / 'bot-web'
+    if args.previous_archive:
+        baseline = json.loads((project / 'scripts/fixture/upgrade-baseline.json').read_text())
+        assert hashlib.sha256(args.previous_archive.read_bytes()).hexdigest() == baseline['sha256']
+        previous = directory / 'previous-release'
+        with ZipFile(args.previous_archive) as zipped:
+            assert all(not Path(item.filename).is_absolute() and '..' not in Path(item.filename).parts
+                       and not stat.S_ISLNK(item.external_attr >> 16) for item in zipped.infolist())
+            zipped.extractall(previous)
+        initial_plugin = previous / 'bot-web'
+        assert json.loads((initial_plugin / 'web-runtime/apps/web/dist/version.json').read_text())['tag'] == baseline['tag']
+    shutil.copytree(initial_plugin, plugin)
     os.environ.clear()
     os.environ.update(PATH=f'{Path(sys.executable).parent}:{Path(args.node).parent}:/usr/bin:/bin',
         HOME=str(directory), HERMES_HOME=str(home), PYTHONPATH=args.source,
@@ -231,6 +243,50 @@ def main():
                 elif self.path == '/audit':
                     from collections import Counter
                     result = {'request_paths': dict(Counter(row['path'] for row in Model.request_audit)), 'count': Model.turns}
+                elif self.path == '/contract-upgrade':
+                    assert args.previous_archive, 'This journey requires the actual pinned previous release'
+                    turns = Model.turns
+                    rpc('agent.enable', {'profile': 'alpha', 'initialize_chat': True})
+                    from hermes_cli.profiles import get_profile_dir
+                    named = Path(get_profile_dir('alpha')) / 'plugins/bot-web'
+                    old_runtime = tool_marker(named)
+                    before = cli('runtime-status')
+                    assert before['active_host']['runtime']['contract'] == 'workspace-runtime-v1'
+                    protected = {p: hashlib.sha256(p.read_bytes()).hexdigest()
+                        for profile in ('default', 'alpha', 'beta', 'gamma')
+                        for name in ('SOUL.md', '.env', 'config.yaml', 'profile.yaml', '.pebble-crew-identity')
+                        if (p := Path(get_profile_dir(profile)) / name).is_file()}
+                    plugin.rename(directory / 'previous-plugin-backup')
+                    shutil.copytree(unpack / 'bot-web', plugin)
+                    refused = cli('sync-runtime', '--source-package', '--native-idle', expect_failure=True)
+                    checks['v1_host_refuses_v2_sync_without_touching_runtime'] = (
+                        'update first' in refused.stderr and tool_marker(named) == old_runtime
+                        and json.loads((state / 'install.json').read_text())['active_release'] == active)
+                    assert checks['v1_host_refuses_v2_sync_without_touching_runtime'], refused.stderr
+                    cli('update')
+                    current = json.loads((state / 'install.json').read_text())['active_release']
+                    transition = cli('runtime-status')
+                    checks['actual_preview15_host_activates_v2_with_v1_copies'] = (
+                        current != active and transition['active_host']['runtime']['contract'] == 'workspace-runtime-v2'
+                        and tool_marker(named) == old_runtime)
+                    synced = cli('sync-runtime', '--native-idle')
+                    evidence = cli('runtime-status')
+                    checks['host_first_upgrade_syncs_from_active_release'] = (
+                        synced['complete'] and synced['source_kind'] == 'active-release'
+                        and all(row['sha256'] == evidence['active_host']['runtime']['sha256'] for row in evidence['profiles']))
+                    checks['previous_release_upgrade_preserves_private_files'] = (
+                        all(hashlib.sha256(path.read_bytes()).hexdigest() == digest for path, digest in protected.items())
+                        and hashlib.sha256(settings.read_bytes()).hexdigest() == key_digest)
+                    old_pid = manager.pid
+                    os.kill(old_pid, signal.SIGTERM)
+                    deadline = time.monotonic() + 10
+                    while manager.pid == old_pid and time.monotonic() < deadline:
+                        time.sleep(0.1)
+                    ready()
+                    checks['previous_release_upgrade_restarts_fresh_services'] = manager.pid != old_pid
+                    checks['previous_release_upgrade_runs_zero_model_turns'] = Model.turns == turns
+                    active = current
+                    result = {'upgraded_from': baseline['tag'], 'runtime_receipt': synced['receipt']}
                 elif self.path == '/update':
                     turns = Model.turns
                     from hermes_cli.profiles import get_profile_dir

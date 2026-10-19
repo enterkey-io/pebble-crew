@@ -6,7 +6,7 @@ def register(ctx):
         parser.add_argument("action", choices=["doctor", "serve", "setup", "approve", "revoke", "enroll", "primary", "sync-runtime", "runtime-status", "probe", "install", "run", "service", "status", "verify", "setup-link", "update", "rollback"],
             help="revoke invalidates ALL browser access; it is not diagnostic connection cleanup")
         parser.add_argument("code", nargs="?")
-        parser.add_argument("--source-package", action="store_true", help="Sync runtime from the newly installed plugin package before host update")
+        parser.add_argument("--source-package", action="store_true", help="Select package code instead of the active release; requires mutual compatibility with the active host")
         parser.add_argument("--native-idle", action="store_true", help="Confirm native work and profile processes are stopped before copying runtime files")
         parser.add_argument("--trust-file")
         parser.add_argument("--bridge-url")

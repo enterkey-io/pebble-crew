@@ -1,6 +1,7 @@
 import { Label } from './components/ui/label';
 import { Checkbox } from './components/ui/checkbox';
 import { Form } from './components/ui/form';
+import { Disclosure } from './components/ui/disclosure';
 import { EditorSurface } from './ui/EditorSurface';
 import { useEffect, useState, useCallback, useReducer } from 'react';
 import { ArrowLeft, ChevronRight, UserPlus, Users } from 'lucide-react';
@@ -352,8 +353,7 @@ export function NewPebble({
                     }
                   />
                 </PebbleProfileFields>
-                <details className="form-disclosure">
-                  <summary>Model and personality</summary>
+                <Disclosure title="Model and personality" className="mt-6">
                   <p>
                     {model?.supported
                       ? `${model.provider} · ${model.model}`
@@ -368,7 +368,7 @@ export function NewPebble({
                       onChange={(e) => setSoul(e.target.value)}
                     />
                   </Label>
-                </details>
+                </Disclosure>
               </>
             )}
           </div>

@@ -8,6 +8,8 @@ import { useAppViewport } from './ui/viewport';
 import { StartupScreen } from './StartupScreen';
 import { ownerRequest, OwnerRequestError } from './owner-request';
 import { OwnerPhotoProvider, sessionPhoto } from './OwnerPhoto';
+import { clearSavedDrafts } from './chat/drafts';
+import { Disclosure } from './components/ui/disclosure';
 
 export interface OwnerConnection {
   ticket: () => Promise<{ ticket: string; bridgeUrl: string }>;
@@ -98,6 +100,7 @@ export function OwnerShell({ setupProof = '' }: { setupProof?: string } = {}) {
             },
             logout: async () => {
               await ownerRequest('/api/auth/sign-out', {});
+              clearSavedDrafts();
               setMode('login');
             },
           }}
@@ -186,10 +189,9 @@ export function OwnerShell({ setupProof = '' }: { setupProof?: string } = {}) {
               </Button>
             </Form>
             {mode === 'login' && (
-              <details>
-                <summary>Forgot your password?</summary>
+              <Disclosure title="Forgot your password?">
                 <p>Ask your Hermes agent to reset your login.</p>
-              </details>
+              </Disclosure>
             )}
           </>
         )}

@@ -201,6 +201,29 @@ class RuntimeLifecycleTests(unittest.TestCase):
             self.assertTrue(all(host.runtime_evidence(path)['sha256'] == result['source']['sha256']
                                 for path in self.paths.values()))
 
+    def test_v1_host_requires_activation_before_v2_runtime_sync(self):
+        active = self.install(self.source)
+        old_contract = json.dumps({'schema': 1, 'contract': 'workspace-runtime-v1',
+            'accepts': ['workspace-runtime-v1', 'legacy-b642cce']})
+        for destination in (active, *self.paths.values()):
+            (destination / 'runtime-contract.json').write_text(old_contract)
+        before = {name: host.runtime_evidence(path)['sha256'] for name, path in self.paths.items()}
+        with patch.object(setup, '__file__', str(self.source / 'setup.py')):
+            with self.assertRaisesRegex(ValueError, 'update first'):
+                setup.sync_runtime(native_idle=True, source_package=True)
+        self.assertEqual(before, {name: host.runtime_evidence(path)['sha256'] for name, path in self.paths.items()})
+        self.assertFalse((self.root / 'rollback').exists())
+        # The new host accepts the old runtimes before activation; sync then uses
+        # that active immutable release, never the unactivated package.
+        host.preflight_runtimes(self.source)
+        (active / 'runtime-contract.json').write_bytes((self.source / 'runtime-contract.json').read_bytes())
+        with contextlib.redirect_stdout(io.StringIO()):
+            result = setup.sync_runtime(native_idle=True)
+        self.assertTrue(result['complete'])
+        self.assertEqual(result['source_kind'], 'active-release')
+        self.assertTrue(all(host.runtime_evidence(path)['contract'] == 'workspace-runtime-v2'
+                            for path in self.paths.values()))
+
     def test_historical_tree_only_rollback_refuses_new_reporting_runtimes(self):
         active = self.install(self.source)
         before = {name: host.runtime_evidence(path)['sha256'] for name, path in self.paths.items()}

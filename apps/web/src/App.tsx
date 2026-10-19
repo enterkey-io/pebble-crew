@@ -65,6 +65,7 @@ import { SendProjection } from './chat/send-projection';
 import { TranscriptFollow } from './chat/viewport-motion';
 import { toolActivity } from './chat/activity';
 import { conversationLocation, rememberConversation } from './chat/conversation-location';
+import { ConversationDrafts } from './chat/drafts';
 import { reactionReceipt } from './chat/reactions';
 import { useOverlayHistory } from './ui/overlay-history';
 import type { OwnerConnection } from './OwnerShell';
@@ -312,7 +313,8 @@ export function App({ owner }: { owner?: OwnerConnection }) {
 
   const followLatest = useRef(true);
   const focusOnReady = useRef(false);
-  const drafts = useRef(new Map<string, string>());
+  const drafts = useRef(new ConversationDrafts());
+  drafts.current.bind(workspace?.id);
   const [showLatest, setShowLatest] = useState(false);
   const displayedRead = useRef<{ key: string; cursor: number } | undefined>(undefined);
   const acknowledgedRead = useRef(new Map<string, number>());
@@ -1096,6 +1098,7 @@ export function App({ owner }: { owner?: OwnerConnection }) {
       if (generation !== selectGeneration.current || current.current !== client)
         return 'superseded';
       const target: Selection = { kind: 'bot', bot, sessionId: data.sessionId };
+      if (!restore || !selected.current) setDraft(drafts.current.get(draftKey(target)) ?? '');
       if (!restore) {
         displayedRead.current = undefined;
         sendProjection.current = new SendProjection();
@@ -1103,7 +1106,6 @@ export function App({ owner }: { owner?: OwnerConnection }) {
         setRoutines([]);
         followLatest.current = true;
         setShowLatest(false);
-        setDraft(drafts.current.get(draftKey(target)) ?? '');
       }
       setRemovedDraft('');
       setStopping(false);
@@ -1199,13 +1201,13 @@ export function App({ owner }: { owner?: OwnerConnection }) {
     selectGeneration.current++;
     setSwitching(false);
     const target: Selection = { kind: 'room', room };
+    if (!restore || !selected.current) setDraft(drafts.current.get(draftKey(target)) ?? '');
     selected.current = target;
     selectionConnection.current = client;
     setSelection(target);
     if (workspace) rememberConversation(workspace.id, { kind: 'room', id: text(room.room_id) });
     if (restore) setBlocked(false);
     if (!restore) {
-      setDraft(drafts.current.get(draftKey(target)) ?? '');
       followLatest.current = true;
       setShowLatest(false);
       displayedRead.current = undefined;

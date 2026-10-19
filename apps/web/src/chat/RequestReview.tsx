@@ -2,6 +2,7 @@ import { ApprovalSurface } from '../components/ai-elements/confirmation';
 import { Label } from '../components/ui/label';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
+import { Disclosure } from '../components/ui/disclosure';
 import { useState } from 'react';
 import type { Row } from '../conversation';
 export function RequestReview({
@@ -101,10 +102,9 @@ export function RequestReview({
           })}
       </dl>
       {spec.soul != null && (
-        <details>
-          <summary>Personality</summary>
+        <Disclosure title="Personality">
           <p className="preserve-whitespace">{String(spec.soul)}</p>
-        </details>
+        </Disclosure>
       )}
       {Boolean(result.reason || result.error) && (
         <p role="status">{String(result.reason ?? result.error)}</p>

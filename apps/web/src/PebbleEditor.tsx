@@ -3,6 +3,7 @@ import type { VoiceSettingsRequest } from './voice/decode';
 import { Label } from './components/ui/label';
 import { Checkbox } from './components/ui/checkbox';
 import { Form } from './components/ui/form';
+import { Disclosure } from './components/ui/disclosure';
 import { TabbedEditor } from './ui/EditorSurface';
 import { LoadingBar } from './components/ui/loading-bar';
 import { Button } from './components/ui/button';
@@ -293,8 +294,7 @@ export function PebbleEditor({
               </div>
             </Form>
             {bot.enrolled && bot.profile !== state.orchestrator && (
-              <details className="form-disclosure">
-                <summary>Make Main Pebble</summary>
+              <Disclosure title="Make Main Pebble" className="mt-6">
                 <p>
                   {bot.name} will coordinate your pebbles. Existing reporting relationships stay in
                   place; the selected pebble becomes managerless.
@@ -306,7 +306,7 @@ export function PebbleEditor({
                 >
                   Make {bot.name} Main Pebble
                 </Button>
-              </details>
+              </Disclosure>
             )}
           </FormSection>
         )}

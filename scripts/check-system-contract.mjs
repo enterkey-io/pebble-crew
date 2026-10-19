@@ -9,6 +9,12 @@ const requireRule = (condition, message) => {
   if (!condition) errors.push(message);
 };
 const migrated = [
+  ['PebbleEditor.tsx', './components/ui/disclosure', ['Disclosure']],
+  ['NewPebble.tsx', './components/ui/disclosure', ['Disclosure']],
+  ['OwnerShell.tsx', './components/ui/disclosure', ['Disclosure']],
+  ['FirstRun.tsx', './components/ui/disclosure', ['Disclosure']],
+  ['chat/RequestReview.tsx', '../components/ui/disclosure', ['Disclosure']],
+  ['connections/ConnectionDetail.tsx', '../components/ui/disclosure', ['Disclosure']],
   ['App.tsx', './components/ai-elements/chat', ['Chat', 'ChatViewport']],
   ['App.tsx', './components/ai-elements/prompt-input', ['PromptInputFrame', 'PromptInputField']],
   ['App.tsx', './components/ai-elements/confirmation', ['Confirmation']],

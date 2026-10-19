@@ -325,14 +325,10 @@
   font-weight: 600;
   letter-spacing: -0.7px;
 }
-.owner-card p,
-.owner-card summary {
+.owner-card p {
   font-size: 12px;
   color: var(--muted-foreground);
   line-height: 1.6;
-}
-.owner-card details p {
-  margin-top: 12px;
 }
 .onboarding-shell {
   position: relative;
@@ -554,8 +550,7 @@
   flex-direction: column;
   gap: 14px;
 }
-.connection-section h3,
-.connection-disclosure strong {
+.connection-section h3 {
   font-size: 14px;
   font-weight: 500;
 }
@@ -580,18 +575,6 @@
 .connection-credential label {
   font-size: 12px;
 }
-.connection-disclosure {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 16px;
-  min-height: 48px;
-  text-align: left;
-  height: auto;
-  padding: 0;
-  white-space: normal;
-}
-.connection-disclosure small,
 .connection-tools p,
 .connection-tool small,
 .connection-tool code {
@@ -600,15 +583,6 @@
   color: var(--muted-foreground);
   margin-top: 4px;
   overflow-wrap: anywhere;
-}
-.connection-disclosure > svg {
-  width: 16px;
-  height: 16px;
-  color: var(--muted-foreground);
-  transition: transform var(--motion-hover);
-}
-.connection-disclosure > svg[data-open='true'] {
-  transform: rotate(180deg);
 }
 .connection-tools {
   display: flex;
@@ -1162,4 +1136,32 @@
 .pc-document-scroll .message-body {
   font-size: 14px;
   line-height: 1.8;
+}
+
+[data-slot='disclosure-content'][data-state='open'] {
+  animation: disclosure-expand var(--motion-overlay) var(--ease-out);
+}
+[data-slot='disclosure-content'][data-state='closed'] {
+  animation: disclosure-collapse var(--motion-overlay) var(--ease-out);
+}
+@keyframes disclosure-expand {
+  from {
+    height: 0;
+  }
+  to {
+    height: var(--radix-collapsible-content-height);
+  }
+}
+@keyframes disclosure-collapse {
+  from {
+    height: var(--radix-collapsible-content-height);
+  }
+  to {
+    height: 0;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  [data-slot='disclosure-content'] {
+    animation: none !important;
+  }
 }
