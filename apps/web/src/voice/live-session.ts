@@ -135,6 +135,8 @@ export class VoiceLiveSession {
   private peer: null | RTCPeerConnection = null;
   private events: null | RTCDataChannel = null;
   private microphone: null | MediaStream = null;
+  private previewInput: null | MediaStream = null;
+  private previewSource: null | ConstantSourceNode = null;
   private closeTimer: null | number = null;
   private finalized = false;
   private closing = false;
@@ -201,11 +203,12 @@ export class VoiceLiveSession {
 
     if (typeof RTCPeerConnection === 'undefined') throw new VoiceStartError('transport', null);
     const connection = new RTCPeerConnection();
-    if (this.handlers.onAudioLevel || this.handlers.onSpeakingChange) {
+    if (preview || this.handlers.onAudioLevel || this.handlers.onSpeakingChange) {
       try {
         this.audioContext = new AudioContext();
-        void this.audioContext.resume().catch(() => undefined);
-      } catch {
+        if (!preview) void this.audioContext.resume().catch(() => undefined);
+      } catch (cause) {
+        if (preview) throw new VoiceStartError('transport', cause);
         // Audio still plays when a browser has no level analyser.
       }
     }
@@ -231,7 +234,20 @@ export class VoiceLiveSession {
     });
 
     if (preview) {
-      connection.addTransceiver('audio', { direction: 'recvonly' });
+      const context = this.audioContext;
+      if (!context) throw new VoiceStartError('transport', null);
+      const destination = context.createMediaStreamDestination();
+      this.previewSource = context.createConstantSource();
+      this.previewSource.offset.value = 0;
+      this.previewSource.connect(destination);
+      this.previewSource.start();
+      this.previewInput = destination.stream;
+      // Live advances its timeline on input audio, even when nobody speaks.
+      // Generate silence locally; preview never captures the microphone.
+      for (const track of this.previewInput.getAudioTracks())
+        connection.addTrack(track, this.previewInput);
+      await context.resume();
+      if (this.finalized) return;
     } else {
       try {
         this.microphone = await navigator.mediaDevices.getUserMedia({
@@ -436,6 +452,15 @@ export class VoiceLiveSession {
     });
   }
 
+  private stopInput(): void {
+    this.microphone?.getTracks().forEach((track) => track.stop());
+    this.previewInput?.getTracks().forEach((track) => track.stop());
+    this.previewSource?.stop();
+    this.previewSource?.disconnect();
+    this.previewSource = null;
+    this.previewInput = null;
+  }
+
   /** Graceful close: ask for `session.closed`, tear down after it (or a timeout). */
   close(): void {
     if (this.finalized || this.closing) {
@@ -443,7 +468,7 @@ export class VoiceLiveSession {
     }
 
     this.closing = true;
-    this.microphone?.getTracks().forEach((track) => track.stop());
+    this.stopInput();
     this.audio.pause();
     this.audio.srcObject = null;
     if (!this.send({ type: 'session.close' })) {
@@ -479,7 +504,7 @@ export class VoiceLiveSession {
     this.outputAnalyser?.disconnect();
     this.handlers.onAudioLevel?.(0);
     void this.audioContext?.close().catch(() => undefined);
-    this.microphone?.getTracks().forEach((track) => track.stop());
+    this.stopInput();
     this.events?.close();
     this.peer?.close();
     this.audio.srcObject = null;

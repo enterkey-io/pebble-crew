@@ -11,7 +11,7 @@ journeys. The mobile runner imports the same journeys.
 - Preview stays in the Voice tab and speaks the selected voice name in one sample, without a call bar, microphone or agent delegation. Stop preview stays available. A rejected key immediately opens empty private key entry; replacement preserves the selected voice and requires no reload.
 - Failures: Preview never requests or blames the microphone. Safe provider codes distinguish rate, credit, spending and quota limits without returning vendor bodies. Unknown limits stay neutral.
 - Mobile return: the shared details-navigation journey closes Edit and Details, then checks the restored composer height and field/send-control centers. Inspect composer-after-details.png on both phones.
-- Local WebRTC: output-only preview never requests microphone; live delegation
+- Local WebRTC: microphone-free preview sends a generated silent track to advance the Live timeline. The peer must gate output on incoming audio packets; assert near-zero input energy, real playback progress and moving output bars with zero microphone requests. The old receive-only build must fail this gate. Stop detaches playback. A silent provider must show a wait indicator, then an explicit no-audio error instead of a silent reset. Live delegation
   matches native row receipts; unrelated replies are not spoken; mute and End
   stop the synthetic microphone. No paid provider or physical capture is used.
 - Denied microphone: no provider setup, intact draft and usable text composer.
@@ -27,6 +27,8 @@ is not evidence that physical Safari/provider calls pass or fail. Real media
 acceptance requires the owner's configured provider and explicit real-device use.
 
 `scripts/fixture/voice_preferences_smoke.py` verifies actual native default and nondefault voice saves, null config sections, saved-key acknowledgment and unrelated-setting preservation without any provider or model calls. Run it with the newer pinned native Python before the workspace fixture.
+
+The input-clock requirement follows [OpenAI Live guidance](https://developers.openai.com/api/docs/guides/live-conversations#greet-before-the-caller-speaks): keep the input audio track active, including silence. Local media proof does not establish real provider speech or device audibility.
 
 `test/plugin/test_live_voice.py` covers connection/session isolation, changed
 profile rejection, single-use/expired prompts and normal-model voice submission.

@@ -68,6 +68,7 @@ export const VoiceChat = forwardRef<
   const [visible, setVisible] = useState(false),
     [settings, setSettings] = useState<VoiceSettings>();
   const [state, setState] = useState<'idle' | 'starting' | 'live' | 'preview'>('idle');
+  const [previewPlaying, setPreviewPlaying] = useState(false);
   const [muted, setMuted] = useState(false),
     [blockedAudio, setBlockedAudio] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -182,6 +183,7 @@ export const VoiceChat = forwardRef<
     if (mounted.current) {
       setOpening(false);
       setState('idle');
+      setPreviewPlaying(false);
       setMuted(false);
       setCaptions([]);
       setBlockedAudio(false);
@@ -314,15 +316,22 @@ export const VoiceChat = forwardRef<
     setError('');
     setNotice('');
     setState('starting');
-    let previewHeard = false;
+    let previewHeard = false,
+      playbackBlocked = false;
     const call = new VoiceLiveSession(
       {
         onAudioLevel(level) {
-          if (generation.current === epoch) audioActivity.current?.update(level);
+          if (generation.current !== epoch) return;
+          audioActivity.current?.update(level);
+          if (preview && !previewHeard && level > 0.03 && !call.audio.paused) {
+            previewHeard = true;
+            setPreviewPlaying(true);
+            clearTimeout(previewTimer.current);
+            previewTimer.current = setTimeout(end, 30000);
+          }
         },
         onSpeakingChange(speaking) {
           if (!preview || generation.current !== epoch) return;
-          if (speaking) previewHeard = true;
           if (!previewHeard) return;
           clearTimeout(previewTimer.current);
           previewTimer.current = setTimeout(end, speaking ? 30000 : 1500);
@@ -334,7 +343,19 @@ export const VoiceChat = forwardRef<
             setState('preview');
             const voiceName = selection.voice.charAt(0).toUpperCase() + selection.voice.slice(1);
             call.speak(null, `Hi, this is the ${voiceName} voice on Pebble Crew. How do I sound?`);
-            previewTimer.current = setTimeout(end, 30000);
+            previewTimer.current = setTimeout(
+              () => {
+                if (generation.current !== epoch) return;
+                end();
+                if (previewHeard) return;
+                reportFailure(
+                  playbackBlocked
+                    ? 'Your browser blocked preview audio. Try Preview again and enable audio when prompted.'
+                    : 'No preview audio arrived. Try again.',
+                );
+              },
+              previewHeard ? 30000 : 15000,
+            );
           } else setState('live');
         },
         onDelegation(id, context) {
@@ -375,12 +396,15 @@ export const VoiceChat = forwardRef<
             });
         },
         onAutoplayBlocked() {
-          if (generation.current === epoch) setBlockedAudio(true);
+          if (generation.current === epoch) {
+            playbackBlocked = true;
+            setBlockedAudio(true);
+          }
         },
       },
-      async (sdp, outputOnly) => {
-        await savePreferences(!outputOnly, selection);
-        return sessionAnswer(await rpc('voice.session', { sdp, preview: outputOnly }));
+      async (sdp, sampleOnly) => {
+        await savePreferences(!sampleOnly, selection);
+        return sessionAnswer(await rpc('voice.session', { sdp, preview: sampleOnly }));
       },
     );
     live.current = call;
@@ -445,7 +469,11 @@ export const VoiceChat = forwardRef<
           error={error}
           previewDisabled={externalCallActive}
           previewState={
-            state === 'starting' ? 'starting' : state === 'preview' ? 'playing' : 'idle'
+            state === 'starting' || (state === 'preview' && !previewPlaying)
+              ? 'starting'
+              : state === 'preview'
+                ? 'playing'
+                : 'idle'
           }
           activity={audioActivity}
           onStopPreview={end}

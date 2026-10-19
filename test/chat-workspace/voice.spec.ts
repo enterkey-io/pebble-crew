@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test';
+import { writeFile } from 'node:fs/promises';
 import { installFixture } from './fixtures';
 
 test.use({ serviceWorkers: 'block' });
@@ -131,7 +132,10 @@ test('private voice setup, Snow and selected-Pebble message colors', async ({
 declare global {
   interface Window {
     __voiceTest: {
-      answer: (sdp: string) => Promise<string>;
+      answer: (sdp: string, preview: boolean) => Promise<string>;
+      input: () => Promise<{ packets: number; energy: number }>;
+      silenceOutput: (silent: boolean) => void;
+      playback: () => { time: number; paused: boolean; attached: boolean };
       send: (event: unknown) => void;
       commands: () => Record<string, unknown>[];
       micReads: () => number;
@@ -144,7 +148,7 @@ test('real browser WebRTC preview and call preserve native receipt ownership and
   page,
   context,
   browserName,
-}) => {
+}, info) => {
   test.skip(
     browserName === 'webkit',
     'The standalone local-peer probe produces zero ICE candidates in automated WebKit. Real Safari media requires separate acceptance.',
@@ -160,9 +164,17 @@ test('real browser WebRTC preview and call preserve native receipt ownership and
   await context.grantPermissions(['microphone']);
   const initialize = () => {
     let micReads = 0,
-      channel: RTCDataChannel | undefined;
+      channel: RTCDataChannel | undefined,
+      remote: RTCPeerConnection | undefined,
+      silentOutput = false;
     const tracks: MediaStreamTrack[] = [],
-      commands: Record<string, unknown>[] = [];
+      commands: Record<string, unknown>[] = [],
+      players: HTMLMediaElement[] = [];
+    const play = HTMLMediaElement.prototype.play;
+    HTMLMediaElement.prototype.play = function () {
+      players.push(this);
+      return play.call(this);
+    };
     Object.defineProperty(navigator.mediaDevices, 'getUserMedia', {
       value: async () => {
         micReads++;
@@ -176,27 +188,71 @@ test('real browser WebRTC preview and call preserve native receipt ownership and
         return destination.stream;
       },
     });
+    const input = async () => {
+      let packets = 0,
+        energy = 0;
+      for (const report of (await remote?.getStats())?.values() ?? [])
+        if (report.type === 'inbound-rtp' && report.kind === 'audio') {
+          packets += report.packetsReceived ?? 0;
+          energy += report.totalAudioEnergy ?? 0;
+        }
+      return { packets, energy };
+    };
     window.__voiceTest = {
-      async answer(sdp) {
+      input,
+      playback: () => ({
+        time: players.at(-1)?.currentTime ?? 0,
+        paused: players.at(-1)?.paused ?? true,
+        attached: !!players.at(-1)?.srcObject,
+      }),
+      silenceOutput: (silent) => {
+        silentOutput = silent;
+      },
+      async answer(sdp, preview) {
         const peer = new RTCPeerConnection();
+        remote = peer;
         peer.addEventListener('datachannel', (event) => {
-          channel = event.channel;
-          channel.addEventListener('message', (message) =>
-            commands.push(JSON.parse(String(message.data))),
-          );
-          channel.addEventListener('open', () =>
-            channel?.send(
-              JSON.stringify({ type: 'session.started', session: { id: 'local-peer' } }),
-            ),
+          const events = event.channel;
+          channel = events;
+          events.addEventListener('message', (message) => {
+            const command = JSON.parse(String(message.data));
+            commands.push(command);
+            if (command.type === 'session.close') {
+              events.send(JSON.stringify({ type: 'session.closed', reason: 'close_requested' }));
+              setTimeout(() => peer.close(), 50);
+            }
+          });
+          events.addEventListener('open', () =>
+            events.send(JSON.stringify({ type: 'session.started', session: { id: 'local-peer' } })),
           );
         });
         await peer.setRemoteDescription({ type: 'offer', sdp });
         const audio = new AudioContext(),
           destination = audio.createMediaStreamDestination(),
-          oscillator = audio.createOscillator();
-        oscillator.connect(destination);
+          oscillator = audio.createOscillator(),
+          gate = audio.createGain();
+        gate.gain.value = 0;
+        oscillator.connect(gate).connect(destination);
         oscillator.start();
         void audio.resume();
+        // Live advances on incoming audio, including silence. A connected data
+        // channel alone must never make this fixture emit a passing preview.
+        const clock = setInterval(() => {
+          void input().then(({ packets }) => {
+            gate.gain.value =
+              !silentOutput &&
+              packets > 10 &&
+              (!preview || commands.some((event) => event.type === 'session.commentary.append'))
+                ? 1
+                : 0;
+          });
+        }, 50);
+        peer.addEventListener('connectionstatechange', () => {
+          if (peer.connectionState === 'closed') {
+            clearInterval(clock);
+            void audio.close();
+          }
+        });
         const output = destination.stream;
         for (const track of output.getAudioTracks()) peer.addTrack(track, output);
         await peer.setLocalDescription(await peer.createAnswer());
@@ -247,7 +303,10 @@ test('real browser WebRTC preview and call preserve native receipt ownership and
         },
       });
     if (operation === 'voice.session') {
-      const sdp = await peerPage.evaluate((offer) => window.__voiceTest.answer(offer), params.sdp);
+      const sdp = await peerPage.evaluate(
+        ({ sdp, preview }) => window.__voiceTest.answer(sdp, preview),
+        { sdp: params.sdp, preview: params.preview },
+      );
       return route.fulfill({
         json: { result: { session: { id: 'local-peer' }, transport: { type: 'webrtc', sdp } } },
       });
@@ -269,6 +328,15 @@ test('real browser WebRTC preview and call preserve native receipt ownership and
   await page.getByRole('button', { name: 'Voice chat', exact: true }).click();
   await page.getByRole('button', { name: 'Use saved key', exact: true }).click();
   await page.getByRole('button', { name: 'Preview', exact: true }).click();
+  await expect
+    .poll(() => page.evaluate(async () => (await window.__voiceTest.input()).packets), {
+      message: 'Preview must send an active silent audio track to advance the Live timeline',
+      timeout: 5000,
+    })
+    .toBeGreaterThan(10);
+  expect(await page.evaluate(async () => (await window.__voiceTest.input()).energy)).toBeLessThan(
+    0.0001,
+  );
   await expect
     .poll(
       () =>
@@ -294,7 +362,48 @@ test('real browser WebRTC preview and call preserve native receipt ownership and
     'active',
   );
   expect(await page.evaluate(() => window.__voiceTest.micReads())).toBe(0);
+  await expect
+    .poll(() =>
+      page
+        .locator('[data-slot=audio-activity] span')
+        .first()
+        .evaluate((el) => el.getBoundingClientRect().height),
+    )
+    .toBeGreaterThan(6);
+  await expect
+    .poll(() => page.evaluate(() => window.__voiceTest.playback().time))
+    .toBeGreaterThan(0.2);
+  expect(await page.evaluate(() => window.__voiceTest.playback().paused)).toBe(false);
+  const mediaReceipt = JSON.stringify(
+    await page.evaluate(async () => ({
+      input: await window.__voiceTest.input(),
+      playback: window.__voiceTest.playback(),
+      microphoneRequests: window.__voiceTest.micReads(),
+    })),
+  );
+  await writeFile(info.outputPath('preview-media.json'), mediaReceipt);
+  await info.attach('preview-media.json', {
+    body: mediaReceipt,
+    contentType: 'application/json',
+  });
+  await page.screenshot({ path: info.outputPath('preview-playing.png') });
   await page.getByRole('button', { name: 'Stop preview', exact: true }).click();
+  expect(await page.evaluate(() => window.__voiceTest.playback())).toMatchObject({
+    paused: true,
+    attached: false,
+  });
+  await page.evaluate(() => window.__voiceTest.silenceOutput(true));
+  await page.getByRole('button', { name: 'Preview', exact: true }).click();
+  await expect(page.getByRole('progressbar', { name: 'Preparing voice preview' })).toBeVisible();
+  await page.screenshot({ path: info.outputPath('preview-waiting.png') });
+  await expect(page.getByRole('alert')).toContainText('No preview audio arrived.', {
+    timeout: 20000,
+  });
+  await expect(page.getByRole('button', { name: 'Preview', exact: true })).toBeEnabled();
+  await page.screenshot({ path: info.outputPath('preview-no-audio.png') });
+  expect(followups).toEqual([]);
+  expect(await page.evaluate(() => window.__voiceTest.micReads())).toBe(0);
+  await page.evaluate(() => window.__voiceTest.silenceOutput(false));
   await page.getByRole('button', { name: 'Start call', exact: true }).click();
   await expect(page.getByRole('button', { name: 'Mute microphone' })).toBeVisible({
     timeout: 30000,
