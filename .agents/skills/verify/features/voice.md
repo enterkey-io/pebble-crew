@@ -4,7 +4,8 @@ Run the actual production bundle with the shared `test/chat-workspace/voice.spec
 journeys. The mobile runner imports the same journeys.
 
 - Private setup: field is masked, submission clears it, no value in messages or
-  browser persistence, voice/numeric speed survive saving. Key replacement is requested by the agent, starts empty and never appears as a voice-settings action.
+  browser persistence, voice selection survives saving; no speed control or speed parameter remains. Key replacement is requested by the agent, starts empty and never appears as a voice-settings action.
+- Voice picker: shared Select groups documented presentations into Female and Male. Unclassified/current custom voices remain in Other; only native-advertised voices and the current selection are offered. Keyboard selection and phone scroll remain usable.
 - Palette: selected-Pebble owner bubbles, dark text, neutral Snow exception.
 - First use: one canonical Voice tab in the Pebble editor, using the shared private ApprovalSurface before voice choices. Explicit saved-key reuse is remembered by the native profile. Saved setup starts a call directly on the next opening; there is no separate chat setup form or read-only Model tab.
 - Call bar: Pebble avatar at the top, real audio-amplitude bars, settings, transcript toggle, mute and stop. End stops local tracks immediately and requests one text follow-up only for a real call with a transcript; previews never do.
@@ -26,7 +27,7 @@ connected. The iPhone UI and permission-failure journeys remain exercised. This
 is not evidence that physical Safari/provider calls pass or fail. Real media
 acceptance requires the owner's configured provider and explicit real-device use.
 
-`scripts/fixture/voice_preferences_smoke.py` verifies actual native default and nondefault voice saves, null config sections, saved-key acknowledgment and unrelated-setting preservation without any provider or model calls. Run it with the newer pinned native Python before the workspace fixture.
+`scripts/fixture/voice_preferences_smoke.py` verifies actual native default and nondefault voice saves, null config sections, saved-key acknowledgment, removal of only the old Pebble Crew pace block on explicit save, and unrelated-setting preservation without any provider or model calls. Run it with the newer pinned native Python before the workspace fixture.
 
 The input-clock requirement follows [OpenAI Live guidance](https://developers.openai.com/api/docs/guides/live-conversations#greet-before-the-caller-speaks): keep the input audio track active, including silence. Local media proof does not establish real provider speech or device audibility.
 

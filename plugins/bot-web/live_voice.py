@@ -19,10 +19,6 @@ VOICE_ERROR_CODES = {'VOICE_KEY_REJECTED', 'VOICE_PROVIDER_UNREACHABLE', 'VOICE_
 _CONFIG = threading.Lock()
 PACE_START = '[Pebble Crew delivery]'
 PACE_END = '[/Pebble Crew delivery]'
-SPEEDS = (0.75, 1, 1.25, 1.5, 1.75, 2)
-LEGACY_PACES = {'slower': 'Speak a little more slowly, with natural pauses.',
-         'natural': 'Speak at a natural conversational pace.',
-         'faster': 'Speak a little faster, remaining clear and conversational.'}
 
 
 def supported():
@@ -38,23 +34,20 @@ def preferences():
     from tools import voice_live as native
     status = native.resolve_gpt_live_status()
     live = native._live_section()
-    instructions = str(live.get('instructions') or '')
-    legacy = next((key for key, value in LEGACY_PACES.items() if f'{PACE_START}\n{value}\n{PACE_END}' in instructions), 'natural')
-    speed = live.get('pebble_speed', {'slower': 0.75, 'natural': 1, 'faster': 1.25}[legacy])
-    speed = speed if type(speed) in (int, float) and speed in SPEEDS else 1
     return {'supported': True, 'provider': 'openai', 'configured': status['available'],
-            'voice': status['voice'], 'voices': list(native.GPT_LIVE_VOICES), 'speed': speed, 'speed_control': 'instruction', 'setup_complete': live.get('pebble_setup_complete') is True, 'key_confirmed': bool(status['available']) and (live.get('pebble_key_confirmed') is True or live.get('pebble_setup_complete') is True), 'can_change_key': not bool(live.get('api_key'))}
+            'voice': status['voice'], 'voices': list(native.GPT_LIVE_VOICES), 'setup_complete': live.get('pebble_setup_complete') is True, 'key_confirmed': bool(status['available']) and (live.get('pebble_key_confirmed') is True or live.get('pebble_setup_complete') is True), 'can_change_key': not bool(live.get('api_key'))}
 
 
-def speed_instruction(speed):
-    return f'Aim for {speed:g} times your normal speaking speed. Keep pronunciation clear and natural.'
+def without_pebble_delivery(instructions):
+    cleaned, count = re.subn(re.escape(PACE_START) + r'.*?' + re.escape(PACE_END), '', instructions, flags=re.S)
+    return cleaned.strip() if count else instructions
 
 
-def save_preferences(voice, speed, complete):
+def save_preferences(voice, complete):
     from tools import voice_live as native
     from hermes_cli.config import _CONFIG_LOCK, read_user_config_raw, save_config
-    if voice not in native.GPT_LIVE_VOICES or type(speed) not in (int, float) or speed not in SPEEDS or type(complete) is not bool:
-        raise ValueError('Choose a supported voice and speed')
+    if voice not in native.GPT_LIVE_VOICES or type(complete) is not bool:
+        raise ValueError('Choose a supported voice')
     with _CONFIG_LOCK:
         config = deepcopy(read_user_config_raw() or {})
         if config.get('voice') is None:
@@ -62,19 +55,18 @@ def save_preferences(voice, speed, complete):
         if config['voice'].get('gpt_live') is None:
             config['voice']['gpt_live'] = {}
         live = config.setdefault('voice', {}).setdefault('gpt_live', {})
-        instructions = str(live.get('instructions') or '')
-        instructions = re.sub(re.escape(PACE_START) + r'.*?' + re.escape(PACE_END), '', instructions, flags=re.S).strip()
-        live['instructions'] = f'{instructions}\n\n{PACE_START}\n{speed_instruction(speed)}\n{PACE_END}'.strip()
+        if isinstance(live.get('instructions'), str):
+            live['instructions'] = without_pebble_delivery(live['instructions'])
         live['voice'] = voice
-        live['pebble_speed'] = speed
+        live.pop('pebble_speed', None)
         if preferences()['configured']:
             live['pebble_key_confirmed'] = True
         if complete:
             live['pebble_setup_complete'] = True
-        save_config(config, preserve_keys={('voice', 'gpt_live', key) for key in ('voice', 'instructions', 'pebble_speed', 'pebble_key_confirmed', 'pebble_setup_complete') if key in live})
+        save_config(config, preserve_keys={('voice', 'gpt_live', key) for key in ('voice', 'instructions', 'pebble_key_confirmed', 'pebble_setup_complete') if key in live})
         actual = preferences()
         saved = (read_user_config_raw() or {}).get('voice', {}).get('gpt_live', {})
-        if actual['voice'] != voice or actual['speed'] != speed or (complete and not actual['setup_complete']) or (live.get('pebble_key_confirmed') is True and not actual['key_confirmed']) or saved.get('instructions') != live['instructions']:
+        if actual['voice'] != voice or (complete and not actual['setup_complete']) or (live.get('pebble_key_confirmed') is True and not actual['key_confirmed']) or saved.get('instructions') != live.get('instructions') or 'pebble_speed' in saved:
             raise ValueError('Hermes did not confirm the settings save')
     return actual
 
@@ -91,9 +83,9 @@ def create_session(sdp, name, preview, history=None):
     session['instructions'] = session['instructions'].replace(
         'You are Hermes, a calm and friendly voice assistant.',
         f'You are the speaking voice of {name}, the selected Hermes agent.', 1)
+    session['instructions'] = without_pebble_delivery(session['instructions'])
     if preview:
         session['instructions'] = 'This is a short voice preview. Read the supplied sample once, then wait silently. Do not delegate or ask questions.'
-        session['instructions'] += '\n' + speed_instruction(preferences()['speed'])
         session['input'] = []
     request = urllib.request.Request(f'{base}/live/sessions', data=json.dumps({
         'session': session, 'transport': {'type': 'webrtc', 'sdp': sdp}}).encode(),
@@ -180,7 +172,7 @@ class LiveVoice:
             # receipt of a queued turn, and only speaks an exactly matching completion.
             return await self.ops.gateway.call('prompt.submit', {'session_id': sid,
                 'text': text, 'surface': 'voice-live', 'voice_context': context, 'queued': True})
-        allowed = {'voice.status': ['session_id'], 'voice.preferences': ['session_id', 'voice', 'speed', 'complete'],
+        allowed = {'voice.status': ['session_id'], 'voice.preferences': ['session_id', 'voice', 'complete'],
                    'voice.credential': ['session_id', 'value'], 'voice.session': ['session_id', 'sdp', 'preview']}
         if operation not in allowed:
             raise InvalidOperation('Unsupported voice operation')
@@ -209,7 +201,7 @@ class LiveVoice:
                 if operation == 'voice.status':
                     return preferences()
                 if operation == 'voice.preferences':
-                    return save_preferences(params['voice'], params['speed'], params['complete'])
+                    return save_preferences(params['voice'], params['complete'])
                 if operation == 'voice.credential':
                     value = params['value']
                     if not isinstance(value, str) or not re.fullmatch(r'[\x21-\x7e]{8,4096}', value):

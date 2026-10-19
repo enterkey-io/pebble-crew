@@ -42,8 +42,11 @@ const migrated = [
   ],
   ['GeneralSettings.tsx', './components/ui/select', ['Select', 'SelectTrigger', 'SelectItem']],
   ['components/ai-elements/secret-card.tsx', './confirmation', ['ApprovalSurface']],
-  ['voice/VoiceOptions.tsx', '../components/ui/select', ['Select', 'SelectTrigger', 'SelectItem']],
-  ['voice/VoiceOptions.tsx', '../components/ui/slider', ['Slider']],
+  [
+    'voice/VoiceOptions.tsx',
+    '../components/ui/select',
+    ['Select', 'SelectTrigger', 'SelectItem', 'SelectGroup', 'SelectLabel'],
+  ],
   ['voice/VoiceCallBar.tsx', '../components/ui/item', ['Item', 'ItemContent', 'ItemActions']],
   ['voice/VoiceCallBar.tsx', '../components/ai-elements/audio-activity', ['AudioActivity']],
 ];

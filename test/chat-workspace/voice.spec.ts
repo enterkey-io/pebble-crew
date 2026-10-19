@@ -12,8 +12,7 @@ test('private voice setup, Snow and selected-Pebble message colors', async ({
   let configured = false,
     keyConfirmed = false,
     setupComplete = false,
-    voice = 'marin',
-    speed = 1;
+    voice = 'marin';
   let submitted = '';
   await page.route('**/v1/rpc', async (route) => {
     const body = route.request().postDataJSON();
@@ -26,7 +25,7 @@ test('private voice setup, Snow and selected-Pebble message colors', async ({
     }
     if (body.operation === 'voice.preferences') {
       voice = body.params.voice;
-      speed = body.params.speed;
+      expect(body.params).not.toHaveProperty('speed');
       keyConfirmed = configured;
       if (body.params.complete) setupComplete = true;
     }
@@ -37,9 +36,22 @@ test('private voice setup, Snow and selected-Pebble message colors', async ({
             supported: true,
             configured,
             voice,
-            voices: ['marin', 'cedar'],
-            speed,
-            speed_control: 'instruction',
+            voices: [
+              'marin',
+              'cedar',
+              'quartz',
+              'ripple',
+              'vesper',
+              'willow',
+              'stone',
+              'gleam',
+              'meridian',
+              'bossa',
+              'tempo',
+              'beacon',
+              'delta',
+              'cinder',
+            ],
             setup_complete: setupComplete,
             key_confirmed: keyConfirmed,
           },
@@ -73,14 +85,28 @@ test('private voice setup, Snow and selected-Pebble message colors', async ({
     ),
   ).not.toContain(submitted);
   await page.getByRole('combobox', { name: 'Voice', exact: true }).click();
-  await page.getByRole('option', { name: 'Cedar', exact: true }).click();
-  await expect(page.getByRole('combobox', { name: 'Voice', exact: true })).toContainText('Cedar');
-  await page.getByRole('slider', { name: 'Speed' }).focus();
-  await page.keyboard.press('ArrowLeft');
-  await expect(page.getByRole('slider', { name: 'Speed' })).toHaveAttribute(
-    'aria-valuenow',
-    '0.75',
-  );
+  await expect(
+    page
+      .getByRole('group', { name: 'Female', exact: true })
+      .getByRole('option', { name: 'Willow', exact: true }),
+  ).toBeVisible();
+  await expect(
+    page
+      .getByRole('group', { name: 'Male', exact: true })
+      .getByRole('option', { name: 'Ripple', exact: true }),
+  ).toBeVisible();
+  await expect(
+    page
+      .getByRole('group', { name: 'Other', exact: true })
+      .getByRole('option', { name: 'Cedar', exact: true }),
+  ).toBeVisible();
+  await expect(page.locator('[data-slot=select-content]')).toHaveCSS('opacity', '1');
+  await page.getByRole('option', { name: 'Quartz', exact: true }).scrollIntoViewIfNeeded();
+  await expect(page.getByRole('option', { name: 'Quartz', exact: true })).toBeInViewport();
+  await page.screenshot({ path: info.outputPath('voice-groups.png') });
+  await page.getByRole('option', { name: 'Willow', exact: true }).click();
+  await expect(page.getByRole('combobox', { name: 'Voice', exact: true })).toContainText('Willow');
+  await expect(page.getByRole('slider', { name: 'Speed' })).toHaveCount(0);
   await expect(page.locator('[data-slot=select-content]')).toHaveCount(0);
   await expect
     .poll(async () => (await page.locator('.pc-chat-header').boundingBox())?.y)
@@ -279,6 +305,7 @@ test('real browser WebRTC preview and call preserve native receipt ownership and
     if (operation === 'secrets.pending')
       return route.fulfill({ json: { result: { requests: [] } } });
     if (operation === 'voice.preferences') {
+      expect(params).not.toHaveProperty('speed');
       keyConfirmed = true;
       if (params.complete) setupComplete = true;
     }
@@ -295,8 +322,6 @@ test('real browser WebRTC preview and call preserve native receipt ownership and
             configured: true,
             voice: 'marin',
             voices: ['marin', 'cedar'],
-            speed: 1,
-            speed_control: 'instruction',
             setup_complete: setupComplete,
             key_confirmed: keyConfirmed,
           },
@@ -535,6 +560,7 @@ test('denied microphone returns to intact text chat without creating a provider 
   await page.route('**/v1/rpc', async (route) => {
     const { operation, params } = route.request().postDataJSON();
     if (operation === 'voice.preferences') {
+      expect(params).not.toHaveProperty('speed');
       keyConfirmed = true;
       if (params.complete) setupComplete = true;
     }
@@ -548,8 +574,6 @@ test('denied microphone returns to intact text chat without creating a provider 
             configured: true,
             voice: 'marin',
             voices: ['marin'],
-            speed: 1,
-            speed_control: 'instruction',
             setup_complete: setupComplete,
             key_confirmed: keyConfirmed,
           },
@@ -600,6 +624,7 @@ test('Preview reports a saved-key rejection without requesting or blaming the mi
       return route.fulfill({ json: { result: { saved: true, validated: false } } });
     }
     if (operation === 'voice.preferences') {
+      expect(params).not.toHaveProperty('speed');
       keyConfirmed = true;
       savedVoice = params.voice;
       if (params.complete) setupComplete = true;
@@ -612,8 +637,6 @@ test('Preview reports a saved-key rejection without requesting or blaming the mi
             configured: true,
             voice: savedVoice,
             voices: ['marin', 'cedar'],
-            speed: 1,
-            speed_control: 'instruction',
             setup_complete: setupComplete,
             key_confirmed: keyConfirmed,
           },

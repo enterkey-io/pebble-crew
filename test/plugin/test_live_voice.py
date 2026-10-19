@@ -94,6 +94,27 @@ class VoiceBoundaryTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(native.secrets, {})
 
 class ProviderErrorTests(unittest.TestCase):
+    def test_legacy_app_pace_is_removed_from_both_session_kinds_without_config_writes(self):
+        from bot_web.live_voice import create_session, without_pebble_delivery
+        owner = '  Keep the owner pronunciation rules.  '
+        self.assertEqual(without_pebble_delivery(owner), owner)
+        legacy = 'Keep the owner pronunciation rules.\n\n[Pebble Crew delivery]\nAim for 2 times your normal speaking speed.\n[/Pebble Crew delivery]'
+        raw = {'instructions': legacy, 'pebble_speed': 2}
+        native = SimpleNamespace(_live_section=lambda: raw, _resolve_credentials=lambda _: ('synthetic-key', 'https://provider.invalid/v1'), build_session_config=lambda _: {'instructions': legacy})
+        response = Mock()
+        response.__enter__ = Mock(return_value=response)
+        response.__exit__ = Mock(return_value=False)
+        response.read.return_value = json.dumps({'session': {'id': 'synthetic'}, 'transport': {'type': 'webrtc', 'sdp': 'v=0\r\n'}}).encode()
+        with patch.dict('sys.modules', {'tools': SimpleNamespace(voice_live=native), 'tools.voice_live': native}), patch('bot_web.live_voice.urllib.request.urlopen', return_value=response) as send:
+            for preview in (False, True):
+                create_session('v=0\r\n', 'Synthetic', preview)
+                session = json.loads(send.call_args.args[0].data)['session']
+                self.assertNotIn('[Pebble Crew delivery]', session['instructions'])
+                self.assertNotIn('times your normal speaking speed', session['instructions'])
+                if not preview:
+                    self.assertEqual(session['instructions'], 'Keep the owner pronunciation rules.')
+        self.assertEqual(raw, {'instructions': legacy, 'pebble_speed': 2})
+
     def test_429_distinguishes_rate_credit_spend_and_quota_without_exposing_body(self):
         import io
         import urllib.error

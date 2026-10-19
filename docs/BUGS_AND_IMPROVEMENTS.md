@@ -4,6 +4,17 @@ Track owner reports here through implementation, verification and release. A
 published fix is separate from updating and verifying the owner's installation.
 New reports receive a stable ID; later work updates the existing entry.
 
+## 0.7.8-preview.14 voice choices
+
+| ID     | Report                                   | Change                                                                                                                             |
+| ------ | ---------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
+| PC-076 | Speed affects preview but not live calls | Removed the unreliable speed control and app-generated delivery hint. Native voice selection and owner instructions remain intact. |
+| PC-077 | Voice names make choices hard to compare | Group native choices under Female and Male using documented metadata; unclassified/custom choices remain under Other.              |
+
+Implemented and verified locally with source checks, desktop/phone browser flows,
+and isolated native acceptance. Release-package verification and publication are
+separate from upgrading the owner's installation.
+
 ## 0.7.8-preview.8 navigation corrections
 
 | ID     | Report                                      | Change                                                                                                                                                             |

@@ -61,7 +61,7 @@ export const VoiceChat = forwardRef<
 ) {
   const panel = useRef<HTMLDivElement>(null);
   const audioActivity = useRef<AudioActivityHandle>(null);
-  const [value, setValue] = useState<VoiceChoices>({ voice: 'marin', speed: 1 });
+  const [value, setValue] = useState<VoiceChoices>({ voice: 'marin' });
   const [step, setStep] = useState<'key' | 'replacement' | 'settings'>('key');
   const [notice, setNotice] = useState('');
   const [opening, setOpening] = useState(false);

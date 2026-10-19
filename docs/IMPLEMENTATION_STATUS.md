@@ -1,5 +1,13 @@
 # Installed-owner implementation status
 
+**0.7.8-preview.14 candidate:** voice selection groups
+native choices under Female, Male and Other (unclassified/custom voices). The
+unreliable speed control is removed from preview and live settings. Explicit
+settings saves remove the app's old delivery hint while preserving owner
+instructions; session creation ignores that hint without rewriting configuration.
+Source, desktop/phone and isolated native checks passed locally. Release-package
+verification and publication are separate from upgrading the owner's installation.
+
 **0.7.8-preview.5 candidate:** the shared shadcn React foundation now covers the
 complete general catalog and all 21 AI patterns. Settings, Add/Edit, connections,
 navigation, transcript, composer, Markdown, approvals, private prompts and voice

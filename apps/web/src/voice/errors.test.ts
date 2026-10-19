@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { ClientError } from '@hermes-client/core';
-import { settings, voiceSpeed } from './decode';
+import { settings } from './decode';
 import { voiceFailure, VoiceStartError } from './errors';
 
 describe('voice boundaries', () => {
@@ -20,19 +20,16 @@ describe('voice boundaries', () => {
       voiceFailure(new VoiceStartError('microphone', new DOMException('Missing', 'NotFoundError'))),
     ).toContain('No microphone');
   });
-  it('decodes numeric speed and owner-saved setup without guessing readiness', () => {
+  it('decodes voice and owner-saved setup without guessing readiness', () => {
     const value = {
       supported: true,
       configured: true,
       voice: 'marin',
       voices: ['marin'],
-      speed: 1.25,
-      speed_control: 'instruction',
       setup_complete: false,
     };
-    expect(settings(value)).toMatchObject({ speed: 1.25, setupComplete: false });
-    expect(() => settings({ ...value, speed: 100 })).toThrow();
+    expect(settings(value)).toMatchObject({ voice: 'marin', setupComplete: false });
+    expect(settings({ ...value, speed: 1.25 })).not.toHaveProperty('speed');
     expect(() => settings({ ...value, setup_complete: undefined })).toThrow();
-    expect(() => voiceSpeed('1')).toThrow();
   });
 });

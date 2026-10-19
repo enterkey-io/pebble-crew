@@ -169,18 +169,18 @@ async def verify(home, model_port):
             assert (await voice.invoke('voice.credential', {'session_id': sid, 'value': 'synthetic-voice-only-key'})) == {'saved': True, 'validated': False}
             status = await voice.invoke('voice.status', {'session_id': sid})
             assert status['configured'], status
-            status = await voice.invoke('voice.preferences', {'session_id': sid, 'voice': status['voices'][0], 'speed': 1, 'complete': False})
-            assert status['voice'] == status['voices'][0] and status['speed'] == 1 and status['key_confirmed'] and not status['setup_complete'], status
+            status = await voice.invoke('voice.preferences', {'session_id': sid, 'voice': status['voices'][0], 'complete': False})
+            assert status['voice'] == status['voices'][0] and 'speed' not in status and status['key_confirmed'] and not status['setup_complete'], status
             assert (await voice.invoke('voice.status', {'session_id': sid}))['key_confirmed'], 'Saved-key confirmation was lost between voice entry points'
-            status = await voice.invoke('voice.preferences', {'session_id': sid, 'voice': status['voices'][1], 'speed': 0.75, 'complete': True})
-            assert status['speed'] == 0.75 and status['setup_complete'], status
+            status = await voice.invoke('voice.preferences', {'session_id': sid, 'voice': status['voices'][1], 'complete': True})
+            assert 'speed' not in status and status['setup_complete'], status
             for preview in (True, False):
                 answer = await voice.invoke('voice.session', {'session_id': sid, 'sdp': 'v=0\r\nsynthetic-offer\r\n', 'preview': preview})
                 assert answer['transport']['sdp'] == 'v=0\r\nsynthetic-answer\r\n'
                 sent = WorkspaceModel.live_requests[-1]
                 assert sent['transport']['sdp'] == 'v=0\r\nsynthetic-offer\r\n'
                 assert sent['session']['audio']['output']['voice'] == status['voice']
-                assert '0.75 times your normal speaking speed' in sent['session']['instructions']
+                assert '[Pebble Crew delivery]' not in sent['session']['instructions']
                 assert 'synthetic-voice-only-key' not in json.dumps(sent)
             assert (home / '.env').read_bytes() == before_env, 'Voice credential changed the primary profile'
             start = len(WorkspaceModel.requests)
