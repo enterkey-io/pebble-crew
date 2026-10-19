@@ -1,5 +1,6 @@
+import type { LucideIcon } from 'lucide-react';
 import type { ReactNode } from 'react';
-import { Check, Circle, CircleAlert, Ban } from 'lucide-react';
+import { Check, Activity as ActivityIcon, CircleAlert, Ban } from 'lucide-react';
 import {
   Trace,
   TraceLine,
@@ -18,23 +19,26 @@ export function Activity({
   children,
   detail,
   defaultOpen,
+  icon: OperationIcon,
 }: {
+  icon?: LucideIcon | undefined;
   title: string;
   state: RunState;
   children?: ReactNode;
   detail?: string | undefined;
   defaultOpen?: boolean | undefined;
 }) {
-  const icon =
-    state === 'complete' ? (
-      <Check />
-    ) : state === 'failed' ? (
-      <CircleAlert />
-    ) : state === 'cancelled' ? (
-      <Ban />
-    ) : (
-      <Circle />
-    );
+  const icon = OperationIcon ? (
+    <OperationIcon />
+  ) : state === 'complete' ? (
+    <Check />
+  ) : state === 'failed' ? (
+    <CircleAlert />
+  ) : state === 'cancelled' ? (
+    <Ban />
+  ) : (
+    <ActivityIcon />
+  );
   const line = (
     <TraceLine
       status={

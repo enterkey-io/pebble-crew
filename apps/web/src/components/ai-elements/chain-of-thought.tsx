@@ -1,3 +1,4 @@
+import type { LucideIcon } from 'lucide-react';
 import type { ReactNode } from 'react';
 import { Activity } from './activity';
 import type { RunState } from './states';
@@ -7,14 +8,14 @@ export type PublicActivityStep = {
   readonly state: RunState;
   readonly detail?: ReactNode;
 };
-type ChainProps = { state: RunState; title?: string } & (
+type ChainProps = { state: RunState; title?: string; icon?: LucideIcon | undefined } & (
   | { steps: readonly PublicActivityStep[]; children?: never }
   | { children: ReactNode; steps?: never }
 );
 /** Public activity only; provider analysis never enters this contract. */
-export function ChainOfThought({ state, title = 'Activity', steps, children }: ChainProps) {
+export function ChainOfThought({ state, title = 'Activity', steps, children, icon }: ChainProps) {
   return (
-    <Activity title={title} state={state}>
+    <Activity title={title} state={state} icon={icon}>
       {steps
         ? steps.length > 0 && (
             <ol className="grid gap-3">

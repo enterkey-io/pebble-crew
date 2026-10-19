@@ -1,3 +1,5 @@
+import { toolGroupIcon } from '../components/ai-elements/activity-icons';
+import { Activity as ActivityIcon } from 'lucide-react';
 import { documentFormat } from '@hermes-client/protocol';
 import { useDocumentActions } from '../documents/DocumentReader';
 import { IconButton } from '../components/ui/icon-button';
@@ -87,6 +89,11 @@ export function Transcript({
           return (
             <div className="activity-group" key={item.id}>
               <ChainOfThought
+                icon={
+                  item.messages.some((m) => m.role === 'tool')
+                    ? toolGroupIcon(item.messages.map((m) => m.toolName ?? ''))
+                    : ActivityIcon
+                }
                 state="unknown"
                 title={
                   item.messages.some((m) => m.role === 'tool')
@@ -99,6 +106,7 @@ export function Transcript({
                     <Tool
                       key={m.id ?? index}
                       id={m.id ?? String(index)}
+                      icon={m.role === 'tool' ? undefined : ActivityIcon}
                       name={m.toolName ?? 'Update'}
                       state="unknown"
                       defaultOpen

@@ -1,3 +1,5 @@
+import type { LucideIcon } from 'lucide-react';
+import { toolIcon } from './activity-icons';
 import type { ReactNode } from 'react';
 import {
   CodeBlock,
@@ -11,6 +13,7 @@ import { Activity } from './activity';
 import type { RunState } from './states';
 export type ToolState = RunState | 'input-ready' | 'approval' | 'denied';
 export type ToolProps = {
+  icon?: LucideIcon | undefined;
   id: string;
   name: string;
   state: ToolState;
@@ -19,7 +22,7 @@ export type ToolProps = {
   approval?: ReactNode;
   defaultOpen?: boolean;
 };
-export function Tool({ id, name, state, input, output, approval, defaultOpen }: ToolProps) {
+export function Tool({ id, name, state, input, output, approval, defaultOpen, icon }: ToolProps) {
   const mapped =
     state === 'input-ready' || state === 'approval'
       ? 'pending'
@@ -30,6 +33,7 @@ export function Tool({ id, name, state, input, output, approval, defaultOpen }: 
     <div data-tool-id={id} data-tool-state={state} className="min-w-0">
       {state === 'approval' && approval}
       <Activity
+        icon={icon ?? toolIcon(name)}
         title={name}
         state={mapped}
         detail={state === 'denied' ? 'Denied' : undefined}
