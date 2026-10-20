@@ -1,4 +1,4 @@
-import { useId, useRef } from 'react';
+import { useId, useLayoutEffect, useRef, type RefObject } from 'react';
 import { useReducedMotion } from 'motion/react';
 import { TransformComponent, TransformWrapper, useControls } from 'react-zoom-pan-pinch';
 import { LocateFixed, Maximize, Minus, Plus } from 'lucide-react';
@@ -17,15 +17,32 @@ function ChartCards({
   workspace,
   client,
   onEdit,
+  landmark,
 }: {
   layout: Diagram;
   workspace: WorkspaceSnapshot;
   client: BotBridgeClient;
   onEdit: (profile: string) => void;
+  landmark: RefObject<string | null>;
 }) {
   const id = useId();
   const reduced = useReducedMotion();
-  const { zoomToElement } = useControls();
+  const { zoomToElement, setTransform, instance } = useControls();
+  const previous = useRef(layout);
+  useLayoutEffect(() => {
+    const before = previous.current.nodes.find((node) => node.bot.profile === landmark.current);
+    const after = layout.nodes.find((node) => node.bot.profile === landmark.current);
+    previous.current = layout;
+    if (before && after && (before.x !== after.x || before.y !== after.y)) {
+      const { positionX, positionY, scale } = instance.state;
+      void setTransform(
+        positionX + (before.x - after.x) * scale,
+        positionY + (before.y - after.y) * scale,
+        scale,
+        0,
+      );
+    }
+  }, [layout, landmark, instance, setTransform]);
   return (
     <div className="pc-org-diagram" style={{ width: layout.width, height: layout.height }}>
       <svg
@@ -72,14 +89,19 @@ function ChartCards({
                         variant="ghost"
                         className="pc-org-card-open flex h-auto min-h-0 flex-1 w-full justify-start gap-3 rounded-none px-4 py-3 text-left [&_.agent-avatar]:h-11 [&_.agent-avatar]:w-10"
                         onFocus={(event) => {
-                          if (event.currentTarget.matches(':focus-visible'))
+                          if (event.currentTarget.matches(':focus-visible')) {
+                            landmark.current = bot.profile;
                             void zoomToElement(
                               event.currentTarget.closest('li') ?? event.currentTarget,
                               1,
                               reduced ? 0 : 160,
                             );
+                          }
                         }}
-                        onClick={() => onEdit(bot.profile)}
+                        onClick={() => {
+                          landmark.current = bot.profile;
+                          onEdit(bot.profile);
+                        }}
                       >
                         <span className="sr-only">Edit </span>
                         <span aria-hidden="true" className="shrink-0">
@@ -139,6 +161,7 @@ export function OrganizationDiagram({
   onEdit: (profile: string) => void;
 }) {
   const viewport = useRef<HTMLDivElement>(null);
+  const landmark = useRef(workspace.orchestrator);
   const reduced = useReducedMotion();
   const layout = organizationLayout(workspace);
   const anchor =
@@ -189,7 +212,8 @@ export function OrganizationDiagram({
                 quiet
                 label="Fit chart"
                 icon={Maximize}
-                onClick={() =>
+                onClick={() => {
+                  landmark.current = workspace.orchestrator;
                   void controls.centerView(
                     Math.min(
                       1,
@@ -197,14 +221,15 @@ export function OrganizationDiagram({
                       ((viewport.current?.clientHeight ?? 600) - 48) / layout.height,
                     ),
                     reduced ? 0 : 180,
-                  )
-                }
+                  );
+                }}
               />
               <IconButton
                 quiet
                 label="Center Main Pebble"
                 icon={LocateFixed}
                 onClick={() => {
+                  landmark.current = workspace.orchestrator;
                   if (anchor)
                     void controls.setTransform(
                       (viewport.current?.clientWidth ?? 800) / 2 - anchor.x - orgCard.width / 2,
@@ -222,7 +247,13 @@ export function OrganizationDiagram({
                 wrapperStyle={{ width: '100%', height: '100%', overflow: 'clip' }}
                 wrapperProps={{ tabIndex: 0, role: 'group', 'aria-label': 'Organization canvas' }}
               >
-                <ChartCards layout={layout} workspace={workspace} client={client} onEdit={onEdit} />
+                <ChartCards
+                  layout={layout}
+                  workspace={workspace}
+                  client={client}
+                  onEdit={onEdit}
+                  landmark={landmark}
+                />
               </TransformComponent>
             </div>
           </>

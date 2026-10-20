@@ -202,9 +202,19 @@ test('org chart preserves unattached branches and edits through the shared profi
   await page
     .getByLabel('Instructions', { exact: true })
     .fill('Verify your result, then send Mica a concise report.');
+  const editedCard = page.locator('.pc-org-diagram [data-org-profile="sage"]');
+  const beforeEdit = await editedCard.boundingBox();
+  if (!beforeEdit) throw new Error('Edited card is missing');
   await page.getByRole('button', { name: 'Save role', exact: true }).click();
   await expect(page.getByRole('region', { name: 'Edit Sage', exact: true })).toHaveCount(0);
   await expect(chart.locator('[data-org-parent="mica"][data-org-child="sage"]')).toHaveCount(1);
+  await expect
+    .poll(async () => {
+      const after = await editedCard.boundingBox();
+      return after ? Math.abs(after.x - beforeEdit.x) + Math.abs(after.y - beforeEdit.y) : Infinity;
+    })
+    .toBeLessThan(1);
+  await expect(editedCard).toBeInViewport();
   await emit(page, 'workspace.changed');
   await expect(chart.locator('[data-org-parent="mica"][data-org-child="sage"]')).toHaveCount(1);
   await chart.screenshot({ path: testInfo.outputPath('org-chart.png') });
