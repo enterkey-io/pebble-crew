@@ -151,8 +151,24 @@ class Model(BaseHTTPRequestHandler):
         message = {"role": "assistant", "content": text}
         finish = "stop"
         document_turn = 'nativedocument' in str(latest_user.get('content'))
-        document_results = json.dumps(Model.tool_results)
-        if document_turn and 'requested' not in document_results:
+        messages = data.get('messages', [])
+        latest_user_index = next((index for index in range(len(messages) - 1, -1, -1)
+                                  if messages[index].get('role') == 'user'), -1)
+        current_results = [message.get('content') for message in messages[latest_user_index + 1:]
+                           if message.get('role') == 'tool']
+        document_results = json.dumps(current_results)
+        def document_receipt(value):
+            if isinstance(value, str):
+                try:
+                    return document_receipt(json.loads(value))
+                except (ValueError, TypeError):
+                    return False
+            if isinstance(value, dict):
+                return ((value.get('requested') is True and isinstance(value.get('request_id'), str))
+                        or any(document_receipt(child) for child in value.values()))
+            return isinstance(value, list) and any(document_receipt(child) for child in value)
+        shared_document = document_receipt(current_results)
+        if document_turn and not shared_document:
             if 'pebble_open_document' not in tool_names and 'parameters' not in document_results:
                 assert 'tool_describe(names=[\"pebble_open_document\"])' in json.dumps(data).replace('\\\"', '\"'), 'Document discovery guidance missing'
                 name, arguments = 'tool_describe', {'names': ['pebble_open_document']}
@@ -162,7 +178,7 @@ class Model(BaseHTTPRequestHandler):
             message = {'role': 'assistant', 'content': None, 'tool_calls': [{'id': 'fixture-document', 'type': 'function', 'function': {'name': name, 'arguments': json.dumps(arguments)}}]}
             finish = 'tool_calls'
         elif document_turn:
-            assert 'requested' in document_results and 'true' in document_results, document_results
+            assert shared_document, document_results
             text = 'Here is the [Project plan](<' + str(output / 'plan.md') + '>).'
             message = {'role': 'assistant', 'content': text}
         elif discover_reaction:
