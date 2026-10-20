@@ -152,7 +152,6 @@ export function decodeWorkspaceSnapshot(value: unknown) {
       if (policy.version !== 1) throw new ClientError('UNSUPPORTED');
       return {
         version: 1 as const,
-        management_enabled: boolean(policy.management_enabled),
         policy_revision: counter(policy.policy_revision),
       };
     }),

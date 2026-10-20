@@ -118,7 +118,7 @@ def normalize_photo(data):
 
 
 class WorkspaceService:
-    METHODS = {'reporting.describe', 'reporting.policy', 'bots.profile.update', 'agent.onboard', 'agent.welcome', 'organization.get', 'organization.save', 'organization.chat', 'crews.save', 'workspace.snapshot', 'presentation.read', 'presentation.order', 'agent.pin', 'agent.hide', 'agent.delete', 'agent.propose', 'room.send', 'room.log', 'agent.enable', 'workspace.describe', 'workspace.detect_primary', 'workspace.initialize', 'workspace.welcome', 'workspace.set_orchestrator',
+    METHODS = {'reporting.describe', 'bots.profile.update', 'agent.onboard', 'agent.welcome', 'organization.get', 'organization.save', 'organization.chat', 'crews.save', 'workspace.snapshot', 'presentation.read', 'presentation.order', 'agent.pin', 'agent.hide', 'agent.delete', 'agent.propose', 'room.send', 'room.log', 'agent.enable', 'workspace.describe', 'workspace.detect_primary', 'workspace.initialize', 'workspace.welcome', 'workspace.set_orchestrator',
         'bots.update_handle', 'bots.appearance.get', 'bots.appearance.update', 'roles.update', 'teams.save',
         'models.describe', 'agent.model', 'agent.create', 'agent.update', 'agent.attach', 'requests.reconcile', 'requests.list', 'requests.approve', 'requests.deny',
         'connections.add', 'connections.permissions', 'connections.set_key', 'connections.list', 'connections.test', 'services.catalog', 'agent.capabilities'}
@@ -242,17 +242,10 @@ class WorkspaceService:
         self._snapshot = None
         snapshot, profiles = await self.sync(include_model=operation in {'workspace.describe', 'workspace.detect_primary', 'models.describe', 'agent.model', 'agent.create'})
         state = self.store.read()
-        if operation.startswith('reporting.'):
+        if operation == 'reporting.describe':
             from .reporting import receipts
-            if operation == 'reporting.describe':
-                fields(params, [])
-                return {'workspace': snapshot, 'changes': receipts(self.store)}
-            fields(params, ['enabled', 'expected_revision', 'policy_revision'])
-            if type(params['enabled']) is not bool or type(params['expected_revision']) is not int or type(params['policy_revision']) is not int or params['expected_revision'] != state['revision'] or params['policy_revision'] != state['reporting']['policy_revision']:
-                raise InvalidOperation('Organization changed; refresh before saving', 'STALE_REVISION')
-            state['reporting'].update(management_enabled=params['enabled'], policy_revision=state['reporting']['policy_revision'] + 1)
-            self.store.save(state, state['revision'])
-            return {'state': 'completed'}
+            fields(params, [])
+            return {'workspace': snapshot, 'changes': receipts(self.store)}
         if operation in {'bots.profile.update', 'agent.onboard', 'agent.welcome'}:
             from .identity import invoke
             return await invoke(self, operation, params, state, profiles)

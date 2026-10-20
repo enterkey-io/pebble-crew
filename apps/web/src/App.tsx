@@ -1905,17 +1905,6 @@ export function App({ owner }: { owner?: OwnerConnection }) {
               <OrgChart
                 client={client}
                 state={workspace}
-                onChange={(value) => {
-                  if (
-                    current.current !== client ||
-                    (workspaceRef.current?.id === value.id &&
-                      value.revision < workspaceRef.current.revision)
-                  )
-                    return;
-                  workspaceRef.current = value;
-                  setWorkspace(value);
-                  void loadRoster(client, true).catch(fail);
-                }}
                 onEdit={(profile) =>
                   navigate(() => {
                     setAgentSettingsTab('identity');
@@ -1975,7 +1964,7 @@ export function App({ owner }: { owner?: OwnerConnection }) {
                   <header className="pc-chat-header chat-header">
                     <IconButton
                       quiet
-                      className="mobile-nav"
+                      className="md:hidden"
                       label="Toggle navigation"
                       icon={MenuIcon}
                       onClick={() => setNav(true)}

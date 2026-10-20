@@ -36,7 +36,9 @@ def hierarchy_context(state, profile):
         'your_manager': manager, 'your_reporting_path': [references[p] for p in route],
         'reporting_state': status, 'reporting_termination': end,
         'direct_reports': [r for p, r in references.items() if bots[p].get('manager') == profile and bots[p].get('manager_id') == bots[profile]['id']],
-        'management': {**state['reporting'], 'can_manage': allowed(state, profile)},
+        'management': {'can_manage': allowed(state, profile),
+            'policy_revision': state['reporting']['policy_revision'],
+            'ask_before_unsolicited_changes': True, 'owner_request_authorizes_change': True},
         'hierarchy_summary': summary,
         'directory': [{**reference, 'role': bots[p]['role'],
             'manager_profile': bots[p]['manager'], 'manager': references.get(bots[p]['manager']) if bots[p].get('manager_id') == bots.get(bots[p]['manager'], {}).get('id') else None}

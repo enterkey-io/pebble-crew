@@ -74,16 +74,4 @@ export class ReportingDomain {
   async read() {
     return decodeReporting(await this.client.invoke('reporting.describe', {}));
   }
-  async setManagement(state: WorkspaceSnapshot, enabled: boolean) {
-    if (!state.reporting) throw new ClientError('UNSUPPORTED');
-    const result = record(
-      await this.client.invoke('reporting.policy', {
-        enabled,
-        expected_revision: state.revision,
-        policy_revision: state.reporting.policy_revision,
-      }),
-    );
-    if (result.state !== 'completed') throw new ClientError('INVALID_RESPONSE');
-    return this.read();
-  }
 }

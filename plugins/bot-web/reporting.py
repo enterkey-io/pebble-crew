@@ -42,6 +42,13 @@ def _initialize(store, path):
                     manager = current['bots'].get(bot.get('manager'))
                     bot['manager_id'] = manager['id'] if manager else None
                 store.save(current, current['revision'])
+    # Older runtimes read this field. It is fixed on for rollback compatibility,
+    # never used as an authorization gate by the current implementation.
+    current = store.read()
+    if current['reporting'].get('management_enabled') is not True:
+        with store.db:
+            current['reporting']['management_enabled'] = True
+            store.save(current, current['revision'])
     store.db.execute('''CREATE TABLE IF NOT EXISTS reporting_changes(
         id TEXT PRIMARY KEY, actor TEXT NOT NULL, actor_id TEXT NOT NULL,
         spec TEXT NOT NULL, fingerprint TEXT NOT NULL UNIQUE, state TEXT NOT NULL,
@@ -103,8 +110,7 @@ def validate(state, before):
 def allowed(state, actor):
     bot = state['bots'].get(actor)
     return bool(bot and actor == state['orchestrator'] and bot.get('enrolled')
-        and bot.get('available', True) and not bot.get('deleted')
-        and state['reporting']['management_enabled'])
+        and bot.get('available', True) and not bot.get('deleted'))
 
 
 def receipts(store, actor=None):
@@ -118,7 +124,7 @@ def submit(store, actor, spec):
     fields(spec, ['profile', 'id', 'manager', 'manager_id', 'instructions', 'expected_revision', 'policy_revision'])
     state = store.read()
     if not allowed(state, actor):
-        raise InvalidOperation('Main Pebble management is not authorized', 'FORBIDDEN')
+        raise InvalidOperation('Only the current Main Pebble can manage reporting and instructions', 'FORBIDDEN')
     raw = json.dumps(spec, sort_keys=True)
     fingerprint = hashlib.sha256((state['bots'][actor]['id']+raw).encode()).hexdigest()
     previous = store.db.execute('SELECT id,state FROM reporting_changes WHERE fingerprint=?', (fingerprint,)).fetchone()
@@ -160,7 +166,7 @@ async def drain(service):
                 state = service.store.read()
                 spec = json.loads(raw)
                 if not allowed(state, actor) or state['bots'][actor]['id'] != actor_id or type(spec['policy_revision']) is not int or spec['policy_revision'] != state['reporting']['policy_revision']:
-                    raise InvalidOperation('Management permission changed', 'FORBIDDEN')
+                    raise InvalidOperation('The Main Pebble identity or reporting context changed', 'FORBIDDEN')
                 if state['revision'] != spec['expected_revision']:
                     raise InvalidOperation('Organization changed; review before retrying', 'STALE_REVISION')
                 target = state['bots'].get(spec['profile'])

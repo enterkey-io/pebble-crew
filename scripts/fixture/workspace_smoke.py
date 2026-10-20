@@ -82,6 +82,9 @@ class WorkspaceModel(Model):
                     for c in contents if isinstance(c, str) and marker in c), key=lambda c: c['workspace_revision'])
                 engineer = next(b for b in context['directory'] if b['profile'] == 'engineer')
                 assert context['management']['can_manage'] is True
+                assert context['management']['ask_before_unsolicited_changes'] is True
+                assert context['management']['owner_request_authorizes_change'] is True
+                assert 'A clear owner request already authorizes that change' in context['instructions']
                 name, arguments = 'workspace_agents', {'action':'agent.reporting.update', 'spec':{
                     'profile':'engineer', 'id':engineer['id'], 'manager':'default',
                     'manager_id':context['main_pebble']['id'],

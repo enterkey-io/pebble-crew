@@ -86,15 +86,30 @@ The server derives these from current authoritative state. The pre-model hook re
 
 Phase one's operating behavior is modest but real: agents discover and explain their actual relationships, use current instructions, and Main Pebble can prepare or apply an authorized reporting/instructions change. Example: “Main Pebble, make sure Agent2 knows what you expect when they do a task” resolves Agent2 from the current directory, reads current instructions, proposes a concise change to the single Instructions field, records the exact diff and confirms its receipt. Agent2's next turn reads the saved revision. Do not wake Agent2 just to install metadata or pretend a live turn was retroactively updated. This phase does not promise durable task scheduling, autonomous follow-up, completion guarantees or recursive delegation.
 
-### Owner-approved management policy
+### Main Pebble management
 
-Current code requires owner review for every agent mutation. **The owner has explicitly chosen direct Main Pebble management of reporting lines, job Instructions and routine schedules.** Implement that requirement as revocable scoped authority for the verified Main Pebble as the corresponding phases become available; no further policy confirmation is needed. This planning approval does not authorize implementation or change the currently running permissions. Model this as separate typed `org.manage` and `routines.manage` scopes so each can be audited or revoked without requiring separate setup questions. Schedule authority includes creating, editing, enabling and pausing validated routines under the saved scope; enabling authorizes their future scheduled execution. It does not authorize arbitrary immediate runs. Neither scope permits transferring Main Pebble, changing its own grant, creating/deleting identities, attaching tools, granting secrets or changing models. Those remain separately protected. Other agents may prepare proposals. Broader downstream-manager delegation is out of scope initially.
+The current Main Pebble can manage reporting lines and agent Instructions. This is
+always available to that verified identity; there is no owner-facing enable switch.
+The Main Pebble asks before changes it proposes independently. A clear owner
+request already authorizes its requested change and must not trigger another
+permission question. This conversational rule is supplied in current per-turn
+context and the management skill. It is not an extra approval token or UI gate.
 
-Authorized direct edits and proposals from other agents must use the same validated operation and show pending/applied/conflict/uncertain honestly. Audit the exact verified actor, target identity, expected workspace/policy revision, change and receipt; stale or revoked grants cannot execute. Prefer a narrow `agent.reporting.update` operation over handing a prose model a full mutable role/team object. An owner instruction authorizing a particular exact change can use existing approval machinery; role prose alone cannot authorize it. The approved scope is an implementation requirement, not a permission change performed by this plan. Scope checks must occur server-side at execution, and Main Pebble cannot modify its own grant or acquire privileges through role prose.
+The server still validates actor and target identities, reporting cycles and
+workspace/context revisions at execution. A Main Pebble transfer fences queued
+changes from its predecessor. Other agents propose changes for owner review.
+Identity deletion, tools, secrets, model access and Main Pebble transfer retain
+separate protections. Future routine-management permissions are outside this
+reporting implementation.
+
+Changes retain pending/applied/conflict/uncertain receipts. Read an applied receipt
+before claiming a change succeeded. Older persisted `management_enabled` metadata
+is normalized to true for rollback compatibility and is never an authorization
+condition in the current implementation.
 
 ### UI and phase-one exit gate
 
-Use actual production React routes and the current shadcn/Radix primitives, theme, avatars and AI Elements chat infrastructure. Only enrolled Pebbles appear in the reporting chart; discovering a Hermes profile does not enroll it. Existing `organization.get/save` and organization reducers concern sidebar sections/crews, so add an explicitly named reporting graph projection/domain rather than overloading those APIs. Add a simple responsive tree/list with agent cards; desktop branches and a phone nested list need no drag library. At roughly 28 agents, phone layouts use readable branches and navigation rather than shrinking a desktop canvas. Selection/focus remains neutral and avatar colors keep their existing renderer. Opening a card reuses the existing editor, reporting selector and single optional Instructions field. Preserve legacy instruction fields unless explicitly editing them; retain the existing conversion helpers rather than inventing multiple job-description inputs.
+Use actual production React routes and the current shadcn/Radix primitives, theme, avatars and AI Elements chat infrastructure. Only enrolled Pebbles appear in the reporting chart; discovering a Hermes profile does not enroll it. Existing `organization.get/save` and organization reducers concern sidebar sections/crews, so add an explicitly named reporting graph projection/domain rather than overloading those APIs. Render a connected organization chart with fixed-size shared cards and explicit parent-to-report SVG connectors. Pan/zoom, Fit chart and Center Main Pebble controls support desktop and phones. The initial phone view keeps the Main Pebble readable; fitting the entire forest is an explicit action. Keyboard focus brings offscreen cards into view at a readable scale. Selection/focus remains neutral and avatar colors keep their existing renderer. Opening a card reuses the existing editor, reporting selector and single optional Instructions field. Preserve legacy instruction fields unless explicitly editing them; retain the existing conversion helpers rather than inventing multiple job-description inputs.
 
 Exit only when forest tests, all Add/Edit paths, two-client conflicts and production desktop/iPhone/Android screenshots pass. Native synthetic turns must prove current context and an instruction update with deferred discovery enabled, catalog listings disabled and a saved tool selection on both supported builds. Preserve existing personas and exact native identity. This is **medium** work: the rendering is small, but changing reporting semantics and migration touches many boundaries.
 
@@ -182,14 +197,14 @@ Primary references read on 2026-10-19:
 - [Pinned cron jobs](https://github.com/enterkey-io/hermes-agent/blob/af0cd4df34c73e41bcfcfa46c4081d1d83bdc81a/cron/jobs.py), [scheduler](https://github.com/enterkey-io/hermes-agent/blob/af0cd4df34c73e41bcfcfa46c4081d1d83bdc81a/cron/scheduler.py).
 - [Paperclip operating skill](https://github.com/paperclipai/paperclip/blob/master/skills/paperclip/SKILL.md): useful reference for explicit assignment, durable progress and escalation. Adapt these mechanics to Hermes; do not import Paperclip APIs, heartbeat execution or company/governance architecture. Beads is not a second task store for this plan.
 
-The owner has answered the immediate policy question: **Main Pebble may directly manage existing agents’ reporting lines, job Instructions and routine schedules.** No immediate owner decision remains. Implement the revocable scopes above as phases land, retaining separate protection for identity deletion, tools, secrets, Main Pebble transfer and grant changes. This answer authorizes the planning requirement, not implementation. Other decisions are explicit: named enrolled agents remain visible in the org chart regardless of sidebar hiding; stable catalog profile; each project gets its own board; Chat/Tasks navigation with Org chart in the avatar menu; a global creation menu; routine creation and edits through chat with the saved Main Pebble schedule-management scope; and no background execution feature before its native proof gate.
+The owner has answered the immediate policy question: **Main Pebble may directly manage existing agents’ reporting lines, job Instructions and routine schedules.** No immediate owner decision remains. Reporting management follows the always-available Main Pebble policy above, with separate protection for identity deletion, tools, secrets and Main Pebble transfer. Routine scheduling remains a separate later phase. This answer authorizes the planning requirement, not implementation. Other decisions are explicit: named enrolled agents remain visible in the org chart regardless of sidebar hiding; stable catalog profile; each project gets its own board; Chat/Tasks navigation with Org chart in the avatar menu; a global creation menu; routine creation and edits through chat under the later routine-management contract; and no background execution feature before its native proof gate.
 
 ## Phase-one implementation record
 
 Implemented locally: Org chart in the account menu; named hidden-agent cards;
 unattached manager subtrees; shared Profile/Role editing; current manager and
-direct-report context; and owner-revocable Main Pebble reporting/Instructions
-management. Chat drafts and reading positions survive the chart, including
+direct-report context; and identity-scoped Main Pebble reporting/Instructions
+management with ask-first conversational guidance. Chat drafts and reading positions survive the chart, including
 phone navigation back to a crew conversation. Receipts update without reloading.
 
 The owner-local reporting migration preserves old relationships and creates a

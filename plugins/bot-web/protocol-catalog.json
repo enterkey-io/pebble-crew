@@ -605,12 +605,6 @@
         "rpc"
       ]
     },
-    "reporting.policy": {
-      "preferred": "rpc",
-      "accepted": [
-        "rpc"
-      ]
-    },
     "work.describe": {
       "preferred": "rpc",
       "accepted": [
