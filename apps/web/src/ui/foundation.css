@@ -21,8 +21,9 @@
   --card-foreground: #eeeeef;
   --popover: #222225;
   --popover-foreground: #eeeeef;
-  --primary: #ececeb;
-  --primary-foreground: #1b1b1d;
+  --primary: #d7a086;
+  --primary-foreground: #27180f;
+  --attention: var(--primary);
   --secondary: #27272b;
   --secondary-foreground: #c7c6cd;
   --muted: #202023;
@@ -74,8 +75,8 @@
   --card-foreground: #242321;
   --popover: #fffefd;
   --popover-foreground: #242321;
-  --primary: #2e2c29;
-  --primary-foreground: #faf9f6;
+  --primary: #a74d32;
+  --primary-foreground: #fffaf7;
   --secondary: #efede8;
   --secondary-foreground: #4a4742;
   --muted: #f0eeea;

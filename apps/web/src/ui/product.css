@@ -16,14 +16,14 @@
   width: 6px;
   height: 6px;
   border-radius: 50%;
-  background: var(--foreground);
+  background: var(--attention);
   animation: request-pulse 2.4s ease-in-out infinite;
   pointer-events: none;
 }
 @keyframes request-pulse {
   0%,
   100% {
-    opacity: 0.5;
+    opacity: 0.8;
     transform: scale(0.85);
   }
   50% {
@@ -35,9 +35,6 @@
   .request-indicator::after {
     animation: none;
   }
-}
-.mobile-nav {
-  display: none;
 }
 .workspace.phone-details .conversation {
   width: 0;
@@ -624,14 +621,6 @@
   font-size: 10px;
   color: var(--ring);
 }
-@media (max-width: 1023px) {
-  .workspace > .sidebar {
-    display: none;
-  }
-  .mobile-nav {
-    display: inline-grid;
-  }
-}
 @media (max-width: 767px) {
   .entity-page {
     padding: 24px 20px;
@@ -758,7 +747,7 @@
   height: 6px;
   display: inline-block;
   border-radius: 50%;
-  background: var(--ring);
+  background: var(--attention);
 }
 @media (max-width: 440px) {
   .entity-page .appearance-picker {

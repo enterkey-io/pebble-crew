@@ -115,6 +115,15 @@ Creation and crew organization do not live in Settings.
 
 ## Foundation tokens
 
+The installed theme is owned by `apps/web/src/ui/foundation.css`. Primary actions
+and attention indicators now use terracotta: dark `#d7a086` with `#27180f` text;
+light `#a74d32` with `#fffaf7` text. Row selection, ordinary hover and focus remain
+neutral, and avatar colors are independent. `--attention` is the shared unread /
+pending-review token. Primary button text contrast is 7.57:1 dark and 5.40:1 light
+by static sRGB calculation; rendered states still require browser review.
+
+The starter palette below is historical planning, not a second theme source.
+
 Use semantic custom properties in one shared token file, consumed by chat,
 settings, onboarding, login and management. Migrate existing values incrementally;
 remove old overrides only after their consumers move. Initial palette derives
@@ -137,12 +146,12 @@ measurement; these proposals are not a conformance claim.
 | `text.secondary`           | `#B2B8B8`     | Supporting content, metadata                               |
 | `text.muted`               | `#979F9F`     | Optional metadata; never substitute for disabled state     |
 | `text.onAccent`            | `#151717`     | On light primary button                                    |
-| `action.primary`           | `#E5E8E8`     | Primary submit/send                                        |
+| `action.primary`           | `--primary`   | Primary submit/send                                        |
 | `focus.ring`               | `#D1E8FF`     | 2px outline with 2–3px offset                              |
 | `status.error`             | `#FFABA4`     | Error icon/text + explicit wording                         |
 | `status.warning`           | `#F1CE82`     | Pending approval/uncertain outcome                         |
 | `status.success`           | `#A8D0B8`     | Confirmed outcome only                                     |
-| `status.unread`            | `#C8C0FF`     | Unread dot + accessible textual state                      |
+| `status.unread`            | `--attention` | Unread dot + accessible textual state                      |
 
 Decorative separators may be subtle; meaningful control edges/focus/non-text
 indicators need at least 3:1 against adjacent colors. Normal text targets 4.5:1;
