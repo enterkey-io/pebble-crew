@@ -300,9 +300,7 @@ export function PebbleEditor({
                 onChange={(patch) => setRole((old) => ({ ...old, ...patch }))}
               />
               <div className="form-actions">
-                <Button variant="secondary" disabled={!!busy || uncertain || !!conflicts.role}>
-                  Save role
-                </Button>
+                <Button disabled={!!busy || uncertain || !!conflicts.role}>Save role</Button>
               </div>
             </Form>
             {bot.enrolled && bot.profile !== state.orchestrator && (
@@ -405,10 +403,7 @@ export function PebbleEditor({
                   Saved access takes effect when Hermes refreshes this pebble’s runtime.
                 </p>
                 <div className="form-actions">
-                  <Button
-                    variant="secondary"
-                    disabled={!!busy || uncertain || toolEdit.conflict || !toolsets.length}
-                  >
+                  <Button disabled={!!busy || uncertain || toolEdit.conflict || !toolsets.length}>
                     Save tools & skills
                   </Button>
                 </div>
