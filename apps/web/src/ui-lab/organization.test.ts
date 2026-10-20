@@ -112,6 +112,19 @@ describe('reference organization', () => {
       edge: 'after',
     });
   });
+  it('can place a section after the final section without disturbing its members', () => {
+    const destination = railDropTarget(
+      initialOrganization,
+      'section',
+      { kind: 'section', id: 'crews' },
+      true,
+    )!;
+    expect(destination.edge).toBe('after');
+    const moved = reorderSection(initialOrganization, 'personal', destination.beforeId);
+    expect(moved.sections.map((section) => section.id)).toEqual(['crews', 'personal']);
+    expect(moved.crews).toEqual(initialOrganization.crews);
+    expect(moved.sections[1]!.items).toEqual(initialOrganization.sections[0]!.items);
+  });
   it('accepts only known local drag identities at the external drop boundary', () => {
     for (const value of [
       'bad',

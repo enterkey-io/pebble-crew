@@ -121,10 +121,10 @@ test('the composer action changes meaning immediately and crossfades only its gl
   page,
   context,
 }) => {
-  await installFixture(context, { messages: [] });
+  await installFixture(context, { messages: [], voice: true });
   await page.goto('/');
-  await page.getByLabel('Message', { exact: true }).fill('A draft to preserve');
-  const send = page.getByRole('button', { name: 'Send message', exact: true });
+  await expect(page.getByLabel('Message', { exact: true })).toBeEnabled();
+  const send = page.getByRole('button', { name: 'Voice chat', exact: true });
   await expect(send).toBeEnabled();
   await send.focus();
   const button = (await send.elementHandle())!;
@@ -161,6 +161,7 @@ test('the composer action changes meaning immediately and crossfades only its gl
     await route.fulfill({ json: { result: {} } });
   });
   await stop.click();
+  await page.getByLabel('Message', { exact: true }).fill('A draft to preserve');
   await expect(page.getByRole('button', { name: 'Stopping', exact: true })).toBeDisabled();
   await expect(page.locator('.pc-activity')).toHaveText('Stopping');
   expect(await button.textContent()).toBe('');
@@ -220,22 +221,29 @@ test('reduced motion removes activity immediately and new runs never revive old 
   await expect(page.locator('.pc-activity')).toHaveText('Updating files');
 });
 
-test('a held send gesture cannot turn into a stop request when a run starts', async ({
+test('a held send gesture still sends once when a run starts and never turns into Stop', async ({
   page,
   context,
   isMobile,
 }) => {
   test.skip(isMobile, 'Held pointer and keyboard gesture coverage is desktop-specific.');
   await installFixture(context, { messages: [] });
-  let stops = 0;
+  let stops = 0,
+    sends = 0;
   await page.route('**/v1/rpc', async (route) => {
-    if (route.request().postDataJSON().operation === 'chat.stop') stops++;
+    const { operation } = route.request().postDataJSON();
+    if (operation === 'chat.stop') stops++;
+    if (operation === 'chat.send') {
+      sends++;
+      return route.fulfill({ json: { result: { status: 'redirected', user_row_id: 30 + sends } } });
+    }
     await route.fallback();
   });
   await page.goto('/');
   const input = page.getByLabel('Message', { exact: true });
-  await input.fill('Preserve this draft');
   for (const gesture of ['pointer', 'Space']) {
+    await input.fill(`Send with ${gesture}`);
+    const previous = sends;
     const send = page.getByRole('button', { name: 'Send message', exact: true });
     await expect(send).toBeEnabled();
     await send.focus();
@@ -250,7 +258,8 @@ test('a held send gesture cannot turn into a stop request when a run starts', as
     else await page.keyboard.up(gesture);
     await page.waitForTimeout(100);
     expect(stops).toBe(0);
-    await expect(input).toHaveValue('Preserve this draft');
+    await expect.poll(() => sends).toBe(previous + 1);
+    await expect(input).toHaveValue('');
     await emit(page, 'message.complete', { status: 'done' });
   }
 });

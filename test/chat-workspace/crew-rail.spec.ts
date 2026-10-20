@@ -143,6 +143,51 @@ test('dragging a Crew reorders the whole block, ignores member targets and prese
   expect(saved.at(-1)!.crews).toEqual(organization().crews);
 });
 
+test('sections can move below the final section as complete blocks', async ({
+  page,
+  context,
+}, info) => {
+  test.skip(!!info.project.use.isMobile, 'Native desktop drag has separate touch-menu coverage.');
+  const org = organization();
+  org.sections = [
+    org.sections[0]!,
+    { id: 'first', name: 'First', collapsed: false, items: [{ kind: 'crew', id: 'north' }] },
+    {
+      ...org.sections[1]!,
+      items: [
+        { kind: 'crew', id: 'south' },
+        { kind: 'crew', id: 'west' },
+      ],
+    },
+  ];
+  const fixture = await installFixture(context, { organization: org });
+  fixture.state.bots.forEach((bot, index) => {
+    bot.pinned = false;
+    if (index > 5) {
+      bot.managed = false;
+      bot.canonical = false;
+      bot.enrolled = false;
+    }
+  });
+  let latest = org;
+  await page.route('**/v1/rpc', async (route) => {
+    const { operation, params } = route.request().postDataJSON();
+    if (operation === 'organization.save') latest = params.organization;
+    await route.fallback();
+  });
+  await page.goto('/');
+  await expect(page.getByLabel('Message', { exact: true })).toBeEnabled();
+  const first = page.getByRole('region', { name: 'First', exact: true });
+  const last = page.getByRole('region', { name: 'Crews', exact: true });
+  await first
+    .locator('.pc-section-header')
+    .dragTo(last, { targetPosition: { x: 100, y: (await last.boundingBox())!.height - 4 } });
+  await expect
+    .poll(() => latest.sections.map((section) => section.id))
+    .toEqual(['pebbles', 'crews', 'first']);
+  expect(latest.crews).toEqual(org.crews);
+});
+
 test('sidebar context menus create a section or a crew with the selected pebble', async ({
   page,
   context,

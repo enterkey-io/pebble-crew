@@ -223,7 +223,7 @@ export function OrganizationRail({
       onPin(item.id);
     onChange((current) => {
       if (item.kind === 'section')
-        return target.kind === 'section' ? reorderSection(current, item.id, target.id) : current;
+        return target.kind === 'section' ? reorderSection(current, item.id, beforeId) : current;
       if (item.kind === 'pebble') return placePebble(current, item.id, target, beforeId);
       const section =
         target.kind === 'section'
@@ -246,11 +246,7 @@ export function OrganizationRail({
     return {
       onDragOver: (event: DragEvent) => {
         if (!event.dataTransfer.types.includes(dragFormat)) return;
-        if (
-          zone.kind === 'item' &&
-          dragging?.kind === zone.item.kind &&
-          dragging.id === zone.item.id
-        ) {
+        if (isSource(dragging)) {
           allow(event);
           setOver('');
           return;
@@ -274,7 +270,7 @@ export function OrganizationRail({
           pebbles.map((p) => p.id),
         );
         if (!item) return;
-        if (zone.kind === 'item' && item.kind === zone.item.kind && item.id === zone.item.id) {
+        if (isSource(item)) {
           event.preventDefault();
           event.stopPropagation();
           endDrag();
@@ -286,6 +282,14 @@ export function OrganizationRail({
       'data-drop-target': over.startsWith(`${key}:`) || undefined,
       'data-drop-edge': over.startsWith(`${key}:`) ? over.slice(key.length + 1) : undefined,
     };
+    function isSource(item: RailDrag | undefined) {
+      return (
+        item &&
+        (zone.kind === 'item'
+          ? item.kind === zone.item.kind && item.id === zone.item.id
+          : item.kind === 'section' && item.id === zone.id)
+      );
+    }
   }
   function row(id: string, target: Placement) {
     const pebble = pebbles.find((p) => p.id === id);

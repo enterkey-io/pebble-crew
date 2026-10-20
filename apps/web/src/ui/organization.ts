@@ -110,10 +110,15 @@ export function railDropTarget(
   zone: RailDropZone,
   after: boolean,
 ): RailDrop | undefined {
-  if (dragged === 'section')
-    return zone.kind === 'section' && zone.id !== 'pebbles'
-      ? { target: zone, edge: 'before' }
-      : undefined;
+  if (dragged === 'section') {
+    if (zone.kind !== 'section' || zone.id === 'pebbles') return undefined;
+    const index = org.sections.findIndex((section) => section.id === zone.id);
+    return {
+      target: zone,
+      beforeId: after ? org.sections[index + 1]?.id : zone.id,
+      edge: after ? 'after' : 'before',
+    };
+  }
   if (zone.kind === 'section')
     return sectionAccepts(zone.id, dragged) ? { target: zone, edge: 'inside' } : undefined;
   if (dragged === 'pebble' && zone.item.kind === 'crew')
@@ -156,14 +161,14 @@ export function placementOf(org: Organization, id: string): Placement | undefine
   return crew ? { kind: 'crew', id: crew.id } : undefined;
 }
 
-export function reorderSection(org: Organization, id: string, beforeId: string): Organization {
+export function reorderSection(org: Organization, id: string, beforeId?: string): Organization {
   const section = org.sections.find((s) => s.id === id);
   if (
     !section ||
     id === 'pebbles' ||
     beforeId === 'pebbles' ||
     id === beforeId ||
-    !org.sections.some((s) => s.id === beforeId)
+    (beforeId !== undefined && !org.sections.some((s) => s.id === beforeId))
   )
     return org;
   return {
