@@ -153,7 +153,7 @@ test('streaming, stop, IME and reconnection preserve drafts without submitting t
   await page.route('**/v1/rpc', async (route) => {
     if (route.request().postDataJSON().operation === 'chat.send') {
       sends++;
-      await route.fulfill({ json: { result: { status: 'accepted' } } });
+      await route.fulfill({ json: { result: { status: 'streaming', user_row_id: 29 } } });
     } else await route.fallback();
   });
   await input.fill('Hello');
