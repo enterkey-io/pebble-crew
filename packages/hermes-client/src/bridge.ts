@@ -28,6 +28,7 @@ export class BotBridgeClient {
   #existingAgents = false;
   #workspace = false;
   #reporting = false;
+  #projects = false;
   #attachments = false;
   #generatedMedia = false;
   #computer = false;
@@ -39,6 +40,9 @@ export class BotBridgeClient {
 
   get supportsLiveVoice(): boolean {
     return this.#liveVoice;
+  }
+  get supportsProjects(): boolean {
+    return this.#projects;
   }
   get supportsSecrets(): boolean {
     return this.#secrets;
@@ -97,6 +101,7 @@ export class BotBridgeClient {
     this.#connection = data.connection;
     this.#existingAgents = existingAgents;
     this.#reporting = !!data.capabilities && record(data.capabilities).reporting === 1;
+    this.#projects = !!data.capabilities && record(data.capabilities).projects === true;
     this.#workspace = !!data.capabilities && record(data.capabilities).workspace === true;
     this.#attachments = !!data.capabilities && record(data.capabilities).attachments === true;
     this.#generatedMedia =
@@ -360,6 +365,7 @@ export class BotBridgeClient {
         /* Untrusted diagnostics never enter user-visible errors. */
       }
       const known = [
+        'UPDATE_REQUIRED',
         'UNSUPPORTED_COMMAND',
         'STALE_REVISION',
         'HANDLE_TAKEN',

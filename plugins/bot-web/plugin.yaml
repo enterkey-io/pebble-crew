@@ -11,6 +11,7 @@ python_dependencies:
 provides_tools:
   - workspace_agents
   - pebble_react
+  - workspace_work
 provides_hooks:
   - pre_llm_call
   - transform_llm_output

@@ -102,8 +102,26 @@ const operations = new Set([
   'files.list',
   'chat.commands',
   'chat.command',
+  'work.describe',
+  'work.board',
+  'work.task',
+  'work.receipt',
+  'work.project.create',
+  'work.project.update',
+  'work.task.create',
+  'work.task.update',
+  'work.task.comment',
 ]);
-for (const path of ['App.tsx', 'voice/VoiceChat.tsx', 'chat/FilesPanel.tsx']) {
+for (const path of [
+  'App.tsx',
+  'voice/VoiceChat.tsx',
+  'chat/FilesPanel.tsx',
+  'work/WorkArea.tsx',
+  'work/WorkDialogs.tsx',
+  'work/WorkCreator.tsx',
+  'work/TaskEditor.tsx',
+  'work/use-work.ts',
+]) {
   const contract = sourceContract(read(path));
   requireRule(
     !contract.rawOperations().some((op) => operations.has(op)),

@@ -155,6 +155,10 @@ async def invoke(service, operation, params, state, profiles):
             raise InvalidOperation('Native deletion requires an exact owner-approved request')
         if any(b.get('available') and b.get('manager') == profile for b in state['bots'].values()):
             raise InvalidOperation('Reassign this pebble’s direct reports first')
+        from .work import is_catalog_profile
+        from .workspace import workspace_path
+        if is_catalog_profile(workspace_path(), state['id'], bot['id']):
+            raise InvalidOperation('This pebble holds the project catalog. Migrate the catalog in Hermes before deleting this profile.')
         # These pinned native builds freeze crew membership at creation. Do not
         # leave a live member pointing at a deleted/recreated profile name.
         offset = 0

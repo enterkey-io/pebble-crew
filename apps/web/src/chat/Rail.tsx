@@ -12,7 +12,11 @@ import {
   Eye,
   EyeOff,
   LogOut,
+  Inbox,
+  PanelsTopLeft,
 } from 'lucide-react';
+import { ToggleGroup, ToggleGroupItem } from '../components/ui/toggle-group';
+import type { WorkCatalog } from '@hermes-client/protocol';
 import { AgentAvatar } from '../AgentAvatar';
 import { Menu } from '../ui/primitives';
 import type { MenuItem } from '../ui/primitives';
@@ -141,6 +145,13 @@ export function Rail({
   onOrganization,
   onCrew,
   onSearch,
+  area,
+  onArea,
+  catalog,
+  selectedBoard,
+  onBoard,
+  onNewProject,
+  onNewTask,
 }: {
   bots: ChatBot[];
   rooms: Row[];
@@ -169,6 +180,13 @@ export function Rail({
   onOrganization: Dispatch<SetStateAction<Organization>>;
   onCrew: (id: string) => void;
   onSearch: () => void;
+  area: 'chat' | 'tasks';
+  onArea: (area: 'chat' | 'tasks') => void;
+  catalog: WorkCatalog | undefined;
+  selectedBoard: string;
+  onBoard: (board: string) => void;
+  onNewProject: () => void;
+  onNewTask: () => void;
 }) {
   const [hidden, setHidden] = useState(false),
     [editor, setEditor] = useState<OrganizationEditor | null>(null);
@@ -271,6 +289,12 @@ export function Rail({
           items={[
             { label: 'New pebble', action: onAdd },
             { label: 'New crew', action: () => setEditor({ kind: 'new-crew' }) },
+            ...(client.supportsProjects
+              ? [
+                  { label: 'New project board', action: onNewProject, disabled: !catalog },
+                  { label: 'New task', action: onNewTask, disabled: !catalog },
+                ]
+              : []),
             { label: 'New section', action: () => setEditor({ kind: 'new-section' }) },
           ]}
         >
@@ -285,186 +309,224 @@ export function Rail({
           />
         )}
       </div>
+      {client.supportsProjects && (
+        <ToggleGroup
+          type="single"
+          className="pc-area-switch"
+          aria-label="App area"
+          value={area}
+          onValueChange={(value) => {
+            if (value === 'chat' || value === 'tasks') onArea(value);
+          }}
+        >
+          <ToggleGroupItem value="chat">Chat</ToggleGroupItem>
+          <ToggleGroupItem value="tasks">Tasks</ToggleGroupItem>
+        </ToggleGroup>
+      )}
       <div className="pc-rail-scroll rail-scroll">
-        <LayoutGroup id="native-rail">
-          <nav aria-label="Pebbles">
-            {!!pins.length && (
-              <div className="pc-pins pinned-pebbles">
-                {pins.map((b) => (
-                  <motion.div
-                    layout="position"
-                    layoutId={`pebble-${identity(b)!.id}`}
-                    draggable
-                    onDragStartCapture={(event) => {
-                      event.dataTransfer.setData(
-                        'application/x-pebble-crew-rail',
-                        JSON.stringify({ kind: 'pebble', id: identity(b)!.id }),
-                      );
-                      event.dataTransfer.effectAllowed = 'move';
-                    }}
-                    onDragOver={(event) => {
-                      if (event.dataTransfer.types.includes('application/x-pebble-crew-rail'))
-                        event.preventDefault();
-                    }}
-                    onDrop={(event) => {
-                      event.preventDefault();
-                      const item = readRailDrag(
-                        event.dataTransfer.getData('application/x-pebble-crew-rail'),
-                        organization,
-                        all.flatMap((bot) => identity(bot)?.id ?? []),
-                      );
-                      if (item?.kind !== 'pebble') return;
-                      const bot = byId(item.id);
-                      if (!bot) return;
-                      if (!pinned(bot)) onPin(identity(bot)!, true);
-                      const ids = pinIds.filter((id) => id !== item.id),
-                        position = ids.indexOf(identity(b)!.id);
-                      ids.splice(position < 0 ? ids.length : position, 0, item.id);
-                      onOrder(ids);
-                    }}
-                    onKeyDown={(event) => {
-                      if (event.altKey && ['ArrowUp', 'ArrowDown'].includes(event.key)) {
-                        event.preventDefault();
-                        const ids = [...pinIds],
-                          index = ids.indexOf(identity(b)!.id),
-                          next = index + (event.key === 'ArrowUp' ? -1 : 1);
-                        if (next >= 0 && next < ids.length) {
-                          [ids[index], ids[next]] = [ids[next]!, ids[index]!];
-                          onOrder(ids);
-                        }
-                      }
-                    }}
-                    transition={{ duration: reduced ? 0 : 0.22, ease: [0.22, 1, 0.36, 1] }}
-                    className={`pc-pin pinned-tile ${selected === b.profile ? 'is-selected' : ''}`}
-                    key={identity(b)?.id ?? b.profile}
-                  >
-                    <div className="pc-pin-actions">{controls(b)}</div>
-                    <Button
-                      variant="ghost"
-                      className="pc-pin-open hover:bg-transparent dark:hover:bg-transparent"
-                      aria-label={`${b.name} ${identity(b)?.role.title ?? ''} Bot Chat`}
-                      aria-current={selected === b.profile ? 'page' : undefined}
-                      aria-disabled={!online}
-                      onClick={() => {
-                        if (online) onOpen(b);
+        {area === 'tasks' ? (
+          <nav aria-label="Project boards" className="grid content-start gap-1">
+            {catalog?.boards.map((board) => (
+              <NavigationItem
+                key={board.slug}
+                className="min-h-12 px-3"
+                title={board.name}
+                media={
+                  board.slug === 'default' ? (
+                    <Inbox className="size-4 text-muted-foreground" />
+                  ) : (
+                    <PanelsTopLeft className="size-4 text-muted-foreground" />
+                  )
+                }
+                aria-current={board.slug === selectedBoard ? 'page' : undefined}
+                onClick={() => onBoard(board.slug)}
+                action={
+                  board.count > 0 ? <span className="text-xs">{board.count}</span> : undefined
+                }
+              />
+            ))}
+          </nav>
+        ) : (
+          <LayoutGroup id="native-rail">
+            <nav aria-label="Pebbles">
+              {!!pins.length && (
+                <div className="pc-pins pinned-pebbles">
+                  {pins.map((b) => (
+                    <motion.div
+                      layout="position"
+                      layoutId={`pebble-${identity(b)!.id}`}
+                      draggable
+                      onDragStartCapture={(event) => {
+                        event.dataTransfer.setData(
+                          'application/x-pebble-crew-rail',
+                          JSON.stringify({ kind: 'pebble', id: identity(b)!.id }),
+                        );
+                        event.dataTransfer.effectAllowed = 'move';
                       }}
+                      onDragOver={(event) => {
+                        if (event.dataTransfer.types.includes('application/x-pebble-crew-rail'))
+                          event.preventDefault();
+                      }}
+                      onDrop={(event) => {
+                        event.preventDefault();
+                        const item = readRailDrag(
+                          event.dataTransfer.getData('application/x-pebble-crew-rail'),
+                          organization,
+                          all.flatMap((bot) => identity(bot)?.id ?? []),
+                        );
+                        if (item?.kind !== 'pebble') return;
+                        const bot = byId(item.id);
+                        if (!bot) return;
+                        if (!pinned(bot)) onPin(identity(bot)!, true);
+                        const ids = pinIds.filter((id) => id !== item.id),
+                          position = ids.indexOf(identity(b)!.id);
+                        ids.splice(position < 0 ? ids.length : position, 0, item.id);
+                        onOrder(ids);
+                      }}
+                      onKeyDown={(event) => {
+                        if (event.altKey && ['ArrowUp', 'ArrowDown'].includes(event.key)) {
+                          event.preventDefault();
+                          const ids = [...pinIds],
+                            index = ids.indexOf(identity(b)!.id),
+                            next = index + (event.key === 'ArrowUp' ? -1 : 1);
+                          if (next >= 0 && next < ids.length) {
+                            [ids[index], ids[next]] = [ids[next]!, ids[index]!];
+                            onOrder(ids);
+                          }
+                        }
+                      }}
+                      transition={{ duration: reduced ? 0 : 0.22, ease: [0.22, 1, 0.36, 1] }}
+                      className={`pc-pin pinned-tile ${selected === b.profile ? 'is-selected' : ''}`}
+                      key={identity(b)?.id ?? b.profile}
                     >
-                      {face(identity(b)!.id, true)}
-                      <strong>{b.name}</strong>{' '}
-                      {pendingPins[identity(b)?.id ?? ''] && (
-                        <span className="pin-saving sr-only" role="status">
-                          Saving pin…
-                        </span>
-                      )}
-                      {identity(b)?.role.title && (
-                        <Badge className="pc-pin-title" variant="secondary" aria-hidden="true">
-                          {identity(b)?.role.title}
-                        </Badge>
-                      )}
-                      {identity(b)?.unread && (
-                        <span className="unread-dot" aria-label="Unread messages" />
-                      )}
-                    </Button>
-                  </motion.div>
-                ))}
-              </div>
-            )}
-            <OrganizationRail
-              org={organization}
-              onChange={onOrganization}
-              pebbles={all
-                .filter((b) => !b.hidden)
-                .flatMap((b) => {
-                  const row = identity(b);
-                  return row
-                    ? [
-                        {
-                          id: row.id,
-                          name: b.name,
-                          title: row.role.title,
-                          preview:
-                            b.preview || row.preview || row.role.description || '@' + row.handle,
-                          pinned: pinned(b),
-                        },
-                      ]
-                    : [];
-                })}
-              activeId={
-                all.find((b) => b.profile === selected)?.id ??
-                Object.entries(crewChats).find(([, roomId]) => roomId === selected)?.[0] ??
-                selected ??
-                ''
-              }
-              face={face}
-              onOpenPebble={(id) => {
-                const b = byId(id);
-                if (b && online) onOpen(b);
-              }}
-              onOpenCrew={onCrew}
-              onEditPebble={(id) => {
-                const b = byId(id);
-                if (b) onEdit(b.profile);
-              }}
-              onEditOrganization={setEditor}
-              onPin={(id) => {
-                const b = byId(id),
-                  row = b && identity(b);
-                if (b && row) onPin(row, !pinned(b));
-              }}
-              actions={(id) => {
-                const b = byId(id);
-                return b ? controls(b) : null;
-              }}
-              openLabel={(pebble) => `${pebble.name} ${pebble.title} ${pebble.preview} Bot Chat`}
-            />
-            {hidden &&
-              all
-                .filter((b) => b.hidden)
-                .map((b) => (
-                  <div className="pc-row" key={b.id}>
-                    <Item size="xs" className="min-h-16 flex-nowrap gap-2.5">
-                      <ItemMedia className="group-has-data-[slot=item-description]/item:self-center group-has-data-[slot=item-description]/item:translate-y-0">
-                        {face(b.id!)}
-                      </ItemMedia>
-                      <ItemContent>
-                        <ItemTitle>{b.name}</ItemTitle>
+                      <div className="pc-pin-actions">{controls(b)}</div>
+                      <Button
+                        variant="ghost"
+                        className="pc-pin-open hover:bg-transparent dark:hover:bg-transparent"
+                        aria-label={`${b.name} ${identity(b)?.role.title ?? ''} Bot Chat`}
+                        aria-current={selected === b.profile ? 'page' : undefined}
+                        aria-disabled={!online}
+                        onClick={() => {
+                          if (online) onOpen(b);
+                        }}
+                      >
+                        {face(identity(b)!.id, true)}
+                        <strong>{b.name}</strong>{' '}
                         {pendingPins[identity(b)?.id ?? ''] && (
                           <span className="pin-saving sr-only" role="status">
                             Saving pin…
                           </span>
                         )}
-                        <ItemDescription>Hidden</ItemDescription>
-                      </ItemContent>
-                    </Item>
-                    {controls(b)}
-                  </div>
+                        {identity(b)?.role.title && (
+                          <Badge className="pc-pin-title" variant="secondary" aria-hidden="true">
+                            {identity(b)?.role.title}
+                          </Badge>
+                        )}
+                        {identity(b)?.unread && (
+                          <span className="unread-dot" aria-label="Unread messages" />
+                        )}
+                      </Button>
+                    </motion.div>
+                  ))}
+                </div>
+              )}
+              <OrganizationRail
+                org={organization}
+                onChange={onOrganization}
+                pebbles={all
+                  .filter((b) => !b.hidden)
+                  .flatMap((b) => {
+                    const row = identity(b);
+                    return row
+                      ? [
+                          {
+                            id: row.id,
+                            name: b.name,
+                            title: row.role.title,
+                            preview:
+                              b.preview || row.preview || row.role.description || '@' + row.handle,
+                            pinned: pinned(b),
+                          },
+                        ]
+                      : [];
+                  })}
+                activeId={
+                  all.find((b) => b.profile === selected)?.id ??
+                  Object.entries(crewChats).find(([, roomId]) => roomId === selected)?.[0] ??
+                  selected ??
+                  ''
+                }
+                face={face}
+                onOpenPebble={(id) => {
+                  const b = byId(id);
+                  if (b && online) onOpen(b);
+                }}
+                onOpenCrew={onCrew}
+                onEditPebble={(id) => {
+                  const b = byId(id);
+                  if (b) onEdit(b.profile);
+                }}
+                onEditOrganization={setEditor}
+                onPin={(id) => {
+                  const b = byId(id),
+                    row = b && identity(b);
+                  if (b && row) onPin(row, !pinned(b));
+                }}
+                actions={(id) => {
+                  const b = byId(id);
+                  return b ? controls(b) : null;
+                }}
+                openLabel={(pebble) => `${pebble.name} ${pebble.title} ${pebble.preview} Bot Chat`}
+              />
+              {hidden &&
+                all
+                  .filter((b) => b.hidden)
+                  .map((b) => (
+                    <div className="pc-row" key={b.id}>
+                      <Item size="xs" className="min-h-16 flex-nowrap gap-2.5">
+                        <ItemMedia className="group-has-data-[slot=item-description]/item:self-center group-has-data-[slot=item-description]/item:translate-y-0">
+                          {face(b.id!)}
+                        </ItemMedia>
+                        <ItemContent>
+                          <ItemTitle>{b.name}</ItemTitle>
+                          {pendingPins[identity(b)?.id ?? ''] && (
+                            <span className="pin-saving sr-only" role="status">
+                              Saving pin…
+                            </span>
+                          )}
+                          <ItemDescription>Hidden</ItemDescription>
+                        </ItemContent>
+                      </Item>
+                      {controls(b)}
+                    </div>
+                  ))}
+            </nav>
+            <nav className="pc-list" aria-label="Group chats">
+              {rooms.length > 0 && <h2>Group chats</h2>}
+              {rooms
+                .filter((r) => !Object.values(crewChats).includes(String(r.room_id)))
+                .map((r) => (
+                  <NavigationItem
+                    className="pc-crew"
+                    key={String(r.room_id)}
+                    disabled={!online}
+                    onClick={() => onRoom(r)}
+                    media={<CrewAvatar room={r} workspace={workspace} client={client} />}
+                    title={String(r.name ?? 'Crew')}
+                    description={String(r.preview ?? 'Group conversation')}
+                  />
                 ))}
-          </nav>
-          <nav className="pc-list" aria-label="Group chats">
-            {rooms.length > 0 && <h2>Group chats</h2>}
-            {rooms
-              .filter((r) => !Object.values(crewChats).includes(String(r.room_id)))
-              .map((r) => (
-                <NavigationItem
-                  className="pc-crew"
-                  key={String(r.room_id)}
-                  disabled={!online}
-                  onClick={() => onRoom(r)}
-                  media={<CrewAvatar room={r} workspace={workspace} client={client} />}
-                  title={String(r.name ?? 'Crew')}
-                  description={String(r.preview ?? 'Group conversation')}
-                />
-              ))}
-          </nav>
-          {!all.length && (
-            <div className="rail-empty">
-              <p>No pebbles yet.</p>
-              <Button variant="quiet" onClick={onAdd}>
-                Add existing agents
-              </Button>
-            </div>
-          )}
-        </LayoutGroup>
+            </nav>
+            {!all.length && (
+              <div className="rail-empty">
+                <p>No pebbles yet.</p>
+                <Button variant="quiet" onClick={onAdd}>
+                  Add existing agents
+                </Button>
+              </div>
+            )}
+          </LayoutGroup>
+        )}
       </div>
       <footer className="pc-rail-footer">
         <Menu

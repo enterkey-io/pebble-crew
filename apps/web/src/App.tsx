@@ -72,6 +72,10 @@ import type { OwnerConnection } from './OwnerShell';
 import { WorkspaceSetup } from './WorkspaceSetup';
 import { StartupScreen } from './StartupScreen';
 import { OrgChart } from './OrgChart';
+import { useWorkCatalog } from './work/use-work';
+import { WorkArea } from './work/WorkArea';
+import { WorkDialog } from './work/WorkDialogs';
+import type { WorkDialogTarget } from './work/WorkDialogs';
 import { DocumentActions, DocumentReader, useDocumentReader } from './documents/DocumentReader';
 import { decodeDocumentRequest } from '@hermes-client/protocol';
 
@@ -111,6 +115,10 @@ export function App({ owner }: { owner?: OwnerConnection }) {
   const [workspace, setWorkspace] = useState<WorkspaceState>();
   const [settings, setSettings] = useState(false);
   const [orgOpen, setOrgOpen] = useState(false);
+  const [area, setArea] = useState<'chat' | 'tasks'>('chat');
+  const [workBoard, setWorkBoard] = useState('default');
+  const [workDialog, setWorkDialog] = useState<WorkDialogTarget>();
+  const [workRevision, setWorkRevision] = useState(0);
   const [settingsTab, setSettingsTab] = useState<
     'agents' | 'requests' | 'account' | 'connections' | 'general'
   >('general');
@@ -126,6 +134,7 @@ export function App({ owner }: { owner?: OwnerConnection }) {
   const welcomeProfile = useRef('');
   const disposed = useRef(false);
   const [client, setClient] = useState<BotBridgeClient>();
+  const work = useWorkCatalog(client, workspace?.initialized ? workspace.id : undefined);
   const current = useRef<BotBridgeClient | undefined>(undefined);
   const selected = useRef<Selection | undefined>(undefined);
   const selectionConnection = useRef<BotBridgeClient | undefined>(undefined);
@@ -1675,6 +1684,38 @@ export function App({ owner }: { owner?: OwnerConnection }) {
 
   const rail = (
     <Rail
+      area={area}
+      catalog={work.catalog}
+      selectedBoard={workBoard}
+      onArea={(area) =>
+        navigate(() => {
+          setArea(area);
+          setOrgOpen(false);
+          setSettings(false);
+          setNav(false);
+        })
+      }
+      onBoard={(board) =>
+        navigate(() => {
+          setWorkBoard(board);
+          setArea('tasks');
+          setOrgOpen(false);
+          setSettings(false);
+          setNav(false);
+        })
+      }
+      onNewProject={() =>
+        navigate(() => {
+          setWorkDialog({ kind: 'new-project' });
+          setNav(false);
+        })
+      }
+      onNewTask={() =>
+        navigate(() => {
+          setWorkDialog({ kind: 'new-task', board: workBoard });
+          setNav(false);
+        })
+      }
       bots={bots}
       rooms={rooms}
       workspace={
@@ -1694,7 +1735,12 @@ export function App({ owner }: { owner?: OwnerConnection }) {
       organization={organization}
       crewChats={crewChats}
       onOrganization={changeOrganization}
-      onCrew={(id) => navigate(() => void openCrew(id))}
+      onCrew={(id) =>
+        navigate(() => {
+          setArea('chat');
+          void openCrew(id);
+        })
+      }
       onSearch={() => setSearchOpen(true)}
       onClose={nav ? closeNav : undefined}
       onEdit={(profile) =>
@@ -1720,6 +1766,7 @@ export function App({ owner }: { owner?: OwnerConnection }) {
       onOpen={(bot) =>
         navigate(() => {
           setOrgOpen(false);
+          setArea('chat');
           setSettings(false);
           if (bot.canonical) void open(bot);
           else setPickingAgents(true);
@@ -1728,6 +1775,7 @@ export function App({ owner }: { owner?: OwnerConnection }) {
       onRoom={(room) =>
         navigate(() => {
           setOrgOpen(false);
+          setArea('chat');
           setSettings(false);
           openRoom(room);
         })
@@ -1820,7 +1868,7 @@ export function App({ owner }: { owner?: OwnerConnection }) {
       }}
     >
       <main
-        className={`pc-shell workspace ${settings && settingsTab !== 'agents' ? 'editing' : ''} ${(details || documentReader.state) && phone && !settings && !orgOpen ? 'phone-details' : ''}`}
+        className={`pc-shell workspace ${settings && settingsTab !== 'agents' ? 'editing' : ''} ${(details || documentReader.state) && area === 'chat' && phone && !settings && !orgOpen ? 'phone-details' : ''}`}
       >
         {nav && (
           <Drawer title="navigation" onClose={closeNav}>
@@ -1844,7 +1892,13 @@ export function App({ owner }: { owner?: OwnerConnection }) {
             reader={showLatest ? 'manual' : 'follow'}
             className="pc-main conversation overflow-clip"
             aria-label="Conversation"
-            inert={!!(details || documentReader.state) && phone && !settings && !orgOpen}
+            inert={
+              !!(details || documentReader.state) &&
+              area === 'chat' &&
+              phone &&
+              !settings &&
+              !orgOpen
+            }
           >
             {orgOpen && workspace && (
               <OrgChart
@@ -1873,7 +1927,42 @@ export function App({ owner }: { owner?: OwnerConnection }) {
                 onNavigate={() => setNav(true)}
               />
             )}
-            <div style={{ display: orgOpen ? 'none' : 'contents' }} inert={orgOpen}>
+            {area === 'tasks' &&
+              !orgOpen &&
+              !(settings && settingsTab !== 'agents') &&
+              workspace &&
+              (work.catalog ? (
+                <WorkArea
+                  client={client}
+                  workspace={workspace}
+                  catalog={work.catalog}
+                  board={workBoard}
+                  refresh={workRevision}
+                  onNavigate={() => setNav(true)}
+                  onTask={(id) => setWorkDialog({ kind: 'task', board: workBoard, id })}
+                  onCreate={() => setWorkDialog({ kind: 'new-task', board: workBoard })}
+                  onEditProject={() => setWorkDialog({ kind: 'project', board: workBoard })}
+                />
+              ) : (
+                <section className="pc-work-area" aria-label="Tasks">
+                  <LoadingBar active={!work.error} label="Loading project boards" />
+                  {work.error && (
+                    <Alert>
+                      <AlertDescription>{work.error}</AlertDescription>
+                      <Button onClick={work.reload}>Try again</Button>
+                    </Alert>
+                  )}
+                </section>
+              ))}
+            <div
+              style={{
+                display:
+                  orgOpen || (area === 'tasks' && !(settings && settingsTab !== 'agents'))
+                    ? 'none'
+                    : 'contents',
+              }}
+              inert={orgOpen || (area === 'tasks' && !settings)}
+            >
               {settings && settingsTab !== 'agents' && workspace ? (
                 settingsContent
               ) : (
@@ -2379,6 +2468,7 @@ export function App({ owner }: { owner?: OwnerConnection }) {
           <DetailsDock
             open={
               !orgOpen &&
+              area === 'chat' &&
               !!(documentReader.state || details) &&
               (!settings || settingsTab === 'agents')
             }
@@ -2402,6 +2492,50 @@ export function App({ owner }: { owner?: OwnerConnection }) {
             )}
           </DetailsDock>
         </WorkspacePanels>
+        {workDialog && work.catalog && workspace && (
+          <Drawer
+            title={
+              workDialog.kind === 'task' || workDialog.kind === 'new-task'
+                ? 'Task'
+                : 'Project board'
+            }
+            variant="dialog"
+            onBeforeClose={() => {
+              if (!dirtyEditor.current) return true;
+              pendingNavigation.current = () => setWorkDialog(undefined);
+              setConfirmNavigation(true);
+              return false;
+            }}
+            onClose={() => setWorkDialog(undefined)}
+          >
+            <WorkDialog
+              key={
+                workDialog.kind +
+                ('board' in workDialog ? workDialog.board : '') +
+                ('id' in workDialog ? workDialog.id : '')
+              }
+              target={workDialog}
+              client={client}
+              workspace={workspace}
+              catalog={work.catalog}
+              onDirtyChange={onDirtyChange}
+              onNavigate={navigate}
+              onClose={() => setWorkDialog(undefined)}
+              onSaved={() => {
+                work.reload();
+                setWorkRevision((n) => n + 1);
+              }}
+              onOpenBoard={(board) => {
+                setWorkBoard(board);
+                setArea('tasks');
+                setOrgOpen(false);
+                setSettings(false);
+                setWorkDialog(undefined);
+                setNav(false);
+              }}
+            />
+          </Drawer>
+        )}
         {settings && settingsTab === 'agents' && (
           <Drawer
             title="Edit pebble"

@@ -22,9 +22,15 @@ test('private first use, native onboarding, idle keepalive, reconnection, settin
         r.failure()?.errorText,
       );
   });
-  page.on('response', (r) => {
+  page.on('response', async (r) => {
     if (r.url().includes(':8789') && !r.ok())
-      console.log('Fixture bridge HTTP failure', new URL(r.url()).pathname, r.status());
+      console.log(
+        'Fixture bridge HTTP failure',
+        new URL(r.url()).pathname,
+        r.status(),
+        r.request().postDataJSON()?.operation,
+        (await r.json().catch(() => ({}))).code,
+      );
   });
   const errors: string[] = [];
   page.on('pageerror', (e) => errors.push(e.message));
@@ -485,5 +491,50 @@ test('private first use, native onboarding, idle keepalive, reconnection, settin
   await expect(page.getByLabel('Instructions', { exact: true })).toHaveValue(
     'Verify results and report to Alpha Stone.',
   );
+  await page.getByRole('button', { name: 'Close Edit Nova', exact: true }).click();
+  await org.getByRole('button', { name: 'Close Org chart', exact: true }).click();
+  await page.getByRole('button', { name: 'New', exact: true }).click();
+  await page.getByRole('menuitem', { name: 'New project board', exact: true }).click();
+  await page.getByLabel('Name', { exact: true }).fill('Native owner project');
+  await page.getByLabel('Instructions', { exact: true }).fill('Record original evidence.');
+  await page.getByRole('button', { name: 'Create project board', exact: true }).click();
+  await page.getByRole('button', { name: 'Open board', exact: true }).click();
+  await expect(
+    page.getByRole('heading', { name: 'Native owner project', exact: true }),
+  ).toBeVisible();
+  await page.getByRole('button', { name: 'New task', exact: true }).click();
+  await page.getByLabel('Title', { exact: true }).fill('Native owner task');
+  await page.getByLabel('Instructions', { exact: true }).fill('- [ ] Verify the native board');
+  await page.getByRole('combobox', { name: 'Assigned to', exact: true }).click();
+  await page.getByRole('option', { name: 'Nova', exact: true }).click();
+  await page.getByRole('button', { name: 'Create task', exact: true }).click();
+  await page.getByRole('button', { name: 'Open task board', exact: true }).click();
+  await page.getByRole('button', { name: 'Open task Native owner task', exact: true }).click();
+  await page.getByLabel('Title', { exact: true }).fill('Verified native owner task');
+  await page.getByRole('button', { name: 'Save', exact: true }).click();
+  await expect(page.getByRole('dialog', { name: 'Task', exact: true })).toHaveCount(0);
+  await page
+    .getByRole('button', { name: 'Open task Verified native owner task', exact: true })
+    .click();
+  await page.getByRole('tab', { name: 'Activity', exact: true }).click();
+  await page.getByLabel('Comment', { exact: true }).fill('**Native persistence** verified.');
+  await page.getByRole('button', { name: 'Post comment', exact: true }).click();
+  await expect(page.getByText('Native persistence', { exact: true })).toBeVisible();
+  await page.screenshot({ animations: 'disabled', path: 'test-results/native-task-desktop.png' });
+  await page.getByRole('button', { name: 'Close Task', exact: true }).click();
+  await page.reload();
+  await page.getByRole('radio', { name: 'Tasks', exact: true }).click();
+  await page.getByRole('button', { name: /^Native owner project(?: \d+)?$/ }).click();
+  await page
+    .getByRole('button', { name: 'Open task Verified native owner task', exact: true })
+    .click();
+  await expect(page.getByRole('combobox', { name: 'Assigned to', exact: true })).toContainText(
+    'Nova',
+  );
+  await expect(page.getByRole('textbox', { name: 'Instructions', exact: true })).toHaveValue(
+    '- [ ] Verify the native board',
+  );
+  await page.getByRole('tab', { name: 'Activity', exact: true }).click();
+  await expect(page.getByText('Native persistence', { exact: true })).toBeVisible();
   expect(errors).toEqual([]);
 });

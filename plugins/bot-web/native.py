@@ -26,6 +26,7 @@ class NativeGateway:
         self.healthy = False
         self.build = None
         self.secrets = {}
+        self.work_supported = False
 
     async def has_stored_bot_chat(self, profile):
         # Read-only safety guard: native exact-title lookup hides deliberately retired
@@ -68,6 +69,8 @@ class NativeGateway:
             capabilities = await self.call("groups.capabilities", {})
             if capabilities.get("driver") is not True:
                 raise NativeError("Native room driver unavailable")
+            work = await self.call('bot_web.work', {'operation': 'work.capabilities', 'params': {}})
+            self.work_supported = work.get('supported') is True
         except BaseException:
             await self.stop()
             raise

@@ -610,6 +610,60 @@
       "accepted": [
         "rpc"
       ]
+    },
+    "work.describe": {
+      "preferred": "rpc",
+      "accepted": [
+        "rpc"
+      ]
+    },
+    "work.board": {
+      "preferred": "rpc",
+      "accepted": [
+        "rpc"
+      ]
+    },
+    "work.task": {
+      "preferred": "rpc",
+      "accepted": [
+        "rpc"
+      ]
+    },
+    "work.receipt": {
+      "preferred": "rpc",
+      "accepted": [
+        "rpc"
+      ]
+    },
+    "work.project.create": {
+      "preferred": "rpc",
+      "accepted": [
+        "rpc"
+      ]
+    },
+    "work.project.update": {
+      "preferred": "rpc",
+      "accepted": [
+        "rpc"
+      ]
+    },
+    "work.task.create": {
+      "preferred": "rpc",
+      "accepted": [
+        "rpc"
+      ]
+    },
+    "work.task.update": {
+      "preferred": "rpc",
+      "accepted": [
+        "rpc"
+      ]
+    },
+    "work.task.comment": {
+      "preferred": "rpc",
+      "accepted": [
+        "rpc"
+      ]
     }
   }
 }

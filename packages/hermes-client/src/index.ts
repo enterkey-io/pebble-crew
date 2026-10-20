@@ -13,3 +13,4 @@ export * from './conversation-domain';
 export * from './reporting';
 
 export * from './documents';
+export * from './work-domain';

@@ -237,7 +237,7 @@ def create_app(token, origins, hosts, gateway=None, trust=None, workspace=None, 
                                "expires": request.scope.get("bot.ticket_expires"), "ended": None}
         build = getattr(native, "build", None) or {}
         return {"connection": connection, "protocol": "hermes-bot-web.v1", "bridge_version": VERSION,
-                "capabilities": {"existing_agents": True, "owner_login": owner_trust is not None, "workspace": bool(workspace), "reporting": 1 if workspace else None, "attachments": bool(files), "generated_media": True, "reactions": True, "live_voice": live_voice_supported(), "secrets": bool(getattr(native, "build", None) and native.build.get("server_requests")), "computer": computer.supported},
+                "capabilities": {"existing_agents": True, "owner_login": owner_trust is not None, "workspace": bool(workspace), "reporting": 1 if workspace else None, "projects": bool(workspace and getattr(native, 'work_supported', False)), "attachments": bool(files), "generated_media": True, "reactions": True, "live_voice": live_voice_supported(), "secrets": bool(getattr(native, "build", None) and native.build.get("server_requests")), "computer": computer.supported},
                 "hermes_version": build.get("version"), "hermes_revision": build.get("revision")}
 
     @app.post("/v1/renew")
@@ -332,6 +332,14 @@ def create_app(token, origins, hosts, gateway=None, trust=None, workspace=None, 
                     raise InvalidOperation("Invalid authorization request")
                 action = {"connections.auth_start": "start", "connections.auth_status": "status", "connections.auth_cancel": "cancel"}[operation]
                 result = await native.call("bot_web.connections.oauth", {**params, "action": action, **({"callback": public_callback} if action == "start" else {})})
+            elif operation.startswith('work.'):
+                value = await native.call('bot_web.work', {'operation': operation, 'params': params})
+                if not isinstance(value, dict) or value.get('ok') is not True:
+                    code = value.get('code') if isinstance(value, dict) else None
+                    if isinstance(code, str) and code in {'INVALID_PARAMETERS', 'STALE_REVISION', 'REQUIRES_SETUP', 'UPDATE_REQUIRED'}:
+                        raise InvalidOperation('The work operation was refused', code)
+                    raise NativeError('The work result could not be confirmed')
+                result = value['value']
             else:
                 if operation in {'bots.profile.update', 'agent.onboard', 'roles.update', 'agent.create', 'workspace.initialize', 'workspace.set_orchestrator'}:
                     if params.pop('reporting_version', None) != 1:

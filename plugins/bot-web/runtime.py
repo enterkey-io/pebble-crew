@@ -134,6 +134,11 @@ def register_runtime(ctx):
                     text += '\n'+voice_guidance(platform)
                 except Exception:
                     pass
+                from .work import runtime_guidance as work_guidance
+                try:
+                    text += '\n'+work_guidance(platform)
+                except Exception:
+                    pass
             return {'context': text}
         except Exception:
             return None
@@ -193,6 +198,8 @@ def register_runtime(ctx):
     register_reactions(ctx)
     from .live_voice import register_runtime as register_voice
     register_voice(ctx)
+    from .work import register_runtime as register_work
+    register_work(ctx)
 
     from .documents import register_runtime as register_documents
     register_documents(ctx)

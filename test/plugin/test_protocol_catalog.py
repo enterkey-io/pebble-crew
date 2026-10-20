@@ -21,7 +21,7 @@ ROOT = Path(__file__).resolve().parents[2]
 class CatalogTests(unittest.TestCase):
     def test_catalog_exactly_covers_real_handlers_and_every_body_class(self):
         supported = set()
-        for filename in ['operations.py', 'workspace.py', 'server.py', 'computer.py', 'attachments.py']:
+        for filename in ['operations.py', 'workspace.py', 'server.py', 'computer.py', 'attachments.py', 'work.py']:
             tree = ast.parse((ROOT / 'plugins/bot-web' / filename).read_text())
             for node in ast.walk(tree):
                 if isinstance(node, ast.Compare) and isinstance(node.left, ast.Name) and node.left.id == 'operation':
@@ -30,7 +30,7 @@ class CatalogTests(unittest.TestCase):
                             supported.add(item.value)
                         elif isinstance(item, (ast.Set, ast.List, ast.Tuple)):
                             supported.update(value.value for value in item.elts if isinstance(value, ast.Constant) and isinstance(value.value, str))
-                if filename == 'workspace.py' and isinstance(node, ast.Assign) and any(isinstance(target, ast.Name) and target.id == 'METHODS' for target in node.targets):
+                if filename in {'workspace.py', 'work.py'} and isinstance(node, ast.Assign) and any(isinstance(target, ast.Name) and target.id in {'METHODS', 'OPERATIONS'} for target in node.targets):
                     supported.update(ast.literal_eval(node.value))
         self.assertEqual(PROTOCOL_CATALOG['schema'], 1)
         self.assertEqual(PROTOCOL_CATALOG['protocol'], 'hermes-bot-web.v1')
