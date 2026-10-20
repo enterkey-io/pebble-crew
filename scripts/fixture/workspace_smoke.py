@@ -344,7 +344,18 @@ async def verify(home, model_port):
         current = await workspace.invoke('workspace.describe', {})
         await workspace.invoke('bots.update_handle', {'profile': 'new-researcher', 'handle': 'maker', 'expected_revision': current['revision']})
         root_chat = await ops.invoke('bot.open', {'profile': 'default'})
-        await ops.invoke('chat.send', {'session_id': root_chat['session_id'], 'text': 'Synthetic public-handle handoff'})
+        handoff_events = asyncio.Queue()
+        native.listeners.add(handoff_events)
+        try:
+            await ops.invoke('chat.send', {'session_id': root_chat['session_id'], 'text': 'Synthetic public-handle handoff'})
+            async with asyncio.timeout(60):
+                while True:
+                    event = await handoff_events.get()
+                    if event.get('type') == 'message.complete' and event.get('session_id') == root_chat['session_id']:
+                        assert event.get('payload', {}).get('status') != 'error', event
+                        break
+        finally:
+            native.listeners.discard(handoff_events)
         async with asyncio.timeout(60):
             while True:
                 await asyncio.sleep(0.2)

@@ -59,6 +59,7 @@ test('native slash suggestions use the open conversation and commands never beco
     await assertAnchored();
     await page.getByRole('button', { name: /Show details$/ }).click();
     await expect(page.getByRole('button', { name: /Hide details$/ })).toBeVisible();
+    await expect(page.locator('.pc-details')).toBeInViewport({ ratio: 0.999 });
     await assertAnchored();
   }
   await page.screenshot({
