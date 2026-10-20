@@ -38,3 +38,10 @@ Unlinked/conflicting imported boards remain readable until their native mapping
 is repaired. A bound catalog profile cannot be deleted without migration.
 
 See docs/PROJECT_BOARDS.md for the public behavior and phase boundaries.
+
+`chart-task-polish.spec.ts` checks circular neutral composer actions, padded task
+insertion targets, persistent same-column order, a bounded Activity scroll owner
+with a fixed header and reachable Post comment, and useful focus after creating
+a task. Its phone wrapper covers both engines. The real native projects smoke
+asserts that presentation reordering survives reads without changing priority,
+native history, task revision or runs.

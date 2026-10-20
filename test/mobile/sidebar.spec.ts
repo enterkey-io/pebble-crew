@@ -1,8 +1,9 @@
 import { test, expect } from '@playwright/test';
 import { installFixture } from '../chat-workspace/fixtures';
+import { sidebarItem } from '../sidebar-menu';
 import { expectPinnedLayout } from '../chat-workspace/pinned-layout';
 test.use({ serviceWorkers: 'block' });
-test('regular and pinned pebble menus have full touch targets aligned to their right edge', async ({
+test('regular and pinned pebbles open the shared menu on press-and-hold without overflow buttons', async ({
   page,
   context,
 }, info) => {
@@ -26,20 +27,28 @@ test('regular and pinned pebble menus have full touch targets aligned to their r
     .boundingBox())!;
   expect(close.x - (add.x + add.width)).toBeGreaterThanOrEqual(7.75);
   for (const name of ['Rowan', 'Arlo']) {
-    const trigger = page.getByRole('button', { name: `Actions for ${name}`, exact: true });
+    const item = sidebarItem(page, name);
+    const trigger = item.getByRole('button', { includeHidden: true }).first();
     await trigger.scrollIntoViewIfNeeded();
     await expect(trigger).toBeVisible();
-    const parent = trigger.locator(
-      'xpath=ancestor::*[contains(@class,"pc-row") or contains(@class,"pc-pin")][1]',
-    );
+    await expect(item.locator('.pc-overflow,.pc-pin-actions')).toHaveCount(0);
     const box = (await trigger.boundingBox())!;
-    const row = (await parent.boundingBox())!;
-    expect(box.width).toBeGreaterThanOrEqual(44);
-    expect(box.height).toBeGreaterThanOrEqual(44);
-    expect(row.x + row.width - (box.x + box.width)).toBeLessThanOrEqual(5);
-    await trigger.tap();
+    await trigger.dispatchEvent('pointerdown', {
+      pointerType: 'touch',
+      pointerId: 1,
+      isPrimary: true,
+      button: 0,
+      clientX: box.x + box.width / 2,
+      clientY: box.y + box.height / 2,
+    });
     const menu = page.getByRole('menu', { name: `Actions for ${name}`, exact: true });
     await expect(menu).toBeVisible();
+    await trigger.dispatchEvent('pointerup', {
+      pointerType: 'touch',
+      pointerId: 1,
+      isPrimary: true,
+      button: 0,
+    });
     await menu.evaluate(async (node) => {
       await Promise.all(node.getAnimations().map((animation) => animation.finished));
     });
@@ -52,6 +61,6 @@ test('regular and pinned pebble menus have full touch targets aligned to their r
       path: info.outputPath(`sidebar-${name.toLowerCase()}.png`),
     });
     await page.keyboard.press('Escape');
-    await expect(trigger).toBeFocused();
+    await expect(trigger).toBeVisible();
   }
 });

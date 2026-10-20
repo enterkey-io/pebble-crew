@@ -41,10 +41,18 @@ class WorkspaceStore:
         self.db.executescript('''
             CREATE TABLE IF NOT EXISTS workspace(id INTEGER PRIMARY KEY CHECK(id=1), revision INTEGER NOT NULL, data TEXT NOT NULL);
             CREATE TABLE IF NOT EXISTS requests(id TEXT PRIMARY KEY, actor TEXT NOT NULL, action TEXT NOT NULL, spec TEXT NOT NULL, fingerprint TEXT NOT NULL, state TEXT NOT NULL, result TEXT, created INTEGER NOT NULL, UNIQUE(actor,fingerprint));
+            CREATE TABLE IF NOT EXISTS request_notifications(
+                request TEXT PRIMARY KEY REFERENCES requests(id), actor_identity TEXT NOT NULL,
+                state TEXT NOT NULL, recipient_identity TEXT);
+            CREATE TABLE IF NOT EXISTS native_approval_notifications(
+                id TEXT PRIMARY KEY, actor_identity TEXT NOT NULL,
+                state TEXT NOT NULL, recipient_identity TEXT);
             CREATE TABLE IF NOT EXISTS voice_credential(id INTEGER PRIMARY KEY CHECK(id=1), profile TEXT NOT NULL, fingerprint TEXT NOT NULL);
         ''')
         from .presentation import init_store
         init_store(self.db)
+        from .room_reactions import initialize as initialize_room_reactions
+        initialize_room_reactions(self.db)
         self.db.execute('INSERT OR IGNORE INTO workspace VALUES(1,0,?)', (json.dumps({'schema': 1, 'id': str(uuid.uuid4()), 'bots': {}, 'teams': [], 'orchestrator': None, 'initialized': False, 'aliases': {}}),))
         self.db.commit()
         from .reporting import initialize
@@ -71,7 +79,12 @@ class WorkspaceStore:
             raise InvalidOperation('Request too large')
         fingerprint = hashlib.sha256((action + raw).encode()).hexdigest()
         with self.db:
-            self.db.execute('INSERT OR IGNORE INTO requests VALUES(?,?,?,?,?,?,NULL,?)', (str(uuid.uuid4()), actor, action, raw, fingerprint, 'pending', int(time.time())))
+            ident = str(uuid.uuid4())
+            inserted = self.db.execute('INSERT OR IGNORE INTO requests VALUES(?,?,?,?,?,?,NULL,?)', (ident, actor, action, raw, fingerprint, 'pending', int(time.time()))).rowcount
+            state = self.read()
+            bot = state['bots'].get(actor)
+            if inserted and bot and actor != state.get('orchestrator'):
+                self.db.execute('INSERT INTO request_notifications VALUES(?,?,?,NULL)', (ident, bot['id'], 'pending'))
         return self.db.execute('SELECT id,state FROM requests WHERE actor=? AND fingerprint=?', (actor, fingerprint)).fetchone()
 
     def requests(self):
@@ -118,7 +131,7 @@ def normalize_photo(data):
 
 
 class WorkspaceService:
-    METHODS = {'reporting.describe', 'bots.profile.update', 'agent.onboard', 'agent.welcome', 'organization.get', 'organization.save', 'organization.chat', 'crews.save', 'workspace.snapshot', 'presentation.read', 'presentation.order', 'agent.pin', 'agent.hide', 'agent.delete', 'agent.propose', 'room.send', 'room.log', 'agent.enable', 'workspace.describe', 'workspace.detect_primary', 'workspace.initialize', 'workspace.welcome', 'workspace.set_orchestrator',
+    METHODS = {'reporting.describe', 'bots.profile.update', 'agent.onboard', 'agent.welcome', 'organization.get', 'organization.save', 'organization.chat', 'crews.save', 'workspace.snapshot', 'presentation.read', 'presentation.order', 'agent.pin', 'agent.hide', 'agent.delete', 'agent.propose', 'room.send', 'room.log', 'room.react', 'agent.enable', 'workspace.describe', 'workspace.detect_primary', 'workspace.initialize', 'workspace.welcome', 'workspace.set_orchestrator',
         'bots.update_handle', 'bots.appearance.get', 'bots.appearance.update', 'roles.update', 'teams.save',
         'models.describe', 'agent.model', 'agent.create', 'agent.update', 'agent.attach', 'requests.reconcile', 'requests.list', 'requests.approve', 'requests.deny',
         'connections.add', 'connections.permissions', 'connections.set_key', 'connections.list', 'connections.test', 'services.catalog', 'agent.capabilities'}
@@ -268,6 +281,9 @@ class WorkspaceService:
             return {'request_id': request_id, 'state': status}
         if operation in {'presentation.read', 'presentation.order', 'agent.pin', 'agent.hide', 'agent.delete', 'agent.propose'}:
             return await presentation.invoke(self, operation, params, state, profiles)
+        if operation == 'room.react':
+            from .room_reactions import owner_react
+            return owner_react(self.store, params)
         if operation in {'room.send', 'room.log'}:
             from .room_identity import translate_send, translate_log
             fields(params, ['room_id', 'event_id', 'text'] if operation == 'room.send' else ['room_id', 'since_seq'])
@@ -275,7 +291,8 @@ class WorkspaceService:
             members = room.get('room', {}).get('members', [])
             if operation == 'room.send':
                 return await self.ops.invoke(operation, {**params, 'text': translate_send(state, members, bounded(params['text'], 16000, False))})
-            return translate_log(state, members, await self.ops.invoke(operation, params))
+            from .room_reactions import project
+            return translate_log(state, members, project(self.store, params['room_id'], await self.ops.invoke(operation, params)))
         if operation == 'workspace.describe':
             fields(params, [])
             return snapshot

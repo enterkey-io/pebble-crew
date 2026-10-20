@@ -100,7 +100,9 @@ export function MessageReactions({
       {[...new Set(reactions.map((r) => r.emoji))].map((emoji) => {
         const matching = reactions.filter((r) => r.emoji === emoji);
         const own = matching.some((r) => r.author === 'user');
-        const who = matching.map((r) => (r.author === 'user' ? 'You' : agentName)).join(' and ');
+        const who = matching
+          .map((r) => (r.author === 'user' ? 'You' : (r.name ?? agentName)))
+          .join(' and ');
         return (
           <Button
             key={emoji}

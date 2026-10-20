@@ -1,9 +1,16 @@
 import { ClientError } from '@hermes-client/core';
 import type { BotBridgeClient } from './bridge';
 import { record } from './json';
+import { decodeStreamPosition } from './stream-position';
+import type { StreamPosition } from './stream-position';
 
 export type CommandSuggestion = { text: string; label: string; description: string };
-export type MessageReaction = { emoji: string; author: 'user' | 'agent' };
+export type MessageReaction = {
+  emoji: string;
+  author: 'user' | 'agent';
+  actor?: string;
+  name?: string;
+};
 export type ConversationMessage = {
   role: 'user' | 'assistant' | 'tool';
   text: string;
@@ -82,7 +89,7 @@ function finalReply(value: unknown): string {
 }
 export function decodeMessageReactions(value: unknown): MessageReaction[] {
   if (!Array.isArray(value)) return [];
-  const authors = new Map<MessageReaction['author'], MessageReaction>();
+  const authors = new Map<string, MessageReaction>();
   for (const item of value.slice(0, 100)) {
     const entry = optionalRecord(item);
     if (
@@ -91,8 +98,18 @@ export function decodeMessageReactions(value: unknown): MessageReaction[] {
       entry.emoji.length > 0 &&
       entry.emoji.length <= 64 &&
       (entry.author === 'user' || entry.author === 'agent')
-    )
-      authors.set(entry.author, { emoji: entry.emoji, author: entry.author });
+    ) {
+      const actor =
+        typeof entry.actor === 'string' && entry.actor.length <= 128 ? entry.actor : undefined;
+      const name =
+        typeof entry.name === 'string' && entry.name.length <= 1000 ? entry.name : undefined;
+      authors.set(entry.author + ':' + (actor ?? ''), {
+        emoji: entry.emoji,
+        author: entry.author,
+        ...(actor ? { actor } : {}),
+        ...(name ? { name } : {}),
+      });
+    }
   }
   return [...authors.values()];
 }
@@ -109,6 +126,40 @@ export function decodeReactionReceipt(value: unknown): {
   )
     throw new ClientError('INVALID_RESPONSE');
   return { id: String(data.row_id), reactions: decodeMessageReactions(data.reactions) };
+}
+
+export type RoomReactionState = {
+  key: string;
+  revision: number;
+  updates: { id: string; reactions: MessageReaction[] }[];
+};
+export function decodeRoomReactions(value: unknown): RoomReactionState {
+  const data = record(value);
+  if (
+    typeof data.room_key !== 'string' ||
+    !/^[a-f0-9]{64}$/.test(data.room_key) ||
+    typeof data.reaction_revision !== 'number' ||
+    !Number.isSafeInteger(data.reaction_revision) ||
+    data.reaction_revision < 0 ||
+    !Array.isArray(data.reaction_updates) ||
+    data.reaction_updates.length > 1000
+  )
+    throw new ClientError('INVALID_RESPONSE');
+  return {
+    key: data.room_key,
+    revision: data.reaction_revision,
+    updates: data.reaction_updates.map((value) => {
+      const update = record(value);
+      if (
+        typeof update.event_id !== 'string' ||
+        !update.event_id ||
+        update.event_id.length > 128 ||
+        !Array.isArray(update.reactions)
+      )
+        throw new ClientError('INVALID_RESPONSE');
+      return { id: update.event_id, reactions: decodeMessageReactions(update.reactions) };
+    }),
+  };
 }
 /** Hidden model analysis and arbitrary source records stop here. */
 export function decodeNativeMessages(value: unknown): ConversationMessage[] {
@@ -183,6 +234,7 @@ export function decodeRoomMessages(value: unknown): ConversationMessage[] {
       id: identity(event.event_id ?? event.seq),
       author: author ? boundedText(author, 512) : undefined,
       timestamp: timestamp(event.created_at),
+      reactions: decodeMessageReactions(payload.reactions),
     });
   }
   return messages;
@@ -240,7 +292,7 @@ export function decodeApprovals(
 }
 export class ConversationDomain {
   constructor(private readonly bridge: Pick<BotBridgeClient, 'invoke'>) {}
-  async send(edit: ChatSend): Promise<{ accepted: boolean; userRowId: string | undefined }> {
+  async send(edit: ChatSend) {
     const value = record(
       await this.bridge.invoke('chat.send', {
         session_id: edit.sessionId,
@@ -250,14 +302,37 @@ export class ConversationDomain {
           : {}),
       }),
     );
-    return { accepted: value.state === 'accepted', userRowId: identity(value.user_row_id) };
+    const disposition =
+      value.status === 'redirected' || value.status === 'steered' || value.status === 'queued'
+        ? value.status
+        : value.status === 'streaming' || value.state === 'accepted'
+          ? 'started'
+          : 'uncertain';
+    return {
+      accepted: disposition !== 'uncertain',
+      disposition,
+      userRowId: identity(value.user_row_id),
+    };
   }
-  async sendRoom(edit: { roomId: string; eventId: string; text: string }): Promise<void> {
-    await this.bridge.invoke('room.send', {
-      room_id: edit.roomId,
-      event_id: edit.eventId,
-      text: edit.text,
-    });
+  async sendRoom(edit: { roomId: string; eventId: string; text: string }): Promise<string> {
+    const data = record(
+      await this.bridge.invoke('room.send', {
+        room_id: edit.roomId,
+        event_id: edit.eventId,
+        text: edit.text,
+      }),
+    );
+    const event = record(data.event);
+    if (
+      data.accepted !== true ||
+      data.client_event_id !== edit.eventId ||
+      event.room_id !== edit.roomId ||
+      event.kind !== 'message.user' ||
+      typeof event.event_id !== 'string' ||
+      !/^[A-Za-z0-9_.:-]{1,128}$/.test(event.event_id)
+    )
+      throw new ClientError('INVALID_RESPONSE');
+    return event.event_id;
   }
   stop(target: ConversationTarget) {
     return this.bridge.invoke(
@@ -306,6 +381,19 @@ export class ConversationDomain {
   async open(profile: string): Promise<BotConversation> {
     return decodeBotConversation(await this.bridge.invoke('bot.open', { profile }));
   }
+  async createGroup(id: string, name: string, profiles: string[]) {
+    await this.bridge.invoke('room.create', { room_id: id, name, profiles });
+    const data = record(await this.bridge.invoke('room.state', { room_id: id }));
+    const room = record(data.room);
+    const members = rows(room.members).map((member) => record(member).profile);
+    if (
+      room.room_id !== id ||
+      members.length !== profiles.length ||
+      !profiles.every((profile) => members.includes(profile))
+    )
+      throw new ClientError('INVALID_RESPONSE');
+    return room;
+  }
   async history(sessionId: string): Promise<ConversationHistory> {
     return decodeHistory(await this.bridge.invoke('chat.history', { session_id: sessionId }));
   }
@@ -320,6 +408,19 @@ export class ConversationDomain {
     return decodeReactionReceipt(
       await this.bridge.invoke('chat.react', { session_id: sessionId, row_id: rowId, emoji }),
     );
+  }
+  async reactRoom(roomId: string, eventId: string, emoji: string | null) {
+    const data = record(
+      await this.bridge.invoke('room.react', { room_id: roomId, event_id: eventId, emoji }),
+    );
+    if (data.event_id !== eventId || !Array.isArray(data.reactions))
+      throw new ClientError('INVALID_RESPONSE');
+    const state = decodeRoomReactions({
+      room_key: data.room_key,
+      reaction_revision: data.revision,
+      reaction_updates: [data],
+    });
+    return { id: eventId, reactions: decodeMessageReactions(data.reactions), state };
   }
   decide(target: ApprovalTarget, choice: 'once' | 'deny') {
     return target.kind === 'chat'
@@ -339,22 +440,66 @@ export class ConversationDomain {
   }
 }
 
+export type LiveCorrection = {
+  readonly text: string;
+  readonly offset: number | undefined;
+  readonly rowId: string | undefined;
+};
 export type BotConversation = {
   readonly sessionId: string;
   readonly history: ConversationHistory;
   readonly running: boolean;
   readonly inflight: string;
+  readonly corrections: readonly LiveCorrection[];
+  readonly activeUserId: string | undefined;
+  readonly streamPosition: StreamPosition | undefined;
+  readonly deferred: readonly { text: string; rowId: string | undefined }[];
 };
 export function decodeBotConversation(value: unknown): BotConversation {
   const data = record(value);
   const sessionId = identity(data.session_id);
   if (!sessionId) throw new ClientError('INVALID_RESPONSE');
   const inflight = optionalRecord(data.inflight);
+  const assistant = boundedText(inflight?.assistant);
+  const corrections = Array.isArray(inflight?.corrections)
+    ? rows(inflight.corrections)
+        .slice(0, 128)
+        .map((value) => boundedText(value, 16000))
+    : [];
+  const offsets = inflight?.correction_offsets;
+  const correctionIds = Array.isArray(data.correction_row_ids) ? data.correction_row_ids : [];
+  const characters = Array.from(assistant);
+  const usable =
+    Array.isArray(offsets) &&
+    offsets.length === corrections.length &&
+    offsets.every(
+      (offset, index) =>
+        typeof offset === 'number' &&
+        Number.isSafeInteger(offset) &&
+        offset >= 0 &&
+        offset <= characters.length &&
+        (!index || offset >= offsets[index - 1]),
+    );
   return {
     sessionId,
     history: decodeHistory(data),
     running: data.running === true,
-    inflight: boundedText(inflight?.assistant),
+    inflight: assistant,
+    corrections: corrections.map((text, index) => ({
+      text,
+      offset: usable ? characters.slice(0, offsets[index]).join('').length : undefined,
+      rowId: identity(correctionIds[index]),
+    })),
+    activeUserId: identity(data.active_user_row_id),
+    streamPosition: decodeStreamPosition(data.stream_position),
+    deferred: Array.isArray(data.deferred_prompts)
+      ? rows(data.deferred_prompts)
+          .slice(0, 128)
+          .map((value) => {
+            const prompt = record(value);
+            return { text: boundedText(prompt.text, 16000), rowId: identity(prompt.row_id) };
+          })
+      : [],
   };
 }
 export function approvalKey(target: ApprovalTarget): string {

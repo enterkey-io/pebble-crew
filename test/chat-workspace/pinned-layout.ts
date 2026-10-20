@@ -16,7 +16,7 @@ export async function expectPinnedLayout(pins: Locator) {
       const title = titleNode.getBoundingClientRect();
       const range = document.createRange();
       range.selectNodeContents(titleNode);
-      const menu = tile.querySelector('.pc-pin-actions svg')!.getBoundingClientRect();
+      const menuCount = tile.querySelectorAll('.pc-pin-actions,.pc-overflow').length;
       const ancestors = [];
       for (
         let node: Element | null = tile.querySelector('.agent-avatar');
@@ -43,7 +43,7 @@ export async function expectPinnedLayout(pins: Locator) {
         titleTop: title.top,
         titleBottom: title.bottom,
         cardBottom: card.bottom,
-        menuLeft: menu.left,
+        menuCount,
         avatarRight: avatar.right,
       };
     }),
@@ -63,6 +63,6 @@ export async function expectPinnedLayout(pins: Locator) {
     expect(tile.nameTop).toBeGreaterThanOrEqual(tile.avatarBottom);
     expect(tile.titleTop).toBeGreaterThanOrEqual(tile.nameBottom);
     expect(tile.titleBottom).toBeLessThanOrEqual(tile.cardBottom);
-    expect(tile.menuLeft).toBeGreaterThan(tile.avatarRight);
+    expect(tile.menuCount).toBe(0);
   }
 }

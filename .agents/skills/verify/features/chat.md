@@ -45,7 +45,26 @@ including database replacement between chunks. It asserts zero model turns.
 The native-owner browser journey additionally displays an actual generated image,
 downloads a multi-chunk CSV, and restores that selected conversation after reload.
 
-Use native-owner and `scripts/fixture/reactions_smoke.py` for native reaction schema discovery and model receipt behavior. The latter needs an isolated prepared Hermes checkout. CI covers both supported reaction builds.
+Use native-owner and `scripts/fixture/reactions_smoke.py` for native reaction schema discovery and model receipt behavior. The latter needs an isolated prepared Hermes checkout. It exercises a reaction-only turn and verifies native silence markers remain absent from the live transcript, history and resume. CI covers both supported reaction builds.
+
+`composer-entry.spec.ts` checks the soft circular attachment action, stable Voice-to-Send control, faint composer edge in both themes, and native voice setup entry. `sidebar-titles.spec.ts` checks role labels use the remaining row width without menu overlap. Run their phone wrappers and inspect settled captures. `image-viewer.spec.ts` also checks rounded inline image pixels and frame.
+
+`unread.spec.ts` checks blue pulsing row-edge indicators and the pinned avatar's
+lower-right badge, replacement/restoration of the Main star, read receipts and
+reduced motion in both themes. It runs on desktop, iPhone and Android. Geometry
+reads for animated drawers must compare elements in the same frame or wait for
+the settled relation; separate bounding-box reads can sample different frames.
+
+`conversation-cards.spec.ts` checks native approvals in the transcript, Main
+notifications linking to the exact originating request, fingerprint preservation
+and native structured question answers. `scripts/fixture/conversation_cards_smoke.py`
+exercises real clarify and approval tools plus one Main notification per request
+on both pinned builds, using disposable homes and a deterministic loopback model.
+The older build requires its native clarify toolset enabled in the synthetic CLI
+configuration. Do not confuse a missing toolset with a transport failure, and do
+not change an owner's tool configuration as part of acceptance.
+
+`crew-chats.spec.ts` creates and edits a crew with description and members, enforces the native 2–6 member bound, checks fixed header/field visibility after scrolling to the last choice, and opens a native conversation with member-only @handle suggestions and small speaker avatars. Its Group chat journey verifies no crew/placement write. Group reactions preserve per-agent identities through polling and reload. Run the phone wrapper, scope selectors to the visible navigation drawer, and allow subpixel geometry rounding. Reactions align right for owner messages and left for agent messages. The native reaction smoke covers public-handle routing, agent group reactions, owner feedback and reaction-only group turns on both pinned builds. Capability probes are not inference requests and must not mutate the deterministic model's tool-turn state.
 
 ## Gotchas
 
@@ -64,3 +83,16 @@ retry, draft retention and no remote image request. Agent live requests open onl
 once, expire and do not reopen after reconnection. The native owner journey asks
 the deterministic local model to discover and invoke `pebble_open_document`,
 checks the mobile reader, then reopens the saved link on desktop.
+
+`send-while-working.spec.ts` exercises ordinary Send with a separate Stop, repeated
+identical corrections, native-anchored restoration, and continuous delta arrival
+during snapshot loading. Run its phone wrapper. `scripts/fixture/busy_send_smoke.py`
+proves actual native redirects, raw Unicode stream positions, persisted user rows,
+unchanged SOUL and `/status` without another model turn on both pinned builds.
+
+`video-viewer.spec.ts` loads a real small MP4 only on request, plays it inline,
+opens the shared borderless viewer, seeks, mutes, zooms and downloads the same
+bytes. Inspect settled desktop/iPhone/Android captures. The native owner media
+journey reads the clip through the real canonical-row authorization boundary.
+`commands.spec.ts` asserts locally filtered suggestions, one-Enter execution, and
+shared Tool results inside the conversation; commands never become chat prompts.

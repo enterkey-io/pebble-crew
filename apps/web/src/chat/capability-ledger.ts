@@ -6,6 +6,7 @@ type BridgeFeatures = Pick<
   | 'supportsAttachments'
   | 'supportsGeneratedMedia'
   | 'supportsReactions'
+  | 'supportsRoomReactions'
   | 'supportsLiveVoice'
   | 'supportsSecrets'
   | 'supportsComputer'
@@ -19,7 +20,8 @@ export function conversationCapabilities(
   const bot = !!bridge && scope === 'bot';
   const attachments = bot && bridge.supportsAttachments;
   const generatedMedia = bot && bridge.supportsGeneratedMedia;
-  const reactions = bot && bridge.supportsReactions;
+  const reactions =
+    !!bridge && (bot ? bridge.supportsReactions : scope === 'room' && bridge.supportsRoomReactions);
   const voice = bot && bridge.supportsLiveVoice;
   const secrets = bot && bridge.supportsSecrets;
   const patterns = {

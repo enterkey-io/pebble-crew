@@ -121,7 +121,7 @@ async def invoke(service, operation, params, state):
             raise InvalidOperation('Refresh this crew before opening its chat')
         crew = next((c for c in org['crews'] if c['id'] == params['id']), None)
         if not crew or not 2 <= len(crew['members']) <= 6:
-            raise InvalidOperation('A crew chat needs 2–6 pebbles. Move pebbles into the crew from their menu.')
+            raise InvalidOperation('Choose 2–6 pebbles in Crew settings to open this chat.')
         bots = [next(b for b in state['bots'].values() if b['id'] == i and b.get('available') and b.get('enrolled')) for i in crew['members']]
         if any(b.get('hidden') or not b.get('native_incarnation') for b in bots):
             raise InvalidOperation('Crew membership needs to be available and verified')

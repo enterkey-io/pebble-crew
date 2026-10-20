@@ -6,20 +6,19 @@ Pins, a flat unsectioned list, optional collapsible sections, whole-row reorderi
 
 ## How to get to it (user POV)
 
-Use the rail's New menu or a row's action menu. Click a Crew to open its chat. Use its action menu for settings. Drag whole rows and section headers, or use Alt+Arrow for keyboard movement.
+Use the rail's New menu, or right-click/press-and-hold a row or pinned tile. Shift+F10 opens the same menu from the keyboard. Move lists include New crew or New section; creation carries the selected pebble. Click a Crew name for chat; its separate chevron expands/collapses members. Drag a Crew as one block, individual pebbles, or section headers. Alt+Arrow moves the focused entity.
 
 Unsectioned pebbles appear below pins with no heading. Move to section → None returns a pebble to that list. A historical collapsed Pebbles destination must not hide it.
 
 ## Driving it with Playwright
 
-Find current organization and sidebar specs with `rg --files test/chat-workspace test/mobile`. Run those specs against the matching production configuration. Verify empty built-ins disappear, custom empty sections stay usable, Crews hold Crews, pins are centered and the actual action buttons sit at row/tile edges. Check 44px touch targets and settled phone screenshots.
+Find current organization and sidebar specs with `rg --files test/chat-workspace test/mobile`. Run those specs against the matching production configuration. Verify empty built-ins disappear, custom empty sections stay usable, Crews hold Crews, pins are centered and overflow buttons are absent. Run `crew-rail.spec.ts` for whole-Crew drag targets, unchanged membership, collapse persistence, context creation and keyboard menus. `test/mobile/sidebar.spec.ts` exercises touch press-and-hold on rows and pins. Inspect settled desktop, iPhone and Android captures in both themes; the dark rail is darker than the chat, and details share its background.
 
 Run `unsectioned.spec.ts` in both production browser configurations for the historical collapsed list and custom-section round trip.
 
 ## Gotchas
 
 The reference entry now imports the production app, but a version match alone does not prove every deployed asset or native runtime copy matches. A 0.00001px browser rounding difference is not a user-visible layout defect. Use a deliberate subpixel tolerance while keeping meaningful overlap/target requirements strict.
-
 
 ## Org chart and reporting
 

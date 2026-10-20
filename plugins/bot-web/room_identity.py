@@ -53,7 +53,7 @@ def translate_log(state, members, result):
     return result
 
 
-def runtime_room(store, profile, session_id):
+def runtime_room_record(store, profile, session_id):
     from hermes_cli.profiles import get_profile_dir
     path = Path(get_profile_dir(profile)) / 'state.db'
     db = sqlite3.connect(path.resolve().as_uri()+'?mode=ro', uri=True, timeout=1)
@@ -84,7 +84,12 @@ def runtime_room(store, profile, session_id):
     path = Path(default_db_path())
     db = sqlite3.connect(path.resolve().as_uri()+'?mode=ro', uri=True, timeout=1)
     try:
-        row = db.execute('SELECT members_json FROM hosted_rooms WHERE room_id=? AND disbanded_at IS NULL', (room_id,)).fetchone()
+        row = db.execute('SELECT members_json,created_at FROM hosted_rooms WHERE room_id=? AND disbanded_at IS NULL', (room_id,)).fetchone()
     finally:
         db.close()
-    return json.loads(row[0]) if row else None
+    return {'room_id': room_id, 'members': json.loads(row[0]), 'created_at': row[1]} if row else None
+
+
+def runtime_room(store, profile, session_id):
+    room = runtime_room_record(store, profile, session_id)
+    return room['members'] if room else None

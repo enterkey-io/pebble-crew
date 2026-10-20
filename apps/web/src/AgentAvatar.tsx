@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { Star } from 'lucide-react';
+import { UnreadDot } from './ui/UnreadDot';
 import { Button } from './components/ui/button';
 import { Toggle } from './components/ui/toggle';
 import { AvatarView, AvatarScheduler } from './avatar-lab/renderer';
@@ -26,6 +27,7 @@ export function AgentAvatar({
   look,
   state = 'ready',
   orchestrator = false,
+  unread = false,
   photo,
   client,
   profile,
@@ -36,6 +38,7 @@ export function AgentAvatar({
   look: Appearance;
   state?: Activity;
   orchestrator?: boolean;
+  unread?: boolean;
   photo?: string;
   client?: BotBridgeClient;
   profile?: string;
@@ -122,10 +125,14 @@ export function AgentAvatar({
           )}
         </>
       )}
-      {orchestrator && (
-        <span className="avatar-star" role="img" aria-label="Main Pebble">
-          <Star className="size-[9px]" aria-hidden="true" />
-        </span>
+      {unread ? (
+        <UnreadDot avatar />
+      ) : (
+        orchestrator && (
+          <span className="avatar-star" role="img" aria-label="Main Pebble">
+            <Star className="size-[9px]" aria-hidden="true" />
+          </span>
+        )
       )}
       {look.kind === 'photo' && !image && (
         <svg className="empty-photo size-full" viewBox="0 0 48 48" aria-hidden="true">

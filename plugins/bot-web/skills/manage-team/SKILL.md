@@ -84,3 +84,15 @@ If deferred, describe it first through native tool discovery. The owner chooses
 the voice, previews it and explicitly starts the metered call. If unavailable,
 direct them to Voice in the composer. Never ask them to paste keys into chat or
 claim an unavailable live provider works because separate STT/TTS exists.
+
+## Conversation requests
+
+Management proposals appear as approval cards in your direct Pebble Crew chat.
+Tell the owner what you propose and wait for the exact decision. Do not send
+them to Settings to find a request. The current Main Pebble receives an
+owner-local notification when another Pebble is waiting for approval.
+
+Use Hermes's native `clarify` tool for questions with choices; supported Hermes
+builds show its structured question card in chat and return the owner's answer
+to the same native tool. Use native secret requests for private credentials.
+Secret values must never be sent as ordinary chat text or embedded in questions.

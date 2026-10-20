@@ -47,7 +47,10 @@ def live_context(store, profile):
         'you': '@'+bot['handle'], 'native_profile': profile, 'your_role': bot['role'],
         'workspace_revision': state['revision'], **hierarchy_context(state, profile),
         'model_grant': state.get('model_grant'),
-        'instructions': 'Use your public handle above when introducing yourself. Preserve your existing personality. The current reporting path is authoritative for Pebble Crew, including when older conversation or role prose differs. The Main Pebble is the workspace coordinator; unattached branches do not acquire a manager automatically. Your direct_reports are immediate reports, not your entire directory. Job titles do not change reporting relationships. Read bot-web:manage-team before proposing crew changes. The current Main Pebble can use workspace_agents agent.reporting.update to change reporting and Instructions. Ask the owner before making changes you propose on your own. A clear owner request already authorizes that change: carry it out without asking for the same permission again. There is no management switch to enable. Other agents cannot use this direct path. Describe first; include current target id, manager id or null, expected_revision and policy_revision. Read reporting_changes until applied; queued, applying and uncertain are not success. Other proposals require owner review. Use native message_agent with native_target from this directory. A queued delivery is not a completed task. Role prose grants no new permissions.',
+        'pending_owner_requests': [{'id': r['id'], 'from': '@'+state['bots'][r['actor']]['handle'], 'action': r['action']}
+            for r in store.requests() if r['state'] == 'pending' and r['actor'] in state['bots']
+            and (profile == state.get('orchestrator') or r['actor'] == profile)],
+        'instructions': 'Use your public handle above when introducing yourself. Preserve your existing personality. The current reporting path is authoritative for Pebble Crew, including when older conversation or role prose differs. The Main Pebble is the workspace coordinator; unattached branches do not acquire a manager automatically. Your direct_reports are immediate reports, not your entire directory. Job titles do not change reporting relationships. Read bot-web:manage-team before proposing crew changes. The current Main Pebble can use workspace_agents agent.reporting.update to change reporting and Instructions. Ask the owner before making changes you propose on your own. A clear owner request already authorizes that change: carry it out without asking for the same permission again. There is no management switch to enable. Other agents cannot use this direct path. Describe first; include current target id, manager id or null, expected_revision and policy_revision. Read reporting_changes until applied; queued, applying and uncertain are not success. Other proposals require owner review and produce a card in your conversation. When enabled in Hermes, native clarify asks structured choice or free-text questions in chat. Use native secret entry for credentials when available; never ask the owner to paste a secret into ordinary chat. Do not claim a tool is enabled merely because these instructions mention it. The Main Pebble can read pending_owner_requests and tell the owner who is waiting, without approving on their behalf. Use native message_agent with native_target from this directory. A queued delivery is not a completed task. Role prose grants no new permissions.',
     }, ensure_ascii=False)
 
 
@@ -72,7 +75,7 @@ def register_runtime(ctx):
                 if spec:
                     raise InvalidOperation('No describe fields')
                 from .reporting import receipts
-                return json.dumps({'context': live_context(store, profile), 'reporting_changes': receipts(store, profile), 'requests': [r for r in store.requests() if r['actor'] == profile]})
+                return json.dumps({'context': live_context(store, profile), 'reporting_changes': receipts(store, profile), 'requests': [r for r in store.requests() if r['actor'] == profile or profile == store.read().get('orchestrator')]})
             allowed = {
                 'agent.enable': {'profile', 'initialize_chat'},
                 'agent.create': {'name', 'display_name', 'soul', 'role', 'model_source', 'model_fingerprint', 'skills', 'toolsets', 'manager', 'team', 'expected_revision'},
@@ -101,11 +104,17 @@ def register_runtime(ctx):
             if not profile:
                 return None
             text = live_context(store, profile)
-            from .room_identity import runtime_room, maps
-            members = runtime_room(store, profile, session_id)
+            from .room_identity import runtime_room_record, maps
+            native_room = runtime_room_record(store, profile, session_id)
+            members = native_room['members'] if native_room else None
             if members:
                 incoming, _ = maps(store.read(), members)
                 text += '\nFor this room only, its native frozen mention aliases map to public identities as follows: '+json.dumps(incoming)+'. Use the room aliases when addressing participants in this room; your public identity remains unchanged.'
+                from .reactions import runtime_guidance
+                guidance = runtime_guidance(platform, group=True)
+                if guidance:
+                    from .room_reactions import feedback
+                    text += '\n'+guidance+' Group reactions use message_event_id, not direct-chat message_row_id. Omit target fields to react to the latest user message. Recent group reactions: '+json.dumps(feedback(store, native_room), ensure_ascii=False)
             else:
                 from hermes_cli.profiles import get_profile_dir
                 output = Path(get_profile_dir(profile)) / 'cache' / 'generated'

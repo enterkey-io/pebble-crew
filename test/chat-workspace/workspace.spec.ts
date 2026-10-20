@@ -1,3 +1,4 @@
+import { openSidebarMenu } from '../sidebar-menu';
 import { test, expect } from '@playwright/test';
 import { mkdir, writeFile } from 'node:fs/promises';
 import { installFixture, emit } from './fixtures';
@@ -68,10 +69,11 @@ test('populated production workspace: layout, drafts, scroll, crew authors and r
   fixture.setApprovals([{ request_id: 'exact-approval', command: 'Review synthetic operation' }]);
   await emit(page, 'approval.request');
   await page.setViewportSize({ width: 720, height: 450 });
-  const approvalDialog = page.locator('.details-panel');
+  await page.keyboard.press('Escape');
+  const approvalDialog = log.locator('[data-slot="confirmation"]');
   await expect(approvalDialog).toContainText('Review synthetic operation');
   await approvalDialog.getByRole('button', { name: 'Deny', exact: true }).click();
-  await expect(approvalDialog.locator('.approval')).toHaveCount(0);
+  await expect(approvalDialog).toHaveCount(0);
   await page.keyboard.press('Escape');
   await page.setViewportSize({ width: 1912, height: 1121 });
   await page.screenshot({ path: 'test-results/workspace-wide.png' });
@@ -118,7 +120,7 @@ test('live changes reconcile two browsers, protect the selected draft and never 
   });
   await page.getByRole('button', { name: 'Your account' }).click();
   await page.getByRole('menuitem', { name: 'Show hidden pebbles', exact: true }).click();
-  await page.getByLabel('Actions for Mica').click();
+  await openSidebarMenu(page, 'Mica');
   await page.getByRole('menuitem', { name: 'Unhide', exact: true }).click();
   await page.getByRole('button', { name: /^Mica .*Bot Chat$/ }).click();
   await expect(page.getByLabel('Message', { exact: true })).toHaveValue('Private unsent draft');
@@ -127,7 +129,7 @@ test('live changes reconcile two browsers, protect the selected draft and never 
   await expect(page.getByLabel('Message', { exact: true })).toBeDisabled();
   await page.getByRole('button', { name: /^Mica .*Bot Chat$/ }).click();
   await expect(page.getByLabel('Message', { exact: true })).toHaveValue('');
-  await page.getByLabel('Actions for Rowan').click();
+  await openSidebarMenu(page, 'Rowan');
   await page.getByRole('menuitem', { name: 'Delete…', exact: true }).click();
   const dialog = page.getByRole('dialog', { name: 'Review deletion' });
   await expect(dialog).toBeVisible();
@@ -151,7 +153,7 @@ test('streaming, stop, IME and reconnection preserve drafts without submitting t
   await page.route('**/v1/rpc', async (route) => {
     if (route.request().postDataJSON().operation === 'chat.send') {
       sends++;
-      await route.fulfill({ json: { result: { status: 'accepted' } } });
+      await route.fulfill({ json: { result: { status: 'streaming', user_row_id: 29 } } });
     } else await route.fallback();
   });
   await input.fill('Hello');

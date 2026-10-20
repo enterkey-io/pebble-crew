@@ -108,10 +108,12 @@ jobs:
       - run: python scripts/fixture/workspace_smoke.py
       - run: npm run test:owner-browser
       - run: python scripts/fixture/reactions_smoke.py
+      - run: python scripts/fixture/busy_send_smoke.py
       - run: python scripts/fixture/media_smoke.py
       - run: python scripts/fixture/documents_smoke.py
       - run: python scripts/fixture/projects_smoke.py
       - run: python scripts/fixture/work_model_smoke.py
+      - run: python scripts/fixture/conversation_cards_smoke.py
       - run: python scripts/package.py
       - run: node scripts/verify-release.mjs
         env:
@@ -151,8 +153,10 @@ jobs:
       - run: |
           "$RUNNER_TEMP/hermes-legacy-env/bin/pip" install uv -e './native-hermes[web]' -r test/plugin/requirements.txt
       - run: '"$RUNNER_TEMP/hermes-legacy-env/bin/python" scripts/fixture/reactions_smoke.py'
+      - run: '"$RUNNER_TEMP/hermes-legacy-env/bin/python" scripts/fixture/busy_send_smoke.py'
       - run: '"$RUNNER_TEMP/hermes-legacy-env/bin/python" scripts/fixture/media_smoke.py'
       - run: '"$RUNNER_TEMP/hermes-legacy-env/bin/python" scripts/fixture/documents_smoke.py'
       - run: '"$RUNNER_TEMP/hermes-legacy-env/bin/python" scripts/fixture/workspace_smoke.py'
       - run: '"$RUNNER_TEMP/hermes-legacy-env/bin/python" scripts/fixture/projects_smoke.py'
       - run: '"$RUNNER_TEMP/hermes-legacy-env/bin/python" scripts/fixture/work_model_smoke.py'
+      - run: '"$RUNNER_TEMP/hermes-legacy-env/bin/python" scripts/fixture/conversation_cards_smoke.py'

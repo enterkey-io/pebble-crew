@@ -84,10 +84,10 @@ function ChartCards({
                       height: orgCard.height,
                     }}
                   >
-                    <Card className="pc-org-card h-full w-full gap-0 overflow-hidden py-0 shadow-none">
+                    <Card asChild>
                       <Button
                         variant="ghost"
-                        className="pc-org-card-open flex h-auto min-h-0 flex-1 w-full justify-start gap-3 rounded-none px-4 py-3 text-left [&_.agent-avatar]:h-11 [&_.agent-avatar]:w-10"
+                        className="pc-org-card h-full w-full flex-col items-stretch justify-start gap-0 overflow-hidden p-0 text-left shadow-none [&_.agent-avatar]:h-11 [&_.agent-avatar]:w-10"
                         onFocus={(event) => {
                           if (event.currentTarget.matches(':focus-visible')) {
                             landmark.current = bot.profile;
@@ -104,42 +104,44 @@ function ChartCards({
                         }}
                       >
                         <span className="sr-only">Edit </span>
-                        <span aria-hidden="true" className="shrink-0">
-                          <PebbleAvatar bot={bot} workspace={workspace} client={client} />
-                        </span>
-                        <span className="pc-org-identity">
-                          <span className="truncate text-sm font-semibold">{bot.name}</span>
-                          {bot.role.title && (
-                            <span className="truncate text-xs text-muted-foreground">
-                              {bot.role.title}
-                            </span>
-                          )}
-                          <span className="truncate text-xs text-muted-foreground">
-                            @{bot.handle}
+                        <span className="flex min-h-0 flex-1 items-center gap-3 px-4 py-3">
+                          <span aria-hidden="true" className="shrink-0">
+                            <PebbleAvatar bot={bot} workspace={workspace} client={client} />
                           </span>
-                          <span className="sr-only">
-                            {main
-                              ? 'Reports to you'
-                              : manager
-                                ? `Reports to ${manager.name}`
-                                : 'No manager'}
+                          <span className="pc-org-identity">
+                            <span className="truncate text-sm font-semibold">{bot.name}</span>
+                            {bot.role.title && (
+                              <span className="truncate text-xs text-muted-foreground">
+                                {bot.role.title}
+                              </span>
+                            )}
+                            <span className="truncate text-xs text-muted-foreground">
+                              @{bot.handle}
+                            </span>
+                            <span className="sr-only">
+                              {main
+                                ? 'Reports to you'
+                                : manager
+                                  ? `Reports to ${manager.name}`
+                                  : 'No manager'}
+                            </span>
+                          </span>
+                        </span>
+                        <span className="pc-org-card-footer flex h-8 shrink-0 items-center justify-between gap-2 px-4 pb-2 text-xs font-normal text-muted-foreground">
+                          {main ? (
+                            <Badge variant="secondary" className="text-xs font-normal">
+                              Main Pebble
+                            </Badge>
+                          ) : (
+                            <span>{bot.hidden ? 'Hidden from chats' : ''}</span>
+                          )}
+                          <span>
+                            {node.reports > 0
+                              ? `${node.reports} ${node.reports === 1 ? 'report' : 'reports'}`
+                              : ''}
                           </span>
                         </span>
                       </Button>
-                      <div className="pc-org-card-footer flex h-8 shrink-0 items-center justify-between gap-2 px-4 pb-2 text-xs text-muted-foreground">
-                        {main ? (
-                          <Badge variant="secondary" className="text-xs font-normal">
-                            Main Pebble
-                          </Badge>
-                        ) : (
-                          <span>{bot.hidden ? 'Hidden from chats' : ''}</span>
-                        )}
-                        <span>
-                          {node.reports > 0
-                            ? `${node.reports} ${node.reports === 1 ? 'report' : 'reports'}`
-                            : ''}
-                        </span>
-                      </div>
                     </Card>
                   </li>
                 );
@@ -173,8 +175,7 @@ export function OrganizationDiagram({
         maxScale={2}
         limitToBounds={false}
         centerZoomedOut={false}
-        wheel={{ activationKeys: (keys) => keys.includes('Control') || keys.includes('Meta') }}
-        trackPadPanning={{ velocityDisabled: true }}
+        trackPadPanning={{ disabled: true }}
         panning={{ excluded: ['button'], velocityDisabled: true }}
         doubleClick={{ disabled: true }}
         keyboard={{ disabled: false }}

@@ -120,6 +120,7 @@ async def invoke(service, operation, params, state, profiles):
             raise InvalidOperation('Read cursor is outside this conversation')
         with service.store.db:
             service.store.db.execute('INSERT INTO read_cursors VALUES(?,?) ON CONFLICT(key) DO UPDATE SET cursor=MAX(cursor,excluded.cursor)', (params['key'], params['cursor']))
+        service._snapshot = None
         return {'saved': True}
     if operation == 'presentation.order':
         fields(params, ['ids', 'expected_revision'])

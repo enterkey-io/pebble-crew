@@ -21,6 +21,7 @@ test('native slash suggestions use the open conversation and commands never beco
                 ? [
                     { text: 'model', label: '/model', description: 'Change model' },
                     { text: 'context', label: '/context', description: 'Inspect context' },
+                    { text: 'status', label: '/status', description: 'Session status' },
                   ]
                 : [],
             replace_from: 1,
@@ -33,7 +34,16 @@ test('native slash suggestions use the open conversation and commands never beco
       commands.push(params.text);
       if (params.text === '/reset')
         return route.fulfill({ status: 400, json: { code: 'UNSUPPORTED_COMMAND' } });
-      return route.fulfill({ json: { result: { output: 'Model changed to synthetic-model.' } } });
+      return route.fulfill({
+        json: {
+          result: {
+            output:
+              params.text === '/status'
+                ? 'Native session status.'
+                : 'Model changed to synthetic-model.',
+          },
+        },
+      });
     }
     if (operation === 'chat.send') prompts.push(params.text);
     await route.fallback();
@@ -69,9 +79,30 @@ test('native slash suggestions use the open conversation and commands never beco
   await expect(field).toHaveValue('/model ');
   await field.fill('/model synthetic-model');
   await field.press('Enter');
-  await expect(page.getByRole('alert')).toContainText('Model changed to synthetic-model.');
+  await expect(
+    page
+      .getByRole('log')
+      .getByRole('region', { name: '/model synthetic-model result', exact: true }),
+  ).toContainText('Model changed to synthetic-model.');
   expect(commands).toEqual(['/model synthetic-model']);
   expect(prompts).toEqual([]);
+  await field.fill('/s');
+  const list = suggestions;
+  await expect(list.getByRole('option')).toHaveCount(1);
+  const node = await list.elementHandle();
+  await field.press('t');
+  await expect(
+    list.getByRole('option', { name: '/status Session status', exact: true }),
+  ).toBeVisible();
+  expect(await node?.evaluate((element) => element.isConnected)).toBe(true);
+  await field.press('a');
+  await expect(page.getByRole('status', { name: 'Loading commands' })).toHaveCount(0);
+  await field.press('Enter');
+  await expect(
+    page.getByRole('log').getByRole('region', { name: '/status result', exact: true }),
+  ).toContainText('Native session status.');
+  expect(commands).toEqual(['/model synthetic-model', '/status']);
+  await expect(field).toHaveValue('');
   await field.fill('/reset');
   await field.press('Enter');
   await expect(page.locator('.banner')).toContainText('not supported in Pebble Crew');

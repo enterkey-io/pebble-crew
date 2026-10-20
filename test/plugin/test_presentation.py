@@ -94,6 +94,13 @@ class PresentationTests(WorkspaceTests):
         await self.service.invoke('presentation.read', {'key': bot['read_key'], 'cursor': 5})
         await self.service.invoke('presentation.read', {'key': bot['read_key'], 'cursor': 3})
         self.assertEqual(self.store.db.execute('SELECT cursor FROM read_cursors WHERE key=?', (bot['read_key'],)).fetchone()[0], 5)
+        snap = await self.service.invoke('workspace.snapshot', {})
+        self.assertFalse(snap['workspace']['bots'][1]['unread'])
+        self.native.profiles[1]['canonical_session']['message_count'] = 6
+        self.service._snapshot = None
+        await self.service.invoke('presentation.read', {'key': bot['read_key'], 'cursor': 5})
+        snap = await self.service.invoke('workspace.snapshot', {})
+        self.assertTrue(snap['workspace']['bots'][1]['unread'])
         self.assertFalse(any(m == 'bot_web.models' for m, _ in self.native.calls[before:]))
         with self.assertRaises(InvalidOperation):
             await self.service.invoke('presentation.read', {'key': bot['read_key'], 'cursor': 999})

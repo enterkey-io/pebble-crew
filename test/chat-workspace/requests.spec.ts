@@ -62,7 +62,8 @@ test('request review fits phones, keeps fields readable and confirms the exact d
   await expect(indicator).toBeVisible();
   const dot = await indicator.evaluate((node) => getComputedStyle(node, '::after').backgroundColor);
   const rgb = dot.match(/\d+/g)?.map(Number);
-  expect(rgb?.[0]).toBeGreaterThan((rgb?.[1] ?? 255) + 30);
+  expect(rgb?.[2]).toBeGreaterThan((rgb?.[0] ?? 255) + 50);
+  expect(rgb?.[2]).toBeGreaterThan((rgb?.[1] ?? 255) + 50);
 
   const phone =
     testInfo.project.name.includes('iphone') || testInfo.project.name.includes('android');

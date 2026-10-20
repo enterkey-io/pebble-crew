@@ -30,6 +30,23 @@ class WorkBoundaryTests(unittest.IsolatedAsyncioTestCase):
 
 
 class WorkReceiptTests(unittest.TestCase):
+    def test_visual_order_survives_reopening_and_preserves_native_priority(self):
+        with tempfile.TemporaryDirectory() as folder:
+            path = Path(folder) / 'work.sqlite'
+            store = WorkStore(path)
+            tasks = [{'id': name, 'status': 'triage', 'priority': 0} for name in ['a', 'b', 'c']]
+            ident = str(uuid.uuid4())
+            store.reserve(ident, 'owner', 'work.task.move', {'id': 'c', 'before_id': 'a'})
+            store.finish_task(ident, 'default', tasks[2], placement=['c', 'a', 'b'])
+            store.close()
+            store = WorkStore(path)
+            try:
+                self.assertEqual([t['id'] for t in store.ordered_tasks('default', 'triage', tasks)], ['c', 'a', 'b'])
+                self.assertEqual([t['id'] for t in store.ordered_tasks('other', 'triage', tasks)], ['a', 'b', 'c'])
+                self.assertEqual(tasks, [{'id': name, 'status': 'triage', 'priority': 0} for name in ['a', 'b', 'c']])
+                self.assertEqual(store.receipt(ident, 'owner')['state'], 'completed')
+            finally: store.close()
+
     def test_retries_share_a_receipt_but_other_actors_and_changed_payloads_cannot_reuse_it(self):
         with tempfile.TemporaryDirectory() as folder:
             store = WorkStore(Path(folder) / 'work.sqlite')

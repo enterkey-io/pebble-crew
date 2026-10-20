@@ -13,6 +13,7 @@ export interface BridgeEvent {
   readonly type: string;
   readonly session_id?: string;
   readonly seq?: number;
+  readonly stream_position?: unknown;
   readonly payload?: Readonly<Record<string, unknown>>;
 }
 export type DownloadedMedia = { blob: Blob; name: string };
@@ -34,7 +35,9 @@ export class BotBridgeClient {
   #computer = false;
   #liveVoice = false;
   #secrets = false;
+  #questions = false;
   #reactions = false;
+  #roomReactions = false;
   #rpcActive = 0;
   readonly #rpcWaiting: (() => void)[] = [];
 
@@ -47,11 +50,17 @@ export class BotBridgeClient {
   get supportsSecrets(): boolean {
     return this.#secrets;
   }
+  get supportsQuestions(): boolean {
+    return this.#questions;
+  }
   get supportsComputer(): boolean {
     return this.#computer;
   }
   get supportsReactions(): boolean {
     return this.#reactions;
+  }
+  get supportsRoomReactions(): boolean {
+    return this.#roomReactions;
   }
   computerSocket(ticket: string): WebSocket {
     if (!this.#connection || !this.#computer || !/^[A-Za-z0-9_-]{43}$/.test(ticket))
@@ -109,7 +118,9 @@ export class BotBridgeClient {
     this.#computer = !!data.capabilities && record(data.capabilities).computer === true;
     this.#liveVoice = !!data.capabilities && record(data.capabilities).live_voice === true;
     this.#secrets = !!data.capabilities && record(data.capabilities).secrets === true;
+    this.#questions = !!data.capabilities && record(data.capabilities).questions === true;
     this.#reactions = !!data.capabilities && record(data.capabilities).reactions === true;
+    this.#roomReactions = !!data.capabilities && record(data.capabilities).room_reactions === true;
   }
 
   async invoke(operation: string, params: Readonly<Record<string, unknown>>): Promise<unknown> {
@@ -289,7 +300,7 @@ export class BotBridgeClient {
         throw new ClientError('INVALID_RESPONSE');
       return {
         blob: new Blob(parts, {
-          type: ['image/png', 'image/jpeg', 'image/webp'].includes(mime)
+          type: ['image/png', 'image/jpeg', 'image/webp', 'video/mp4'].includes(mime)
             ? mime
             : 'application/octet-stream',
         }),

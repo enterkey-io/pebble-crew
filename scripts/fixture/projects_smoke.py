@@ -86,6 +86,24 @@ async def verify(home):
         assert sum(t['id'] == receipt['task_id'] for t in saved_tasks) == 1
         assert next(t for t in saved_tasks if t['id'] == receipt['task_id'])['revision'] == detail['task']['revision'], 'Board and detail revisions differ'
         assert len(saved_tasks) == 2 and all(t['project_id'] == projects[0]['project_id'] for t in saved_tasks)
+        # Visual ordering is owner-local metadata, never an execution priority change.
+        ordering_ref = {**scope, 'board': projects[1]['board']}
+        ordered = [invoke('work.task.create', {**create, **ordering_ref,
+            'operation_id': str(uuid.uuid4()), 'title': f'Ordering {n}'})['task_id'] for n in range(3)]
+        last_ref = {**ordering_ref, 'id': ordered[-1]}
+        before_order = invoke('work.task', last_ref)
+        reorder = {**last_ref, 'operation_id': str(uuid.uuid4()), 'status': 'triage',
+            'expected_revision': before_order['task']['revision'], 'before_id': ordered[0]}
+        reordered = invoke('work.task.move', reorder)
+        assert reordered == invoke('work.task.move', reorder)
+        assert [t['id'] for c in invoke('work.board', ordering_ref)['columns'] for t in c['tasks']] == [ordered[2], ordered[0], ordered[1]]
+        assert invoke('work.task', last_ref) == before_order, 'Visual reorder changed native task, activity or runs'
+        for invalid in (ordered[-1], 'missing-task'):
+            try:
+                invoke('work.task.move', {**reorder, 'operation_id': str(uuid.uuid4()), 'before_id': invalid})
+                raise AssertionError('Invalid drop anchor accepted')
+            except InvalidOperation as error:
+                assert error.code == 'STALE_REVISION'
         comment = {**scope, 'operation_id': str(uuid.uuid4()), 'board': receipt['board'], 'id': receipt['task_id'], 'body': 'Check the original publication.'}
         invoke('work.task.comment', comment)
         invoke('work.task.comment', comment)

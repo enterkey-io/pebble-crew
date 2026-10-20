@@ -6,11 +6,15 @@ from unittest.mock import patch
 from test_security import Native
 from bot_web.operations import BotOperations, InvalidOperation
 from bot_web.native import NativeError, NativeGateway
-from bot_web.reactions import emoji, runtime_guidance
+from bot_web.reactions import emoji, runtime_guidance, ReactionDisplay
 
 
 class ReactionGateway(Native):
     _publish = NativeGateway._publish
+
+    def __init__(self):
+        super().__init__()
+        self.display = ReactionDisplay()
 
     async def call(self, method, params):
         if method == 'message.react':
@@ -77,6 +81,9 @@ class ReactionsTests(unittest.IsolatedAsyncioTestCase):
             guidance = runtime_guidance('tui')
             self.assertIn('tool_describe(names=["pebble_react"])', guidance)
             self.assertIn('tool_call', guidance)
+            self.assertIn('On each human turn', guidance)
+            self.assertIn('NO_REPLY', guidance)
+            self.assertIn('not automatically on every post', guidance)
             definitions.clear()
             self.assertEqual(runtime_guidance('tui'), '')
             config['display']['message_reactions'] = False

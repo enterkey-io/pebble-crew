@@ -36,6 +36,9 @@ class WorkStore:
         self.db.executescript('''
             CREATE TABLE IF NOT EXISTS catalog(workspace TEXT PRIMARY KEY, identity TEXT NOT NULL);
             CREATE TABLE IF NOT EXISTS dispatch_boards(slug TEXT PRIMARY KEY);
+            CREATE TABLE IF NOT EXISTS card_order(
+                board TEXT NOT NULL, status TEXT NOT NULL, ids TEXT NOT NULL,
+                PRIMARY KEY(board,status));
             CREATE TABLE IF NOT EXISTS mentions(
                 id TEXT PRIMARY KEY, profile TEXT NOT NULL, identity TEXT NOT NULL,
                 board TEXT NOT NULL, task TEXT NOT NULL, comment INTEGER NOT NULL,
@@ -101,10 +104,18 @@ class WorkStore:
             return {'id': ident, 'state': 'absent'}
         return {'id': ident, 'state': row[0], **json.loads(row[1])}
 
-    def finish_task(self, intent, board, task, mentions=(), dispatch=False):
+    def ordered_tasks(self, board, status, tasks):
+        row = self.db.execute('SELECT ids FROM card_order WHERE board=? AND status=?', (board, status)).fetchone()
+        positions = {ident: index for index, ident in enumerate(json.loads(row[0]))} if row else {}
+        return sorted(tasks, key=lambda task: positions.get(task['id'], len(positions)))
+
+    def finish_task(self, intent, board, task, mentions=(), dispatch=False, placement=None):
         from .work_native import task_revision
         evidence = {'board': board, 'task_id': task['id'], 'revision': task_revision(task)}
         with self.db:
+            if placement is not None:
+                self.db.execute('INSERT INTO card_order VALUES(?,?,?) ON CONFLICT(board,status) DO UPDATE SET ids=excluded.ids',
+                    (board, task['status'], json.dumps(placement)))
             if dispatch:
                 self.db.execute('INSERT OR IGNORE INTO dispatch_boards VALUES(?)', (board,))
             for bot, comment_id in mentions:

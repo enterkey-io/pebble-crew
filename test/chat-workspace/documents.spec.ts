@@ -58,14 +58,17 @@ test('shared documents open in a dock, preserve chat drafts and use the shared M
   expect(remote).toEqual([]);
   expect(await page.evaluate(() => 'documentCompromised' in window)).toBe(false);
   if (page.viewportSize()!.width > 767) {
-    const chatBox = await page
-      .getByRole('region', { name: 'Conversation', exact: true })
-      .boundingBox();
-    const dock = await page
-      .getByRole('complementary', { name: 'Document', exact: true })
-      .boundingBox();
-    expect(dock!.x).toBeGreaterThan(chatBox!.x);
-    expect(chatBox!.x + chatBox!.width).toBeLessThanOrEqual(dock!.x + 2);
+    await expect
+      .poll(() =>
+        dock.evaluate((panel) => {
+          const chat = document
+            .querySelector('[aria-label="Conversation"]')!
+            .getBoundingClientRect();
+          const reader = panel.getBoundingClientRect();
+          return reader.left > chat.left && chat.right <= reader.left + 2;
+        }),
+      )
+      .toBe(true);
   }
   await page.screenshot({ animations: 'disabled', path: info.outputPath('document-reader.png') });
   await page.getByRole('button', { name: 'Close document', exact: true }).click();

@@ -42,11 +42,11 @@ export function NavigationItem({
         )}
         <ItemContent className="gap-1">
           <ItemTitle className="w-full min-w-0 gap-1.5">
-            <strong className="min-w-0 truncate font-medium">{title}</strong>{' '}
+            <strong className="min-w-0 max-w-full shrink-0 truncate font-medium">{title}</strong>{' '}
             {label && (
               <Badge
                 variant="secondary"
-                className="block max-w-[45%] shrink truncate rounded px-1 py-0 text-xs font-normal"
+                className="block min-w-0 shrink truncate rounded px-1 py-0 text-xs font-normal"
               >
                 {label}
               </Badge>

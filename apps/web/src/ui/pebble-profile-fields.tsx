@@ -14,6 +14,7 @@ import type {
 } from '@hermes-client/protocol';
 import { AvatarChooser } from '../AgentAvatar';
 import { Input } from '../components/ui/input';
+import { InputGroup, InputGroupAddon, InputGroupInput } from '../components/ui/input-group';
 import { Textarea } from '../components/ui/textarea';
 import { Field, FieldLabel, FieldDescription } from '../components/ui/field';
 import {
@@ -57,9 +58,9 @@ export function PebbleProfileFields({
         </Label>
         <Label layout="stacked">
           Handle
-          <span className="handle-input">
-            <span aria-hidden="true">@</span>
-            <Input
+          <InputGroup>
+            <InputGroupAddon aria-hidden="true">@</InputGroupAddon>
+            <InputGroupInput
               required
               aria-label="Handle"
               minLength={2}
@@ -70,7 +71,7 @@ export function PebbleProfileFields({
               value={value.handle}
               onChange={(e) => onChange({ handle: e.target.value })}
             />
-          </span>
+          </InputGroup>
         </Label>
         {children}
       </div>

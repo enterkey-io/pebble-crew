@@ -1,3 +1,4 @@
+import { openSidebarMenu } from '../sidebar-menu';
 import { test, expect } from '@playwright/test';
 import { installFixture, emit, history } from './fixtures';
 
@@ -110,14 +111,15 @@ test('native activity describes the work and a reply keeps its bubble and footer
   await page.screenshot({ animations: 'disabled', path: 'test-results/reply-completed.png' });
 });
 
-test('an empty move submenu has a dimmed disabled None item', async ({ page, context }) => {
+test('an empty move submenu offers creation without a disabled placeholder', async ({
+  page,
+  context,
+}) => {
   await installFixture(context);
   await page.goto('/');
   await expect(page.getByLabel('Message', { exact: true })).toBeEnabled();
-  await page.getByLabel('Actions for Mica', { exact: true }).click();
+  await openSidebarMenu(page, 'Mica');
   await page.getByRole('menuitem', { name: 'Move to crew', exact: true }).hover();
-  const empty = page.getByRole('menuitem', { name: 'None', exact: true });
-  await expect(empty).toBeVisible();
-  await expect(empty).toHaveAttribute('aria-disabled', 'true');
-  await expect(empty).toHaveCSS('opacity', '0.5');
+  await expect(page.getByRole('menuitem', { name: 'New crew', exact: true })).toBeVisible();
+  await expect(page.getByRole('menuitem', { name: 'None', exact: true })).toHaveCount(0);
 });

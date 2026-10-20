@@ -9,8 +9,11 @@ export * from './role-instructions';
 export * from './workspace-domain';
 
 export * from './conversation-domain';
+export * from './stream-position';
 
 export * from './reporting';
 
 export * from './documents';
 export * from './work-domain';
+export { RequestDomain } from './request-domain';
+export type { WorkspaceRequest, QuestionRequest } from './request-domain';

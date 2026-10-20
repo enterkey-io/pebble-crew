@@ -6,7 +6,7 @@ from pathlib import Path
 import tempfile
 import unittest
 from test_security import Native
-from bot_web.attachments import GeneratedMedia, image_type
+from bot_web.attachments import GeneratedMedia, image_type, media_type
 from bot_web.attachments_native import references, normalize_reference, reference_key, output_path, read_output, CHUNK_BYTES
 from bot_web.operations import BotOperations, InvalidOperation
 
@@ -82,6 +82,13 @@ MEDIA:/private/fenced.txt
         self.assertEqual(image_type(data.getvalue()), 'image/png')
         for content in [b'<svg onload="alert(1)"></svg>', b'<html>test</html>', b'\x89PNG\r\n\x1a\ninvalid']:
             self.assertEqual(image_type(content), 'application/octet-stream')
+
+    def test_mp4_container_is_playable_but_unknown_content_stays_download_only(self):
+        clip = (Path(__file__).parents[1] / 'fixtures/sample-video.mp4').read_bytes()
+        self.assertEqual(media_type(clip), 'video/mp4')
+        for content in [b'<html>video.mp4</html>', b'\x00\x00\x00\x18ftypxxxx' + b'\0' * 12,
+                        b'\xff\xff\xff\xffftypisom' + b'\0' * 12]:
+            self.assertEqual(media_type(content), 'application/octet-stream')
 
 
 class MediaNative(Native):

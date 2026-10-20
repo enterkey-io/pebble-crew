@@ -26,7 +26,13 @@ class NativeGateway:
         self.healthy = False
         self.build = None
         self.secrets = {}
+        self.questions = {}
+        self.approval_notices = {}
         self.work_supported = False
+        from .reactions import ReactionDisplay
+        self.display = ReactionDisplay()
+        from .stream_position import StreamPositions
+        self.stream_positions = StreamPositions()
 
     async def has_stored_bot_chat(self, profile):
         # Read-only safety guard: native exact-title lookup hides deliberately retired
@@ -91,12 +97,32 @@ class NativeGateway:
                                 if isinstance(request, dict):
                                     await self._server_request(request)
                 elif frame.get("method") == "event":
-                    event = frame["params"]
+                    event = self.stream_positions.event(frame["params"])
+                    if event.get('type') == 'clarify.request':
+                        payload = event.get('payload', {})
+                        self._capture_questions(payload.get('request_id'), event.get('session_id'), payload, legacy=True)
+                        continue
+                    if event.get('type') == 'clarify.expire':
+                        self.questions.pop(event.get('payload', {}).get('request_id'), None)
+                        self._publish({**event, 'type': 'questions.changed'})
+                        continue
+                    if event.get('type') == 'approval.request' and isinstance(event.get('payload', {}).get('request_id'), str):
+                        ident = 'legacy:'+str(event.get('session_id'))+':'+event['payload']['request_id']
+                        self.approval_notices[ident] = {'session_id': event.get('session_id'), 'request_id': event['payload']['request_id']}
+                    if event.get('type') == 'message.complete':
+                        sid = event.get('session_id')
+                        self.questions = {key: row for key, row in self.questions.items() if row['session_id'] != sid}
+                        self.approval_notices = {key: row for key, row in self.approval_notices.items() if row['session_id'] != sid}
+                    if event.get('type') == 'request.cancel' and event.get('payload', {}).get('method') == 'clarify':
+                        self.questions.pop(event.get('payload', {}).get('id'), None)
+                        self._publish({**event, 'type': 'questions.changed'})
+                        continue
                     if event.get("type") == "request.cancel" and event.get("payload", {}).get("method") == "secret":
                         self.secrets.pop(event.get("payload", {}).get("id"), None)
                         self._publish({**event, "type": "secret.changed"})
                         continue
                     if event.get("type") == "request.cancel" and event.get("payload", {}).get("method") == "approval":
+                        self.approval_notices.pop(event.get('payload', {}).get('id'), None)
                         self._publish({**event, "type": "approval.request"})
                     else:
                         self._publish(event)
@@ -107,6 +133,9 @@ class NativeGateway:
         finally:
             self.healthy = False
             self.secrets.clear()
+            self.questions.clear()
+            self.approval_notices.clear()
+            self.display.prefixes.clear()
             for future in self.pending.values():
                 if not future.done():
                     future.set_exception(NativeError("Hermes gateway disconnected"))
@@ -119,6 +148,9 @@ class NativeGateway:
                 self.process.terminate()
 
     def _publish(self, event):
+        event = self.display.event(event)
+        if event is None:
+            return
         for queue in tuple(self.listeners):
             try:
                 queue.put_nowait(event)
@@ -130,7 +162,11 @@ class NativeGateway:
 
     async def _server_request(self, frame):
         params = frame.get("params", {})
+        if frame.get('method') == 'clarify' and isinstance(params, dict) and self._capture_questions(frame['id'], params.get('session_id'), params):
+            return
         if frame.get("method") == "approval" and isinstance(params, dict):
+            if len(self.approval_notices) < 64:
+                self.approval_notices[frame['id']] = {'session_id': params.get('session_id'), 'request_id': params.get('request_id')}
             # Native approval.pending/respond remain authoritative: the browser never
             # gets a generic server-request responder or permanent/session approval.
             self._publish({"type": "approval.request", "session_id": params.get("session_id"),
@@ -144,13 +180,64 @@ class NativeGateway:
                     'expires': time.monotonic() + 295}
                 self._publish({'type': 'secret.changed', 'session_id': sid})
                 return
-        # Decline unsupported secret/sudo/desktop prompts instead of silently hanging
+        # Decline unsupported sudo/desktop prompts instead of silently hanging
         # or inventing an answer. Never expose arbitrary request/response RPC to web.
         async with asyncio.timeout(8):
             async with self.lock:
                 self.process.stdin.write((json.dumps({"jsonrpc": "2.0", "id": frame["id"],
                     "error": {"code": -32601, "message": "This client does not support this prompt"}}) + "\n").encode())
                 await self.process.stdin.drain()
+
+    def _capture_questions(self, ident, sid, params, legacy=False):
+        if not isinstance(params, dict):
+            return False
+        questions = params.get('questions')
+        single = questions is None
+        if single:
+            questions = [{'qid': 'q0', 'question': params.get('question'), 'choices': params.get('choices'), 'multi_select': params.get('multi_select', False)}]
+        valid = isinstance(ident, str) and len(ident) <= 128 and isinstance(sid, str) and isinstance(questions, list) and 0 < len(questions) <= 16
+        valid = valid and all(isinstance(q, dict) and isinstance(q.get('qid'), str) and len(q['qid']) <= 128
+            and isinstance(q.get('question'), str) and len(q['question']) <= 8000
+            and type(q.get('multi_select', False)) is bool
+            and (q.get('choices') is None or (isinstance(q['choices'], list) and len(q['choices']) <= 32
+                and all(isinstance(c, str) and len(c) <= 1000 for c in q['choices']))) for q in questions)
+        valid = valid and len({q['qid'] for q in questions}) == len(questions) and isinstance(params.get('answers', {}), dict)
+        if not valid or (ident not in self.questions and len(self.questions) >= 16):
+            return False
+        self.questions[ident] = {'id': ident, 'session_id': sid, 'questions': questions,
+            'answers': params.get('answers', {}), 'legacy': legacy, 'single': single}
+        self._publish({'type': 'questions.changed', 'session_id': sid})
+        return True
+
+    async def question_prompt(self, operation, params):
+        from .operations import fields, InvalidOperation
+        if operation == 'questions.pending':
+            fields(params, ['session_id'])
+            return {'requests': [row for row in self.questions.values() if row['session_id'] == params['session_id']]}
+        fields(params, ['session_id', 'id', 'question_id', 'answer'])
+        row = self.questions.get(params['id'])
+        question = next((q for q in row['questions'] if q['qid'] == params['question_id']), None) if row else None
+        answer = params['answer']
+        if not row or row['session_id'] != params['session_id'] or not question:
+            raise InvalidOperation('Question expired or belongs to another conversation')
+        if isinstance(answer, list):
+            if not question.get('multi_select') or len(answer) > 32 or not all(isinstance(a, str) and len(a) <= 4000 for a in answer):
+                raise InvalidOperation('Invalid question answer')
+            answer = json.dumps(answer, ensure_ascii=False)
+        if answer is not None and (not isinstance(answer, str) or len(answer) > 8000):
+            raise InvalidOperation('Invalid question answer')
+        payload = {'request_id': row['id'], 'answer': answer}
+        if not row['legacy'] or not row['single']:
+            payload['question_id'] = question['qid']
+        result = await self.call('clarify.respond' if row['legacy'] else 'clarify.lock', payload)
+        if result.get('status') not in {'ok', 'expired'}:
+            raise NativeError('Native question outcome could not be confirmed')
+        if result.get('status') == 'expired' or result.get('remaining') == [] or (row['legacy'] and row['single']):
+            self.questions.pop(row['id'], None)
+        else:
+            row['answers'][question['qid']] = answer
+        self._publish({'type': 'questions.changed', 'session_id': params['session_id']})
+        return {'state': 'expired' if result.get('status') == 'expired' else 'answered'}
 
     async def secret_prompt(self, operation, params):
         from .operations import fields, InvalidOperation
@@ -182,6 +269,23 @@ class NativeGateway:
         return {'submitted': True}
 
     async def call(self, method, params):
+        if method != 'bot_web.conversation.snapshot':
+            return await self._call(method, params)
+        sid = params.get('session_id')
+        # Streaming does not invalidate a snapshot. Only a turn boundary does.
+        # Its text length fences deltas even when their event is emitted just
+        # after the native history lock was released.
+        for _ in range(3):
+            generation = self.stream_positions.generation(sid)
+            result = await self._call(method, params)
+            if (generation == self.stream_positions.generation(sid)
+                    and result.get('running', False) == generation[1]
+                    and result.get('snapshot_consistent', True)):
+                offset = result['stream_length'] if generation[1] else None
+                return {**result, 'stream_position': self.stream_positions.position(sid, offset)}
+        raise NativeError('Conversation changed while opening; reopen it')
+
+    async def _call(self, method, params):
         if not self.healthy or len(self.pending) >= 32 or self.process is None or self.process.returncode is not None:
             raise NativeError("Hermes gateway unavailable")
         rid = uuid.uuid4().hex
@@ -195,7 +299,13 @@ class NativeGateway:
                     self.process.stdin.write((json.dumps({"jsonrpc": "2.0", "id": rid,
                         "method": method, "params": params}) + "\n").encode())
                     await self.process.stdin.drain()
-                return await future
+                result = await future
+                if isinstance(result, dict) and isinstance(result.get('pending_clarify'), dict):
+                    pending = result['pending_clarify']
+                    self._capture_questions(pending.get('request_id'), params.get('session_id') or result.get('session_id'), pending, legacy=True)
+                if method == 'bot_web.conversation.snapshot' and isinstance(result, dict):
+                    result = {**result, 'stream_length': len((result.get('inflight') or {}).get('assistant') or '')}
+                return self.display.result(method, result)
         except (TimeoutError, BrokenPipeError, ConnectionError) as error:
             # A timed-out mutation may have been accepted. Never retry automatically.
             raise NativeError("Operation outcome unknown; refresh before retrying") from error

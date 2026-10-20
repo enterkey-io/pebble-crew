@@ -135,8 +135,7 @@ export function RequestReview({
             </Button>
             <Button
               type="button"
-              variant="secondary"
-              className={deleting ? 'danger' : ''}
+              variant={deleting ? 'destructive' : 'default'}
               disabled={busy || (deleting && confirmation !== spec.profile)}
               onClick={() => onDecision(true, deleting ? confirmation : undefined)}
             >

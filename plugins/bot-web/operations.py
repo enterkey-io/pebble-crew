@@ -159,9 +159,14 @@ class BotOperations:
                 self.sessions[sid] = bot["name"]
                 self.session_incarnations[sid] = stamp
                 await self.gateway.call('bot_web.reactions.enable', {'session_id': sid})
+                live = await self.gateway.call('bot_web.conversation.snapshot', {'session_id': sid})
                 return {"session_id": sid, "profile": bot["name"],
                         "canonical_id": canonical["id"], "messages": live.get("messages", []),
-                        "inflight": live.get("inflight"), "running": live.get("running") is True}
+                        "inflight": live.get("inflight"), "running": live.get("running") is True,
+                        "active_user_row_id": live.get('active_user_row_id'),
+                        "correction_row_ids": live.get('correction_row_ids'),
+                        "deferred_prompts": live.get('deferred_prompts', []),
+                        "stream_position": live.get('stream_position')}
         if operation in {"chat.send", "chat.stop", "chat.history", "chat.approvals", "chat.approve", "chat.replay", "chat.react"}:
             extras = {"chat.send": ["text"], "chat.approve": ["request_id", "choice"],
                       "chat.replay": ["last_seen"], "chat.react": ["row_id", "emoji"]}.get(operation, [])

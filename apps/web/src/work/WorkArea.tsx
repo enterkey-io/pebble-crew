@@ -56,23 +56,24 @@ export function WorkArea({
   const [error, setError] = useState('');
   const [retry, setRetry] = useState(0);
   const dragged = useRef<string | undefined>(undefined);
-  const [over, setOver] = useState<string>();
+  const [over, setOver] = useState<{ status: WorkStatus; beforeId: string | null }>();
   const movement = useTaskMovement({
     client,
     workspaceId: catalog.workspaceId,
     board,
-    onChanged: (task) => {
+    onChanged: (task, beforeId) => {
       setView((current) =>
         current
           ? {
               ...current,
-              columns: current.columns.map((column) => ({
-                ...column,
-                tasks: [
-                  ...column.tasks.filter((row) => row.id !== task.id),
-                  ...(column.status === task.status ? [task] : []),
-                ],
-              })),
+              columns: current.columns.map((column) => {
+                const tasks = column.tasks.filter((row) => row.id !== task.id);
+                if (column.status === task.status) {
+                  const position = beforeId ? tasks.findIndex((row) => row.id === beforeId) : -1;
+                  tasks.splice(position < 0 ? tasks.length : position, 0, task);
+                }
+                return { ...column, tasks };
+              }),
             }
           : current,
       );
@@ -132,6 +133,7 @@ export function WorkArea({
           />
         )}
         <Button
+          data-create-task
           onClick={onCreate}
           disabled={!summary || !['general', 'linked'].includes(summary.mapping)}
         >
@@ -183,14 +185,29 @@ export function WorkArea({
               key={column.status}
               className="pc-work-column"
               aria-label={statusNames[column.status]}
-              data-drag-over={over === column.status || undefined}
+              data-drag-over={over?.status === column.status || undefined}
               onDragOver={(event) => {
                 if (
                   dragged.current &&
-                  workMoveStatuses.some((status) => status === column.status)
+                  (workMoveStatuses.some((status) => status === column.status) ||
+                    column.tasks.some((task) => task.id === dragged.current))
                 ) {
                   event.preventDefault();
-                  setOver(column.status);
+                  event.dataTransfer.dropEffect = 'move';
+                  const rows = [
+                    ...event.currentTarget.querySelectorAll<HTMLElement>('[data-task-id]'),
+                  ].filter((row) => row.dataset.taskId !== dragged.current);
+                  const before = rows.find(
+                    (row) =>
+                      event.clientY <
+                      row.getBoundingClientRect().y + row.getBoundingClientRect().height / 2,
+                  );
+                  const beforeId = before?.dataset.taskId ?? null;
+                  setOver((current) =>
+                    current?.status === column.status && current.beforeId === beforeId
+                      ? current
+                      : { status: column.status, beforeId },
+                  );
                 }
               }}
               onDragLeave={(event) => {
@@ -206,8 +223,8 @@ export function WorkArea({
                 const task = current.columns
                   .flatMap((c) => c.tasks)
                   .find((t) => t.id === dragged.current);
-                const status = workMoveStatuses.find((status) => status === column.status);
-                if (task && status) void movement.move(task, status);
+                if (task && over?.status === column.status)
+                  void movement.move(task, column.status, over.beforeId);
                 dragged.current = undefined;
                 setOver(undefined);
               }}
@@ -218,13 +235,22 @@ export function WorkArea({
                   {column.tasks.length}
                 </Badge>
               </header>
-              <div className="grid content-start gap-3">
-                {column.tasks.map((task) => {
+              <div className="relative grid content-start gap-3">
+                {column.tasks.map((task, index) => {
                   const assignee = workspace.bots.find((b) => b.profile === task.assignee);
                   return (
-                    <motion.div key={task.id} layout transition={{ duration: 0.18 }}>
+                    <motion.div
+                      key={task.id}
+                      className="relative"
+                      layout
+                      transition={{ duration: 0.18 }}
+                    >
+                      {over?.status === column.status && over.beforeId === task.id && (
+                        <span data-slot="task-drop-marker" aria-hidden="true" />
+                      )}
                       <Card
                         className="pc-task-card relative gap-0 py-0 shadow-none"
+                        data-task-id={task.id}
                         draggable={!movement.busy && !movement.uncertain}
                         onDragStart={(event) => {
                           dragged.current = task.id;
@@ -240,6 +266,20 @@ export function WorkArea({
                           variant="ghost"
                           className="h-auto min-h-24 w-full cursor-grab active:cursor-grabbing flex-col items-start gap-3 whitespace-normal rounded-xl p-4 pr-12 text-left"
                           aria-label={`Open task ${task.title}`}
+                          onKeyDown={(event) => {
+                            if (!event.altKey || !['ArrowUp', 'ArrowDown'].includes(event.key))
+                              return;
+                            event.preventDefault();
+                            const next =
+                              event.key === 'ArrowUp'
+                                ? column.tasks[index - 1]
+                                : column.tasks[index + 2];
+                            if (
+                              (event.key === 'ArrowUp' && index > 0) ||
+                              (event.key === 'ArrowDown' && index < column.tasks.length - 1)
+                            )
+                              void movement.move(task, task.status, next?.id ?? null);
+                          }}
                           onClick={() => onTask(task.id)}
                         >
                           <span className="break-words text-sm font-medium">{task.title}</span>
@@ -280,6 +320,11 @@ export function WorkArea({
                     </motion.div>
                   );
                 })}
+                {over?.status === column.status && over.beforeId === null && (
+                  <div className="relative h-0" aria-hidden="true">
+                    <span data-slot="task-drop-marker" />
+                  </div>
+                )}
                 {!column.tasks.length && (
                   <p className="px-1 py-4 text-xs text-muted-foreground/60">No tasks</p>
                 )}

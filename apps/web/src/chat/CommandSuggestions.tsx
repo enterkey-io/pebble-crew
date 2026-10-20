@@ -1,12 +1,17 @@
 import { ConversationDomain } from '@hermes-client/protocol';
-import type { CommandSuggestion } from '@hermes-client/protocol';
+import type { CommandSuggestion, BotBridgeClient } from '@hermes-client/protocol';
 import { forwardRef, useEffect, useImperativeHandle, useState } from 'react';
-import type { BotBridgeClient } from '@hermes-client/protocol';
 import { Command, CommandItem, CommandList } from '../components/ui/command';
 import { LoadingBar } from '../components/ui/loading-bar';
 
-type Suggestion = CommandSuggestion;
 export type CommandSuggestionsHandle = { key: (key: string) => boolean };
+type Catalog = {
+  client: BotBridgeClient;
+  sessionId: string;
+  prefix: string;
+  items: CommandSuggestion[];
+  start: number;
+};
 export const CommandSuggestions = forwardRef<
   CommandSuggestionsHandle,
   {
@@ -14,43 +19,47 @@ export const CommandSuggestions = forwardRef<
     enabled: boolean;
     sessionId: string;
     text: string;
-    onChoose: (text: string) => void;
+    onChoose: (text: string, execute: boolean) => void;
   }
 >(function CommandSuggestions({ client, enabled, sessionId, text, onChoose }, ref) {
-  const [items, setItems] = useState<Suggestion[]>([]),
-    [index, setIndex] = useState(0);
-  const [start, setStart] = useState(1),
-    [loading, setLoading] = useState(false),
-    [dismissed, setDismissed] = useState('');
+  const [catalog, setCatalog] = useState<Catalog>();
+  const [selection, setSelection] = useState({ text: '', index: 0 });
+  const [dismissed, setDismissed] = useState('');
   const visible = enabled && text.startsWith('/') && !text.includes('\n') && dismissed !== text;
+  const prefix = text.includes(' ') ? text.slice(0, text.indexOf(' ') + 1) : '/';
+  const current =
+    catalog?.client === client && catalog.sessionId === sessionId && catalog.prefix === prefix
+      ? catalog
+      : undefined;
   useEffect(() => {
-    let current = true;
-    setItems([]);
-    setIndex(0);
-    if (!visible) return;
-    setLoading(true);
-    const timer = setTimeout(() => {
-      void new ConversationDomain(client)
-        .commands(sessionId, text)
-        .then((value) => {
-          if (current) {
-            setItems(value.items);
-            setStart(value.replaceFrom);
-          }
-        })
-        .catch(() => undefined)
-        .finally(() => {
-          if (current) setLoading(false);
-        });
-    }, 100);
+    if (!visible || current) return;
+    let active = true;
+    void new ConversationDomain(client)
+      .commands(sessionId, prefix)
+      .then((value) => {
+        if (active)
+          setCatalog({ client, sessionId, prefix, items: value.items, start: value.replaceFrom });
+      })
+      .catch(() => undefined);
     return () => {
-      current = false;
-      clearTimeout(timer);
+      active = false;
     };
-  }, [client, sessionId, text, visible]);
-  const choose = (item: Suggestion) => {
-    onChoose(text.slice(0, start) + item.text + ' ');
-  };
+  }, [client, sessionId, prefix, visible, current]);
+  const query = text.slice(current?.start ?? 1).toLowerCase();
+  const items =
+    current?.items.filter(
+      (item) =>
+        item.text.toLowerCase().startsWith(query) ||
+        item.label.toLowerCase().replace(/^\//, '').startsWith(query),
+    ) ?? [];
+  const index = selection.text === text ? selection.index % (items.length || 1) : 0;
+  function choose(item: CommandSuggestion, execute: boolean) {
+    const chosen = text.slice(0, current?.start ?? 1) + item.text;
+    const needsArgument = chosen.trim() === '/model';
+    const next = chosen.trimEnd() + (needsArgument || !execute ? ' ' : '');
+    if (!needsArgument) setDismissed(next);
+    onChoose(next, execute && !needsArgument);
+  }
   useImperativeHandle(ref, () => ({
     key(key) {
       if (!visible) return false;
@@ -60,18 +69,21 @@ export const CommandSuggestions = forwardRef<
       }
       if (!items.length) return false;
       if (key === 'ArrowDown' || key === 'ArrowUp') {
-        setIndex((value) => (value + (key === 'ArrowDown' ? 1 : -1) + items.length) % items.length);
+        setSelection({
+          text,
+          index: (index + (key === 'ArrowDown' ? 1 : -1) + items.length) % items.length,
+        });
         return true;
       }
       if (key === 'Tab' || key === 'Enter') {
         const item = items[index];
-        if (item) choose(item);
+        if (item) choose(item, key === 'Enter');
         return true;
       }
       return false;
     },
   }));
-  if (!visible || (!loading && !items.length)) return null;
+  if (!visible || (current && !items.length)) return null;
   return (
     <Command
       shouldFilter={false}
@@ -79,13 +91,14 @@ export const CommandSuggestions = forwardRef<
       className="pc-composer-width mb-2 h-auto rounded-xl border p-1 shadow-md"
       aria-label="Hermes commands"
     >
-      {loading && <LoadingBar active label="Loading commands" />}
+      {!current && <LoadingBar active label="Loading commands" />}
       <CommandList className="max-h-48" aria-label="Hermes commands">
         {items.map((item) => (
           <CommandItem
             key={item.text}
             value={item.text}
-            onSelect={() => choose(item)}
+            onMouseDown={(event) => event.preventDefault()}
+            onSelect={() => choose(item, true)}
             className="flex items-start justify-between gap-3 px-3 py-2"
           >
             <span className="shrink-0 font-medium">{item.label}</span>

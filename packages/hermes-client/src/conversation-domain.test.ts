@@ -10,6 +10,22 @@ import {
 } from './conversation-domain';
 
 describe('conversation presentation boundary', () => {
+  it('uses only an exact native group-send receipt, not the outgoing browser id', async () => {
+    const edit = { roomId: 'group-a', eventId: 'outgoing-id', text: 'Hello' };
+    const event = { room_id: 'group-a', event_id: 'user:native-hash', kind: 'message.user' };
+    const receipt = { accepted: true, client_event_id: edit.eventId, event };
+    const domain = new ConversationDomain({ invoke: async () => receipt });
+    expect(await domain.sendRoom(edit)).toBe('user:native-hash');
+    for (const invalid of [
+      { ...receipt, accepted: false },
+      { ...receipt, client_event_id: 'another-tab' },
+      { ...receipt, event: { ...event, room_id: 'foreign' } },
+      { ...receipt, event: { ...event, kind: 'message.member' } },
+    ]) {
+      const rejected = new ConversationDomain({ invoke: async () => invalid });
+      await expect(rejected.sendRoom(edit)).rejects.toThrow();
+    }
+  });
   it('keeps actual receipts and read coverage while removing hidden source fields', () => {
     const data = decodeHistory({
       messages: [
@@ -200,6 +216,7 @@ describe('conversation presentation boundary', () => {
     });
     expect(await queued.send({ sessionId: 's1', text: 'Hello' })).toEqual({
       accepted: false,
+      disposition: 'uncertain',
       userRowId: undefined,
     });
     const uncertain = new ConversationDomain({
@@ -212,6 +229,35 @@ describe('conversation presentation boundary', () => {
       'Lost receipt',
     );
     expect(calls).toBe(2);
+  });
+  it('decodes native busy send receipts without inventing a row identity', async () => {
+    for (const status of ['streaming', 'redirected', 'steered', 'queued']) {
+      const domain = new ConversationDomain({ invoke: async () => ({ status }) });
+      expect(await domain.send({ sessionId: 's1', text: 'Change direction' })).toEqual({
+        accepted: true,
+        disposition: status === 'streaming' ? 'started' : status,
+        userRowId: undefined,
+      });
+    }
+  });
+  it('translates Python correction offsets after emoji and rejects invalid chronology', () => {
+    const snapshot = {
+      session_id: 's1',
+      messages: [],
+      running: true,
+      active_user_row_id: 3,
+      correction_row_ids: [5],
+      inflight: { assistant: 'A😀B', corrections: ['Change'], correction_offsets: [2] },
+    };
+    expect(decodeBotConversation(snapshot).corrections).toEqual([
+      { text: 'Change', offset: 3, rowId: '5' },
+    ]);
+    expect(
+      decodeBotConversation({
+        ...snapshot,
+        inflight: { ...snapshot.inflight, correction_offsets: [9] },
+      }).corrections[0]?.offset,
+    ).toBeUndefined();
   });
 });
 

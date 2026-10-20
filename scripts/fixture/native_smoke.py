@@ -50,11 +50,13 @@ class Model(BaseHTTPRequestHandler):
     saw_attachment = False
     approval_target = ""
     slow_started = threading.Event()
+    correction_started = threading.Event()
     turns = 0
     tools_seen = set()
     audit_requests = False
     request_audit = []
     tool_results = []
+    group_audit = None
 
     def log_message(self, *args):
         pass
@@ -84,6 +86,11 @@ class Model(BaseHTTPRequestHandler):
             Model.saw_native_tool = True
         text = "Native fixture reply"
         latest_user = next((m for m in reversed(data.get("messages", [])) if m.get("role") == "user"), {})
+        if Model.group_audit is not None:
+            Model.group_audit.append({'user': str(latest_user.get('content'))[:500],
+                'tools': [t.get('function', {}).get('name') for t in data.get('tools', [])],
+                'results': [str(m.get('content'))[:1200] for m in data.get('messages', []) if m.get('role') == 'tool'],
+                'group_context': 'Recent group reactions:' in json.dumps(data)})
         if 'nativegeneratedmedia' in str(latest_user.get('content')) or 'nativedocument' in str(latest_user.get('content')):
             import re
             context = '\n'.join(str(message.get('content')) for message in data.get('messages', []))
@@ -100,7 +107,9 @@ class Model(BaseHTTPRequestHandler):
             image.save(output / 'chart one.png')
             (output / 'plan.md').write_text('# Project plan\n\n**Native document proof**\n\n- Preserve existing personalities\n- Verify before release\n\n```python\nprint(42)\n```\n')
             (output / 'figures.csv').write_bytes(b'column,value\n' * 110000)
+            (output / 'sample-video.mp4').write_bytes((Path(__file__).resolve().parents[2] / 'test/fixtures/sample-video.mp4').read_bytes())
             text = 'Here are the results.\n\n![Project chart](<' + str(output / 'chart one.png') + '>)\n\n[Download figures](<' + str(output / 'figures.csv') + '>)'
+            text += '\n\n[Project clip](<' + str(output / 'sample-video.mp4') + '>)'
         tools = data.get("tools", [])
         tool_names = {t.get('function', {}).get('name') for t in tools}
         def can_call(name):
@@ -122,25 +131,56 @@ class Model(BaseHTTPRequestHandler):
             and can_call('message_agent'))
         approval = ("nativeapproval" in str(latest_user.get("content")) and not Model.emitted_approval
             and can_call('terminal'))
-        wants_reaction = 'nativereaction' in str(latest_user.get('content')) and not Model.emitted_reaction
+        wants_reaction = self.path.endswith('/chat/completions') and 'nativereaction' in str(latest_user.get('content')) and not Model.emitted_reaction
         if wants_reaction and 'pebble_react' not in tool_names:
             Model.reaction_discovery_guided = any('tool_describe(names=["pebble_react"])' in str(m.get('content')) for m in data.get('messages', []))
         discover_reaction = (wants_reaction and 'pebble_react' not in tool_names
             and not Model.reaction_describe_requested and 'tool_describe' in tool_names
             and 'pebble_react' in json.dumps(data))
-        reaction = (wants_reaction and ('pebble_react' in tool_names or Model.reaction_schema_received))
+        reaction = (wants_reaction and can_call('pebble_react') and ('pebble_react' in tool_names or Model.reaction_schema_received))
         if 'nativefeedback' in str(latest_user.get('content')):
             # The reply only acknowledges feedback actually present in the model input.
             text = 'Native feedback received' if any('[The user reacted ❤️' in str(m.get('content')) for m in data.get('messages', [])) else 'Native feedback missing'
+        if 'nativegroupfeedback' in str(latest_user.get('content')):
+            text = 'Native group feedback received' if any('Recent group reactions:' in str(m.get('content')) and '"emoji": "❤️"' in str(m.get('content')) and '"name": "You"' in str(m.get('content')) for m in data.get('messages', [])) else 'Native group feedback missing'
+        if self.path.endswith('/chat/completions') and 'nativereactiononly' in str(latest_user.get('content')):
+            marker = '(pass)' if any('Recent group reactions:' in str(m.get('content')) for m in data.get('messages', [])) else 'NO_REPLY'
+            assert any('On each human turn' in str(m.get('content')) and marker in str(m.get('content')) for m in data.get('messages', [])), 'Native per-turn reaction guidance missing'
+            text = marker
         if "nativestop" in str(latest_user.get("content")) and can_call('message_agent'):
             Model.slow_started.set()
             time.sleep(3)
             text = "Slow fixture reply"
+        if self.path.endswith('/chat/completions') and 'nativeworking' in str(latest_user.get('content')):
+            Model.slow_started.set()
+            time.sleep(3)
+            text = 'Original fixture work'
+        if 'nativecorrection' in str(latest_user.get('content')):
+            if self.path.endswith('/chat/completions'):
+                Model.correction_started.set()
+                time.sleep(2)
+            text = 'Native redirected reply'
         message = {"role": "assistant", "content": text}
         finish = "stop"
         document_turn = 'nativedocument' in str(latest_user.get('content'))
-        document_results = json.dumps(Model.tool_results)
-        if document_turn and 'requested' not in document_results:
+        messages = data.get('messages', [])
+        latest_user_index = next((index for index in range(len(messages) - 1, -1, -1)
+                                  if messages[index].get('role') == 'user'), -1)
+        current_results = [message.get('content') for message in messages[latest_user_index + 1:]
+                           if message.get('role') == 'tool']
+        document_results = json.dumps(current_results)
+        def document_receipt(value):
+            if isinstance(value, str):
+                try:
+                    return document_receipt(json.loads(value))
+                except (ValueError, TypeError):
+                    return False
+            if isinstance(value, dict):
+                return ((value.get('requested') is True and isinstance(value.get('request_id'), str))
+                        or any(document_receipt(child) for child in value.values()))
+            return isinstance(value, list) and any(document_receipt(child) for child in value)
+        shared_document = document_receipt(current_results)
+        if document_turn and not shared_document:
             if 'pebble_open_document' not in tool_names and 'parameters' not in document_results:
                 assert 'tool_describe(names=[\"pebble_open_document\"])' in json.dumps(data).replace('\\\"', '\"'), 'Document discovery guidance missing'
                 name, arguments = 'tool_describe', {'names': ['pebble_open_document']}
@@ -150,7 +190,7 @@ class Model(BaseHTTPRequestHandler):
             message = {'role': 'assistant', 'content': None, 'tool_calls': [{'id': 'fixture-document', 'type': 'function', 'function': {'name': name, 'arguments': json.dumps(arguments)}}]}
             finish = 'tool_calls'
         elif document_turn:
-            assert 'requested' in document_results and 'true' in document_results, document_results
+            assert shared_document, document_results
             text = 'Here is the [Project plan](<' + str(output / 'plan.md') + '>).'
             message = {'role': 'assistant', 'content': text}
         elif discover_reaction:
@@ -555,6 +595,10 @@ def main():
                             await gateway.stop()
                             await gateway.start()
                             return {'restarted': True}
+                        @app.get('/fixture/busy-state')
+                        async def busy_state():
+                            return {'working': Model.slow_started.is_set(),
+                                    'correction': Model.correction_started.is_set()}
                 else:
                     app = create_app("f" * 43, {args.origin}, hosts, workspace=False)
                 uvicorn.run(app, host="127.0.0.1", port=args.port, ssl_certfile=args.cert, ssl_keyfile=args.key,

@@ -176,6 +176,7 @@ function TaskForm({
   }
   return (
     <TabbedEditor
+      contentSized
       className="pc-work-editor"
       aria-label="Task"
       header={<PageHeader title="Task" onClose={close} />}

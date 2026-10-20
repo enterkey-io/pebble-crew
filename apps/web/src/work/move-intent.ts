@@ -1,8 +1,8 @@
-import type { WorkTask, WorkMoveStatus } from '@hermes-client/protocol';
+import type { WorkTask, WorkStatus } from '@hermes-client/protocol';
 
 const executing = new Set(['todo', 'ready', 'running']);
 
-export function moveIntent(before: WorkTask, latest: WorkTask, target: WorkMoveStatus) {
+export function moveIntent(before: WorkTask, latest: WorkTask, target: WorkStatus) {
   if (latest.status === target) return 'already';
   if (before.assignee !== latest.assignee) return 'changed';
   if (before.status === latest.status) return 'move';

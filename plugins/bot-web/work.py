@@ -72,7 +72,7 @@ class WorkService:
                     fields(params, ['workspace_id', 'board'])
                     view = native.board(board['slug'])
                     return {'workspace_id': state['id'], 'board': board,
-                        'columns': [{'status': c['name'], 'tasks': [task_view(t) for t in c['tasks']]} for c in view['columns']]}
+                        'columns': [{'status': c['name'], 'tasks': [task_view(t) for t in self.store.ordered_tasks(board['slug'], c['name'], c['tasks'])]} for c in view['columns']]}
                 if operation == 'work.task':
                     fields(params, ['workspace_id', 'board', 'id'])
                     return self.task(native, state, board, params['id'])
@@ -242,9 +242,7 @@ class WorkService:
 
 
     def move_task(self, native, state, board, params, actor):
-        fields(params, ['workspace_id', 'operation_id', 'board', 'id', 'expected_revision', 'status'])
-        if params['status'] not in ('triage', 'todo', 'ready', 'blocked', 'done', 'archived'):
-            raise InvalidOperation('Choose an available task status')
+        fields(params, ['workspace_id', 'operation_id', 'board', 'id', 'expected_revision', 'status'] + (['before_id'] if 'before_id' in params else []))
         ident = identifier(params['id'])
         intent = self.store.reserve(params['operation_id'], actor, 'work.task.move', params)
         if intent['state'] != 'reserved':
@@ -252,6 +250,19 @@ class WorkService:
         current = native.task(board['slug'], ident)['task']
         if task_revision(current) != params['expected_revision']:
             raise InvalidOperation('This task changed. Review it before moving.', 'STALE_REVISION')
+        changing_status = params['status'] != current['status']
+        if changing_status and params['status'] not in ('triage', 'todo', 'ready', 'blocked', 'done', 'archived'):
+            raise InvalidOperation('Choose an available task status')
+        placement = None
+        if 'before_id' in params:
+            before = identifier(params['before_id']) if params['before_id'] is not None else None
+            column = next((c for c in native.board(board['slug'])['columns'] if c['name'] == params['status']), None)
+            if column is None or before == ident or (before is not None and not any(t['id'] == before for t in column['tasks'])):
+                raise InvalidOperation('The target position changed. Review the board.', 'STALE_REVISION')
+            placement = [t['id'] for t in self.store.ordered_tasks(board['slug'], params['status'], column['tasks']) if t['id'] != ident]
+            placement.insert(placement.index(before) if before is not None else len(placement), ident)
+        if not changing_status:
+            return self.store.finish_task(intent['id'], board['slug'], current, placement=placement)
         if params['status'] in ('todo', 'ready') and current.get('assignee'):
             self.assignee(state, current['assignee'])
             self.store.watch_task(native, state, board['slug'], ident, current['assignee'])
@@ -265,7 +276,7 @@ class WorkService:
         author = 'owner' if actor == 'owner' else '@'+next(b['handle'] for b in state['bots'].values() if b['id'] == actor)
         labels = {'triage':'Triage','todo':'To do','ready':'Ready','running':'In progress','blocked':'Blocked','scheduled':'Scheduled','review':'Review','done':'Done','archived':'Archived'}
         native.comment(board['slug'], ident, f"Moved {labels.get(current['status'], current['status'])} → {labels[task['status']]}", author)
-        return self.store.finish_task(intent['id'], board['slug'], task, dispatch=params['status'] in ('todo', 'ready'))
+        return self.store.finish_task(intent['id'], board['slug'], task, dispatch=params['status'] in ('todo', 'ready'), placement=placement)
 
 
 def execute(operation, params, actor='owner'):

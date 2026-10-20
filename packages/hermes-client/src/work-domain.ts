@@ -282,7 +282,13 @@ export class WorkDomain {
     );
   }
   async moveTask(
-    ref: Mutation & { board: string; id: string; expectedRevision: string; status: WorkMoveStatus },
+    ref: Mutation & {
+      board: string;
+      id: string;
+      expectedRevision: string;
+      status: WorkStatus;
+      beforeId?: string | null;
+    },
   ) {
     return decodeReceipt(
       await this.bridge.invoke('work.task.move', {
@@ -292,6 +298,7 @@ export class WorkDomain {
         id: ref.id,
         expected_revision: ref.expectedRevision,
         status: ref.status,
+        ...(ref.beforeId !== undefined ? { before_id: ref.beforeId } : {}),
       }),
     );
   }

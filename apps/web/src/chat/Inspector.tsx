@@ -33,7 +33,7 @@ export function Inspector({
   workspace?: WorkspaceState | undefined;
   client: BotBridgeClient;
   routines: Row[];
-  children: ReactNode;
+  children?: ReactNode;
   pending: string;
   onToggle: (r: Row) => void;
   onEdit: () => void;

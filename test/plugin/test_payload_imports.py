@@ -24,7 +24,7 @@ class PayloadImportTests(unittest.TestCase):
             shutil.copytree(ROOT / 'plugins/bot-web', source, ignore=shutil.ignore_patterns('__pycache__'))
             self.assertIn((source / 'work.py').resolve(), payload_paths(source))
             use_historical_inventory(source / 'payload.py', ('live_voice.py', 'commands.py', 'voice_credentials.py', 'reporting.py', 'documents.py'))
-            with self.assertRaisesRegex(ValueError, 'omits local import: work.py'):
+            with self.assertRaisesRegex(ValueError, r'omits local import:.*work\.py'):
                 payload_paths(source)
     def test_shared_voice_source_is_shipped_and_an_omitted_dependency_is_rejected(self):
         with tempfile.TemporaryDirectory() as directory:
