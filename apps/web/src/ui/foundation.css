@@ -2,9 +2,18 @@
 @import 'tw-animate-css';
 @import './shadcn-utilities.css';
 
+@font-face {
+  font-family: Caprasimo;
+  src: url('../assets/fonts/Caprasimo-Regular.ttf') format('truetype');
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+
 @custom-variant dark (&:is(.dark *));
 
 :root {
+  --font-brand: Caprasimo, Georgia, serif;
   color-scheme: dark;
   --background: #0c0c0e;
   --foreground: #eeeeef;

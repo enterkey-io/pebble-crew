@@ -107,7 +107,7 @@ source = []
 for directory in ("apps", "packages", "plugins", "scripts", "test", "docs", ".github", "deploy", ".agents/skills/verify"):
     for path in (root / directory).rglob("*"):
         if (path.is_file() and not path.is_symlink() and not {"dist", "node_modules", "__pycache__", "artifacts", ".wrangler", ".local", ".superdesign"}.intersection(path.parts)
-                and path.suffix in {".ts", ".tsx", ".css", ".html", ".md", ".json", ".mjs", ".js", ".webmanifest", ".svg", ".png", ".py", ".yml", ".yaml", ".txt", ".sql", ".jsonc", ".example"}
+                and path.suffix in {".ts", ".tsx", ".css", ".html", ".md", ".json", ".mjs", ".js", ".webmanifest", ".svg", ".png", ".ttf", ".py", ".yml", ".yaml", ".txt", ".sql", ".jsonc", ".example"}
                 and not path.name.startswith(".env") and path.name not in {"auth.json", "credentials.json", "config.yaml"}
                 and (tracked is None or str(path.relative_to(root)) in tracked)):
             source.append((path, str(path.relative_to(root))))

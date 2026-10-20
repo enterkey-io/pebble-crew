@@ -17,3 +17,8 @@ MIT license. See [the source paths, changes and notice](hermes-live.md).
 react-zoom-pan-pinch 4.2.0 supplies photo zoom and pan gestures under the MIT
 license. See [its notice](react-zoom-pan-pinch.md) and
 [source](https://github.com/BetterTyped/react-zoom-pan-pinch).
+
+## Wordmark
+
+The locally bundled Caprasimo Regular font is licensed under the SIL Open Font
+License 1.1. See [its copyright and license](caprasimo-OFL.txt).
