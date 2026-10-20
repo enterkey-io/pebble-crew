@@ -343,6 +343,7 @@ export function App({ owner }: { owner?: OwnerConnection }) {
   const mentionSuggestions = useMentionSuggestions({
     value: draft,
     caret: mentionCaret,
+    input: composer,
     bots:
       selection?.kind === 'room'
         ? (workspace?.bots.filter((bot) =>
@@ -354,10 +355,6 @@ export function App({ owner }: { owner?: OwnerConnection }) {
       setDraft(value);
       setMentionCaret(position);
       if (selected.current) drafts.current.set(draftKey(selected.current), value);
-      requestAnimationFrame(() => {
-        composer.current?.focus();
-        composer.current?.setSelectionRange(position, position);
-      });
     },
   });
   const [showLatest, setShowLatest] = useState(false);

@@ -1,4 +1,5 @@
-import { useCallback, useRef, useState } from 'react';
+import { useCallback, useLayoutEffect, useRef, useState } from 'react';
+import type { RefObject } from 'react';
 import type { WorkspaceBot } from '@hermes-client/protocol';
 import { Command, CommandItem, CommandList } from '../components/ui/command';
 
@@ -6,16 +7,25 @@ export function useMentionSuggestions({
   value,
   caret,
   bots,
+  input,
   onChoose,
 }: {
   value: string;
   caret: number;
   bots: WorkspaceBot[];
+  input: RefObject<HTMLTextAreaElement | null>;
   onChoose: (value: string, caret: number) => void;
 }) {
   const [index, setIndex] = useState(0);
   const [dismissed, setDismissed] = useState('');
   const [listId, setListId] = useState<string>();
+  const [insertion, setInsertion] = useState<{ value: string; caret: number }>();
+  useLayoutEffect(() => {
+    const field = input.current;
+    if (!field || !insertion || field.value !== insertion.value) return;
+    field.focus();
+    field.setSelectionRange(insertion.caret, insertion.caret);
+  }, [input, insertion]);
   const options = useRef(new Map<string, string>());
   const receiveList = useCallback((node: HTMLDivElement | null) => setListId(node?.id), []);
   const query = /(?:^|[\s(])@([\w-]*)$/.exec(value.slice(0, caret))?.[1]?.toLowerCase();
@@ -31,10 +41,12 @@ export function useMentionSuggestions({
   const active = items[index % (items.length || 1)];
   function choose(handle: string) {
     const start = value.lastIndexOf('@', caret - 1);
-    onChoose(
-      value.slice(0, start) + '@' + handle + ' ' + value.slice(caret),
-      start + handle.length + 2,
-    );
+    const next = {
+      value: value.slice(0, start) + '@' + handle + ' ' + value.slice(caret),
+      caret: start + handle.length + 2,
+    };
+    onChoose(next.value, next.caret);
+    setInsertion(next);
     setIndex(0);
   }
   return {

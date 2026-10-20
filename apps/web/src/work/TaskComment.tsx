@@ -19,14 +19,11 @@ export function TaskComment({
   const suggestions = useMentionSuggestions({
     value,
     caret,
+    input,
     bots: workspace.bots,
     onChoose(value, position) {
       onChange(value);
       setCaret(position);
-      requestAnimationFrame(() => {
-        input.current?.focus();
-        input.current?.setSelectionRange(position, position);
-      });
     },
   });
   return (

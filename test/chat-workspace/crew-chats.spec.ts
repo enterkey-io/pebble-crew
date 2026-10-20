@@ -4,6 +4,51 @@ import type { Page } from '@playwright/test';
 import { installFixture } from './fixtures';
 
 test.use({ serviceWorkers: 'block' });
+
+test('replacing a chosen mention before the next paint preserves the replacement and sends it once', async ({
+  page,
+  context,
+}, info) => {
+  const fixture = await installFixture(context);
+  fixture.state.bots[0]!.handle = 'aurora';
+  const sends: string[] = [];
+  await page.route('**/v1/rpc', async (route) => {
+    const { operation, params } = route.request().postDataJSON();
+    if (operation === 'room.send') sends.push(params.text);
+    await route.fallback();
+  });
+  await page.goto('/');
+  const field = page.getByLabel('Message', { exact: true });
+  await expect(field).toBeEnabled();
+  if (info.project.use.isMobile)
+    await page.getByRole('button', { name: 'Toggle navigation', exact: true }).click();
+  await page.getByRole('button', { name: /^Research crew / }).click();
+  await field.fill('@');
+  await page.getByRole('option', { name: 'Arlo @aurora', exact: true }).evaluate(
+    (option) =>
+      new Promise<void>((resolve) => {
+        if (!(option instanceof HTMLElement)) throw new Error('Expected an interactive option');
+        requestAnimationFrame(() => {
+          option.click();
+          queueMicrotask(() => {
+            const field = document.querySelector<HTMLTextAreaElement>(
+              'textarea[aria-label="Message"]',
+            )!;
+            field.focus();
+            field.select();
+            requestAnimationFrame(() => {
+              document.execCommand('insertText', false, '@aurora please review this');
+              resolve();
+            });
+          });
+        });
+      }),
+  );
+  await expect(field).toHaveValue('@aurora please review this');
+  await field.press('Enter');
+  await expect.poll(() => sends).toEqual(['@aurora please review this']);
+});
+
 async function newConversation(page: Page, kind: 'New crew' | 'Group chat') {
   if (page.viewportSize()!.width < 768)
     await page.getByRole('button', { name: 'Toggle navigation', exact: true }).click();
