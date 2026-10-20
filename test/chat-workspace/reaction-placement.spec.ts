@@ -1,6 +1,8 @@
 import { test, expect } from '@playwright/test';
 import { installFixture } from './fixtures';
 
+test.use({ serviceWorkers: 'block' });
+
 test('reactions follow the lower outside corner on each message side without covering text', async ({
   page,
   context,
