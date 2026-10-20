@@ -123,6 +123,26 @@ class PresentationTests(WorkspaceTests):
         self.assertTrue(checked['target_present'])
         self.assertEqual(self.deleted, 1)
 
+    async def test_delete_protects_the_catalog_in_its_own_workspace(self):
+        from pathlib import Path
+        import tempfile
+        from unittest.mock import patch
+        from bot_web.work_store import WorkStore
+
+        state = self.store.read()
+        catalog = WorkStore(self.path.with_name('work.sqlite'))
+        try:
+            catalog.catalog({**state, 'orchestrator': 'amy'})
+        finally:
+            catalog.close()
+        with tempfile.TemporaryDirectory() as unrelated:
+            with patch('bot_web.workspace.workspace_path', return_value=Path(unrelated) / 'workspace.sqlite'):
+                result = await self.approve_delete()
+        self.assertEqual(result['state'], 'failed')
+        self.assertIn('project catalog', result['result']['error'])
+        self.assertEqual(self.deleted, 0)
+        self.assertTrue(any(row['name'] == 'amy' for row in self.native.profiles))
+
     async def test_partial_deletion_preserves_receipt_and_retired_identity(self):
         self.delete_result = {'state': 'partial', 'files_deleted': True, 'identity_pending': True}
         result = await self.approve_delete()

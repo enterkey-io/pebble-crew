@@ -33,6 +33,7 @@ def workspace_path():
 class WorkspaceStore:
     def __init__(self, path):
         path = Path(path)
+        self.path = path.resolve()
         path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
         self.db = sqlite3.connect(path, timeout=5)
         os.chmod(path, 0o600)
