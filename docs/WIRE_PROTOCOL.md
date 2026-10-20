@@ -84,6 +84,12 @@ chats. See [message reactions](MESSAGE_REACTIONS.md) for the native operation,
 event, profile enablement and next-turn feedback contract. No change to the
 protocol identifier or event framing is required.
 
+Preview.21 adds the optional `room_reactions` capability. Group and crew reactions
+use `room.react` with a verified native `event_id`; `room.log` includes a
+room-incarnation key, monotonic reaction revision and updates for previously
+loaded events. Reactions remain on the owner's Hermes host. Direct chats keep
+their native row-based reaction API. See [message reactions](MESSAGE_REACTIONS.md).
+
 Attachments require an open connection-owned native `session_id`:
 
 - `POST /v1/files/upload`, normal auth headers and RPC envelope `files.upload`

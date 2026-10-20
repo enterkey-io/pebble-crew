@@ -1,26 +1,38 @@
 import { Button } from '../components/ui/button';
 import { Icon } from './Icon';
 import { useRef } from 'react';
+import { AudioLines } from 'lucide-react';
 
 export function ComposerAction({
   mode,
   disabled,
   onStop,
+  onVoice,
 }: {
-  mode: 'send' | 'stop' | 'stopping';
+  mode: 'voice' | 'send' | 'stop' | 'stopping';
   disabled: boolean;
   onStop: () => void;
+  onVoice: () => void;
 }) {
   const sending = mode === 'send';
-  const action = sending ? 'send' : 'stop';
+  const action = mode === 'voice' ? 'voice' : sending ? 'send' : 'stop';
   const pressed = useRef<typeof action | null>(null);
   return (
     <Button
       type={sending ? 'submit' : 'button'}
       variant="secondary"
       size="icon"
-      className={`self-end size-9 shrink-0 rounded-full bg-foreground p-0 text-background hover:bg-foreground/90 pointer-coarse:size-11 ${sending ? 'send-button' : 'stop-button'}`}
-      aria-label={sending ? 'Send message' : mode === 'stopping' ? 'Stopping' : 'Stop'}
+      className={`self-end size-9 shrink-0 rounded-full bg-foreground p-0 text-background hover:bg-foreground/90 pointer-coarse:size-11 ${action}-button`}
+      data-action={action}
+      aria-label={
+        mode === 'voice'
+          ? 'Voice chat'
+          : sending
+            ? 'Send message'
+            : mode === 'stopping'
+              ? 'Stopping'
+              : 'Stop'
+      }
       disabled={disabled}
       onPointerDown={() => (pressed.current = action)}
       onPointerCancel={() => (pressed.current = null)}
@@ -41,10 +53,14 @@ export function ComposerAction({
           event.preventDefault();
           return;
         }
-        if (!sending) onStop();
+        if (mode === 'voice') onVoice();
+        else if (!sending) onStop();
       }}
     >
       <span className="pc-action-glyphs" aria-hidden="true">
+        <span data-glyph="voice">
+          <AudioLines />
+        </span>
         <span data-glyph="send">
           <Icon name="send" />
         </span>

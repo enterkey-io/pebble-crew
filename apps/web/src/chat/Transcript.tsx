@@ -40,6 +40,7 @@ export function Transcript({
   reply,
   children,
   authorName,
+  authorAvatar,
   onDownloadFile,
   onReact,
   client,
@@ -57,6 +58,7 @@ export function Transcript({
   reply: { renderKey: string; timestamp: string };
   children?: ReactNode;
   authorName: (name: string) => string;
+  authorAvatar?: (name: string) => ReactNode;
   onDownloadFile: (file: { id: string; name: string }) => void;
   onReact?: ReactionAction | undefined;
   client?: BotBridgeClient | undefined;
@@ -122,7 +124,10 @@ export function Transcript({
         const key = m.renderKey ?? m.id ?? `pending-${i}`;
         const entering = seen.conversationKey === conversationKey && !seen.keys.has(key);
         const live = m.id === reply.renderKey;
-        const react = !crew && m.id && /^[1-9]\d*$/.test(m.id) ? onReact : undefined;
+        const react =
+          m.id && !m.id.startsWith('pending-') && (crew || /^[1-9]\d*$/.test(m.id))
+            ? onReact
+            : undefined;
         const date = messageDate(m.timestamp);
         const group =
           date?.toLocaleDateString(undefined, {
@@ -149,13 +154,20 @@ export function Transcript({
               role={m.role === 'user' ? 'user' : crew ? 'member' : 'agent'}
               state={live ? 'live' : 'committed'}
               author={
-                crew && m.role === 'assistant'
-                  ? m.author
-                    ? authorName(m.author)
-                    : live
-                      ? title
-                      : 'Crew member'
-                  : undefined
+                crew && m.role === 'assistant' ? (
+                  m.author ? (
+                    <span className="inline-flex items-center gap-2">
+                      <span aria-hidden="true" className="shrink-0 [&_.agent-avatar]:size-5">
+                        {authorAvatar?.(m.author)}
+                      </span>
+                      {authorName(m.author)}
+                    </span>
+                  ) : live ? (
+                    title
+                  ) : (
+                    'Crew member'
+                  )
+                ) : undefined
               }
               style={m.role === 'user' ? ownerBubbleStyle(ownerColor) : undefined}
               metadata={
@@ -178,7 +190,7 @@ export function Transcript({
               actions={
                 (m.text.trim() || m.files?.length) && (
                   <>
-                    {!crew && onReact && m.id && (
+                    {onReact && m.id && (
                       <ReactionPicker
                         id={m.id}
                         reactions={m.reactions ?? []}

@@ -203,6 +203,17 @@ export async function installFixture(
   });
   const crewRooms: Record<string, unknown>[] = [];
   const crewChats: Record<string, string> = {};
+  const groupMessages = new Map<
+    string,
+    {
+      seq: number;
+      event_id: string;
+      room_id: string;
+      kind: string;
+      created_at: number;
+      payload: { text: string };
+    }[]
+  >();
   await context.route('**/api/**', async (route) => {
     const path = new URL(route.request().url()).pathname;
     const value =
@@ -233,6 +244,7 @@ export async function installFixture(
             attachments: options.attachments !== false,
             generated_media: true,
             reactions: options.reactions !== false,
+            room_reactions: options.reactions !== false,
           },
         },
       });
@@ -293,6 +305,16 @@ export async function installFixture(
     if (operation === 'organization.save') {
       organization = { ...params.organization, revision: organization.revision + 1 };
       result = organization;
+    }
+    if (operation === 'room.create') {
+      const room = {
+        room_id: params.room_id,
+        name: params.name,
+        created_at: 1700000020,
+        members: params.profiles.map((profile: string) => ({ profile, member_id: profile })),
+      };
+      if (!crewRooms.some((r) => r.room_id === params.room_id)) crewRooms.push(room);
+      result = room;
     }
     if (operation === 'organization.chat') {
       const crew = organization.crews.find((c) => c.id === params.id);
@@ -521,34 +543,55 @@ export async function installFixture(
       state.bots.find((b) => b.id === params.id)!.hidden = params.hidden;
     if (operation === 'presentation.order')
       prefs = { revision: prefs.revision + 1, pin_order: params.ids };
-    if (operation === 'room.log')
+    if (operation === 'room.send') {
+      const messages = groupMessages.get(params.room_id) ?? [];
+      const event = {
+        seq: messages.length + 3,
+        event_id: 'committed-' + params.event_id,
+        room_id: params.room_id,
+        kind: 'message.user',
+        created_at: 1700000200 + messages.length,
+        payload: { text: params.text },
+      };
+      messages.push(event);
+      groupMessages.set(params.room_id, messages);
+      result = { event, client_event_id: params.event_id, accepted: true, driver_started: true };
+    }
+    if (operation === 'room.log') {
+      const messages = groupMessages.get(params.room_id) ?? [];
+      const events = [
+        {
+          seq: 1,
+          event_id: 'room-m1',
+          kind: 'message.member',
+          actor: { id: 'arlo', profile: 'arlo' },
+          created_at: 1700000000,
+          payload: { text: 'I can coordinate this discussion.' },
+        },
+        {
+          seq: 2,
+          event_id: 'room-m2',
+          kind: 'message.member',
+          actor: { id: 'mica', profile: 'mica' },
+          created_at: 1700000100,
+          payload: { text: 'I have the notes ready.' },
+        },
+        ...messages,
+      ];
       result = {
-        events:
-          params.since_seq === 0
-            ? [
-                {
-                  seq: 1,
-                  event_id: 'room-m1',
-                  kind: 'message.member',
-                  actor: { id: 'arlo', profile: 'arlo' },
-                  created_at: 1700000000,
-                  payload: { text: 'I can coordinate this discussion.' },
-                },
-                {
-                  seq: 2,
-                  event_id: 'room-m2',
-                  kind: 'message.member',
-                  actor: { id: 'mica', profile: 'mica' },
-                  created_at: 1700000100,
-                  payload: { text: 'I have the notes ready.' },
-                },
-              ]
-            : [],
-        cursor: 2,
+        room_key: 'a'.repeat(64),
+        reaction_revision: 0,
+        reaction_updates: [],
+        events: events.filter((e) => e.seq > params.since_seq),
+        cursor: 2 + messages.length,
         has_more: false,
       };
+    }
     if (operation === 'room.state')
-      result = { driver_status: { working: false, pending_actions: [] } };
+      result = {
+        room: crewRooms.find((r) => r.room_id === params.room_id),
+        driver_status: { working: false, pending_actions: [] },
+      };
     if (operation === 'agent.propose') {
       requests = [
         {

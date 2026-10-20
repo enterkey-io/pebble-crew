@@ -206,13 +206,10 @@
 }
 .pc-composer {
   background: var(--composer);
+  box-shadow: inset 0 0 0 1px var(--composer-border);
   border-radius: 25px;
   padding: 7px;
-  box-shadow: inset 0 0 0 1px var(--composer-border);
-  transition: box-shadow var(--motion-hover);
-}
-.pc-composer:focus-within {
-  box-shadow: inset 0 0 0 1px var(--ring);
+  transition: background-color var(--motion-hover);
 }
 .pc-composer-row {
   display: flex;
@@ -572,15 +569,6 @@
   outline-offset: -1px;
   border-radius: 10px;
   background: var(--surface-hover);
-}
-.pc-organization-form {
-  display: flex;
-  flex-direction: column;
-  gap: 20px;
-}
-.pc-organization-form > div > [data-slot='label'] {
-  display: block;
-  margin-bottom: 8px;
 }
 .pc-rail-scroll,
 .pc-transcript {

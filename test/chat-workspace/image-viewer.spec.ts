@@ -60,6 +60,10 @@ async function setup(page: Page, context: BrowserContext) {
   const trigger = page.getByRole('button', { name: 'View Field notes', exact: true });
   await trigger.scrollIntoViewIfNeeded();
   await expect(trigger.getByRole('img')).toBeVisible();
+  await expect(trigger).toHaveCSS('border-top-left-radius', '16px');
+  await expect(trigger).toHaveCSS('border-bottom-right-radius', '16px');
+  await expect(trigger).toHaveCSS('overflow', 'hidden');
+  await expect(trigger.getByRole('img')).toHaveCSS('border-top-left-radius', '16px');
   return { trigger, reads: () => reads };
 }
 

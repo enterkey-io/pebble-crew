@@ -1,6 +1,7 @@
 import { DiscardChanges } from './ui/DiscardChanges';
 import { useComposerSize } from './chat/use-composer-size';
 import { CommandSuggestions } from './chat/CommandSuggestions';
+import { MentionSuggestions, useMentionSuggestions } from './chat/MentionSuggestions';
 import type { CommandSuggestionsHandle } from './chat/CommandSuggestions';
 import { Confirmation } from './components/ai-elements/confirmation';
 import {
@@ -20,6 +21,7 @@ import {
   BotBridgeClient,
   ConversationDomain,
   decodeApprovals,
+  decodeRoomReactions,
   approvalKey,
 } from '@hermes-client/protocol';
 import type { BridgeEvent, ConversationApproval, HistoryCoverage } from '@hermes-client/protocol';
@@ -50,7 +52,7 @@ import { DetailsDock } from './ui/DetailsDock';
 import { VoiceChat } from './voice/VoiceChat';
 import type { VoiceChatHandle } from './voice/VoiceChat';
 import type { VoiceSettingsRequest } from './voice/decode';
-import { File, Image, AudioLines, Inbox, Menu as MenuIcon, RefreshCw, X } from 'lucide-react';
+import { File, Image, Inbox, Menu as MenuIcon, RefreshCw, X } from 'lucide-react';
 import { Button } from './components/ui/button';
 import { IconButton } from './components/ui/icon-button';
 import { Alert, AlertDescription, AlertAction } from './components/ui/alert';
@@ -67,7 +69,7 @@ import { TranscriptFollow } from './chat/viewport-motion';
 import { toolActivity } from './chat/activity';
 import { conversationLocation, rememberConversation } from './chat/conversation-location';
 import { ConversationDrafts } from './chat/drafts';
-import { reactionReceipt } from './chat/reactions';
+import { reactionReceipt, RoomReactionProjection } from './chat/reactions';
 import { useOverlayHistory } from './ui/overlay-history';
 import type { OwnerConnection } from './OwnerShell';
 import { WorkspaceSetup } from './WorkspaceSetup';
@@ -150,6 +152,9 @@ export function App({ owner }: { owner?: OwnerConnection }) {
   const [crewChats, setCrewChats] = useState<Record<string, string>>({});
   const roomsRef = useRef(rooms);
   roomsRef.current = rooms;
+  const crewChatsRef = useRef(crewChats);
+  crewChatsRef.current = crewChats;
+  const roomReactions = useRef(new RoomReactionProjection());
   const [selection, setSelection] = useState<Selection>();
   const [starting, setStarting] = useState(true);
   const [messages, setMessages] = useState<Message[]>([]);
@@ -268,7 +273,7 @@ export function App({ owner }: { owner?: OwnerConnection }) {
   async function openCrew(id: string, confirm = false) {
     const crew = organization.crews.find((c) => c.id === id);
     if (!crew || crew.members.length < 2 || crew.members.length > 6) {
-      setError('A crew chat needs 2–6 pebbles. Move pebbles into the crew from their menus.');
+      setError('Choose 2–6 pebbles in Crew settings to open this chat.');
       return;
     }
     const connection = current.current;
@@ -330,6 +335,27 @@ export function App({ owner }: { owner?: OwnerConnection }) {
   const focusOnReady = useRef(false);
   const drafts = useRef(new ConversationDrafts());
   drafts.current.bind(workspace?.id);
+  const [mentionCaret, setMentionCaret] = useState(0);
+  const mentionSuggestions = useMentionSuggestions({
+    value: draft,
+    caret: mentionCaret,
+    bots:
+      selection?.kind === 'room'
+        ? (workspace?.bots.filter((bot) =>
+            rows(selection.room.members).some((member) => member.profile === bot.profile),
+          ) ?? [])
+        : [],
+    onChoose(value, position) {
+      draftEdits.current++;
+      setDraft(value);
+      setMentionCaret(position);
+      if (selected.current) drafts.current.set(draftKey(selected.current), value);
+      requestAnimationFrame(() => {
+        composer.current?.focus();
+        composer.current?.setSelectionRange(position, position);
+      });
+    },
+  });
   const [showLatest, setShowLatest] = useState(false);
   const displayedRead = useRef<{ key: string; cursor: number } | undefined>(undefined);
   const acknowledgedRead = useRef(new Map<string, number>());
@@ -362,6 +388,10 @@ export function App({ owner }: { owner?: OwnerConnection }) {
     acknowledgedRead.current.set(seen.key, seen.cursor);
     void connection
       .invoke('presentation.read', seen)
+      .then(() => {
+        if (current.current === connection)
+          void loadRoster(connection, true).catch(() => undefined);
+      })
       .catch(() => acknowledgedRead.current.delete(seen.key));
   }
   useEffect(() => {
@@ -784,13 +814,19 @@ export function App({ owner }: { owner?: OwnerConnection }) {
   async function reactToMessage(id: string, emoji: string | null) {
     const connection = current.current,
       target = selected.current;
-    if (!connection?.supportsReactions || target?.kind !== 'bot' || streamState !== 'live') return;
+    if (!connection || !target || streamState !== 'live') return;
+    if (!(target.kind === 'bot' ? connection.supportsReactions : connection.supportsRoomReactions))
+      return;
     try {
-      const result = await new ConversationDomain(connection).react(
-        target.sessionId,
-        Number(id),
-        emoji,
-      );
+      const domain = new ConversationDomain(connection);
+      let result: Awaited<ReturnType<ConversationDomain['react']>>;
+      if (target.kind === 'bot') result = await domain.react(target.sessionId, Number(id), emoji);
+      else {
+        const receipt = await domain.reactRoom(text(target.room.room_id), id, emoji);
+        if (current.current !== connection || selected.current !== target) return;
+        roomReactions.current.accept(receipt.state);
+        result = receipt;
+      }
       if (current.current !== connection || selected.current !== target) return;
       setMessages((old) =>
         old.map((m) => (m.id === result.id ? { ...m, reactions: result.reactions } : m)),
@@ -1228,6 +1264,7 @@ export function App({ owner }: { owner?: OwnerConnection }) {
     if (workspace) rememberConversation(workspace.id, { kind: 'room', id: text(room.room_id) });
     if (restore) setBlocked(false);
     if (!restore) {
+      roomReactions.current = new RoomReactionProjection();
       followLatest.current = true;
       setShowLatest(false);
       displayedRead.current = undefined;
@@ -1239,7 +1276,7 @@ export function App({ owner }: { owner?: OwnerConnection }) {
     }
     setRunning(false);
     setBusy(false);
-    setActivity('Native room driver');
+    setActivity('');
     setAttachmentUncertain(false);
     setError('');
     if (!restore) setNav(false);
@@ -1266,6 +1303,8 @@ export function App({ owner }: { owner?: OwnerConnection }) {
             if (typeof row.seq !== 'number') throw new Error('Invalid room sequence');
             events.set(row.seq, row);
           }
+          if (client!.supportsRoomReactions)
+            roomReactions.current.accept(decodeRoomReactions(data));
           if (typeof data.cursor !== 'number' || data.cursor < cursor)
             throw new Error('Invalid cursor');
           if (data.has_more === true && data.cursor === cursor) throw new Error('Room log stalled');
@@ -1291,14 +1330,23 @@ export function App({ owner }: { owner?: OwnerConnection }) {
             },
           ),
         );
+        const groupLabel = Object.values(crewChatsRef.current).includes(
+          text(selection?.kind === 'room' ? selection.room.room_id : ''),
+        )
+          ? 'Crew'
+          : 'Group chat';
         setActivity(
           driver.blocked === true
-            ? 'Room recovery needed · Inspect in Hermes'
+            ? `${groupLabel} needs attention`
             : driver.working === true
-              ? 'Room members are working'
-              : 'Native room driver ready',
+              ? `${groupLabel} members are working`
+              : '',
         );
-        setMessages(sendProjection.current.project(roomMessages([...events.values()])));
+        setMessages(
+          sendProjection.current.project(
+            roomReactions.current.project(roomMessages([...events.values()])),
+          ),
+        );
         setStarting(false);
         const room = roomsRef.current.find(
           (r) => r.room_id === (selection?.kind === 'room' ? selection.room.room_id : ''),
@@ -1420,12 +1468,12 @@ export function App({ owner }: { owner?: OwnerConnection }) {
         if (owns()) setMessages(sendProjection.current.acknowledge(result.userRowId));
         if (fileIds.length && !result.accepted) throw new Error('Attachment outcome uncertain');
       } else {
-        await new ConversationDomain(client).sendRoom({
+        const receipt = await new ConversationDomain(client).sendRoom({
           roomId: text(selection.room.room_id),
           eventId: roomEventId,
           text: message,
         });
-        if (owns()) setMessages(sendProjection.current.acknowledge(roomEventId));
+        if (owns()) setMessages(sendProjection.current.acknowledge(receipt));
       }
       if (owns()) {
         uploads.sent(draftKey(target), fileIds);
@@ -1597,6 +1645,12 @@ export function App({ owner }: { owner?: OwnerConnection }) {
     }
   }
   const capabilities = conversationCapabilities(client, selection?.kind ?? 'none');
+  const voiceAction =
+    !running &&
+    !draft.trim() &&
+    !uploads.files.length &&
+    selection?.kind === 'bot' &&
+    capabilities.voice;
   const detailsContent = client && (
     <Inspector
       bot={selection?.kind === 'bot' ? selection.bot : undefined}
@@ -1771,6 +1825,7 @@ export function App({ owner }: { owner?: OwnerConnection }) {
           setArea('chat');
           setSettings(false);
           openRoom(room);
+          void loadRoster(client, true).catch(fail);
         })
       }
       onAdd={() =>
@@ -2245,6 +2300,24 @@ export function App({ owner }: { owner?: OwnerConnection }) {
                             (name === 'hermes' && b.profile === 'default'),
                         )?.name ?? name
                       }
+                      authorAvatar={(name) => {
+                        const bot = workspace?.bots.find(
+                          (b) =>
+                            b.profile === name ||
+                            b.handle === name.replace('@', '') ||
+                            (name === 'hermes' && b.profile === 'default'),
+                        );
+                        return (
+                          bot && (
+                            <PebbleAvatar
+                              bot={bot}
+                              workspace={workspace}
+                              client={client}
+                              mainBadge={false}
+                            />
+                          )
+                        );
+                      }}
                     >
                       {!selection && !switching && (
                         <div className="welcome">
@@ -2368,6 +2441,10 @@ export function App({ owner }: { owner?: OwnerConnection }) {
                             }}
                           />
                         )}
+                        <MentionSuggestions
+                          suggestions={mentionSuggestions}
+                          className="pc-composer-width mb-2"
+                        />
                         <PromptInputFrame
                           className="pc-composer pc-composer-row pc-composer-width"
                           onSubmit={(e) => {
@@ -2431,6 +2508,7 @@ export function App({ owner }: { owner?: OwnerConnection }) {
                             aria-label="Message"
                             placeholder={selection ? `Message ${title}` : 'Choose a conversation'}
                             value={draft}
+                            {...mentionSuggestions.inputProps}
                             disabled={!selection}
                             readOnly={switching}
                             maxLength={16000}
@@ -2449,10 +2527,16 @@ export function App({ owner }: { owner?: OwnerConnection }) {
                             onChange={(e) => {
                               draftEdits.current++;
                               setDraft(e.target.value);
+                              setMentionCaret(e.target.selectionStart);
                               if (selected.current)
                                 drafts.current.set(draftKey(selected.current), e.target.value);
                             }}
+                            onSelect={(e) => setMentionCaret(e.currentTarget.selectionStart)}
                             onKeyDown={(e) => {
+                              if (!e.nativeEvent.isComposing && mentionSuggestions.key(e.key)) {
+                                e.preventDefault();
+                                return;
+                              }
                               if (
                                 !e.nativeEvent.isComposing &&
                                 commandSuggestions.current?.key(e.key)
@@ -2466,30 +2550,27 @@ export function App({ owner }: { owner?: OwnerConnection }) {
                               }
                             }}
                           />
-                          {selection?.kind === 'bot' && capabilities.voice && (
-                            <IconButton
-                              quiet
-                              className="pc-call-button"
-                              label="Voice chat"
-                              icon={AudioLines}
-                              disabled={blocked}
-                              onClick={() => {
-                                voicePanel.current?.open();
-                              }}
-                            />
-                          )}
                           <ComposerAction
-                            mode={running ? (stopping ? 'stopping' : 'stop') : 'send'}
+                            mode={
+                              running
+                                ? stopping
+                                  ? 'stopping'
+                                  : 'stop'
+                                : voiceAction
+                                  ? 'voice'
+                                  : 'send'
+                            }
                             disabled={
                               running
                                 ? stopping || blocked
                                 : !selection ||
-                                  (!draft.trim() && !uploads.files.length) ||
+                                  (!voiceAction && !draft.trim() && !uploads.files.length) ||
                                   !uploads.ready ||
                                   busy ||
                                   blocked
                             }
                             onStop={() => void stop()}
+                            onVoice={() => voicePanel.current?.open()}
                           />
                         </PromptInputFrame>
                       </div>

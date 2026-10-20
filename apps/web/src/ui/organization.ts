@@ -13,6 +13,7 @@ export type OrganizationEditor =
   | { kind: 'new-section' }
   | { kind: 'edit-section'; id: string }
   | { kind: 'new-crew' }
+  | { kind: 'new-group-chat' }
   | { kind: 'edit-crew'; id: string };
 
 export const SYSTEM_SECTIONS = { pebbles: 'Pebbles', crews: 'Crews' } as const;
@@ -93,6 +94,18 @@ export function placeCrew(
       };
     }),
   };
+}
+
+/** Update membership and sidebar placement together, preserving each identity once. */
+export function setCrewMembers(org: Organization, id: string, members: string[]): Organization {
+  const crew = org.crews.find((c) => c.id === id);
+  if (!crew) return org;
+  let next = org;
+  for (const previous of crew.members)
+    if (!members.includes(previous))
+      next = placePebble(next, previous, { kind: 'section', id: 'pebbles' });
+  for (const member of members) next = placePebble(next, member, { kind: 'crew', id });
+  return next;
 }
 
 export function placementOf(org: Organization, id: string): Placement | undefined {

@@ -15,6 +15,17 @@ New reports receive a stable ID; later work updates the existing entry.
 | PC-101 | Approvals require leaving chat and Main Pebble is unaware             | Shared inline native-approval and management-request cards; identity-bound Main notifications, without bypassing owner approval. Native clarify answers use question cards; existing secret entry stays private. |
 | PC-102 | Off-center wheel zoom moves photos sideways                           | Keep wheel, keyboard and toolbar zoom centered; panning remains a separate gesture.                                                                                                                              |
 | PC-103 | Messages waiting are easy to miss                                     | Blue pulsing dots at the far row edge or pinned avatar's lower-right badge position, replacing the Main star until read. Reduced motion shows a static dot.                                                      |
+| PC-104 | Agents rarely acknowledge with reactions alone                        | Per-turn selective reaction guidance and native silence projection; native acceptance covers a reaction-only reply and reloaded history on both supported builds.                                                |
+| PC-105 | Composer attachment/action styling and bright outline                 | Soft circular attachment control, one circular Voice-to-Send action, and a faint edge in both themes. No web dictation control added.                                                                            |
+| PC-106 | Chat photos have square corners                                       | Round the actual image and its clickable frame, including non-frame aspect ratios.                                                                                                                               |
+| PC-107 | Role labels truncate while space remains                              | Remove the fixed percentage cap; role labels use the remaining row width and truncate only at its boundary.                                                                                                      |
+
+| PC-108 | Creating a crew omits members; chat has no mention picker or speaker avatars | Create/edit Name, Description and members together; scoped @handle suggestions use native alias routing and speaker headers show the saved avatar. |
+| PC-109 | No way to create an ad hoc group; fixed Group chats heading | Separate Group chat action and member picker; no crew/placement mutation and no mandatory heading. |
+| PC-110 | Crew and group chats lack reactions | Owner-local reaction overlay over exact live native event IDs, session-bound agent tool, per-agent identities, stable receipt versions and next-turn feedback. |
+| PC-111 | Reactions should follow the side of the message | Lower-right for owner messages; lower-left for agent messages, with transparent decoration and reserved text clearance. |
+
+| PC-112 | Group sends can remain provisional and suppress later history | Correlate the optimistic row only with the verified native event receipt, keeping its render identity and timestamp. Reactions wait for a durable message id. |
 
 Source verification and publication do not establish an owner's installed version.
 

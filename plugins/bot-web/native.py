@@ -29,6 +29,8 @@ class NativeGateway:
         self.questions = {}
         self.approval_notices = {}
         self.work_supported = False
+        from .reactions import ReactionDisplay
+        self.display = ReactionDisplay()
 
     async def has_stored_bot_chat(self, profile):
         # Read-only safety guard: native exact-title lookup hides deliberately retired
@@ -131,6 +133,7 @@ class NativeGateway:
             self.secrets.clear()
             self.questions.clear()
             self.approval_notices.clear()
+            self.display.prefixes.clear()
             for future in self.pending.values():
                 if not future.done():
                     future.set_exception(NativeError("Hermes gateway disconnected"))
@@ -143,6 +146,9 @@ class NativeGateway:
                 self.process.terminate()
 
     def _publish(self, event):
+        event = self.display.event(event)
+        if event is None:
+            return
         for queue in tuple(self.listeners):
             try:
                 queue.put_nowait(event)
@@ -278,7 +284,7 @@ class NativeGateway:
                 if isinstance(result, dict) and isinstance(result.get('pending_clarify'), dict):
                     pending = result['pending_clarify']
                     self._capture_questions(pending.get('request_id'), params.get('session_id') or result.get('session_id'), pending, legacy=True)
-                return result
+                return self.display.result(method, result)
         except (TimeoutError, BrokenPipeError, ConnectionError) as error:
             # A timed-out mutation may have been accepted. Never retry automatically.
             raise NativeError("Operation outcome unknown; refresh before retrying") from error

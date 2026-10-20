@@ -17,7 +17,7 @@ export function Message({
   id: string;
   role: 'user' | 'agent' | 'member';
   state: MessagePhase;
-  author?: string | undefined;
+  author?: ReactNode;
   children: ReactNode;
   metadata?: ReactNode;
   actions?: ReactNode;
@@ -41,7 +41,11 @@ export function Message({
           <BubbleContent style={style}>
             {role === 'user' ? children : <div data-slot="message-response">{children}</div>}
           </BubbleContent>
-          {reactions && <BubbleReactions aria-label="Reactions">{reactions}</BubbleReactions>}
+          {reactions && (
+            <BubbleReactions align={role === 'user' ? 'end' : 'start'} aria-label="Reactions">
+              {reactions}
+            </BubbleReactions>
+          )}
         </Bubble>
         {(metadata || actions) && (
           <MessageFooter className="min-h-8 gap-1 px-0 tabular-nums">

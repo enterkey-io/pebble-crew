@@ -16,6 +16,7 @@ import {
   PanelsTopLeft,
 } from 'lucide-react';
 import { ToggleGroup, ToggleGroupItem } from '../components/ui/toggle-group';
+import { ConversationDomain } from '@hermes-client/protocol';
 import type { WorkCatalog } from '@hermes-client/protocol';
 import { AgentAvatar } from '../AgentAvatar';
 import { Menu } from '../ui/primitives';
@@ -53,6 +54,7 @@ export function PebbleAvatar({
   state,
   large,
   unread = false,
+  mainBadge = true,
 }: {
   bot: ChatBot;
   workspace?: WorkspaceState | undefined;
@@ -60,6 +62,7 @@ export function PebbleAvatar({
   state?: Activity | undefined;
   large?: boolean | undefined;
   unread?: boolean;
+  mainBadge?: boolean;
 }) {
   const identity = workspace?.bots.find((b) => b.profile === bot.profile);
   return identity ? (
@@ -68,7 +71,7 @@ export function PebbleAvatar({
       profile={bot.profile}
       client={client}
       look={identity.appearance}
-      orchestrator={workspace?.orchestrator === bot.profile}
+      orchestrator={mainBadge && workspace?.orchestrator === bot.profile}
       unread={unread && !!identity.unread}
       state={state ?? 'ready'}
       large={large ?? false}
@@ -229,6 +232,7 @@ export function Rail({
     ) : null;
   };
   const pinIds = pins.map((b) => identity(b)!.id);
+  const groupChats = rooms.filter((r) => !Object.values(crewChats).includes(String(r.room_id)));
   const controls = (bot: ChatBot) => {
     const b = identity(bot);
     if (!b) return null;
@@ -292,6 +296,7 @@ export function Rail({
           items={[
             { label: 'New pebble', action: onAdd },
             { label: 'New crew', action: () => setEditor({ kind: 'new-crew' }) },
+            { label: 'Group chat', action: () => setEditor({ kind: 'new-group-chat' }) },
             ...(client.supportsProjects
               ? [
                   { label: 'New project board', action: onNewProject, disabled: !catalog },
@@ -491,22 +496,22 @@ export function Rail({
                     </div>
                   ))}
             </nav>
-            <nav className="pc-list" aria-label="Group chats">
-              {rooms.length > 0 && <h2>Group chats</h2>}
-              {rooms
-                .filter((r) => !Object.values(crewChats).includes(String(r.room_id)))
-                .map((r) => (
+            {!!groupChats.length && (
+              <nav className="pc-list" aria-label="Group chats">
+                {groupChats.map((r) => (
                   <NavigationItem
                     className="pc-crew"
                     key={String(r.room_id)}
+                    aria-label={r.name ? `${String(r.name)} Group chat` : 'Group chat'}
                     disabled={!online}
                     onClick={() => onRoom(r)}
                     media={<CrewAvatar room={r} workspace={workspace} client={client} />}
-                    title={String(r.name ?? 'Crew')}
+                    title={String(r.name ?? 'Group chat')}
                     description={String(r.preview ?? 'Group conversation')}
                   />
                 ))}
-            </nav>
+              </nav>
+            )}
             {!all.length && (
               <div className="rail-empty">
                 <p>No pebbles yet.</p>
@@ -543,6 +548,21 @@ export function Rail({
       <OrganizationDialog
         editor={editor}
         org={organization}
+        pebbles={
+          workspace?.bots.filter((b) => b.enrolled && b.available !== false && !b.hidden) ?? []
+        }
+        face={face}
+        onCreateGroup={async ({ id, name, members }) => {
+          const profiles = members.map((id) => workspace?.bots.find((b) => b.id === id)?.profile);
+          if (profiles.some((profile) => !profile))
+            throw new Error('A selected pebble is no longer available');
+          const room = await new ConversationDomain(client).createGroup(
+            id,
+            name,
+            profiles.filter((profile) => profile !== undefined),
+          );
+          onRoom(room);
+        }}
         onChange={onOrganization}
         onClose={() => setEditor(null)}
       />

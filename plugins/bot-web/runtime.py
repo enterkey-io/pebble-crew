@@ -104,11 +104,17 @@ def register_runtime(ctx):
             if not profile:
                 return None
             text = live_context(store, profile)
-            from .room_identity import runtime_room, maps
-            members = runtime_room(store, profile, session_id)
+            from .room_identity import runtime_room_record, maps
+            native_room = runtime_room_record(store, profile, session_id)
+            members = native_room['members'] if native_room else None
             if members:
                 incoming, _ = maps(store.read(), members)
                 text += '\nFor this room only, its native frozen mention aliases map to public identities as follows: '+json.dumps(incoming)+'. Use the room aliases when addressing participants in this room; your public identity remains unchanged.'
+                from .reactions import runtime_guidance
+                guidance = runtime_guidance(platform, group=True)
+                if guidance:
+                    from .room_reactions import feedback
+                    text += '\n'+guidance+' Group reactions use message_event_id, not direct-chat message_row_id. Omit target fields to react to the latest user message. Recent group reactions: '+json.dumps(feedback(store, native_room), ensure_ascii=False)
             else:
                 from hermes_cli.profiles import get_profile_dir
                 output = Path(get_profile_dir(profile)) / 'cache' / 'generated'

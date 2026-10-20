@@ -36,6 +36,7 @@ export class BotBridgeClient {
   #secrets = false;
   #questions = false;
   #reactions = false;
+  #roomReactions = false;
   #rpcActive = 0;
   readonly #rpcWaiting: (() => void)[] = [];
 
@@ -56,6 +57,9 @@ export class BotBridgeClient {
   }
   get supportsReactions(): boolean {
     return this.#reactions;
+  }
+  get supportsRoomReactions(): boolean {
+    return this.#roomReactions;
   }
   computerSocket(ticket: string): WebSocket {
     if (!this.#connection || !this.#computer || !/^[A-Za-z0-9_-]{43}$/.test(ticket))
@@ -115,6 +119,7 @@ export class BotBridgeClient {
     this.#secrets = !!data.capabilities && record(data.capabilities).secrets === true;
     this.#questions = !!data.capabilities && record(data.capabilities).questions === true;
     this.#reactions = !!data.capabilities && record(data.capabilities).reactions === true;
+    this.#roomReactions = !!data.capabilities && record(data.capabilities).room_reactions === true;
   }
 
   async invoke(operation: string, params: Readonly<Record<string, unknown>>): Promise<unknown> {

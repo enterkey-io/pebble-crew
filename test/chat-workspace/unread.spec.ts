@@ -8,7 +8,6 @@ for (const theme of ['dark', 'light']) {
     context,
   }, info) => {
     const fixture = await installFixture(context);
-    fixture.state.orchestrator = 'mica';
     fixture.state.bots.find((b) => b.profile === 'mica')!.unread = true;
     await page.addInitScript(
       (theme) => localStorage.setItem('pebble-crew.appearance', theme),
@@ -16,6 +15,10 @@ for (const theme of ['dark', 'light']) {
     );
     await page.goto('/');
     await expect(page.getByLabel('Message', { exact: true })).toBeEnabled();
+    fixture.state.orchestrator = 'mica';
+    fixture.state.bots.find((b) => b.profile === 'mica')!.manager = null;
+    fixture.state.bots.find((b) => b.profile === 'arlo')!.manager = 'mica';
+    await emit(page, 'workspace.changed');
     async function navigation() {
       if (info.project.use.isMobile)
         await page.getByRole('button', { name: 'Toggle navigation', exact: true }).click();
@@ -62,14 +65,16 @@ for (const theme of ['dark', 'light']) {
       .poll(() => fixture.state.bots.find((b) => b.profile === 'mica')!.unread)
       .toBe(false);
     await navigation();
-    await expect(pin.getByRole('img', { name: 'Unread messages', exact: true })).toHaveCount(0);
+    await expect(pin.getByRole('img', { name: 'Unread messages', exact: true })).toHaveCount(0, {
+      timeout: 1500,
+    });
     await expect(pin.getByRole('img', { name: 'Main Pebble', exact: true })).toBeVisible();
     await row.getByRole('button', { name: /^Ember .*Bot Chat$/ }).click();
     await expect
       .poll(() => fixture.state.bots.find((b) => b.profile === 'ember')!.unread)
       .toBe(false);
     await navigation();
-    await expect(rowDot).toHaveCount(0);
+    await expect(rowDot).toHaveCount(0, { timeout: 1500 });
     fixture.state.bots.find((b) => b.profile === 'mica')!.unread = true;
     await emit(page, 'workspace.changed');
     await expect(dot).toBeVisible();

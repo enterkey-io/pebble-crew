@@ -120,6 +120,12 @@ use the approved neutral palette: dark `#ececeb` with `#1b1b1d` text; light
 `#2e2c29` with `#faf9f6` text. The unapproved terracotta action theme has been
 removed. Avatar colors are independent. Composer actions are circular neutral
 icon buttons whose geometry and states belong to the Button primitive utilities.
+The attachment button has a soft circular fill. The primary composer action is
+Voice when empty, Send with text or files, and Stop during a run. Keep one stable
+button position while its glyph changes. The composer edge stays faint in both
+themes and does not brighten on focus. Sidebar role chips use the available row
+width instead of an arbitrary percentage cap. Inline photos round the image
+itself as well as its clickable frame.
 Selection and focus remain neutral. Unread and review indicators use the owner's
 requested blue (`--unread`, `#3b82f6`). Regular unread dots sit at the far-right
 row edge; pinned dots occupy the avatar's lower-right badge position and replace

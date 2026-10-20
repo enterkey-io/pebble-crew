@@ -8,6 +8,7 @@ import {
   readRailDrag,
   reorderSection,
   sectionChoiceLabel,
+  setCrewMembers,
 } from '../ui/organization';
 import type { Organization } from '../ui/organization';
 function occurrences(org: Organization, id: string) {
@@ -17,6 +18,15 @@ function occurrences(org: Organization, id: string) {
   );
 }
 describe('reference organization', () => {
+  it('edits crew membership in one operation, returning removed members to the unsectioned list', () => {
+    const root = { id: 'pebbles', name: 'Pebbles', collapsed: false, items: [] };
+    const org = { ...initialOrganization, sections: [root, ...initialOrganization.sections] };
+    const next = setCrewMembers(org, 'studio', ['sample-2', 'sample-5']);
+    expect(next.crews[0]!.members).toEqual(['sample-2', 'sample-5']);
+    expect(next.sections[0]!.items).toEqual([{ kind: 'pebble', id: 'sample-4' }]);
+    for (const id of ['sample-2', 'sample-4', 'sample-5']) expect(occurrences(next, id)).toBe(1);
+    expect(initialOrganization.crews[0]!.members).toEqual(['sample-4', 'sample-5']);
+  });
   it('keeps the unsectioned destination out of section ordering and calls it None in menus', () => {
     const root = { id: 'pebbles', name: 'Pebbles', collapsed: true, items: [] };
     const org = {

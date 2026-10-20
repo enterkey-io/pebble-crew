@@ -6,6 +6,7 @@ it('derives scope-specific access from bridge flags without enabling unverified 
     supportsAttachments: true,
     supportsGeneratedMedia: true,
     supportsReactions: true,
+    supportsRoomReactions: true,
     supportsLiveVoice: true,
     supportsSecrets: true,
     supportsComputer: true,
@@ -27,7 +28,7 @@ it('derives scope-specific access from bridge flags without enabling unverified 
     expect(bot.patterns[key]).toBe('unverified');
   expect(conversationCapabilities(bridge, 'room')).toMatchObject({
     attachments: false,
-    reactions: false,
+    reactions: true,
     voice: false,
     secrets: false,
   });
@@ -37,6 +38,9 @@ it('derives scope-specific access from bridge flags without enabling unverified 
     voice: false,
     secrets: false,
   });
+  expect(
+    conversationCapabilities({ ...bridge, supportsRoomReactions: false }, 'room').reactions,
+  ).toBe(false);
   expect(conversationCapabilities({ ...bridge, supportsLiveVoice: false }, 'bot').voice).toBe(
     false,
   );

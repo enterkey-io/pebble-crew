@@ -67,8 +67,7 @@ test('shared design system: account settings, connections, requests, editor and 
   await page.getByLabel('Instructions', { exact: true }).fill('Coordinate the team.');
   const saveRole = page.getByRole('button', { name: 'Save role', exact: true });
   const primary = await saveRole.evaluate((node) => getComputedStyle(node).backgroundColor);
-  const channels = primary.match(/\d+/g)!.map(Number);
-  expect(channels[0]! - channels[1]!).toBeGreaterThan(30);
+  expect(primary).toBe('rgb(236, 236, 235)');
   await saveRole.click();
   await expect(page.getByText('Role saved.', { exact: true })).toBeVisible();
   await accessible(page);
@@ -134,6 +133,8 @@ test('sidebar creates and edits crews without changing relationships; fresh and 
   let dialog = page.getByRole('dialog', { name: 'New crew', exact: true });
   await expect(dialog).toBeVisible();
   await dialog.getByLabel('Name', { exact: true }).fill('Studio');
+  await dialog.getByRole('checkbox', { name: 'Arlo', exact: true }).check();
+  await dialog.getByRole('checkbox', { name: 'Mica', exact: true }).check();
   await dialog.getByRole('button', { name: 'Create', exact: true }).click();
   await expect(dialog).toHaveCount(0);
   expect(fixture.state.bots.find((b) => b.profile === 'mica')!.manager).toBe('arlo');
@@ -522,7 +523,8 @@ test('Crew chat waits for pending membership save and opens native conversation 
   await newItem(page, 'New crew');
   const editor = page.getByRole('dialog', { name: 'New crew', exact: true });
   await editor.getByLabel('Name', { exact: true }).fill('Roundtable');
-  await editor.getByRole('button', { name: 'Create', exact: true }).click();
+  await editor.getByRole('checkbox', { name: 'Arlo', exact: true }).check();
+  await editor.getByRole('checkbox', { name: 'Mica', exact: true }).check();
   let release!: () => void;
   const waiting = new Promise<void>((resolve) => {
     release = resolve;
@@ -542,11 +544,7 @@ test('Crew chat waits for pending membership save and opens native conversation 
     await route.fallback();
   });
   try {
-    for (const name of ['Arlo', 'Mica']) {
-      await page.getByLabel(`Actions for ${name}`, { exact: true }).click();
-      await page.getByRole('menuitem', { name: 'Move to crew', exact: true }).hover();
-      await page.getByRole('menuitemcheckbox', { name: 'Roundtable', exact: true }).click();
-    }
+    await editor.getByRole('button', { name: 'Create', exact: true }).click();
     await expect.poll(() => saving).toBe(true);
     await page.getByRole('button', { name: /^Roundtable .*Open chat$/ }).click();
     await page.waitForTimeout(150);

@@ -45,7 +45,9 @@ including database replacement between chunks. It asserts zero model turns.
 The native-owner browser journey additionally displays an actual generated image,
 downloads a multi-chunk CSV, and restores that selected conversation after reload.
 
-Use native-owner and `scripts/fixture/reactions_smoke.py` for native reaction schema discovery and model receipt behavior. The latter needs an isolated prepared Hermes checkout. CI covers both supported reaction builds.
+Use native-owner and `scripts/fixture/reactions_smoke.py` for native reaction schema discovery and model receipt behavior. The latter needs an isolated prepared Hermes checkout. It exercises a reaction-only turn and verifies native silence markers remain absent from the live transcript, history and resume. CI covers both supported reaction builds.
+
+`composer-entry.spec.ts` checks the soft circular attachment action, stable Voice-to-Send control, faint composer edge in both themes, and native voice setup entry. `sidebar-titles.spec.ts` checks role labels use the remaining row width without menu overlap. Run their phone wrappers and inspect settled captures. `image-viewer.spec.ts` also checks rounded inline image pixels and frame.
 
 `unread.spec.ts` checks blue pulsing row-edge indicators and the pinned avatar's
 lower-right badge, replacement/restoration of the Main star, read receipts and
@@ -61,6 +63,8 @@ on both pinned builds, using disposable homes and a deterministic loopback model
 The older build requires its native clarify toolset enabled in the synthetic CLI
 configuration. Do not confuse a missing toolset with a transport failure, and do
 not change an owner's tool configuration as part of acceptance.
+
+`crew-chats.spec.ts` creates and edits a crew with description and members, enforces the native 2–6 member bound, checks fixed header/field visibility after scrolling to the last choice, and opens a native conversation with member-only @handle suggestions and small speaker avatars. Its Group chat journey verifies no crew/placement write. Group reactions preserve per-agent identities through polling and reload. Run the phone wrapper, scope selectors to the visible navigation drawer, and allow subpixel geometry rounding. Reactions align right for owner messages and left for agent messages. The native reaction smoke covers public-handle routing, agent group reactions, owner feedback and reaction-only group turns on both pinned builds. Capability probes are not inference requests and must not mutate the deterministic model's tool-turn state.
 
 ## Gotchas
 

@@ -51,13 +51,13 @@ test('reactions can be added, replaced, removed and restored without sending a m
     const bubble = node.querySelector('[data-slot="bubble-content"]')!.getBoundingClientRect();
     const reactions = node.querySelector('[data-slot="bubble-reactions"]')!.getBoundingClientRect();
     return {
-      left: reactions.left - bubble.left,
+      right: bubble.right - reactions.right,
       top: reactions.top - bubble.bottom,
       bottom: reactions.bottom - bubble.bottom,
     };
   });
-  expect(overlap.left).toBeGreaterThan(0);
-  expect(overlap.left).toBeLessThan(24);
+  expect(overlap.right).toBeGreaterThan(0);
+  expect(overlap.right).toBeLessThan(24);
   expect(overlap.top).toBeLessThan(0);
   expect(overlap.bottom).toBeGreaterThan(0);
   const movingOverlap = await row.evaluate(async (node) => {

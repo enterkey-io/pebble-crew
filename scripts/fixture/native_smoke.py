@@ -55,6 +55,7 @@ class Model(BaseHTTPRequestHandler):
     audit_requests = False
     request_audit = []
     tool_results = []
+    group_audit = None
 
     def log_message(self, *args):
         pass
@@ -84,6 +85,11 @@ class Model(BaseHTTPRequestHandler):
             Model.saw_native_tool = True
         text = "Native fixture reply"
         latest_user = next((m for m in reversed(data.get("messages", [])) if m.get("role") == "user"), {})
+        if Model.group_audit is not None:
+            Model.group_audit.append({'user': str(latest_user.get('content'))[:500],
+                'tools': [t.get('function', {}).get('name') for t in data.get('tools', [])],
+                'results': [str(m.get('content'))[:1200] for m in data.get('messages', []) if m.get('role') == 'tool'],
+                'group_context': 'Recent group reactions:' in json.dumps(data)})
         if 'nativegeneratedmedia' in str(latest_user.get('content')) or 'nativedocument' in str(latest_user.get('content')):
             import re
             context = '\n'.join(str(message.get('content')) for message in data.get('messages', []))
@@ -122,16 +128,22 @@ class Model(BaseHTTPRequestHandler):
             and can_call('message_agent'))
         approval = ("nativeapproval" in str(latest_user.get("content")) and not Model.emitted_approval
             and can_call('terminal'))
-        wants_reaction = 'nativereaction' in str(latest_user.get('content')) and not Model.emitted_reaction
+        wants_reaction = self.path.endswith('/chat/completions') and 'nativereaction' in str(latest_user.get('content')) and not Model.emitted_reaction
         if wants_reaction and 'pebble_react' not in tool_names:
             Model.reaction_discovery_guided = any('tool_describe(names=["pebble_react"])' in str(m.get('content')) for m in data.get('messages', []))
         discover_reaction = (wants_reaction and 'pebble_react' not in tool_names
             and not Model.reaction_describe_requested and 'tool_describe' in tool_names
             and 'pebble_react' in json.dumps(data))
-        reaction = (wants_reaction and ('pebble_react' in tool_names or Model.reaction_schema_received))
+        reaction = (wants_reaction and can_call('pebble_react') and ('pebble_react' in tool_names or Model.reaction_schema_received))
         if 'nativefeedback' in str(latest_user.get('content')):
             # The reply only acknowledges feedback actually present in the model input.
             text = 'Native feedback received' if any('[The user reacted ❤️' in str(m.get('content')) for m in data.get('messages', [])) else 'Native feedback missing'
+        if 'nativegroupfeedback' in str(latest_user.get('content')):
+            text = 'Native group feedback received' if any('Recent group reactions:' in str(m.get('content')) and '"emoji": "❤️"' in str(m.get('content')) and '"name": "You"' in str(m.get('content')) for m in data.get('messages', [])) else 'Native group feedback missing'
+        if self.path.endswith('/chat/completions') and 'nativereactiononly' in str(latest_user.get('content')):
+            marker = '(pass)' if any('Recent group reactions:' in str(m.get('content')) for m in data.get('messages', [])) else 'NO_REPLY'
+            assert any('On each human turn' in str(m.get('content')) and marker in str(m.get('content')) for m in data.get('messages', [])), 'Native per-turn reaction guidance missing'
+            text = marker
         if "nativestop" in str(latest_user.get("content")) and can_call('message_agent'):
             Model.slow_started.set()
             time.sleep(3)

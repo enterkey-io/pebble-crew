@@ -32,8 +32,9 @@ test('empty system sections disappear; system names and item kinds stay fixed', 
   await page.getByRole('menuitem', { name: 'New crew', exact: true }).click();
   const dialog = page.getByRole('dialog', { name: 'New crew', exact: true });
   await dialog.getByLabel('Name', { exact: true }).fill('Studio');
-  await dialog.getByRole('button', { name: 'Create', exact: true }).click();
-  await expect(page.locator('.pc-list[aria-label="Crews"]')).toBeVisible();
+  await expect(dialog.getByRole('button', { name: 'Create', exact: true })).toBeDisabled();
+  await dialog.getByRole('button', { name: 'Cancel', exact: true }).click();
+  await expect(page.locator('.pc-list[aria-label="Crews"]')).toHaveCount(0);
   await expect(page.getByRole('button', { name: 'Actions for Crews section' })).toHaveCount(0);
   await page.getByLabel('Actions for Arlo', { exact: true }).click();
   await expect(page.getByRole('menuitem', { name: /Move (up|down|earlier)/ })).toHaveCount(0);
@@ -261,6 +262,8 @@ test('whole rows drag between sections, pins and crews without exposed handles',
     await page.getByRole('menuitem', { name: 'New crew', exact: true }).click();
     const dialog = page.getByRole('dialog', { name: 'New crew', exact: true });
     await dialog.getByLabel('Name', { exact: true }).fill(name);
+    for (const member of name === 'First crew' ? ['Arlo', 'Mica'] : ['Arlo', 'Mica'])
+      await dialog.getByRole('checkbox', { name: member, exact: true }).check();
     await dialog.getByRole('button', { name: 'Create', exact: true }).click();
     await expect(dialog).toHaveCount(0);
   }

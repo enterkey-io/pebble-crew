@@ -200,7 +200,7 @@ export function GeneratedImage({ source, alt }: { source: string; alt: string })
     };
   }, [media, source, visible, attempt, key]);
   return (
-    <span className="message-image" ref={host}>
+    <span className="message-image rounded-2xl" ref={host}>
       {state.kind === 'ready' && state.file.blob.type.startsWith('image/') ? (
         <>
           <Dialog
@@ -210,10 +210,11 @@ export function GeneratedImage({ source, alt }: { source: string; alt: string })
             <DialogTrigger asChild>
               <Button
                 variant="quiet"
-                className="message-image-open block size-full cursor-zoom-in rounded-none p-0"
+                className="message-image-open flex size-full cursor-zoom-in items-center justify-center overflow-hidden rounded-2xl p-0"
                 aria-label={`View ${alt || state.file.name}`}
               >
                 <img
+                  className="block h-auto max-h-full w-auto max-w-full rounded-2xl object-contain"
                   src={state.url}
                   alt={alt || state.file.name}
                   loading="lazy"

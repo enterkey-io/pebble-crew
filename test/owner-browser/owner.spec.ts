@@ -155,7 +155,47 @@ test('private first use, native onboarding, idle keepalive, reconnection, settin
   await page.getByRole('menuitem', { name: 'New crew', exact: true }).click();
   const crew = page.getByRole('dialog', { name: 'New crew', exact: true });
   await crew.getByLabel('Name', { exact: true }).fill('Research');
+  for (const name of ['Alpha', 'Beta'])
+    await crew.getByRole('checkbox', { name, exact: true }).check();
   await crew.getByRole('button', { name: 'Create', exact: true }).click();
+  await expect(page.getByRole('button', { name: /^Research .*Open chat$/ })).toBeVisible();
+  await page.getByRole('button', { name: /^Research .*Open chat$/ }).click();
+  await expect(page.locator('.chat-title')).toContainText('Research');
+  const groupField = page.getByLabel('Message', { exact: true });
+  await groupField.fill('@');
+  await page.getByRole('option', { name: 'Alpha @alpha', exact: true }).click();
+  await groupField.fill('@alpha Hello from the crew');
+  await groupField.press('Enter');
+  const groupMessage = page
+    .locator('[data-message-role="user"]')
+    .filter({ hasText: '@alpha Hello from the crew' });
+  await expect(groupMessage).toHaveCount(1);
+  await expect(groupMessage).toHaveAttribute('data-message-id', /^user:/);
+  await expect(page.locator('[data-message-id^="pending-"]')).toHaveCount(0);
+  const groupReply = page
+    .locator('[data-message-role="assistant"]')
+    .filter({ hasText: 'Native fixture reply' })
+    .last();
+  await expect(groupReply).toBeVisible({ timeout: 30000 });
+  await expect(groupReply.locator('[data-slot="message-header"] .agent-avatar')).toBeVisible();
+  await groupReply.getByRole('button', { name: 'React to message', exact: true }).click();
+  await page.getByRole('menuitem', { name: 'React with heart', exact: true }).click();
+  await expect(groupReply.getByRole('button', { name: '❤️ · You', exact: true })).toBeVisible();
+  await page.screenshot({
+    animations: 'disabled',
+    path: 'test-results/native-crew-conversation.png',
+  });
+  await page.getByRole('button', { name: 'New', exact: true }).click();
+  await page.getByRole('menuitem', { name: 'Group chat', exact: true }).click();
+  const groupDialog = page.getByRole('dialog', { name: 'New group chat', exact: true });
+  await groupDialog.getByLabel('Name', { exact: true }).fill('Quick discussion');
+  for (const name of ['Alpha', 'Beta'])
+    await groupDialog.getByRole('checkbox', { name, exact: true }).check();
+  await groupDialog.getByRole('button', { name: 'Create', exact: true }).click();
+  await expect(page.locator('.chat-title')).toContainText('Quick discussion');
+  await expect(
+    page.getByRole('button', { name: 'Quick discussion Group chat', exact: true }),
+  ).toBeVisible();
   await expect(page.getByRole('button', { name: /^Research .*Open chat$/ })).toBeVisible();
   await page.getByRole('button', { name: 'Actions for Alpha', exact: true }).click();
   await page.getByRole('menuitem', { name: 'Edit pebble', exact: true }).click();
@@ -198,6 +238,8 @@ test('private first use, native onboarding, idle keepalive, reconnection, settin
   await expect(
     page
       .getByRole('navigation', { name: 'Pebbles', includeHidden: true })
+      .locator('.pebble-row')
+      .filter({ has: page.getByText('Alpha', { exact: true }) })
       .locator('.agent-avatar img'),
   ).toHaveCount(1);
   await page.getByRole('button', { name: 'Animated', exact: true }).click();
@@ -205,6 +247,8 @@ test('private first use, native onboarding, idle keepalive, reconnection, settin
   await expect(
     page
       .getByRole('navigation', { name: 'Pebbles', includeHidden: true })
+      .locator('.pebble-row')
+      .filter({ has: page.getByText('Alpha', { exact: true }) })
       .locator('.agent-avatar img'),
   ).toHaveCount(0);
   await page.getByRole('button', { name: 'Photo', exact: true }).click();
@@ -212,6 +256,8 @@ test('private first use, native onboarding, idle keepalive, reconnection, settin
   await expect(
     page
       .getByRole('navigation', { name: 'Pebbles', includeHidden: true })
+      .locator('.pebble-row')
+      .filter({ has: page.getByText('Alpha', { exact: true }) })
       .locator('.agent-avatar img'),
   ).toHaveCount(1);
   await page.getByLabel('Title', { exact: true }).fill('Team lead');

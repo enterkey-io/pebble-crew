@@ -10,6 +10,8 @@ import { UnreadDot } from './UnreadDot';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
+import { Checkbox } from '@/components/ui/checkbox';
+import { safeError } from '@hermes-client/core';
 import {
   Dialog,
   DialogContent,
@@ -41,6 +43,7 @@ import {
   placementOf,
   readRailDrag,
   reorderSection,
+  setCrewMembers,
 } from './organization';
 import type { Organization, OrganizationEditor, Placement, RailDrag } from './organization';
 import { useOverlayHistory } from './overlay-history';
@@ -511,21 +514,41 @@ export function OrganizationRail({
 export function OrganizationDialog({
   editor,
   org,
+  pebbles,
+  face,
+  onCreateGroup,
   onChange,
   onClose,
 }: {
   editor: OrganizationEditor | null;
   org: Organization;
+  pebbles: { id: string; name: string; handle: string }[];
+  face: (id: string) => ReactNode;
+  onCreateGroup: (value: { id: string; name: string; members: string[] }) => Promise<void>;
   onChange: ChangeOrganization;
   onClose: () => void;
 }) {
   const [name, setName] = useState(''),
     [purpose, setPurpose] = useState('');
-  const [original, setOriginal] = useState({ name: '', purpose: '' });
+  const [members, setMembers] = useState<string[]>([]);
+  const [original, setOriginal] = useState<{ name: string; purpose: string; members: string[] }>({
+    name: '',
+    purpose: '',
+    members: [],
+  });
   const [discard, setDiscard] = useState(false);
+  const [pending, setPending] = useState(false);
+  const [error, setError] = useState('');
+  const [creationId, setCreationId] = useState('');
   const isCrew = editor?.kind === 'new-crew' || editor?.kind === 'edit-crew';
+  const isGroup = editor?.kind === 'new-group-chat';
   function requestClose() {
-    if (name !== original.name || purpose !== original.purpose) {
+    if (pending) return false;
+    if (
+      name !== original.name ||
+      purpose !== original.purpose ||
+      JSON.stringify(members) !== JSON.stringify(original.members)
+    ) {
       setDiscard(true);
       return false;
     }
@@ -544,15 +567,39 @@ export function OrganizationDialog({
           : undefined;
     setName(entity?.name ?? '');
     setPurpose(entity && 'purpose' in entity ? entity.purpose : '');
+    setMembers(entity && 'members' in entity ? entity.members : []);
     setOriginal({
       name: entity?.name ?? '',
       purpose: entity && 'purpose' in entity ? entity.purpose : '',
+      members: entity && 'members' in entity ? entity.members : [],
     });
     setDiscard(false);
+    setPending(false);
+    setError('');
+    setCreationId(crypto.randomUUID());
   }, [editor]);
-  function save() {
-    if (!editor || !name.trim()) return;
-    const id = crypto.randomUUID();
+  async function save() {
+    if (
+      !editor ||
+      pending ||
+      !name.trim() ||
+      ((isCrew || isGroup) && (members.length < 2 || members.length > 6))
+    )
+      return;
+    const id = creationId;
+    if (editor.kind === 'new-group-chat') {
+      setPending(true);
+      setError('');
+      try {
+        await onCreateGroup({ id: 'group-' + id, name: name.trim(), members });
+        onClose();
+      } catch (error) {
+        setError(safeError(error).message);
+      } finally {
+        setPending(false);
+      }
+      return;
+    }
     onChange((current) => {
       switch (editor.kind) {
         case 'new-section':
@@ -568,23 +615,31 @@ export function OrganizationDialog({
             ),
           };
         case 'new-crew':
-          return {
-            ...current,
-            crews: [
-              ...current.crews,
-              { id, name: name.trim(), purpose, collapsed: false, members: [] },
-            ],
-            sections: current.sections.map((s) =>
-              s.id === 'crews' ? { ...s, items: [...s.items, { kind: 'crew', id }] } : s,
-            ),
-          };
+          return setCrewMembers(
+            {
+              ...current,
+              crews: [
+                ...current.crews,
+                { id, name: name.trim(), purpose, collapsed: false, members: [] },
+              ],
+              sections: current.sections.map((s) =>
+                s.id === 'crews' ? { ...s, items: [...s.items, { kind: 'crew', id }] } : s,
+              ),
+            },
+            id,
+            members,
+          );
         case 'edit-crew':
-          return {
-            ...current,
-            crews: current.crews.map((c) =>
-              c.id === editor.id ? { ...c, name: name.trim(), purpose } : c,
-            ),
-          };
+          return setCrewMembers(
+            {
+              ...current,
+              crews: current.crews.map((c) =>
+                c.id === editor.id ? { ...c, name: name.trim(), purpose } : c,
+              ),
+            },
+            editor.id,
+            members,
+          );
       }
     });
     onClose();
@@ -594,9 +649,11 @@ export function OrganizationDialog({
       ? 'Crew settings'
       : editor?.kind === 'edit-section'
         ? 'Rename section'
-        : isCrew
-          ? 'New crew'
-          : 'New section';
+        : isGroup
+          ? 'New group chat'
+          : isCrew
+            ? 'New crew'
+            : 'New section';
   return (
     <Dialog
       open={!!editor}
@@ -605,12 +662,13 @@ export function OrganizationDialog({
       }}
     >
       <DialogContent
+        size="content"
         onCloseAutoFocus={(event) => {
           event.preventDefault();
           document.querySelector<HTMLElement>('[aria-label="New"]')?.focus();
         }}
       >
-        <DialogHeader>
+        <DialogHeader className="shrink-0">
           <DialogTitle>{title}</DialogTitle>
           <DialogDescription className="sr-only">
             Organize your sidebar. Agent profiles and chat history stay intact.
@@ -619,31 +677,83 @@ export function OrganizationDialog({
         <Form
           onSubmit={(event) => {
             event.preventDefault();
-            save();
+            void save();
           }}
-          className="pc-organization-form"
+          className="flex min-h-0 flex-col gap-4"
         >
-          <div>
-            <Label htmlFor="organization-name">Name</Label>
-            <Input
-              id="organization-name"
-              value={name}
-              onChange={(event) => setName(event.target.value)}
-              maxLength={60}
-            />
-          </div>
-          {isCrew && (
-            <div>
-              <Label htmlFor="organization-purpose">Purpose</Label>
-              <Textarea
-                id="organization-purpose"
-                rows={3}
-                value={purpose}
-                onChange={(event) => setPurpose(event.target.value)}
+          <div className="grid min-h-0 gap-4 overflow-y-auto px-1 pb-1">
+            <div className="grid gap-2">
+              <Label htmlFor="organization-name">Name</Label>
+              <Input
+                id="organization-name"
+                value={name}
+                disabled={pending}
+                onChange={(event) => setName(event.target.value)}
+                maxLength={60}
               />
             </div>
+            {isCrew && (
+              <div className="grid gap-2">
+                <Label htmlFor="organization-purpose">Description</Label>
+                <Textarea
+                  id="organization-purpose"
+                  rows={3}
+                  value={purpose}
+                  maxLength={2000}
+                  onChange={(event) => setPurpose(event.target.value)}
+                />
+              </div>
+            )}
+            {(isCrew || isGroup) && (
+              <fieldset className="min-w-0">
+                <legend className="mb-2 text-sm font-medium">
+                  Pebbles <span className="font-normal text-muted-foreground">(2–6)</span>
+                </legend>
+                <div
+                  className="grid max-h-56 gap-1 overflow-y-auto"
+                  aria-label={isGroup ? 'Group members' : 'Crew members'}
+                >
+                  {pebbles.map((pebble) => (
+                    <Label
+                      key={pebble.id}
+                      className="relative flex min-h-11 cursor-pointer items-center gap-3 rounded-lg px-2 py-1.5 hover:bg-muted/50 transition-colors"
+                    >
+                      <Checkbox
+                        checked={members.includes(pebble.id)}
+                        disabled={pending || (!members.includes(pebble.id) && members.length >= 6)}
+                        onCheckedChange={(checked) =>
+                          setMembers((current) =>
+                            checked === true
+                              ? [...current, pebble.id]
+                              : current.filter((id) => id !== pebble.id),
+                          )
+                        }
+                        aria-label={pebble.name}
+                      />
+                      <span aria-hidden="true" className="shrink-0 [&_.agent-avatar]:size-7">
+                        {face(pebble.id)}
+                      </span>
+                      <span className="min-w-0 flex-1 truncate">{pebble.name}</span>
+                      <span className="min-w-0 truncate text-xs font-normal text-muted-foreground">
+                        @{pebble.handle}
+                      </span>
+                    </Label>
+                  ))}
+                  {!pebbles.length && (
+                    <p className="text-sm text-muted-foreground">
+                      Add pebbles before creating a crew.
+                    </p>
+                  )}
+                </div>
+              </fieldset>
+            )}
+          </div>
+          {error && (
+            <p role="alert" className="text-sm text-destructive">
+              {error}
+            </p>
           )}
-          <div className="pc-form-footer">
+          <div className="pc-form-footer shrink-0">
             {editor?.kind === 'edit-crew' && (
               <Button
                 type="button"
@@ -672,10 +782,17 @@ export function OrganizationDialog({
                   Remove section
                 </Button>
               )}
-            <Button type="button" variant="ghost" onClick={onClose}>
+            <Button type="button" variant="ghost" onClick={onClose} disabled={pending}>
               Cancel
             </Button>
-            <Button disabled={!name.trim()} type="submit">
+            <Button
+              disabled={
+                pending ||
+                !name.trim() ||
+                ((isCrew || isGroup) && (members.length < 2 || members.length > 6))
+              }
+              type="submit"
+            >
               {editor?.kind.startsWith('new') ? 'Create' : 'Save changes'}
             </Button>
           </div>

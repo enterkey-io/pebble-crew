@@ -11,6 +11,18 @@ Native credentials remain on the owner's Hermes host. Both pinned builds have
 passed deterministic native card/notification checks; final package publication
 and owner installation remain separate gates.
 
+Final additions include immediate unread clearing, selective reaction-only turns,
+rounded inline photos and uncapped sidebar role labels. The shared composer
+offers Voice when empty and Send when typing, with a soft circular attachment
+control and a faint edge in both themes. Native reaction-only checks pass on both
+supported Hermes builds without changing owner personas or stored history.
+
+Crew setup now collects description and members. Separate ad hoc Group chat
+creation leaves sidebar membership unchanged. Shared member mentions, speaker
+avatars and owner-local group reactions use real native room events. Reactions
+align with their message side; current group feedback enters the next native
+turn. A reaction-only group turn uses Hermes's `(pass)` convention.
+
 **0.7.8-preview.20 candidate:** Main Pebble reporting/Instructions management has
 no blocking switch. Per-turn guidance requires asking before unsolicited changes;
 a clear owner request already authorizes its change. The org view is a connected,

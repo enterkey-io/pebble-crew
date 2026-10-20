@@ -166,7 +166,17 @@ export function Menu({
     <span className={`menu-anchor ${className}`}>
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
-          <Button variant="quiet" size="icon-sm" aria-label={label} disabled={disabled}>
+          <Button
+            variant={placement === 'composer' ? 'secondary' : 'quiet'}
+            className={
+              placement === 'composer'
+                ? 'rounded-full bg-foreground/5 text-muted-foreground hover:bg-foreground/10 hover:text-foreground'
+                : undefined
+            }
+            size="icon-sm"
+            aria-label={label}
+            disabled={disabled}
+          >
             {children ?? <MoreHorizontal />}
           </Button>
         </DropdownMenuTrigger>

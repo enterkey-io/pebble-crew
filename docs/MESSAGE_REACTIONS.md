@@ -16,11 +16,21 @@ No desktop-wide toolset or arbitrary native RPC is exposed.
 Owner reactions are persisted on Hermes's message rows. Hermes includes unseen
 owner reactions in the agent's next user turn, once. Adding a reaction does not
 start an additional model turn. Reloading the app reads the same native history.
-There is no separate reaction database or hosted reaction service.
+Direct-chat reactions use no separate reaction database or hosted reaction service.
 
-The current Hermes group API has no equivalent reaction operation. Crew chats
-do not expose reaction controls, and the agent wrapper refuses group sessions
-rather than writing reactions into an invisible participant transcript.
+Hermes's group API has no reaction operation. Crew and ad hoc group reactions
+therefore use an owner-local overlay in Pebble Crew's Hermes workspace database.
+Targets are verified against the live native room and its immutable message
+events. Reactions never alter native transcripts or copy their text into the
+overlay. Each pebble has its own reaction identity; removed/replaced rooms do
+not inherit them. Group participants receive current reaction feedback in their
+next native turn. Reacting alone does not run a model.
+
+Agents receive selective per-turn guidance: a fitting reaction can acknowledge a
+message without a redundant written reply. Native silence markers are suppressed
+in the displayed stream and history; native stored rows remain intact. User
+message reactions align at the lower-right edge; agent message reactions align
+at the lower-left. Both are transparent, borderless and clear of message text.
 
 ## Wire contract
 
@@ -38,6 +48,15 @@ The result is `{row_id, reactions}` from `message.react`. Both owner changes
 and native agent changes emit `message.reaction`. Message history carries the
 durable list in `display_metadata.reactions`. Internal `seen` bookkeeping is not
 part of the rendered state. Uncertain mutation outcomes are never replayed.
+
+Integration preview.21 adds `capabilities.room_reactions`. `room.react` accepts
+exactly `room_id`, `event_id`, and `emoji`. Its receipt includes `event_id`,
+`reactions`, `room_key` and monotonic `revision`. `room.log` adds `room_key`,
+`reaction_revision` and `reaction_updates`, including empty lists for removals.
+Older polls cannot replace a newer receipt. Agent `pebble_react` uses the current
+verified native group session; `message_event_id` targets a group message and
+omitting targets selects the latest user message. Direct chats still use
+`message_row_id`. Neither allows choosing another caller or room.
 
 ## Updates and verification
 

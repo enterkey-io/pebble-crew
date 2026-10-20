@@ -10,6 +10,22 @@ import {
 } from './conversation-domain';
 
 describe('conversation presentation boundary', () => {
+  it('uses only an exact native group-send receipt, not the outgoing browser id', async () => {
+    const edit = { roomId: 'group-a', eventId: 'outgoing-id', text: 'Hello' };
+    const event = { room_id: 'group-a', event_id: 'user:native-hash', kind: 'message.user' };
+    const receipt = { accepted: true, client_event_id: edit.eventId, event };
+    const domain = new ConversationDomain({ invoke: async () => receipt });
+    expect(await domain.sendRoom(edit)).toBe('user:native-hash');
+    for (const invalid of [
+      { ...receipt, accepted: false },
+      { ...receipt, client_event_id: 'another-tab' },
+      { ...receipt, event: { ...event, room_id: 'foreign' } },
+      { ...receipt, event: { ...event, kind: 'message.member' } },
+    ]) {
+      const rejected = new ConversationDomain({ invoke: async () => invalid });
+      await expect(rejected.sendRoom(edit)).rejects.toThrow();
+    }
+  });
   it('keeps actual receipts and read coverage while removing hidden source fields', () => {
     const data = decodeHistory({
       messages: [
