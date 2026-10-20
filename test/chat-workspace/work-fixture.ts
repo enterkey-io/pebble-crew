@@ -34,6 +34,7 @@ export async function installWorkFixture(context: BrowserContext) {
   >();
   const receipts = new Map<string, Record<string, unknown>>();
   const calls: string[] = [];
+  let moveResponse: Promise<void> | undefined;
   let loseNextCreate = false;
   let interruptNextProject = false;
   const projectAttempts: string[] = [];
@@ -179,6 +180,17 @@ export async function installWorkFixture(context: BrowserContext) {
           },
         },
       });
+    if (operation === 'work.task.move') {
+      if (task.revision !== params.expected_revision)
+        return route.fulfill({ status: 409, json: { code: 'STALE_REVISION' } });
+      if (moveResponse) {
+        const wait = moveResponse;
+        moveResponse = undefined;
+        await wait;
+      }
+      task.status = params.status;
+      task.revision = nextRevision();
+    }
     if (operation === 'work.task.update') {
       if (task.revision !== params.expected_revision)
         return route.fulfill({ status: 409, json: { code: 'STALE_REVISION' } });
@@ -215,6 +227,9 @@ export async function installWorkFixture(context: BrowserContext) {
     tasks,
     calls,
     nextRevision,
+    holdNextMove: (wait: Promise<void>) => {
+      moveResponse = wait;
+    },
     projectAttempts,
     interruptNextProject: () => {
       interruptNextProject = true;

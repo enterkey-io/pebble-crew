@@ -40,10 +40,12 @@ function SheetContent({
   children,
   side = 'right',
   showCloseButton = true,
+  size = 'default',
   ...props
 }: React.ComponentProps<typeof SheetPrimitive.Content> & {
   side?: 'top' | 'right' | 'bottom' | 'left';
   showCloseButton?: boolean;
+  size?: 'default' | 'panel';
 }) {
   return (
     <SheetPortal>
@@ -60,6 +62,10 @@ function SheetContent({
             'inset-x-0 top-0 h-auto border-b data-[state=closed]:slide-out-to-top data-[state=open]:slide-in-from-top',
           side === 'bottom' &&
             'inset-x-0 bottom-0 h-auto border-t data-[state=closed]:slide-out-to-bottom data-[state=open]:slide-in-from-bottom',
+          (side === 'left' || side === 'right') &&
+            'max-md:top-[var(--app-viewport-top,0px)] max-md:bottom-auto max-md:h-[var(--app-viewport-height,100dvh)]',
+          size === 'panel' &&
+            'w-[min(360px,calc(100vw-24px))] max-w-[calc(100vw-24px)] gap-0 border-0 bg-[var(--rail)] p-0 sm:max-w-[360px]',
           className,
         )}
         {...props}

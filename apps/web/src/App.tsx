@@ -1,3 +1,4 @@
+import { DiscardChanges } from './ui/DiscardChanges';
 import { useComposerSize } from './chat/use-composer-size';
 import { CommandSuggestions } from './chat/CommandSuggestions';
 import type { CommandSuggestionsHandle } from './chat/CommandSuggestions';
@@ -1933,6 +1934,7 @@ export function App({ owner }: { owner?: OwnerConnection }) {
               workspace &&
               (work.catalog ? (
                 <WorkArea
+                  key={work.catalog.workspaceId + '/' + workBoard}
                   client={client}
                   workspace={workspace}
                   catalog={work.catalog}
@@ -2500,6 +2502,7 @@ export function App({ owner }: { owner?: OwnerConnection }) {
                 : 'Project board'
             }
             variant="dialog"
+            sizing="content"
             onBeforeClose={() => {
               if (!dirtyEditor.current) return true;
               pendingNavigation.current = () => setWorkDialog(undefined);
@@ -2515,6 +2518,7 @@ export function App({ owner }: { owner?: OwnerConnection }) {
                 ('id' in workDialog ? workDialog.id : '')
               }
               target={workDialog}
+              visibleBoard={area === 'tasks' ? workBoard : undefined}
               client={client}
               workspace={workspace}
               catalog={work.catalog}
@@ -2629,7 +2633,12 @@ export function App({ owner }: { owner?: OwnerConnection }) {
           }
         />
         {confirmCrew && (
-          <Drawer title="Updated crew" variant="dialog" onClose={() => setConfirmCrew(undefined)}>
+          <Drawer
+            title="Updated crew"
+            variant="dialog"
+            sizing="content"
+            onClose={() => setConfirmCrew(undefined)}
+          >
             <h2>Start a chat with this crew?</h2>
             <p>Membership changed. Your previous chat will stay in Group chats.</p>
             <div className="form-actions">
@@ -2642,36 +2651,16 @@ export function App({ owner }: { owner?: OwnerConnection }) {
             </div>
           </Drawer>
         )}
-        {confirmNavigation && (
-          <Drawer
-            title="Unsaved changes"
-            variant="dialog"
-            onClose={() => setConfirmNavigation(false)}
-          >
-            <h2>Discard unsaved changes?</h2>
-            <div className="form-actions">
-              <Button
-                variant="secondary"
-                data-autofocus
-                onClick={() => setConfirmNavigation(false)}
-              >
-                Keep editing
-              </Button>
-              <Button
-                variant="destructive"
-                className="danger-text"
-                onClick={() => {
-                  dirtyEditor.current = false;
-                  setConfirmNavigation(false);
-                  pendingNavigation.current?.();
-                  pendingNavigation.current = undefined;
-                }}
-              >
-                Discard changes
-              </Button>
-            </div>
-          </Drawer>
-        )}
+        <DiscardChanges
+          open={confirmNavigation}
+          onOpenChange={setConfirmNavigation}
+          onDiscard={() => {
+            dirtyEditor.current = false;
+            setConfirmNavigation(false);
+            pendingNavigation.current?.();
+            pendingNavigation.current = undefined;
+          }}
+        />
         {review && (
           <Drawer title="Review deletion" onClose={closeReview}>
             <RequestReview

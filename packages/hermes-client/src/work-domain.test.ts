@@ -80,4 +80,29 @@ describe('native work boundary', () => {
       }),
     ).toThrow();
   });
+  it('moves a task only with explicit scope, current revision and the original operation identity', async () => {
+    const invoke = vi.fn().mockResolvedValue({
+      id: 'move-1',
+      state: 'completed',
+      board: 'research',
+      task_id: 'task-1',
+    });
+    const domain = new WorkDomain({ invoke });
+    await domain.moveTask({
+      workspaceId: 'owner-1',
+      operationId: 'move-1',
+      board: 'research',
+      id: 'task-1',
+      expectedRevision: 'revision-1',
+      status: 'todo',
+    });
+    expect(invoke).toHaveBeenCalledWith('work.task.move', {
+      workspace_id: 'owner-1',
+      operation_id: 'move-1',
+      board: 'research',
+      id: 'task-1',
+      expected_revision: 'revision-1',
+      status: 'todo',
+    });
+  });
 });

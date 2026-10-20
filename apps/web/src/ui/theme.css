@@ -1,5 +1,6 @@
 @import './foundation.css';
-@import './layout.css';
-@import './product.css';
-@import './org-chart.css';
-@import './work.css';
+@import '../components/ui/tooltip.css';
+@import './layout.css' layer(components);
+@import './product.css' layer(components);
+@import './org-chart.css' layer(components);
+@import './work.css' layer(components);

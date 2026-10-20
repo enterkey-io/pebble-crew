@@ -496,19 +496,19 @@ test('private first use, native onboarding, idle keepalive, reconnection, settin
   await page.getByRole('button', { name: 'New', exact: true }).click();
   await page.getByRole('menuitem', { name: 'New project board', exact: true }).click();
   await page.getByLabel('Name', { exact: true }).fill('Native owner project');
-  await page.getByLabel('Instructions', { exact: true }).fill('Record original evidence.');
+  await page.getByLabel('Description', { exact: true }).fill('Record original evidence.');
   await page.getByRole('button', { name: 'Create project board', exact: true }).click();
-  await page.getByRole('button', { name: 'Open board', exact: true }).click();
+  await page.getByRole('button', { name: 'View Board', exact: true }).click();
   await expect(
     page.getByRole('heading', { name: 'Native owner project', exact: true }),
   ).toBeVisible();
   await page.getByRole('button', { name: 'New task', exact: true }).click();
   await page.getByLabel('Title', { exact: true }).fill('Native owner task');
-  await page.getByLabel('Instructions', { exact: true }).fill('- [ ] Verify the native board');
+  await page.getByLabel('Details', { exact: true }).fill('- [ ] Verify the native board');
   await page.getByRole('combobox', { name: 'Assigned to', exact: true }).click();
   await page.getByRole('option', { name: 'Nova', exact: true }).click();
   await page.getByRole('button', { name: 'Create task', exact: true }).click();
-  await page.getByRole('button', { name: 'Open task board', exact: true }).click();
+  await expect(page.getByRole('dialog', { name: 'Task', exact: true })).toHaveCount(0);
   await page.getByRole('button', { name: 'Open task Native owner task', exact: true }).click();
   await page.getByLabel('Title', { exact: true }).fill('Verified native owner task');
   await page.getByRole('button', { name: 'Save', exact: true }).click();
@@ -531,7 +531,7 @@ test('private first use, native onboarding, idle keepalive, reconnection, settin
   await expect(page.getByRole('combobox', { name: 'Assigned to', exact: true })).toContainText(
     'Nova',
   );
-  await expect(page.getByRole('textbox', { name: 'Instructions', exact: true })).toHaveValue(
+  await expect(page.getByRole('textbox', { name: 'Details', exact: true })).toHaveValue(
     '- [ ] Verify the native board',
   );
   await page.getByRole('tab', { name: 'Activity', exact: true }).click();

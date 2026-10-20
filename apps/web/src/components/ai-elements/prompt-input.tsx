@@ -3,12 +3,22 @@ import type { ReactNode, KeyboardEvent, ComponentProps } from 'react';
 import { ArrowUp, Square } from 'lucide-react';
 import { Textarea } from '../ui/textarea';
 import { Button } from '../ui/button';
-export { Textarea as PromptInputField } from '../ui/textarea';
+export function PromptInputField({ className, ...props }: ComponentProps<typeof Textarea>) {
+  return (
+    <Textarea
+      className={cn(
+        'min-h-9 max-h-40 min-w-0 flex-1 resize-none rounded-none border-0 bg-transparent px-0 py-[7px] text-[length:var(--text-composer)] leading-[22px] shadow-none focus-visible:ring-0 dark:bg-transparent',
+        className,
+      )}
+      {...props}
+    />
+  );
+}
 export function PromptInputFrame({ className, ...props }: ComponentProps<'form'>) {
   return (
     <form
       data-slot="prompt-input"
-      className={cn('flex min-w-0 items-end gap-2 rounded-3xl bg-secondary p-2.5', className)}
+      className={cn('flex min-w-0 items-center gap-2 rounded-3xl bg-secondary p-2.5', className)}
       {...props}
     />
   );

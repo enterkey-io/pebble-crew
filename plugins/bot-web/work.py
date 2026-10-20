@@ -1,5 +1,6 @@
 """Explicitly scoped native projects and tasks, with owner-local retry receipts."""
 import json
+import re
 from pathlib import Path
 
 from .operations import InvalidOperation, fields, identifier
@@ -8,7 +9,7 @@ from .work_store import WorkStore, fingerprint, operation_id
 
 
 OPERATIONS = {'work.describe', 'work.board', 'work.task', 'work.receipt',
-    'work.project.create', 'work.project.update', 'work.task.create', 'work.task.update', 'work.task.comment'}
+    'work.project.create', 'work.project.update', 'work.task.create', 'work.task.update', 'work.task.comment', 'work.task.move'}
 
 
 def text(value, limit, blank=True):
@@ -141,7 +142,7 @@ class WorkService:
         detail = native.task(board['slug'], identifier(ident))
         return {'workspace_id': state['id'], 'board': board, 'task': task_view(detail['task']),
             'comments': [{key: c.get(key) for key in ('id', 'author', 'body', 'created_at')} for c in detail['comments']],
-            'dependencies': detail.get('link_tasks', [])}
+            'dependencies': detail.get('link_tasks', []), 'mentions': self.store.mention_states(board['slug'], ident)}
 
     def assignee(self, state, value):
         if value is None:
@@ -153,6 +154,8 @@ class WorkService:
 
     def mutate_task(self, native, state, board, operation, params, actor):
         base = ['workspace_id', 'operation_id', 'board']
+        if operation == 'work.task.move':
+            return self.move_task(native, state, board, params, actor)
         if operation == 'work.task.comment':
             fields(params, base + ['id', 'body'])
             body = text(params['body'], 12000, False)
@@ -182,8 +185,11 @@ class WorkService:
             if intent['state'] != 'reserved':
                 return intent  # A crash after native append is uncertain; never append twice.
             self.store.save(intent['id'], 'uncertain', {'board': board['slug'], 'task_id': ident})
-            native.comment(board['slug'], ident, body, 'owner' if actor == 'owner' else '@'+next(b['handle'] for b in state['bots'].values() if b['id'] == actor))
-            return self.store.save(intent['id'], 'completed', {'board': board['slug'], 'task_id': ident})
+            comment_id = native.comment(board['slug'], ident, body, 'owner' if actor == 'owner' else '@'+next(b['handle'] for b in state['bots'].values() if b['id'] == actor))
+            handles = {handle.lower() for handle in re.findall(r'(?<![\w@])@([a-zA-Z0-9_-]+)\b', body)}
+            targets = [(b, comment_id) for b in state['bots'].values() if b.get('handle', '').lower() in handles
+                and b.get('enrolled') and b.get('available', True) and not b.get('deleted') and b['id'] != actor]
+            return self.store.finish_task(intent['id'], board['slug'], native.task(board['slug'], ident)['task'], targets)
         else:
             ident = identifier(params['id'])
             expected = intent.get('revision', params['expected_revision'])
@@ -192,13 +198,36 @@ class WorkService:
             # Assignment and details use native transitions separately. Persist each
             # confirmed boundary so a retry cannot erase a newer native edit.
             if current.get('assignee') != assignee:
-                if current.get('status') != 'triage':
-                    raise InvalidOperation('Change active task assignments in Hermes. New Pebble Crew tasks stay in Triage.')
+                if current.get('status') not in ('triage', 'todo', 'ready', 'blocked', 'scheduled'):
+                    raise InvalidOperation('Pause active work before changing its assignee.')
                 current = native.assign_task(board['slug'], ident, expected, assignee)
                 expected = task_revision(current)
                 self.store.save(intent['id'], 'assigned', {'board': board['slug'], 'task_id': ident, 'revision': expected})
             task = native.edit_task(board['slug'], ident, expected, patch)
-        return self.store.save(intent['id'], 'completed', {'board': board['slug'], 'task_id': task['id'], 'revision': task_revision(task)})
+        return self.store.finish_task(intent['id'], board['slug'], task, dispatch=operation == 'work.task.update' and task['status'] in ('todo', 'ready'))
+
+
+    def move_task(self, native, state, board, params, actor):
+        fields(params, ['workspace_id', 'operation_id', 'board', 'id', 'expected_revision', 'status'])
+        if params['status'] not in ('triage', 'todo', 'ready', 'blocked', 'done', 'archived'):
+            raise InvalidOperation('Choose an available task status')
+        ident = identifier(params['id'])
+        intent = self.store.reserve(params['operation_id'], actor, 'work.task.move', params)
+        if intent['state'] != 'reserved':
+            return intent  # Never repeat an uncertain transition or start another run.
+        current = native.task(board['slug'], ident)['task']
+        if task_revision(current) != params['expected_revision']:
+            raise InvalidOperation('This task changed. Review it before moving.', 'STALE_REVISION')
+        if params['status'] in ('todo', 'ready') and current.get('assignee'):
+            self.assignee(state, current['assignee'])
+        self.store.save(intent['id'], 'uncertain', {'board': board['slug'], 'task_id': ident})
+        try:
+            task = native.move_task(board['slug'], ident, params['expected_revision'], params['status'])
+        except InvalidOperation:
+            # A native CAS/transition refusal is definite; it did not start work.
+            self.store.save(intent['id'], 'reserved', {})
+            raise
+        return self.store.finish_task(intent['id'], board['slug'], task, dispatch=params['status'] in ('todo', 'ready'))
 
 
 def execute(operation, params, actor='owner'):
@@ -228,6 +257,18 @@ def register_native():
         except Exception:
             return server._ok(rid, {'ok': False, 'code': 'RPC_FAILED'})
     server.method('bot_web.work')(invoke)
+    def delivery(rid, params):
+        from .work_delivery import tick, settle
+        if params.get('action') == 'recover':
+            fields(params, ['action'])
+            return server._ok(rid, settle('', 'recover'))
+        if params.get('action') == 'tick':
+            fields(params, ['action'])
+            return server._ok(rid, tick())
+        fields(params, ['action', 'id'])
+        return server._ok(rid, settle(params['id'], params['action']))
+    server.method('bot_web.work_delivery')(delivery)
+
 
 
 def register_runtime(ctx):
@@ -254,16 +295,16 @@ def register_runtime(ctx):
             if store:
                 store.db.close()
     ctx.register_tool(name='workspace_work', toolset='workspace',
-        description='Use native project boards and tasks. Describe first. Each project gets its own board; General tasks is for unfiled work. Saves create triage tasks, never start workers.',
-        schema={'name': 'workspace_work', 'description': 'Read bot-web:manage-work. work.describe provides workspace and explicit board references. Use a stable UUID operation_id for retries. Confirm completion from a receipt, never from a queued or uncertain response. Work APIs do not dispatch workers.',
+        description='Use native project boards and tasks. Describe first. Each project gets its own board; General tasks is for unfiled work. Creating tasks saves to Triage. Explicit work.task.move to todo queues assigned work with the native dispatcher.',
+        schema={'name': 'workspace_work', 'description': 'Read bot-web:manage-work. work.describe provides workspace and explicit board references. Use a stable UUID operation_id for retries. Confirm completion from a receipt, never from a queued or uncertain response. Only explicit work.task.move to todo/ready starts the native queue. Comments @mention enrolled handles to notify their existing conversation.',
             'parameters': {'type': 'object', 'additionalProperties': False, 'required': ['operation', 'params'],
                 'properties': {'operation': {'type': 'string', 'enum': sorted(OPERATIONS)},
                     'params': {'type': 'object', 'additionalProperties': False, 'properties': {
-                        **{key: {'type': 'string'} for key in ('workspace_id', 'operation_id', 'board', 'id', 'project_id', 'expected_revision', 'name', 'description', 'title', 'body')},
+                        **{key: {'type': 'string'} for key in ('workspace_id', 'operation_id', 'board', 'id', 'project_id', 'expected_revision', 'name', 'description', 'title', 'body', 'status')},
                         'assignee': {'type': ['string', 'null'], 'description': 'Exact enrolled Hermes profile name, or null for unassigned.'},
                         'priority': {'type': 'integer', 'description': 'Normal 0, low -1, high 1, urgent 2.'}}}}}}, handler=tool)
     ctx.register_skill('manage-work', Path(__file__).with_name('skills') / 'manage-work' / 'SKILL.md',
-        description='Create separate native project boards and manage scoped tasks safely, without starting workers on save.')
+        description='Create separate native project boards and manage scoped tasks safely, with explicit task movement and comment mentions.')
     ctx.register_middleware('tool_execution', guard_native_create)
 
 

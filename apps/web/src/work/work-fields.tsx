@@ -95,14 +95,11 @@ export function ReceiptCheck({
   if (receipt.kind !== 'pending')
     return (
       <div className="grid gap-4" role="status">
-        <p>{receipt.kind === 'project' ? 'Project board created.' : 'Task created.'}</p>
         <div className="flex flex-wrap justify-end gap-2">
           <Button variant="quiet" onClick={onClose}>
-            Done
+            Close
           </Button>
-          <Button onClick={() => onOpen(receipt.board)}>
-            Open {receipt.kind === 'project' ? 'board' : 'task board'}
-          </Button>
+          <Button onClick={() => onOpen(receipt.board)}>View Board</Button>
         </div>
       </div>
     );

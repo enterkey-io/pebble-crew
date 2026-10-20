@@ -23,20 +23,25 @@ Reuse that same operation ID and unchanged payload after an interrupted request.
 `work.receipt` takes those two fields. `completed` confirms the saved native
 record; `uncertain` requires inspection, and must not be replayed as a new save.
 
-| Operation | Additional params |
-| --- | --- |
-| `work.project.create` | `name`, `description` (string; may be empty) |
-| `work.project.update` | `project_id`, `expected_revision` from its board, `name`, `description` |
-| `work.task.create` | `board`, `title`, `body` (Markdown/checklist), `assignee` (profile or null), `priority` (integer; low -1, normal 0, high 1, urgent 2) |
-| `work.task.update` | Same task fields plus `id` and task `expected_revision`; requires `capabilities.edit_details` |
-| `work.task.comment` | `board`, `id`, `body` |
+| Operation             | Additional params                                                                                                                     |
+| --------------------- | ------------------------------------------------------------------------------------------------------------------------------------- |
+| `work.project.create` | `name`, `description` (string; may be empty)                                                                                          |
+| `work.project.update` | `project_id`, `expected_revision` from its board, `name`, `description`                                                               |
+| `work.task.create`    | `board`, `title`, `body` (Markdown/checklist), `assignee` (profile or null), `priority` (integer; low -1, normal 0, high 1, urgent 2) |
+| `work.task.update`    | Same task fields plus `id` and task `expected_revision`; requires `capabilities.edit_details`                                         |
+| `work.task.comment`   | `board`, `id`, `body`; `@handle` notifies enrolled pebbles                                                                            |
+| `work.task.move`      | `board`, `id`, `expected_revision`, `status` (`triage`, `todo`, `ready`, `blocked`, `done`, `archived`)                               |
 
 Reads omit `operation_id`: `work.board` takes `workspace_id` and `board`;
 `work.task` additionally takes the native task `id`. Always carry the board
 reference even when another board happens to be active in Hermes.
 
-New tasks are saved to **Triage**. Saving, assigning or commenting never starts a
-worker. Give the task a concrete deliverable and acceptance instructions. Read
+New tasks are saved to **Triage**. Creating or editing details never starts a worker. Moving an assigned task
+to **To do** explicitly queues it for Hermes’s native dispatcher. Dependencies,
+profile concurrency and native execution policy still apply. **In progress** is
+owned by the dispatcher, not a status you set manually. A comment containing an
+enrolled `@handle` wakes that pebble’s existing Bot Chat to read the comment; it
+does not reassign or restart the task. Task reads include mention delivery state. Give the task a concrete deliverable and acceptance instructions. Read
 back its native ID and project before confirming success. A saved task is not
 completed work. Execution and review remain governed by Hermes's native Kanban
 tools; dispatcher workers use their existing task-scoped tools.

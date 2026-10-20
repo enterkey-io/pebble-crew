@@ -5,6 +5,7 @@ import { Tooltip as TooltipPrimitive } from 'radix-ui';
 function TooltipProvider({
   delayDuration = 350,
   skipDelayDuration = 300,
+  disableHoverableContent = true,
   ...props
 }: React.ComponentProps<typeof TooltipPrimitive.Provider>) {
   return (
@@ -12,6 +13,7 @@ function TooltipProvider({
       data-slot="tooltip-provider"
       delayDuration={delayDuration}
       skipDelayDuration={skipDelayDuration}
+      disableHoverableContent={disableHoverableContent}
       {...props}
     />
   );

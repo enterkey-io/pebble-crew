@@ -99,7 +99,7 @@ test('editor preserves drafts across events and unrelated saves, resolves confli
   await expect(page.getByText('Profile saved.', { exact: true })).toBeVisible();
   await page.getByLabel('Handle', { exact: true }).fill('unsaved');
   await page.getByRole('button', { name: 'Close Edit Mica', exact: true }).click();
-  let dialog = page.getByRole('dialog', { name: /Unsaved changes|Discard unsaved changes/ });
+  let dialog = page.getByRole('alertdialog', { name: 'Discard changes?' });
   await expect(dialog).toBeVisible();
   await dialog.getByRole('button', { name: 'Keep editing' }).click();
   await expect(page.getByLabel('Handle', { exact: true })).toHaveValue('unsaved');
@@ -111,8 +111,8 @@ test('editor preserves drafts across events and unrelated saves, resolves confli
   await expect(page.getByLabel('Handle', { exact: true })).toHaveValue('unsaved');
   await expect(page.getByRole('button', { name: 'Save profile' })).toBeDisabled();
   await page.getByRole('button', { name: 'Close Edit Mica', exact: true }).click();
-  dialog = page.getByRole('dialog', { name: /Unsaved changes|Discard unsaved changes/ });
-  await dialog.getByRole('button', { name: 'Discard changes' }).click();
+  dialog = page.getByRole('alertdialog', { name: 'Discard changes?' });
+  await dialog.getByRole('button', { name: 'Discard' }).click();
   await expect(page.getByLabel('Message', { exact: true })).toBeEnabled();
 });
 
@@ -250,7 +250,7 @@ test('small screens keep dialogs bounded, nested unsaved confirmation restores f
   await expect(dialog).toBeVisible();
   await dialog.getByLabel('Name', { exact: true }).fill('Draft crew');
   await page.keyboard.press('Escape');
-  const confirm = page.getByRole('dialog', { name: /Unsaved changes|Discard unsaved changes/ });
+  const confirm = page.getByRole('alertdialog', { name: 'Discard changes?' });
   await expect(confirm).toBeVisible();
   await confirm.getByRole('button', { name: 'Keep editing' }).click();
   await expect(dialog.getByLabel('Name', { exact: true })).toHaveValue('Draft crew');
@@ -259,8 +259,8 @@ test('small screens keep dialogs bounded, nested unsaved confirmation restores f
   await page.screenshot({ animations: 'disabled', path: 'test-results/new-crew-mobile.png' });
   await page.keyboard.press('Escape');
   await page
-    .getByRole('dialog', { name: 'Unsaved changes' })
-    .getByRole('button', { name: 'Discard changes' })
+    .getByRole('alertdialog', { name: 'Discard changes?' })
+    .getByRole('button', { name: 'Discard' })
     .click();
   await page.getByRole('button', { name: 'Close navigation', exact: true }).click();
   await expect(page.getByRole('dialog')).toHaveCount(0);
@@ -364,19 +364,13 @@ test('browser Back protects an unsaved Crew then closes only its confirmation', 
   await crew.getByLabel('Name', { exact: true }).fill('Back draft');
   await expect(crew.getByRole('button', { name: 'Create', exact: true })).toBeInViewport();
   await page.goBack();
-  await expect(
-    page.getByRole('dialog', { name: /Unsaved changes|Discard unsaved changes/ }),
-  ).toBeVisible();
+  await expect(page.getByRole('alertdialog', { name: 'Discard changes?' })).toBeVisible();
   await page.goBack();
-  await expect(
-    page.getByRole('dialog', { name: /Unsaved changes|Discard unsaved changes/ }),
-  ).toHaveCount(0);
+  await expect(page.getByRole('alertdialog', { name: 'Discard changes?' })).toHaveCount(0);
   await expect(crew.getByLabel('Name', { exact: true })).toHaveValue('Back draft');
   await page.goBack();
-  await expect(
-    page.getByRole('dialog', { name: /Unsaved changes|Discard unsaved changes/ }),
-  ).toBeVisible();
-  await page.getByRole('button', { name: 'Discard changes' }).click();
+  await expect(page.getByRole('alertdialog', { name: 'Discard changes?' })).toBeVisible();
+  await page.getByRole('button', { name: 'Discard' }).click();
   await page.getByRole('button', { name: 'Close navigation', exact: true }).click();
   await expect(page.getByRole('dialog')).toHaveCount(0);
   await expect(page.getByLabel('Message', { exact: true })).toBeEnabled();
@@ -392,12 +386,12 @@ test('closing a new pebble preserves a creation draft until it is explicitly dis
   await page.getByRole('button', { name: 'Create new', exact: false }).click();
   await page.getByLabel('Name', { exact: true }).fill('Unsaved Nova');
   await page.getByRole('button', { name: 'Close Create a pebble', exact: true }).click();
-  const dialog = page.getByRole('dialog', { name: /Unsaved changes|Discard unsaved changes/ });
+  const dialog = page.getByRole('alertdialog', { name: 'Discard changes?' });
   await expect(dialog).toBeVisible();
   await dialog.getByRole('button', { name: 'Keep editing' }).click();
   await expect(page.getByLabel('Name', { exact: true })).toHaveValue('Unsaved Nova');
   await page.getByRole('button', { name: 'Close Create a pebble', exact: true }).click();
-  await dialog.getByRole('button', { name: 'Discard changes' }).click();
+  await dialog.getByRole('button', { name: 'Discard' }).click();
   await expect(page.getByLabel('Message', { exact: true })).toBeEnabled();
 });
 
@@ -422,13 +416,14 @@ test('resting pebbles look away, breathe, track only the hovered row smoothly, t
   const samples = await page.evaluate(async () => {
     const row = document.querySelector('.pinned-tile')!,
       svg = row.querySelector('svg.avatar')!,
-      box = row.getBoundingClientRect();
+      box = row.getBoundingClientRect(),
+      face = svg.getBoundingClientRect();
     const values: number[] = [];
     row.dispatchEvent(
       new PointerEvent('pointerenter', {
         pointerType: 'mouse',
         clientX: box.left + 1,
-        clientY: box.top + box.height / 2,
+        clientY: face.top + face.height / 2,
       }),
     );
     await new Promise<void>((resolve) => {

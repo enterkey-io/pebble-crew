@@ -21,6 +21,7 @@
   --accent: #2a2a2d;
   --accent-foreground: #f3f3f4;
   --destructive: #f39d9d;
+  --destructive-solid: #b73333;
   --border: #34333c;
   --input: #484650;
   --ring: #b7b7bc;
@@ -96,6 +97,24 @@
 }
 
 @theme inline {
+  --animate-disclosure-expand: disclosure-expand var(--motion-overlay) var(--ease-out);
+  --animate-disclosure-collapse: disclosure-collapse var(--motion-overlay) var(--ease-out);
+  @keyframes disclosure-expand {
+    from {
+      height: 0;
+    }
+    to {
+      height: var(--radix-collapsible-content-height);
+    }
+  }
+  @keyframes disclosure-collapse {
+    from {
+      height: var(--radix-collapsible-content-height);
+    }
+    to {
+      height: 0;
+    }
+  }
   --color-background: var(--background);
   --color-foreground: var(--foreground);
   --color-card: var(--card);
@@ -111,6 +130,7 @@
   --color-accent: var(--accent);
   --color-accent-foreground: var(--accent-foreground);
   --color-destructive: var(--destructive);
+  --color-destructive-solid: var(--destructive-solid);
   --color-border: var(--border);
   --color-input: var(--input);
   --color-ring: var(--ring);

@@ -29,6 +29,7 @@ export function WorkCreator({
   onClose,
   onSaved,
   onOpenBoard,
+  visibleBoard,
   onDirtyChange,
   onNavigate,
 }: SharedProps & { target: Exclude<WorkDialogTarget, { kind: 'task' }> }) {
@@ -103,7 +104,8 @@ export function WorkCreator({
       onSaved();
       if (result.kind !== 'pending') {
         onDirtyChange(false);
-        if (target.kind === 'project') onClose();
+        if (target.kind === 'project' || (result.kind === 'task' && result.board === visibleBoard))
+          onClose();
       }
     } catch (e) {
       const failure = safeError(e);
@@ -127,7 +129,8 @@ export function WorkCreator({
         if (value.kind !== 'pending') {
           onSaved();
           onDirtyChange(false);
-          if (target.kind === 'project') onClose();
+          if (target.kind === 'project' || (value.kind === 'task' && value.board === visibleBoard))
+            onClose();
         }
       }
     } catch (e) {
@@ -138,10 +141,21 @@ export function WorkCreator({
   }
   return (
     <EditorSurface
-      className="entity-page"
+      className="pc-work-editor"
       bodyClassName="gap-4"
       aria-label={title}
-      header={<PageHeader title={title} onClose={close} />}
+      header={
+        <PageHeader
+          title={
+            receipt?.kind === 'project'
+              ? `${projectDraft.name} board created`
+              : receipt?.kind === 'task'
+                ? 'Task created'
+                : title
+          }
+          onClose={close}
+        />
+      }
     >
       <LoadingBar active={pending} label="Saving" />
       {error && <Notice error>{error}</Notice>}
@@ -224,10 +238,10 @@ export function WorkCreator({
                   onChange={(patch) => setTask({ ...task, ...patch })}
                 />
                 <Label layout="stacked">
-                  Instructions
+                  Details
                   <Textarea
                     sizing="fixed"
-                    className="min-h-40"
+                    className="min-h-28"
                     maxLength={32000}
                     value={task.body}
                     onChange={(event) => setTask({ ...task, body: event.target.value })}
@@ -248,10 +262,10 @@ export function WorkCreator({
                   />
                 </Label>
                 <Label layout="stacked">
-                  Instructions
+                  Description
                   <Textarea
                     sizing="fixed"
-                    className="min-h-48"
+                    className="min-h-28"
                     maxLength={12000}
                     value={projectDraft.description}
                     onChange={(event) =>

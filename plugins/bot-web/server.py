@@ -81,12 +81,21 @@ def create_app(token, origins, hosts, gateway=None, trust=None, workspace=None, 
         if workspace:
             from .reporting import recover
             recover(workspace.store)
+            await native.call('bot_web.work_delivery', {'action': 'recover'})
         async def watch_roster():
             revision = None
             next_snapshot = 0
+            next_work = 0
             while True:
                 await asyncio.sleep(1)
                 if workspace:
+                    if time.monotonic() >= next_work:
+                        next_work = time.monotonic() + 5
+                        from .work_delivery import deliver
+                        try:
+                            await deliver(workspace, native)
+                        except Exception:
+                            pass  # Durable receipts retain unconfirmed deliveries.
                     from .reporting import drain
                     try:
                         await drain(workspace)

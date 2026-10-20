@@ -11,6 +11,7 @@ export type SharedProps = {
   workspace: WorkspaceSnapshot;
   onClose: () => void;
   onSaved: () => void;
+  visibleBoard?: string | undefined;
   onOpenBoard: (board: string) => void;
   onDirtyChange: (dirty: boolean) => void;
   onNavigate: (action: () => void) => void;

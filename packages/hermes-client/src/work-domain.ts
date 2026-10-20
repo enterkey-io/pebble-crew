@@ -78,6 +78,15 @@ export function decodeWorkTask(value: unknown) {
 }
 export type WorkTask = ReturnType<typeof decodeWorkTask>;
 export type WorkStatus = WorkTask['status'];
+export const workMoveStatuses = [
+  'triage',
+  'todo',
+  'ready',
+  'blocked',
+  'done',
+  'archived',
+] as const satisfies readonly WorkStatus[];
+export type WorkMoveStatus = (typeof workMoveStatuses)[number];
 function decodeBoardView(value: unknown) {
   const data = record(value);
   return {
@@ -103,6 +112,15 @@ function decodeTaskView(value: unknown) {
         author: text(comment.author),
         body: text(comment.body, 500000),
         createdAt: integer(comment.created_at),
+      };
+    }),
+    mentions: list(data.mentions ?? [], (value) => {
+      const mention = record(value);
+      return {
+        id: text(mention.id),
+        profile: text(mention.profile),
+        commentId: integer(mention.comment_id),
+        state: choice(mention.state, ['pending', 'sending', 'sent', 'uncertain', 'unavailable']),
       };
     }),
     dependencies: list(data.dependencies, (value) => {
@@ -226,6 +244,20 @@ export class WorkDomain {
         id: ref.id,
         expected_revision: ref.expectedRevision,
         ...ref.draft,
+      }),
+    );
+  }
+  async moveTask(
+    ref: Mutation & { board: string; id: string; expectedRevision: string; status: WorkMoveStatus },
+  ) {
+    return decodeReceipt(
+      await this.bridge.invoke('work.task.move', {
+        workspace_id: ref.workspaceId,
+        operation_id: ref.operationId,
+        board: ref.board,
+        id: ref.id,
+        expected_revision: ref.expectedRevision,
+        status: ref.status,
       }),
     );
   }

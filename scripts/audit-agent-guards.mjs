@@ -22,7 +22,7 @@ function record(name, expected, observed, detail) {
 }
 try {
   record('current UI contract', true, checkUi(root).accepted, 'Baseline checker completes.');
-  for (const revision of ['ac4a881', '47e50a3']) {
+  for (const revision of ['ac4a881', '47e50a3', 'c8168e5']) {
     const result = checkUi(root, revision);
     record(`historical UI contract ${revision}`, false, result.accepted, result.diagnostics);
   }
@@ -41,6 +41,24 @@ try {
     checkUi(directory).accepted,
     'A removed control cannot satisfy the AST composition check through a JSX comment.',
   );
+  writeFileSync(newPebble, original);
+  const tooltip = join(directory, 'apps/web/src/components/ui/tooltip.tsx');
+  const tooltipSource = readFileSync(tooltip, 'utf8');
+  writeFileSync(tooltip, "import './tooltip.css';\n" + tooltipSource);
+  const cssEntry = checkUi(directory);
+  record(
+    'a component cannot establish CSS layer order before the theme',
+    false,
+    cssEntry.accepted,
+    cssEntry.diagnostics,
+  );
+  record(
+    'CSS entry rejection names the central theme',
+    true,
+    cssEntry.diagnostics.includes('never through a TS module'),
+    cssEntry.diagnostics,
+  );
+  writeFileSync(tooltip, tooltipSource);
   const compiled = await build({
     stdin: {
       contents: "export { decodeWorkspaceSnapshot } from './packages/hermes-client/src/workspace';",

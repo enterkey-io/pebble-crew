@@ -1,3 +1,4 @@
+import { DiscardChanges } from './DiscardChanges';
 import { Form } from '../components/ui/form';
 import { useEffect, useState } from 'react';
 import type { Dispatch, DragEvent, ReactNode, SetStateAction } from 'react';
@@ -636,8 +637,8 @@ export function OrganizationDialog({
             {editor?.kind === 'edit-crew' && (
               <Button
                 type="button"
-                variant="ghost"
-                className="danger-text mr-auto"
+                variant="destructive-ghost"
+                className="mr-auto"
                 onClick={() => {
                   onChange((current) => removeCrew(current, editor.id));
                   onClose();
@@ -651,8 +652,8 @@ export function OrganizationDialog({
               org.sections.length > 1 && (
                 <Button
                   type="button"
-                  variant="ghost"
-                  className="danger-text mr-auto"
+                  variant="destructive-ghost"
+                  className="mr-auto"
                   onClick={() => {
                     onChange((current) => removeSection(current, editor.id));
                     onClose();
@@ -669,25 +670,14 @@ export function OrganizationDialog({
             </Button>
           </div>
         </Form>
-        <Dialog open={discard} onOpenChange={setDiscard}>
-          <DialogContent>
-            <DialogTitle>Discard unsaved changes?</DialogTitle>
-            <DialogDescription>Your sidebar changes haven’t been saved.</DialogDescription>
-            <div className="pc-form-footer">
-              <Button variant="secondary" onClick={() => setDiscard(false)}>
-                Keep editing
-              </Button>
-              <Button
-                onClick={() => {
-                  setDiscard(false);
-                  onClose();
-                }}
-              >
-                Discard changes
-              </Button>
-            </div>
-          </DialogContent>
-        </Dialog>
+        <DiscardChanges
+          open={discard}
+          onOpenChange={setDiscard}
+          onDiscard={() => {
+            setDiscard(false);
+            onClose();
+          }}
+        />
       </DialogContent>
     </Dialog>
   );

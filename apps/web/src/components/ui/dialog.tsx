@@ -42,10 +42,12 @@ function DialogContent({
   children,
   showCloseButton = true,
   variant = 'default',
+  size = 'default',
   ...props
 }: React.ComponentProps<typeof DialogPrimitive.Content> & {
   showCloseButton?: boolean;
   variant?: 'default' | 'image';
+  size?: 'default' | 'editor' | 'content';
 }) {
   return (
     <DialogPortal data-slot="dialog-portal">
@@ -57,6 +59,10 @@ function DialogContent({
           variant === 'image'
             ? 'fixed inset-x-0 top-[var(--app-viewport-top,0px)] z-50 flex h-[var(--app-viewport-height,100dvh)] w-screen flex-col overflow-hidden border-0 bg-transparent p-0 text-white shadow-none duration-[var(--motion-overlay)] outline-none data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:animate-in data-[state=open]:fade-in-0'
             : 'fixed top-[50%] left-[50%] z-50 grid w-full max-w-[calc(100%-2rem)] translate-x-[-50%] translate-y-[-50%] gap-4 rounded-[18px] border-0 bg-card p-6 shadow-[0_24px_90px_#0009] duration-[var(--motion-overlay)] outline-none data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=closed]:slide-out-to-top-2 data-[state=open]:animate-in data-[state=open]:fade-in-0 data-[state=open]:slide-in-from-top-2 sm:max-w-lg max-md:top-[calc(var(--app-viewport-top,0px)+var(--app-viewport-height,100dvh)/2)] max-md:max-h-[calc(var(--app-viewport-height,100dvh)-24px)] any-pointer-coarse:top-[calc(var(--app-viewport-top,0px)+var(--app-viewport-height,100dvh)/2)] any-pointer-coarse:max-h-[calc(var(--app-viewport-height,100dvh)-24px)]',
+          size === 'editor' &&
+            'flex h-[min(640px,calc(100dvh-48px))] w-[640px] max-w-[calc(100vw-32px)] flex-col gap-0 overflow-hidden p-0 sm:max-w-[640px] max-md:h-[calc(var(--app-viewport-height,100dvh)-32px)]',
+          size === 'content' &&
+            'top-[max(24px,8dvh)] translate-y-0 max-md:top-[calc(var(--app-viewport-top,0px)+16px)] any-pointer-coarse:top-[calc(var(--app-viewport-top,0px)+16px)] flex h-auto max-h-[calc(var(--app-viewport-height,100dvh)-32px)] w-[560px] max-w-[calc(100vw-32px)] flex-col overflow-y-auto overscroll-contain sm:max-w-[560px]',
           className,
         )}
         {...props}

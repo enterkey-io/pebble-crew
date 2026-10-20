@@ -25,6 +25,7 @@ function update(node: Element, key: string, value: string) {
 export class AvatarView {
   readonly svg = element('svg', {
     viewBox: '0 0 100 108',
+    class: 'size-full',
     'aria-hidden': 'true',
     focusable: 'false',
   });

@@ -1,4 +1,4 @@
-"""Narrow adapters over native project and Kanban services. No worker dispatch."""
+"""Narrow adapters over native project and Kanban services. Native queue transitions and dispatcher."""
 from contextlib import closing, contextmanager
 from dataclasses import asdict
 
@@ -17,15 +17,17 @@ class GuardedConnection:
     """Validate under the native helper's own SQLite writer lock."""
     def __init__(self, connection, verify):
         self.connection, self.verify = connection, verify
+        self.verified = False
 
     def __getattr__(self, name):
         return getattr(self.connection, name)
 
     def execute(self, sql, *args):
         result = self.connection.execute(sql, *args)
-        if sql.strip().upper() == 'BEGIN IMMEDIATE':
+        if sql.strip().upper() == 'BEGIN IMMEDIATE' and not self.verified:
             try:
                 self.verify(self.connection)
+                self.verified = True
             except BaseException:
                 self.connection.rollback()
                 raise
@@ -48,6 +50,10 @@ class NativeWork:
         from plugins.kanban.dashboard import plugin_api
         self.kanban, self.projects, self.api = kanban_db, projects_db, plugin_api
         self.profile = profile
+        self.dispatcher = getattr(kanban_db, 'dispatch_once', None)
+        if self.dispatcher is None:
+            from hermes_cli.kanban_db_dispatch import dispatch_once
+            self.dispatcher = dispatch_once
 
     @contextmanager
     def scoped(self):
@@ -134,4 +140,34 @@ class NativeWork:
         return self.task(slug, ident)['task']
 
     def comment(self, slug, ident, body, author):
-        return self.api.add_comment(ident, self.api.CommentBody(body=body, author=author), board=slug)
+        with closing(self.api._conn(board=slug)) as conn:
+            return self.kanban.add_comment(conn, ident, author=author, body=body)
+
+    def move_task(self, slug, ident, expected, status):
+        with closing(self.api._conn(board=slug)) as conn:
+            checked = CheckedConnection(conn, ident, expected)
+            current = self.kanban.get_task(conn, ident)
+            if status in ('triage', 'todo', 'ready'):
+                if current.status == 'review' and status != 'triage':
+                    ok = self.kanban.reopen_review_task(checked, ident)
+                elif current.status in ('blocked', 'scheduled') and status in ('todo', 'ready'):
+                    ok = self.kanban.unblock_task(checked, ident)
+                else:
+                    ok = self.api._set_status_direct(checked, ident, status)
+            elif status == 'blocked':
+                ok = self.kanban.block_task(checked, ident, reason='Paused by owner in Pebble Crew')
+            elif status == 'done':
+                import inspect
+                extra = {'force': True} if 'force' in inspect.signature(self.kanban.complete_task).parameters else {}
+                ok = self.kanban.complete_task(checked, ident, result=current.result or 'Marked complete in Pebble Crew', **extra)
+            elif status == 'archived':
+                ok = self.kanban.archive_task(checked, ident)
+            else:
+                raise InvalidOperation('Choose an available task status')
+            if not ok:
+                raise InvalidOperation('Hermes refused this transition. Check the task dependencies.', 'INVALID_PARAMETERS')
+        return self.task(slug, ident)['task']
+
+    def dispatch(self, slug):
+        with closing(self.api._conn(board=slug)) as conn:
+            return self.dispatcher(conn, board=slug, max_spawn=8)
