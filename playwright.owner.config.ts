@@ -10,7 +10,8 @@ export default defineConfig({
     baseURL: 'https://127.0.0.1:5445',
     ignoreHTTPSErrors: true,
     viewport: { width: 1440, height: 1000 },
-    trace: 'off',
+    trace: 'retain-on-failure',
+    screenshot: 'only-on-failure',
     ...(process.env.BOT_WEB_TEST_CHROMIUM
       ? { launchOptions: { executablePath: process.env.BOT_WEB_TEST_CHROMIUM } }
       : {}),

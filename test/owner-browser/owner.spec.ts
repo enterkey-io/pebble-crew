@@ -262,6 +262,17 @@ test('private first use, native onboarding, idle keepalive, reconnection, settin
   await page.getByRole('menuitem', { name: 'Edit pebble', exact: true }).click();
   await page.getByRole('tab', { name: 'Tools & skills', exact: true }).click();
   await page.setViewportSize({ width: 390, height: 844 });
+  await expect
+    .poll(() =>
+      page.evaluate(() =>
+        Math.abs(
+          Number.parseFloat(
+            document.documentElement.style.getPropertyValue('--app-viewport-height'),
+          ) - (window.visualViewport?.height ?? innerHeight),
+        ),
+      ),
+    )
+    .toBeLessThan(1);
   await page
     .getByRole('button', { name: 'Save tools & skills', exact: true })
     .scrollIntoViewIfNeeded();
