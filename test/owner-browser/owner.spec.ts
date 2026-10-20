@@ -1,21 +1,35 @@
 import { openSidebarMenu } from '../sidebar-menu';
 import { test, expect } from '@playwright/test';
-import type { BrowserContext } from '@playwright/test';
+import type { BrowserContext, Page } from '@playwright/test';
 import { readFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { focusOrgCard } from '../chat-workspace/org-chart-driver';
 import { SHAPES } from '../../apps/web/src/avatar-lab/engine';
 test.describe.configure({ mode: 'serial' });
 let ownerCookies: Awaited<ReturnType<BrowserContext['cookies']>> = [];
-test('private first use, native onboarding, idle keepalive, reconnection, settings and ordinary login', async ({
+let syntheticPhoto = '';
+function observeOwner(page: Page) {
+  const errors: string[] = [];
+  const signals = { tickets: 0, sends: 0, errors };
+  page.on('request', (request) => {
+    if (new URL(request.url()).pathname === '/api/hermes/ticket') signals.tickets++;
+    if (request.url().endsWith('/v1/rpc') && request.postDataJSON()?.operation === 'chat.send')
+      signals.sends++;
+  });
+  page.on('pageerror', (error) => signals.errors.push(error.message));
+  return signals;
+}
+function expectNoChatSends(signals: ReturnType<typeof observeOwner>) {
+  expect(signals.errors).toEqual([]);
+  expect(signals.sends).toBe(0);
+}
+
+test('private first use, native onboarding, idle keepalive and reconnection', async ({
   page,
   context,
 }) => {
   await page.clock.install();
-  let tickets = 0;
-  page.on('request', (r) => {
-    if (new URL(r.url()).pathname === '/api/hermes/ticket') tickets++;
-  });
+  const signals = observeOwner(page);
   const proof = (
     await readFile(resolve(process.env.WORKSPACE_TEST_STATE!, 'setup-code.txt'), 'utf8')
   ).trim();
@@ -37,12 +51,8 @@ test('private first use, native onboarding, idle keepalive, reconnection, settin
         (await r.json().catch(() => ({}))).code,
       );
   });
-  const errors: string[] = [];
-  page.on('pageerror', (e) => errors.push(e.message));
-  let sends = 0;
   await page.route('**/v1/rpc', async (route) => {
     const operation = route.request().postDataJSON().operation;
-    if (operation === 'chat.send') sends++;
     if (operation === 'workspace.detect_primary') {
       // Reproduce native profiles advertising an existing stock avatar.
       const response = await route.fetch();
@@ -132,9 +142,9 @@ test('private first use, native onboarding, idle keepalive, reconnection, settin
   await expect(page.locator('.chat-header').getByText('@aurora', { exact: true })).toBeVisible();
   await page.waitForTimeout(2500); // accelerated server lease is 1s; authenticated heartbeats must keep it alive.
   await expect(page.getByLabel('Message', { exact: true })).toBeEnabled({ timeout: 30000 });
-  expect(sends).toBe(0);
+  expect(signals.sends).toBe(0);
   await page.clock.fastForward(240001);
-  await expect.poll(() => tickets).toBeGreaterThanOrEqual(2);
+  await expect.poll(() => signals.tickets).toBeGreaterThanOrEqual(2);
   await page.getByLabel('Message', { exact: true }).fill('Synthetic unsent draft stays here');
   await context.setOffline(true);
   // Break the browser stream explicitly: offline alone can retain an existing loopback socket.
@@ -146,7 +156,7 @@ test('private first use, native onboarding, idle keepalive, reconnection, settin
   await expect(page.getByLabel('Message', { exact: true })).toHaveValue(
     'Synthetic unsent draft stays here',
   );
-  expect(sends).toBe(0);
+  expect(signals.sends).toBe(0);
   const restart = await page.request.post('https://127.0.0.1:8789/fixture/restart-native', {
     headers: { Origin: 'https://127.0.0.1:5445', Authorization: 'Bearer ' + 'f'.repeat(43) },
   });
@@ -155,6 +165,18 @@ test('private first use, native onboarding, idle keepalive, reconnection, settin
   await expect(page.getByLabel('Message', { exact: true })).toHaveValue(
     'Synthetic unsent draft stays here',
   );
+  expectNoChatSends(signals);
+  ownerCookies = await context.cookies();
+});
+
+test('native Crews, group chats, avatar switching and role persistence', async ({
+  page,
+  context,
+}) => {
+  await context.addCookies(ownerCookies);
+  const signals = observeOwner(page);
+  await page.goto('/');
+  await expect(page.getByLabel('Message', { exact: true })).toBeEnabled();
   await page.getByRole('button', { name: 'New', exact: true }).click();
   await page.getByRole('menuitem', { name: 'New crew', exact: true }).click();
   const crew = page.getByRole('dialog', { name: 'New crew', exact: true });
@@ -203,7 +225,7 @@ test('private first use, native onboarding, idle keepalive, reconnection, settin
   await expect(page.getByRole('button', { name: /^Research .*Open chat$/ })).toBeVisible();
   await openSidebarMenu(page, 'Alpha');
   await page.getByRole('menuitem', { name: 'Edit pebble', exact: true }).click();
-  const png = await page.evaluate(() => {
+  syntheticPhoto = await page.evaluate(() => {
     const canvas = document.createElement('canvas');
     canvas.width = canvas.height = 512;
     const context = canvas.getContext('2d')!;
@@ -221,12 +243,12 @@ test('private first use, native onboarding, idle keepalive, reconnection, settin
     context.putImageData(image, 0, 0);
     return canvas.toDataURL('image/png').split(',')[1]!;
   });
-  expect(Buffer.byteLength(png)).toBeGreaterThan(65_536);
+  expect(Buffer.byteLength(syntheticPhoto)).toBeGreaterThan(65_536);
   await page.getByRole('button', { name: 'Photo', exact: true }).click();
   await page.getByLabel('Choose photo').setInputFiles({
     name: 'synthetic.png',
     mimeType: 'image/png',
-    buffer: Buffer.from(png, 'base64'),
+    buffer: Buffer.from(syntheticPhoto, 'base64'),
   });
   await expect(page.getByRole('button', { name: 'Photo', exact: true })).toHaveAttribute(
     'aria-pressed',
@@ -280,6 +302,18 @@ test('private first use, native onboarding, idle keepalive, reconnection, settin
   await page.getByRole('tab', { name: 'Profile', exact: true }).click();
   await expect(page.getByLabel('Title', { exact: true })).toHaveValue('Team lead');
   await page.getByRole('button', { name: 'Close Edit Alpha', exact: true }).click();
+  expectNoChatSends(signals);
+  ownerCookies = await context.cookies();
+});
+
+test('owner photo, account settings, tools layout and ordinary login persist', async ({
+  page,
+  context,
+}) => {
+  await context.addCookies(ownerCookies);
+  const signals = observeOwner(page);
+  await page.goto('/');
+  await expect(page.getByLabel('Message', { exact: true })).toBeEnabled();
   await page.getByRole('button', { name: 'Your account' }).click();
   await page.getByRole('menuitem', { name: 'Settings', exact: true }).click();
   await page.getByRole('tab', { name: 'Account', exact: true }).click();
@@ -287,7 +321,7 @@ test('private first use, native onboarding, idle keepalive, reconnection, settin
   await accountPhoto.setInputFiles({
     name: 'synthetic-owner.png',
     mimeType: 'image/png',
-    buffer: Buffer.from(png, 'base64'),
+    buffer: Buffer.from(syntheticPhoto, 'base64'),
   });
   await expect(page.getByRole('button', { name: 'Change photo', exact: true })).toBeEnabled();
   const personalImage = page.locator('.personal-avatar-large img');
@@ -351,6 +385,18 @@ test('private first use, native onboarding, idle keepalive, reconnection, settin
     'src',
     savedPersonalPhoto!,
   );
+  expectNoChatSends(signals);
+  ownerCookies = await context.cookies();
+});
+
+test('native existing-agent onboarding survives recovery and preserves reporting and Instructions', async ({
+  page,
+  context,
+}) => {
+  await context.addCookies(ownerCookies);
+  const signals = observeOwner(page);
+  await page.goto('/');
+  await expect(page.getByLabel('Message', { exact: true })).toBeEnabled();
   await openSidebarMenu(page, 'Alpha');
   await page.getByRole('menuitem', { name: 'Edit pebble', exact: true }).click();
   await page.getByLabel('Name', { exact: true }).fill('Alpha Stone');
@@ -373,9 +419,9 @@ test('private first use, native onboarding, idle keepalive, reconnection, settin
     'Keep sources attributable. '.repeat(60) +
     '\nAsk before publishing. Return a research brief.';
   await page.getByLabel('Instructions', { exact: true }).fill(instructions);
-  const beforeSetupRecovery = tickets;
+  const beforeSetupRecovery = signals.tickets;
   await page.evaluate(() => window.dispatchEvent(new Event('offline')));
-  await expect.poll(() => tickets).toBeGreaterThan(beforeSetupRecovery);
+  await expect.poll(() => signals.tickets).toBeGreaterThan(beforeSetupRecovery);
   await expect(page.getByRole('button', { name: 'Add pebble', exact: true })).toBeEnabled();
   await expect(page.getByLabel('Name', { exact: true })).toHaveValue('Hazel');
   await expect(page.getByRole('combobox', { name: 'Reports to', exact: true })).toContainText(
@@ -417,8 +463,8 @@ test('private first use, native onboarding, idle keepalive, reconnection, settin
   await expect(page.locator('.chat-title')).toContainText('Nova', { timeout: 30000 });
   await expect(page.getByRole('log')).toContainText('Native fixture reply', { timeout: 30000 });
   await expect(page.getByRole('log').locator('[data-message-role="user"]')).toHaveCount(0);
-  expect(errors).toEqual([]);
-  expect(sends).toBe(0);
+  expect(signals.errors).toEqual([]);
+  expect(signals.sends).toBe(0);
   await page.screenshot({ animations: 'disabled', path: 'test-results/owner-workspace.png' });
   ownerCookies = await context.cookies();
 });
