@@ -1,3 +1,4 @@
+import { openSidebarMenu } from '../sidebar-menu';
 import { test, expect } from '@playwright/test';
 import { installFixture } from './fixtures';
 import type { Page } from '@playwright/test';
@@ -36,7 +37,7 @@ test('empty system sections disappear; system names and item kinds stay fixed', 
   await dialog.getByRole('button', { name: 'Cancel', exact: true }).click();
   await expect(page.locator('.pc-list[aria-label="Crews"]')).toHaveCount(0);
   await expect(page.getByRole('button', { name: 'Actions for Crews section' })).toHaveCount(0);
-  await page.getByLabel('Actions for Arlo', { exact: true }).click();
+  await openSidebarMenu(page, 'Arlo');
   await expect(page.getByRole('menuitem', { name: /Move (up|down|earlier)/ })).toHaveCount(0);
   await page.getByRole('menuitem', { name: 'Move to section', exact: true }).hover();
   await expect(page.getByRole('menuitemcheckbox', { name: 'Crews', exact: true })).toHaveCount(0);
@@ -181,7 +182,7 @@ test('existing agents get identity, appearance and role setup before native enro
   await page.reload();
   await expect(page.getByLabel('Message', { exact: true })).toBeEnabled();
   expect(calls.filter((c) => c.operation === 'agent.welcome')).toHaveLength(1);
-  await page.getByRole('button', { name: 'Actions for Hazel', exact: true }).click();
+  await openSidebarMenu(page, 'Hazel');
   await page.getByRole('menuitem', { name: 'Edit pebble', exact: true }).click();
   await page.getByRole('tab', { name: 'Role', exact: true }).click();
   await expect(page.getByRole('combobox', { name: 'Reports to', exact: true })).toContainText(
@@ -196,7 +197,7 @@ test('Edit uses the same profile controls, persists names and retains all shape/
 }) => {
   await installFixture(context);
   await ready(page);
-  await page.getByLabel('Actions for Mica', { exact: true }).click();
+  await openSidebarMenu(page, 'Mica');
   await page.getByRole('menuitem', { name: 'Edit pebble', exact: true }).click();
   await page.getByLabel('Name', { exact: true }).fill('Mica Stone');
   await page.getByLabel('Title', { exact: true }).fill('Coordinator');
@@ -214,7 +215,7 @@ test('Edit uses the same profile controls, persists names and retains all shape/
   await page.screenshot({ animations: 'disabled', path: 'test-results/owner-edit-profile.png' });
   await page.getByRole('button', { name: 'Close Edit Mica Stone', exact: true }).click();
   await expect(page.getByRole('button', { name: /^Mica Stone .*Bot Chat$/ })).toBeVisible();
-  await page.getByLabel('Actions for Mica Stone', { exact: true }).click();
+  await openSidebarMenu(page, 'Mica Stone');
   await page.getByRole('menuitem', { name: 'Edit pebble', exact: true }).click();
   await expect(page.getByLabel('Name', { exact: true })).toHaveValue('Mica Stone');
   await page.setViewportSize({ width: 390, height: 844 });

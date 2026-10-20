@@ -1,3 +1,4 @@
+import { openSidebarMenu } from '../sidebar-menu';
 import { test, expect } from '@playwright/test';
 import { installFixture } from './fixtures';
 
@@ -61,12 +62,12 @@ test('custom sections are optional and None returns a pebble to the plain list',
   await dialog.getByRole('button', { name: 'Create', exact: true }).click();
   await expect(dialog).toHaveCount(0);
   const studio = rail.getByRole('region', { name: 'Studio', exact: true });
-  await rail.getByRole('button', { name: 'Actions for Rowan', exact: true }).click();
+  await openSidebarMenu(page, 'Rowan');
   await page.getByRole('menuitem', { name: 'Move to section', exact: true }).click();
   await expect(page.getByRole('menuitemcheckbox', { name: 'Pebbles', exact: true })).toHaveCount(0);
   await page.getByRole('menuitemcheckbox', { name: 'Studio', exact: true }).click();
   await expect(studio.getByRole('button', { name: /^Rowan .*Bot Chat$/ })).toBeVisible();
-  await studio.getByRole('button', { name: 'Actions for Rowan', exact: true }).click();
+  await openSidebarMenu(page, 'Rowan');
   await page.getByRole('menuitem', { name: 'Move to section', exact: true }).click();
   await page.getByRole('menuitemcheckbox', { name: 'None', exact: true }).click();
   const list = rail.getByRole('group', { name: 'Unsectioned pebbles', exact: true });

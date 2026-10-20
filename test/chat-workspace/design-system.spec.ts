@@ -1,3 +1,4 @@
+import { openSidebarMenu, sidebarItem } from '../sidebar-menu';
 import { test, expect } from '@playwright/test';
 import AxeBuilder from '@axe-core/playwright';
 import { installFixture, emit } from './fixtures';
@@ -35,13 +36,13 @@ test('shared design system: account settings, connections, requests, editor and 
   await installFixture(context);
   await ready(page);
   await accessible(page);
-  await page.getByLabel('Actions for Arlo').click();
+  await openSidebarMenu(page, 'Arlo');
   const menu = page.getByRole('menu', { name: 'Actions for Arlo' });
   const box = (await menu.boundingBox())!;
   expect(box.x).toBeGreaterThanOrEqual(8);
   expect(box.x + box.width).toBeLessThanOrEqual(1440 - 8);
   await page.keyboard.press('Escape');
-  await expect(page.getByLabel('Actions for Arlo')).toBeFocused();
+  await expect(sidebarItem(page, 'Arlo').getByRole('button').first()).toBeVisible();
   await settings(page);
   await expect(page.getByRole('heading', { name: 'Settings', exact: true })).toBeVisible();
   await expect(page.getByRole('tab', { name: 'General', exact: true })).toHaveAttribute(
@@ -58,7 +59,7 @@ test('shared design system: account settings, connections, requests, editor and 
   await page.getByRole('tab', { name: 'Requests', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'No requests' })).toBeVisible();
   await page.getByRole('button', { name: 'Close Settings', exact: true }).click();
-  await page.getByLabel('Actions for Mica').click();
+  await openSidebarMenu(page, 'Mica');
   await page.getByRole('menuitem', { name: 'Edit pebble', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'Edit Mica' })).toBeVisible();
   await accessible(page);
@@ -87,7 +88,7 @@ test('editor preserves drafts across events and unrelated saves, resolves confli
 }) => {
   const fixture = await installFixture(context);
   await ready(page);
-  await page.getByLabel('Actions for Mica').click();
+  await openSidebarMenu(page, 'Mica');
   await page.getByRole('menuitem', { name: 'Edit pebble', exact: true }).click();
   await page.getByLabel('Handle', { exact: true }).fill('my-mica');
   await page.getByRole('tab', { name: 'Role', exact: true }).click();
@@ -139,7 +140,7 @@ test('sidebar creates and edits crews without changing relationships; fresh and 
   await expect(dialog).toHaveCount(0);
   expect(fixture.state.bots.find((b) => b.profile === 'mica')!.manager).toBe('arlo');
   await expect(page.getByRole('button', { name: /^Studio .*Open chat$/ })).toBeVisible();
-  await page.getByRole('button', { name: 'Actions for Studio', exact: true }).click();
+  await openSidebarMenu(page, 'Studio');
   await page.getByRole('menuitem', { name: 'Crew settings', exact: true }).click();
   dialog = page.getByRole('dialog', { name: 'Crew settings', exact: true });
   await dialog.getByRole('button', { name: 'Remove crew', exact: true }).click();
@@ -294,7 +295,7 @@ test('pin feedback is immediate and rolls back on failure; details, scroll motio
       await route.fulfill({ status: 400, json: { code: 'STALE_REVISION' } });
     } else await route.fallback();
   });
-  await page.getByLabel('Actions for Rowan').click();
+  await openSidebarMenu(page, 'Rowan');
   await page.getByRole('menuitem', { name: 'Pin', exact: true }).click();
   await expect.poll(() => started).toBe(true);
   await expect(
@@ -494,7 +495,7 @@ test('chat proportions, restrained header hover, new avatar choices and minimal 
   await page.emulateMedia({ reducedMotion: 'reduce' });
   await expect(activity.locator('[data-slot=trace-title]')).toHaveCSS('animation-name', 'none');
   await emit(page, 'message.complete', { status: 'done' });
-  await page.getByLabel('Actions for Mica').click();
+  await openSidebarMenu(page, 'Mica');
   await page.getByRole('menuitem', { name: 'Edit pebble' }).click();
   await expect(page.getByRole('group', { name: 'Avatar shape' }).getByRole('button')).toHaveCount(
     10,

@@ -1,8 +1,12 @@
+import { openSidebarMenu } from '../sidebar-menu';
 import { test, expect } from '@playwright/test';
+import type { BrowserContext } from '@playwright/test';
 import { readFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { focusOrgCard } from '../chat-workspace/org-chart-driver';
 import { SHAPES } from '../../apps/web/src/avatar-lab/engine';
+test.describe.configure({ mode: 'serial' });
+let ownerCookies: Awaited<ReturnType<BrowserContext['cookies']>> = [];
 test('private first use, native onboarding, idle keepalive, reconnection, settings and ordinary login', async ({
   page,
   context,
@@ -197,7 +201,7 @@ test('private first use, native onboarding, idle keepalive, reconnection, settin
     page.getByRole('button', { name: 'Quick discussion Group chat', exact: true }),
   ).toBeVisible();
   await expect(page.getByRole('button', { name: /^Research .*Open chat$/ })).toBeVisible();
-  await page.getByRole('button', { name: 'Actions for Alpha', exact: true }).click();
+  await openSidebarMenu(page, 'Alpha');
   await page.getByRole('menuitem', { name: 'Edit pebble', exact: true }).click();
   const png = await page.evaluate(() => {
     const canvas = document.createElement('canvas');
@@ -305,7 +309,7 @@ test('private first use, native onboarding, idle keepalive, reconnection, settin
     'Other devices will be signed out within five minutes.',
   );
   await page.getByRole('button', { name: 'Close Settings', exact: true }).click();
-  await page.getByRole('button', { name: 'Actions for Alpha', exact: true }).click();
+  await openSidebarMenu(page, 'Alpha');
   await page.getByRole('menuitem', { name: 'Edit pebble', exact: true }).click();
   await page.getByRole('tab', { name: 'Tools & skills', exact: true }).click();
   await page.setViewportSize({ width: 390, height: 844 });
@@ -347,7 +351,7 @@ test('private first use, native onboarding, idle keepalive, reconnection, settin
     'src',
     savedPersonalPhoto!,
   );
-  await page.getByRole('button', { name: 'Actions for Alpha', exact: true }).click();
+  await openSidebarMenu(page, 'Alpha');
   await page.getByRole('menuitem', { name: 'Edit pebble', exact: true }).click();
   await page.getByLabel('Name', { exact: true }).fill('Alpha Stone');
   await page.getByRole('button', { name: 'Save profile', exact: true }).click();
@@ -391,7 +395,7 @@ test('private first use, native onboarding, idle keepalive, reconnection, settin
   await expect(page.getByRole('log').locator('[data-message-role="user"]')).toHaveCount(0);
   await page.reload();
   await expect(page.getByRole('button', { name: /^Hazel .*Bot Chat$/ })).toBeVisible();
-  await page.getByRole('button', { name: 'Actions for Hazel', exact: true }).click();
+  await openSidebarMenu(page, 'Hazel');
   await page.getByRole('menuitem', { name: 'Edit pebble', exact: true }).click();
   await page.getByRole('tab', { name: 'Role', exact: true }).click();
   await expect(page.getByRole('combobox', { name: 'Reports to', exact: true })).toContainText(
@@ -416,10 +420,24 @@ test('private first use, native onboarding, idle keepalive, reconnection, settin
   expect(errors).toEqual([]);
   expect(sends).toBe(0);
   await page.screenshot({ animations: 'disabled', path: 'test-results/owner-workspace.png' });
-  await page.clock.resume();
-  // Lease-expiry proof deliberately advanced the browser clock. Live document
-  // request timestamps now need the same wall clock as the native fixture.
-  await page.clock.setSystemTime(new Date());
+  ownerCookies = await context.cookies();
+});
+
+test('native chat reactions, generated media and agent-opened documents', async ({
+  page,
+  context,
+}) => {
+  await context.addCookies(ownerCookies);
+  const errors: string[] = [];
+  page.on('pageerror', (error) => errors.push(error.message));
+  let sends = 0;
+  page.on('request', (request) => {
+    if (request.url().endsWith('/v1/rpc') && request.postDataJSON()?.operation === 'chat.send')
+      sends++;
+  });
+  await page.goto('/');
+  await expect(page.getByLabel('Message', { exact: true })).toBeEnabled();
+  await page.getByRole('button', { name: /^Nova .*Bot Chat$/ }).click();
   await page.getByLabel('Message', { exact: true }).fill('nativereaction');
   await page.getByRole('button', { name: 'Send message', exact: true }).click();
   const mine = page.locator('[data-message-role="user"]').filter({ hasText: 'nativereaction' });
@@ -486,6 +504,18 @@ test('private first use, native onboarding, idle keepalive, reconnection, settin
   const figures = await mediaDownload;
   expect(figures.suggestedFilename()).toBe('figures.csv');
   expect((await readFile((await figures.path())!)).length).toBe(1430000);
+  await page.getByRole('button', { name: 'Play sample-video.mp4', exact: true }).click();
+  const clip = page.locator('video[aria-label="sample-video.mp4"]');
+  await expect
+    .poll(() => clip.evaluate((node: HTMLVideoElement) => node.readyState))
+    .toBeGreaterThanOrEqual(2);
+  expect(await clip.evaluate((node: HTMLVideoElement) => node.videoWidth)).toBe(320);
+  await clip.evaluate((node: HTMLVideoElement) => node.pause());
+  await page.getByRole('button', { name: 'View sample-video.mp4', exact: true }).click();
+  const videoViewer = page.getByRole('dialog', { name: 'sample-video.mp4', exact: true });
+  await expect(videoViewer.getByRole('button', { name: 'Play video', exact: true })).toBeVisible();
+  await page.screenshot({ animations: 'disabled', path: 'test-results/native-video-phone.png' });
+  await videoViewer.getByRole('button', { name: 'Close video', exact: true }).click();
   await page.reload();
   await expect(chart).toBeVisible({ timeout: 30000 });
   await expect
@@ -517,6 +547,63 @@ test('private first use, native onboarding, idle keepalive, reconnection, settin
     path: 'test-results/native-document-desktop.png',
   });
   await page.getByRole('button', { name: 'Close document', exact: true }).click();
+  expect(errors).toEqual([]);
+});
+
+test('ordinary Send redirects the real native turn on phone and survives reload', async ({
+  page,
+  context,
+}) => {
+  await context.addCookies(ownerCookies);
+  await page.goto('/');
+  await expect(page.getByLabel('Message', { exact: true })).toBeEnabled();
+  await page.getByRole('button', { name: /^Nova .*Bot Chat$/ }).click();
+  await page.setViewportSize({ width: 390, height: 844 });
+  const input = page.getByLabel('Message', { exact: true });
+  await input.fill('nativeworking');
+  await expect(page.getByRole('button', { name: 'Send message', exact: true })).toBeEnabled();
+  await input.press('Enter');
+  await expect
+    .poll(
+      async () => {
+        const response = await context.request.get('https://127.0.0.1:8789/fixture/busy-state', {
+          headers: { Origin: 'https://127.0.0.1:5445', Authorization: 'Bearer ' + 'f'.repeat(43) },
+        });
+        return (await response.json()).working;
+      },
+      { timeout: 30000 },
+    )
+    .toBe(true);
+  await input.fill('nativecorrection');
+  await expect(page.getByRole('button', { name: 'Send message', exact: true })).toBeEnabled();
+  await expect(page.getByRole('button', { name: 'Stop', exact: true })).toBeEnabled();
+  await page.screenshot({
+    path: 'test-results/native-send-working-phone.png',
+    animations: 'disabled',
+  });
+  await input.press('Enter');
+  await expect(page.getByRole('log')).toContainText('Native redirected reply', { timeout: 30000 });
+  await expect(
+    page.locator('[data-message-role="user"]').filter({ hasText: /^nativecorrection/ }),
+  ).toHaveCount(1);
+  await expect(page.locator('[data-message-id^="pending-"]')).toHaveCount(0);
+  await page.reload();
+  await expect(page.getByRole('log')).toContainText('Native redirected reply', { timeout: 30000 });
+  await expect(
+    page.locator('[data-message-role="user"]').filter({ hasText: /^nativecorrection/ }),
+  ).toHaveCount(1);
+});
+
+test('native organization edits and task activity persist through reload', async ({
+  page,
+  context,
+}) => {
+  await context.addCookies(ownerCookies);
+  const errors: string[] = [];
+  page.on('pageerror', (error) => errors.push(error.message));
+  await page.goto('/');
+  await expect(page.getByLabel('Message', { exact: true })).toBeEnabled();
+  await page.getByRole('button', { name: /^Nova .*Bot Chat$/ }).click();
   // The chart and existing editor share actual native persistence, including
   // an explicitly unattached newly created agent and a manager change.
   await page.setViewportSize({ width: 1440, height: 1000 });

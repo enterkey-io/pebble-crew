@@ -1,3 +1,4 @@
+import { openSidebarMenu } from '../sidebar-menu';
 import { test, expect } from '@playwright/test';
 import { mkdir, writeFile } from 'node:fs/promises';
 import { installFixture, emit } from './fixtures';
@@ -119,7 +120,7 @@ test('live changes reconcile two browsers, protect the selected draft and never 
   });
   await page.getByRole('button', { name: 'Your account' }).click();
   await page.getByRole('menuitem', { name: 'Show hidden pebbles', exact: true }).click();
-  await page.getByLabel('Actions for Mica').click();
+  await openSidebarMenu(page, 'Mica');
   await page.getByRole('menuitem', { name: 'Unhide', exact: true }).click();
   await page.getByRole('button', { name: /^Mica .*Bot Chat$/ }).click();
   await expect(page.getByLabel('Message', { exact: true })).toHaveValue('Private unsent draft');
@@ -128,7 +129,7 @@ test('live changes reconcile two browsers, protect the selected draft and never 
   await expect(page.getByLabel('Message', { exact: true })).toBeDisabled();
   await page.getByRole('button', { name: /^Mica .*Bot Chat$/ }).click();
   await expect(page.getByLabel('Message', { exact: true })).toHaveValue('');
-  await page.getByLabel('Actions for Rowan').click();
+  await openSidebarMenu(page, 'Rowan');
   await page.getByRole('menuitem', { name: 'Delete…', exact: true }).click();
   const dialog = page.getByRole('dialog', { name: 'Review deletion' });
   await expect(dialog).toBeVisible();

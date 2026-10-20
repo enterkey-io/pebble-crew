@@ -7,6 +7,7 @@ import {
   placePebble,
   readRailDrag,
   reorderSection,
+  railDropTarget,
   sectionChoiceLabel,
   setCrewMembers,
 } from '../ui/organization';
@@ -79,6 +80,37 @@ describe('reference organization', () => {
     expect(moved.sections[1]!.items).toEqual([]);
     expect(moved.sections[0]!.items[2]).toEqual({ kind: 'crew', id: 'studio' });
     expect(moved.crews).toEqual(initialOrganization.crews);
+  });
+  it('treats crews as sibling blocks and ignores their nested member drop zones', () => {
+    const nested = {
+      kind: 'item',
+      item: { kind: 'pebble', id: 'sample-4' },
+      placement: { kind: 'crew', id: 'studio' },
+    } as const;
+    expect(railDropTarget(initialOrganization, 'crew', nested, false)).toBeUndefined();
+    expect(railDropTarget(initialOrganization, 'section', nested, false)).toBeUndefined();
+    const crew = {
+      kind: 'item',
+      item: { kind: 'crew', id: 'studio' },
+      placement: { kind: 'section', id: 'crews' },
+    } as const;
+    expect(railDropTarget(initialOrganization, 'crew', crew, true)).toEqual({
+      target: { kind: 'section', id: 'crews' },
+      beforeId: undefined,
+      edge: 'after',
+    });
+    expect(railDropTarget(initialOrganization, 'pebble', crew, false)).toEqual({
+      target: { kind: 'crew', id: 'studio' },
+      edge: 'inside',
+    });
+    expect(
+      railDropTarget(initialOrganization, 'crew', { kind: 'section', id: 'pebbles' }, false),
+    ).toBeUndefined();
+    expect(railDropTarget(initialOrganization, 'pebble', nested, true)).toEqual({
+      target: { kind: 'crew', id: 'studio' },
+      beforeId: 'sample-5',
+      edge: 'after',
+    });
   });
   it('accepts only known local drag identities at the external drop boundary', () => {
     for (const value of [

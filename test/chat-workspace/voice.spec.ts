@@ -1,3 +1,4 @@
+import { openSidebarMenu, sidebarItem } from '../sidebar-menu';
 import { test, expect } from '@playwright/test';
 import { writeFile } from 'node:fs/promises';
 import { installFixture, emit } from './fixtures';
@@ -39,10 +40,10 @@ test('saved voice key approval survives reopening and reload across agents with 
     await route.fallback();
   });
   const openVoice = async (name: string) => {
-    const actions = page.getByRole('button', { name: `Actions for ${name}`, exact: true });
+    const actions = sidebarItem(page, name);
     if (!(await actions.isVisible()))
       await page.getByRole('button', { name: 'Toggle navigation', exact: true }).click();
-    await actions.click();
+    await openSidebarMenu(page, name);
     await page.getByRole('menuitem', { name: 'Edit pebble', exact: true }).click();
     await page.getByRole('tab', { name: 'Voice', exact: true }).click();
   };
@@ -642,7 +643,11 @@ test('denied microphone returns to intact text chat without creating a provider 
     keyConfirmed = false;
   let denyPermission!: () => void;
   const permission = new Promise<void>((resolve) => (denyPermission = resolve));
-  await page.exposeFunction('holdVoicePermission', () => permission);
+  let captureRequested = false;
+  await page.exposeFunction('holdVoicePermission', () => {
+    captureRequested = true;
+    return permission;
+  });
   await page.addInitScript(() => {
     const schedule = window.setTimeout.bind(window);
     // Browser cleanup tasks may run after the next frame opens the error panel.
@@ -650,7 +655,7 @@ test('denied microphone returns to intact text chat without creating a provider 
       value: (callback: TimerHandler, delay?: number, ...args: unknown[]) =>
         schedule(callback, delay === undefined || delay === 0 ? 200 : delay, ...args),
     });
-    Object.defineProperty(navigator.mediaDevices, 'getUserMedia', {
+    Object.defineProperty(Object.getPrototypeOf(navigator.mediaDevices), 'getUserMedia', {
       value: async () => {
         await Reflect.get(window, 'holdVoicePermission')();
         throw new DOMException('Denied', 'NotAllowedError');
@@ -688,7 +693,10 @@ test('denied microphone returns to intact text chat without creating a provider 
   await page.getByRole('button', { name: 'Voice chat', exact: true }).click();
   await page.getByRole('button', { name: 'Use saved key', exact: true }).click();
   await page.getByRole('button', { name: 'Start call', exact: true }).click();
+  await expect.poll(() => captureRequested).toBe(true);
+  await field.click();
   await field.fill('Keep my unsent draft');
+  await expect(field).toHaveValue('Keep my unsent draft');
   denyPermission();
   await expect(page.getByRole('alert')).toContainText('Microphone access is blocked');
   await page.waitForTimeout(300);
@@ -798,9 +806,9 @@ test('Preview reports a saved-key rejection without requesting or blaming the mi
   await expect(page.getByRole('combobox', { name: 'Voice', exact: true })).toContainText('Cedar');
   await page.screenshot({ path: info.outputPath('preview-rate-limited.png') });
   await page.getByRole('button', { name: 'Close Edit Arlo', exact: true }).click();
-  if (!(await page.getByRole('button', { name: 'Actions for Arlo', exact: true }).isVisible()))
+  if (!(await sidebarItem(page, 'Arlo').isVisible()))
     await page.getByRole('button', { name: 'Toggle navigation', exact: true }).click();
-  await page.getByRole('button', { name: 'Actions for Arlo', exact: true }).click();
+  await openSidebarMenu(page, 'Arlo');
   await page.getByRole('menuitem', { name: 'Edit pebble', exact: true }).click();
   await page.getByRole('tab', { name: 'Voice', exact: true }).click();
   await expect(page.getByRole('combobox', { name: 'Voice', exact: true })).toContainText('Cedar');

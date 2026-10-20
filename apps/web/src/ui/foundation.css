@@ -15,7 +15,7 @@
 :root {
   --font-brand: Caprasimo, Georgia, serif;
   color-scheme: dark;
-  --background: #0c0c0e;
+  --background: #111113;
   --foreground: #eeeeef;
   --card: #171719;
   --card-foreground: #eeeeef;
@@ -37,11 +37,11 @@
   --input: #484650;
   --ring: #b7b7bc;
   --radius: 0.625rem;
-  --rail: #151517;
+  --rail: #0b0b0d;
   --surface-selected: #2b2b2e;
   --surface-hover: #222225;
   --surface-raised: #29292c;
-  --details: #111113;
+  --details: var(--background);
   --composer: #242426;
   --composer-border: #2e2e31;
   --success: #95baa5;
@@ -92,7 +92,7 @@
   --surface-selected: #e5e1da;
   --surface-hover: #eae7e1;
   --surface-raised: #fffdf9;
-  --details: #f6f4ef;
+  --details: var(--background);
   --composer: #fffefd;
   --composer-border: #e8e5df;
   --success: #326c4a;

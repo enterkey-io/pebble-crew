@@ -83,3 +83,16 @@ retry, draft retention and no remote image request. Agent live requests open onl
 once, expire and do not reopen after reconnection. The native owner journey asks
 the deterministic local model to discover and invoke `pebble_open_document`,
 checks the mobile reader, then reopens the saved link on desktop.
+
+`send-while-working.spec.ts` exercises ordinary Send with a separate Stop, repeated
+identical corrections, native-anchored restoration, and continuous delta arrival
+during snapshot loading. Run its phone wrapper. `scripts/fixture/busy_send_smoke.py`
+proves actual native redirects, raw Unicode stream positions, persisted user rows,
+unchanged SOUL and `/status` without another model turn on both pinned builds.
+
+`video-viewer.spec.ts` loads a real small MP4 only on request, plays it inline,
+opens the shared borderless viewer, seeks, mutes, zooms and downloads the same
+bytes. Inspect settled desktop/iPhone/Android captures. The native owner media
+journey reads the clip through the real canonical-row authorization boundary.
+`commands.spec.ts` asserts locally filtered suggestions, one-Enter execution, and
+shared Tool results inside the conversation; commands never become chat prompts.

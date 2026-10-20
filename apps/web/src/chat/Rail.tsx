@@ -7,7 +7,6 @@ import {
   Search,
   Plus,
   X,
-  MoreHorizontal,
   Settings2,
   Network,
   Eye,
@@ -19,19 +18,14 @@ import { ToggleGroup, ToggleGroupItem } from '../components/ui/toggle-group';
 import { ConversationDomain } from '@hermes-client/protocol';
 import type { WorkCatalog } from '@hermes-client/protocol';
 import { AgentAvatar } from '../AgentAvatar';
-import { Menu } from '../ui/primitives';
+import { ContextActions, Menu } from '../ui/primitives';
+import type { ReactNode } from 'react';
 import type { MenuItem } from '../ui/primitives';
 import { IconButton } from '../components/ui/icon-button';
-import { OrganizationRail, OrganizationDialog } from '../ui/OrganizationRail';
+import { OrganizationRail, OrganizationDialog, pebblePlacementItems } from '../ui/OrganizationRail';
 import { NavigationItem } from '../ui/NavigationItem';
 import { Item, ItemMedia, ItemContent, ItemTitle, ItemDescription } from '../components/ui/item';
-import {
-  placePebble,
-  placementOf,
-  sectionAccepts,
-  sectionChoiceLabel,
-  readRailDrag,
-} from '../ui/organization';
+import { readRailDrag } from '../ui/organization';
 import type { Organization, OrganizationEditor } from '../ui/organization';
 import type { WorkspaceSnapshot as WorkspaceState, WorkspaceBot } from '@hermes-client/protocol';
 import type { BotBridgeClient } from '@hermes-client/protocol';
@@ -233,10 +227,9 @@ export function Rail({
   };
   const pinIds = pins.map((b) => identity(b)!.id);
   const groupChats = rooms.filter((r) => !Object.values(crewChats).includes(String(r.room_id)));
-  const controls = (bot: ChatBot) => {
+  const controls = (bot: ChatBot, children: ReactNode) => {
     const b = identity(bot);
-    if (!b) return null;
-    const current = placementOf(organization, b.id);
+    if (!b) return children;
     const items: MenuItem[] = [
       {
         label: pinned(bot) ? 'Unpin' : 'Pin',
@@ -244,27 +237,7 @@ export function Rail({
         disabled: !!pendingPins[b.id] || !online,
       },
       { label: 'Edit pebble', action: () => onEdit(b.profile) },
-      {
-        label: 'Move to section',
-        action: () => {},
-        items: organization.sections
-          .filter((s) => sectionAccepts(s.id, 'pebble'))
-          .map((s) => ({
-            label: sectionChoiceLabel(s),
-            checked: current?.kind === 'section' && current.id === s.id,
-            action: () =>
-              onOrganization((org) => placePebble(org, b.id, { kind: 'section', id: s.id })),
-          })),
-      },
-      {
-        label: 'Move to crew',
-        action: () => {},
-        items: organization.crews.map((c) => ({
-          label: c.name,
-          checked: current?.kind === 'crew' && current.id === c.id,
-          action: () => onOrganization((org) => placePebble(org, b.id, { kind: 'crew', id: c.id })),
-        })),
-      },
+      ...pebblePlacementItems(organization, b.id, onOrganization, setEditor),
       {
         label: bot.hidden ? 'Unhide' : 'Hide',
         action: () => onVisibility(b, !bot.hidden),
@@ -274,14 +247,9 @@ export function Rail({
     if (b.profile !== 'default' && workspace?.orchestrator !== b.profile)
       items.push({ label: 'Delete…', action: () => onDelete(b), danger: true, disabled: !online });
     return (
-      <Menu
-        placement="row-actions"
-        className="pc-overflow"
-        label={`Actions for ${bot.name}`}
-        items={items}
-      >
-        <MoreHorizontal />
-      </Menu>
+      <ContextActions key={b.id} label={`Actions for ${bot.name}`} items={items}>
+        {children}
+      </ContextActions>
     );
   };
   return (
@@ -354,74 +322,76 @@ export function Rail({
             <nav aria-label="Pebbles">
               {!!pins.length && (
                 <div className="pc-pins pinned-pebbles">
-                  {pins.map((b) => (
-                    <motion.div
-                      layout="position"
-                      layoutId={`pebble-${identity(b)!.id}`}
-                      draggable
-                      onDragStartCapture={(event) => {
-                        event.dataTransfer.setData(
-                          'application/x-pebble-crew-rail',
-                          JSON.stringify({ kind: 'pebble', id: identity(b)!.id }),
-                        );
-                        event.dataTransfer.effectAllowed = 'move';
-                      }}
-                      onDragOver={(event) => {
-                        if (event.dataTransfer.types.includes('application/x-pebble-crew-rail'))
-                          event.preventDefault();
-                      }}
-                      onDrop={(event) => {
-                        event.preventDefault();
-                        const item = readRailDrag(
-                          event.dataTransfer.getData('application/x-pebble-crew-rail'),
-                          organization,
-                          all.flatMap((bot) => identity(bot)?.id ?? []),
-                        );
-                        if (item?.kind !== 'pebble') return;
-                        const bot = byId(item.id);
-                        if (!bot) return;
-                        if (!pinned(bot)) onPin(identity(bot)!, true);
-                        const ids = pinIds.filter((id) => id !== item.id),
-                          position = ids.indexOf(identity(b)!.id);
-                        ids.splice(position < 0 ? ids.length : position, 0, item.id);
-                        onOrder(ids);
-                      }}
-                      onKeyDown={(event) => {
-                        if (event.altKey && ['ArrowUp', 'ArrowDown'].includes(event.key)) {
-                          event.preventDefault();
-                          const ids = [...pinIds],
-                            index = ids.indexOf(identity(b)!.id),
-                            next = index + (event.key === 'ArrowUp' ? -1 : 1);
-                          if (next >= 0 && next < ids.length) {
-                            [ids[index], ids[next]] = [ids[next]!, ids[index]!];
-                            onOrder(ids);
-                          }
-                        }
-                      }}
-                      transition={{ duration: reduced ? 0 : 0.22, ease: [0.22, 1, 0.36, 1] }}
-                      className={`pc-pin pinned-tile ${selected === b.profile ? 'is-selected' : ''}`}
-                      key={identity(b)?.id ?? b.profile}
-                    >
-                      <div className="pc-pin-actions">{controls(b)}</div>
-                      <PebbleTile
-                        name={b.name}
-                        title={identity(b)?.role.title ?? ''}
-                        avatar={face(identity(b)!.id, true)}
-                        aria-label={`${b.name} ${identity(b)?.role.title ?? ''} Bot Chat`}
-                        aria-current={selected === b.profile ? 'page' : undefined}
-                        aria-disabled={!online}
-                        onClick={() => {
-                          if (online) onOpen(b);
+                  {pins.map((b) =>
+                    controls(
+                      b,
+                      <motion.div
+                        layout="position"
+                        layoutId={`pebble-${identity(b)!.id}`}
+                        draggable
+                        onDragStartCapture={(event) => {
+                          event.dataTransfer.setData(
+                            'application/x-pebble-crew-rail',
+                            JSON.stringify({ kind: 'pebble', id: identity(b)!.id }),
+                          );
+                          event.dataTransfer.effectAllowed = 'move';
                         }}
+                        onDragOver={(event) => {
+                          if (event.dataTransfer.types.includes('application/x-pebble-crew-rail'))
+                            event.preventDefault();
+                        }}
+                        onDrop={(event) => {
+                          event.preventDefault();
+                          const item = readRailDrag(
+                            event.dataTransfer.getData('application/x-pebble-crew-rail'),
+                            organization,
+                            all.flatMap((bot) => identity(bot)?.id ?? []),
+                          );
+                          if (item?.kind !== 'pebble') return;
+                          const bot = byId(item.id);
+                          if (!bot) return;
+                          if (!pinned(bot)) onPin(identity(bot)!, true);
+                          const ids = pinIds.filter((id) => id !== item.id),
+                            position = ids.indexOf(identity(b)!.id);
+                          ids.splice(position < 0 ? ids.length : position, 0, item.id);
+                          onOrder(ids);
+                        }}
+                        onKeyDown={(event) => {
+                          if (event.altKey && ['ArrowUp', 'ArrowDown'].includes(event.key)) {
+                            event.preventDefault();
+                            const ids = [...pinIds],
+                              index = ids.indexOf(identity(b)!.id),
+                              next = index + (event.key === 'ArrowUp' ? -1 : 1);
+                            if (next >= 0 && next < ids.length) {
+                              [ids[index], ids[next]] = [ids[next]!, ids[index]!];
+                              onOrder(ids);
+                            }
+                          }
+                        }}
+                        transition={{ duration: reduced ? 0 : 0.22, ease: [0.22, 1, 0.36, 1] }}
+                        className={`pc-pin pinned-tile ${selected === b.profile ? 'is-selected' : ''}`}
+                        key={identity(b)?.id ?? b.profile}
                       >
-                        {pendingPins[identity(b)?.id ?? ''] && (
-                          <span className="pin-saving sr-only" role="status">
-                            Saving pin…
-                          </span>
-                        )}
-                      </PebbleTile>
-                    </motion.div>
-                  ))}
+                        <PebbleTile
+                          name={b.name}
+                          title={identity(b)?.role.title ?? ''}
+                          avatar={face(identity(b)!.id, true)}
+                          aria-label={`${b.name} ${identity(b)?.role.title ?? ''} Bot Chat`}
+                          aria-current={selected === b.profile ? 'page' : undefined}
+                          aria-disabled={!online}
+                          onClick={() => {
+                            if (online) onOpen(b);
+                          }}
+                        >
+                          {pendingPins[identity(b)?.id ?? ''] && (
+                            <span className="pin-saving sr-only" role="status">
+                              Saving pin…
+                            </span>
+                          )}
+                        </PebbleTile>
+                      </motion.div>,
+                    ),
+                  )}
                 </div>
               )}
               <OrganizationRail
@@ -467,34 +437,36 @@ export function Rail({
                     row = b && identity(b);
                   if (b && row) onPin(row, !pinned(b));
                 }}
-                actions={(id) => {
+                actions={(id, children) => {
                   const b = byId(id);
-                  return b ? controls(b) : null;
+                  return b ? controls(b, children) : children;
                 }}
                 openLabel={(pebble) => `${pebble.name} ${pebble.title} ${pebble.preview} Bot Chat`}
               />
               {hidden &&
                 all
                   .filter((b) => b.hidden)
-                  .map((b) => (
-                    <div className="pc-row" key={b.id}>
-                      <Item size="xs" className="min-h-16 flex-nowrap gap-2.5">
-                        <ItemMedia className="group-has-data-[slot=item-description]/item:self-center group-has-data-[slot=item-description]/item:translate-y-0">
-                          {face(b.id!)}
-                        </ItemMedia>
-                        <ItemContent>
-                          <ItemTitle>{b.name}</ItemTitle>
-                          {pendingPins[identity(b)?.id ?? ''] && (
-                            <span className="pin-saving sr-only" role="status">
-                              Saving pin…
-                            </span>
-                          )}
-                          <ItemDescription>Hidden</ItemDescription>
-                        </ItemContent>
-                      </Item>
-                      {controls(b)}
-                    </div>
-                  ))}
+                  .map((b) =>
+                    controls(
+                      b,
+                      <div className="pc-row" key={b.id}>
+                        <Item size="xs" className="min-h-16 flex-nowrap gap-2.5">
+                          <ItemMedia className="group-has-data-[slot=item-description]/item:self-center group-has-data-[slot=item-description]/item:translate-y-0">
+                            {face(b.id!)}
+                          </ItemMedia>
+                          <ItemContent>
+                            <ItemTitle>{b.name}</ItemTitle>
+                            {pendingPins[identity(b)?.id ?? ''] && (
+                              <span className="pin-saving sr-only" role="status">
+                                Saving pin…
+                              </span>
+                            )}
+                            <ItemDescription>Hidden</ItemDescription>
+                          </ItemContent>
+                        </Item>
+                      </div>,
+                    ),
+                  )}
             </nav>
             {!!groupChats.length && (
               <nav className="pc-list" aria-label="Group chats">

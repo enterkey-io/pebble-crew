@@ -1,3 +1,4 @@
+import { openSidebarMenu, sidebarItem } from '../sidebar-menu';
 import { test, expect } from '@playwright/test';
 import { installFixture, emit } from './fixtures';
 
@@ -19,9 +20,9 @@ test('Role uses one clear instruction field and preserves older role text and di
   };
   await page.goto('/');
   await expect(page.getByLabel('Message', { exact: true })).toBeEnabled();
-  if (!(await page.getByRole('button', { name: 'Actions for Mica', exact: true }).isVisible()))
+  if (!(await sidebarItem(page, 'Mica').isVisible()))
     await page.getByRole('button', { name: 'Toggle navigation', exact: true }).click();
-  await page.getByRole('button', { name: 'Actions for Mica', exact: true }).click();
+  await openSidebarMenu(page, 'Mica');
   await page.getByRole('menuitem', { name: 'Edit pebble', exact: true }).click();
   await expect(page.getByLabel('Title', { exact: true })).toHaveValue('Researcher');
   await expect(page.getByLabel('Instructions', { exact: true })).toHaveCount(0);
@@ -57,9 +58,9 @@ test('Role uses one clear instruction field and preserves older role text and di
   await page.getByRole('button', { name: 'Close Edit Mica', exact: true }).click();
   await page.reload();
   await expect(page.getByLabel('Message', { exact: true })).toBeEnabled();
-  if (!(await page.getByRole('button', { name: 'Actions for Mica', exact: true }).isVisible()))
+  if (!(await sidebarItem(page, 'Mica').isVisible()))
     await page.getByRole('button', { name: 'Toggle navigation', exact: true }).click();
-  await page.getByRole('button', { name: 'Actions for Mica', exact: true }).click();
+  await openSidebarMenu(page, 'Mica');
   await page.getByRole('menuitem', { name: 'Edit pebble', exact: true }).click();
   await page.getByRole('tab', { name: 'Role', exact: true }).click();
   await expect(field).toHaveValue(instructions);

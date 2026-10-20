@@ -1,6 +1,7 @@
 import { Alert, AlertDescription } from '../components/ui/alert';
 import { Typography } from '../components/ui/typography';
 import type { LucideIcon } from 'lucide-react';
+import { useRef } from 'react';
 import type { ReactNode } from 'react';
 import { X, MoreHorizontal, PanelLeftOpen } from 'lucide-react';
 import { IconButton } from '../components/ui/icon-button';
@@ -16,6 +17,17 @@ import {
   DropdownMenuSubTrigger,
   DropdownMenuSubContent,
 } from '../components/ui/dropdown-menu';
+import {
+  ContextMenu,
+  ContextMenuTrigger,
+  ContextMenuContent,
+  ContextMenuItem,
+  ContextMenuCheckboxItem,
+  ContextMenuSub,
+  ContextMenuSubTrigger,
+  ContextMenuSubContent,
+  ContextMenuSeparator,
+} from '../components/ui/context-menu';
 
 export function Notice({ children, error = false }: { children: ReactNode; error?: boolean }) {
   return (
@@ -107,7 +119,99 @@ export type MenuItem = {
   danger?: boolean;
   checked?: boolean;
   items?: MenuItem[];
+  separatorBefore?: boolean;
 };
+
+function ContextItems({ items }: { items: MenuItem[] }) {
+  return items.map((item) => <ContextMenuGroupItem key={item.label} item={item} />);
+}
+function ContextMenuGroupItem({ item }: { item: MenuItem }) {
+  return (
+    <>
+      {item.separatorBefore && <ContextMenuSeparator />}
+      {item.items ? (
+        <ContextMenuSub>
+          <ContextMenuSubTrigger>{item.label}</ContextMenuSubTrigger>
+          <ContextMenuSubContent>
+            <ContextItems items={item.items} />
+          </ContextMenuSubContent>
+        </ContextMenuSub>
+      ) : item.checked != null ? (
+        <ContextMenuCheckboxItem
+          checked={item.checked}
+          disabled={item.disabled ?? false}
+          onCheckedChange={item.action}
+        >
+          {item.label}
+        </ContextMenuCheckboxItem>
+      ) : (
+        <ContextMenuItem
+          disabled={item.disabled ?? false}
+          variant={item.danger ? 'destructive' : 'default'}
+          onSelect={item.action}
+        >
+          {item.icon && <item.icon aria-hidden="true" />}
+          {item.label}
+        </ContextMenuItem>
+      )}
+    </>
+  );
+}
+
+export function ContextActions({
+  label,
+  items,
+  children,
+}: {
+  label: string;
+  items: MenuItem[];
+  children: ReactNode;
+}) {
+  const keyboardTarget = useRef<HTMLElement | null>(null);
+  return (
+    <ContextMenu>
+      <ContextMenuTrigger
+        disabled={!items.length}
+        data-context-label={label}
+        asChild
+        onPointerDown={(event) => {
+          keyboardTarget.current = null;
+          event.stopPropagation();
+        }}
+        onContextMenu={(event) => event.stopPropagation()}
+        onKeyDown={(event) => {
+          if (event.key !== 'ContextMenu' && !(event.shiftKey && event.key === 'F10')) return;
+          event.preventDefault();
+          event.stopPropagation();
+          keyboardTarget.current = event.target instanceof HTMLElement ? event.target : null;
+          const bounds = event.currentTarget.getBoundingClientRect();
+          event.currentTarget.dispatchEvent(
+            new MouseEvent('contextmenu', {
+              bubbles: true,
+              cancelable: true,
+              clientX: bounds.left + bounds.width / 2,
+              clientY: bounds.top + bounds.height / 2,
+            }),
+          );
+        }}
+      >
+        {children}
+      </ContextMenuTrigger>
+      <ContextMenuContent
+        aria-label={label}
+        collisionPadding={12}
+        onCloseAutoFocus={(event) => {
+          if (!keyboardTarget.current) return;
+          event.preventDefault();
+          keyboardTarget.current.focus();
+          keyboardTarget.current = null;
+        }}
+      >
+        <ContextItems items={items} />
+      </ContextMenuContent>
+    </ContextMenu>
+  );
+}
 function Items({ items }: { items: MenuItem[] }) {
   if (!items.length) return <EmptyMenuItem />;
   return items.map((item) =>

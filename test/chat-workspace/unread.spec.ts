@@ -45,17 +45,7 @@ for (const theme of ['dark', 'light']) {
       edge = (await rowDot.boundingBox())!;
     expect(bounds.x + bounds.width - edge.x - edge.width).toBeLessThanOrEqual(4);
     expect(Math.abs(edge.y + edge.height / 2 - bounds.y - bounds.height / 2)).toBeLessThan(1);
-    await expect
-      .poll(() =>
-        row.evaluate((node) => {
-          const menu = node
-            .querySelector('[aria-label="Actions for Ember"]')!
-            .getBoundingClientRect();
-          const dot = node.querySelector('.row-unread')!.getBoundingClientRect();
-          return dot.left - menu.right;
-        }),
-      )
-      .toBeGreaterThanOrEqual(4);
+    await expect(row.locator('.pc-overflow')).toHaveCount(0);
     await page.screenshot({ path: info.outputPath(`unread-${theme}.png`), animations: 'disabled' });
     await page.emulateMedia({ reducedMotion: 'reduce' });
     await expect(dot).toHaveCSS('animation-name', 'none');

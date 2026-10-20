@@ -1,3 +1,4 @@
+import { openSidebarMenu } from '../sidebar-menu';
 import { test, expect } from '@playwright/test';
 import type { Page } from '@playwright/test';
 import { installFixture } from './fixtures';
@@ -64,7 +65,7 @@ test('crew creation includes description and members; chat mentions only its mem
       },
     ],
   });
-  await page.getByRole('button', { name: 'Actions for Research desk', exact: true }).click();
+  await openSidebarMenu(page, 'Research desk');
   await page.getByRole('menuitem', { name: 'Crew settings', exact: true }).click();
   const edit = page.getByRole('dialog', { name: 'Crew settings', exact: true });
   await expect(edit.getByLabel('Description', { exact: true })).toHaveValue(

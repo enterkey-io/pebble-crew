@@ -1,10 +1,11 @@
-import { useCallback, useRef } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useReducedMotion } from 'motion/react';
-import { Minus, Plus, Scan, X } from 'lucide-react';
+import { Minus, Plus, Scan, X, Play, Pause, Volume2, VolumeX, Download } from 'lucide-react';
 import { TransformComponent, TransformWrapper } from 'react-zoom-pan-pinch';
 import type { ReactZoomPanPinchRef } from 'react-zoom-pan-pinch';
 import { DialogContent, DialogTitle, DialogDescription } from './dialog';
 import { IconButton } from './icon-button';
+import { Slider } from './slider';
 import { useOverlayHistory } from '../../ui/overlay-history';
 
 const controlClassName =
@@ -15,15 +16,36 @@ export default function ImageViewerContent({
   alt,
   open,
   onOpenChange,
+  kind = 'image',
+  initialTime = 0,
+  onDownload,
 }: {
   src: string;
   alt: string;
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  kind?: 'image' | 'video';
+  initialTime?: number;
+  onDownload?: () => void;
 }) {
   const controls = useRef<ReactZoomPanPinchRef>(null);
   const surface = useRef<HTMLDivElement>(null);
   const dragged = useRef(false);
+  const player = useRef<HTMLVideoElement>(null);
+  const [playing, setPlaying] = useState(false);
+  const [muted, setMuted] = useState(false);
+  const [time, setTime] = useState(0);
+  const [durationSeconds, setDurationSeconds] = useState(0);
+  const [failed, setFailed] = useState(false);
+  const [videoReady, setVideoReady] = useState(false);
+  const video = kind === 'video';
+  useEffect(() => {
+    if (!open) {
+      setVideoReady(false);
+      setPlaying(false);
+      setFailed(false);
+    }
+  }, [open]);
   const reduced = useReducedMotion();
   const duration = reduced ? 0 : 180;
   function zoomBy(step: number) {
@@ -67,11 +89,12 @@ export default function ImageViewerContent({
     <DialogContent
       ref={attachSurface}
       variant="image"
+      className="dark"
       showCloseButton={false}
       onOpenAutoFocus={(event) => {
         event.preventDefault();
         surface.current
-          ?.querySelector<HTMLElement>('[aria-label="Image canvas"]')
+          ?.querySelector<HTMLElement>('[aria-label$="canvas"]')
           ?.focus({ preventScroll: true });
       }}
       onKeyDownCapture={(event) => {
@@ -98,6 +121,7 @@ export default function ImageViewerContent({
         minScale={1}
         maxScale={16}
         centerOnInit
+        centerZoomedOut
         disablePadding
         smooth={!reduced}
         keyboard={{ disabled: false, animationTime: duration }}
@@ -114,26 +138,84 @@ export default function ImageViewerContent({
           wrapperStyle={{ width: '100%', height: '100%' }}
           wrapperProps={{
             role: 'group',
-            'aria-label': 'Image canvas',
+            'aria-label': video ? 'Video canvas' : 'Image canvas',
             onPointerDownCapture: () => (dragged.current = false),
             onClick: (event) => {
               if (event.target === event.currentTarget && !dragged.current) onOpenChange(false);
             },
           }}
         >
-          <img
-            src={src}
-            alt={alt}
-            draggable={false}
-            className="max-h-[calc(var(--app-viewport-height,100dvh)-8rem)] max-w-[calc(100vw-2rem)] select-none"
-            onLoad={() => void controls.current?.centerView(1, 0)}
-          />
+          {video ? (
+            <video
+              ref={player}
+              src={src}
+              playsInline
+              muted={muted}
+              preload="metadata"
+              aria-label={alt}
+              className={`max-h-[calc(var(--app-viewport-height,100dvh)-10rem)] max-w-[calc(100vw-2rem)] select-none ${videoReady ? 'opacity-100' : 'opacity-0'}`}
+              onLoadedMetadata={() => {
+                const node = player.current;
+                if (node) {
+                  setDurationSeconds(Number.isFinite(node.duration) ? node.duration : 0);
+                  node.currentTime = Math.min(initialTime, node.duration || 0);
+                  setTime(node.currentTime);
+                }
+              }}
+              onLoadedData={() =>
+                requestAnimationFrame(() => {
+                  void controls.current?.centerView(1, 0).then(() => setVideoReady(true));
+                })
+              }
+              onTimeUpdate={() => setTime(player.current?.currentTime ?? 0)}
+              onPlay={() => setPlaying(true)}
+              onPause={() => setPlaying(false)}
+              onEnded={() => setPlaying(false)}
+              onError={() => setFailed(true)}
+            />
+          ) : (
+            <img
+              src={src}
+              alt={alt}
+              draggable={false}
+              className="max-h-[calc(var(--app-viewport-height,100dvh)-8rem)] max-w-[calc(100vw-2rem)] select-none"
+              onLoad={() => void controls.current?.centerView(1, 0)}
+            />
+          )}
         </TransformComponent>
         <div
           className="absolute bottom-[max(1rem,env(safe-area-inset-bottom))] left-1/2 flex -translate-x-1/2 items-center gap-1 rounded-full bg-black/60 p-1 backdrop-blur-md"
           role="group"
-          aria-label="Image controls"
+          aria-label={video ? 'Video controls' : 'Image controls'}
         >
+          {video && (
+            <>
+              <IconButton
+                className={controlClassName}
+                label={playing ? 'Pause video' : 'Play video'}
+                icon={playing ? Pause : Play}
+                size="icon-lg"
+                disabled={failed}
+                onClick={() => {
+                  if (player.current?.paused)
+                    void player.current.play().catch(() => setFailed(true));
+                  else player.current?.pause();
+                }}
+              />
+              <IconButton
+                className={controlClassName}
+                label={muted ? 'Unmute video' : 'Mute video'}
+                icon={muted ? VolumeX : Volume2}
+                size="icon-lg"
+                onClick={() => {
+                  if (player.current) {
+                    player.current.muted = !muted;
+                    setMuted(!muted);
+                  }
+                }}
+              />
+            </>
+          )}
           <IconButton
             className={controlClassName}
             label="Zoom out"
@@ -143,7 +225,7 @@ export default function ImageViewerContent({
           />
           <IconButton
             className={controlClassName}
-            label="Fit image"
+            label={video ? 'Fit video' : 'Fit image'}
             icon={Scan}
             size="icon-lg"
             onClick={() => void controls.current?.centerView(1, duration)}
@@ -155,11 +237,44 @@ export default function ImageViewerContent({
             size="icon-lg"
             onClick={() => zoomBy(0.35)}
           />
+          {onDownload && (
+            <IconButton
+              className={controlClassName}
+              label="Download video"
+              icon={Download}
+              size="icon-lg"
+              onClick={onDownload}
+            />
+          )}
         </div>
       </TransformWrapper>
+      {video && (
+        <div className="absolute bottom-[max(5rem,calc(env(safe-area-inset-bottom)+4rem))] left-1/2 w-[min(440px,calc(100vw-3rem))] -translate-x-1/2 rounded-full bg-black/60 px-4 py-3 backdrop-blur-md">
+          {failed ? (
+            <p className="text-center text-sm text-white/80">
+              This browser can’t play this video. Download it to watch.
+            </p>
+          ) : (
+            <Slider
+              aria-label="Video position"
+              min={0}
+              max={durationSeconds || 1}
+              step={0.1}
+              value={[time]}
+              disabled={!durationSeconds}
+              onValueChange={(values) => {
+                if (player.current && values[0] !== undefined) {
+                  player.current.currentTime = values[0];
+                  setTime(values[0]);
+                }
+              }}
+            />
+          )}
+        </div>
+      )}
       <IconButton
         className={`absolute top-[max(0.5rem,env(safe-area-inset-top))] right-[max(0.5rem,env(safe-area-inset-right))] rounded-full bg-black/40 backdrop-blur-md ${controlClassName}`}
-        label="Close image"
+        label={video ? 'Close video' : 'Close image'}
         icon={X}
         size="icon-lg"
         onClick={() => onOpenChange(false)}

@@ -227,6 +227,19 @@ def image_type(data):
         return 'application/octet-stream'
 
 
+def media_type(data):
+    # ISO base media's file-type box, never the agent-supplied file extension.
+    # Only hand MP4 containers to the browser's video decoder; HTML/SVG and
+    # unknown binary files retain download-only application/octet-stream.
+    if len(data) >= 24 and data[4:8] == b'ftyp':
+        size = int.from_bytes(data[:4], 'big')
+        brands = {b'isom', b'iso2', b'iso5', b'iso6', b'mp41', b'mp42', b'avc1', b'M4V '}
+        if 16 <= size <= min(len(data), 4096) and any(
+                data[offset:offset + 4] in brands for offset in [8, *range(16, size, 4)]):
+            return 'video/mp4'
+    return image_type(data)
+
+
 class GeneratedMedia:
     def __init__(self, ops):
         self.ops = ops
@@ -270,4 +283,4 @@ class GeneratedMedia:
                     or ((await self.ops.bot(profile)).get('canonical_session') or {}).get('id') != canonical):
                 raise InvalidOperation('Conversation changed')
             blob = bytes(data)
-            return blob, name, await asyncio.to_thread(image_type, blob)
+            return blob, name, await asyncio.to_thread(media_type, blob)

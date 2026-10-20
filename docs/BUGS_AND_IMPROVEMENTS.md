@@ -24,10 +24,16 @@ New reports receive a stable ID; later work updates the existing entry.
 | PC-109 | No way to create an ad hoc group; fixed Group chats heading | Separate Group chat action and member picker; no crew/placement mutation and no mandatory heading. |
 | PC-110 | Crew and group chats lack reactions | Owner-local reaction overlay over exact live native event IDs, session-bound agent tool, per-agent identities, stable receipt versions and next-turn feedback. |
 | PC-111 | Reactions should follow the side of the message | Lower-right for owner messages; lower-left for agent messages, with transparent decoration and reserved text clearance. |
-
 | PC-112 | Group sends can remain provisional and suppress later history | Correlate the optimistic row only with the verified native event receipt, keeping its render identity and timestamp. Reactions wait for a durable message id. |
+| PC-113 | Stop replaces Send while a pebble is working | Ordinary Send follows native busy-input behavior. Separate Stop remains available while drafting. One projection owns multiple sends, live reply boundaries and native-anchored restoration; no queue selector or persona/configuration change. |
+| PC-114 | Agent-shared MP4 appears only as a download | Validated MP4 plays inline on request; shared centered viewer adds playback, seeking, mute, zoom and download. Existing file authorization and size limits remain. |
+| PC-115 | Slash picker reloads for each letter, needs two Enters and shows a full-width top result | Fetch the native catalog once per session/prefix, filter locally, execute with one Enter, and render native output through the shared Tool component inside the transcript. |
 
 Source verification and publication do not establish an owner's installed version.
+
+| PC-116 | Crew drag highlights nested members and collapse is hidden | Whole-Crew drag preview and sibling insertion targets; visible independent disclosure chevrons, persistent collapse and keyboard reordering. |
+| PC-117 | Sidebar overflow menus should use right-click | Shared ContextMenu on rows, pins, Crews and custom sections; touch press-and-hold and Shift+F10. Placement lists end with separated creation actions; the selected pebble is carried into creation. |
+| PC-118 | Dark rail is too gray and details differ from the chat | Darker neutral left rail; details use the main background in dark and light themes. |
 
 ## 0.7.8-preview.20 corrections
 

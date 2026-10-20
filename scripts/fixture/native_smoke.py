@@ -50,6 +50,7 @@ class Model(BaseHTTPRequestHandler):
     saw_attachment = False
     approval_target = ""
     slow_started = threading.Event()
+    correction_started = threading.Event()
     turns = 0
     tools_seen = set()
     audit_requests = False
@@ -106,7 +107,9 @@ class Model(BaseHTTPRequestHandler):
             image.save(output / 'chart one.png')
             (output / 'plan.md').write_text('# Project plan\n\n**Native document proof**\n\n- Preserve existing personalities\n- Verify before release\n\n```python\nprint(42)\n```\n')
             (output / 'figures.csv').write_bytes(b'column,value\n' * 110000)
+            (output / 'sample-video.mp4').write_bytes((Path(__file__).resolve().parents[2] / 'test/fixtures/sample-video.mp4').read_bytes())
             text = 'Here are the results.\n\n![Project chart](<' + str(output / 'chart one.png') + '>)\n\n[Download figures](<' + str(output / 'figures.csv') + '>)'
+            text += '\n\n[Project clip](<' + str(output / 'sample-video.mp4') + '>)'
         tools = data.get("tools", [])
         tool_names = {t.get('function', {}).get('name') for t in tools}
         def can_call(name):
@@ -148,6 +151,15 @@ class Model(BaseHTTPRequestHandler):
             Model.slow_started.set()
             time.sleep(3)
             text = "Slow fixture reply"
+        if self.path.endswith('/chat/completions') and 'nativeworking' in str(latest_user.get('content')):
+            Model.slow_started.set()
+            time.sleep(3)
+            text = 'Original fixture work'
+        if 'nativecorrection' in str(latest_user.get('content')):
+            if self.path.endswith('/chat/completions'):
+                Model.correction_started.set()
+                time.sleep(2)
+            text = 'Native redirected reply'
         message = {"role": "assistant", "content": text}
         finish = "stop"
         document_turn = 'nativedocument' in str(latest_user.get('content'))
@@ -583,6 +595,10 @@ def main():
                             await gateway.stop()
                             await gateway.start()
                             return {'restarted': True}
+                        @app.get('/fixture/busy-state')
+                        async def busy_state():
+                            return {'working': Model.slow_started.is_set(),
+                                    'correction': Model.correction_started.is_set()}
                 else:
                     app = create_app("f" * 43, {args.origin}, hosts, workspace=False)
                 uvicorn.run(app, host="127.0.0.1", port=args.port, ssl_certfile=args.cert, ssl_keyfile=args.key,

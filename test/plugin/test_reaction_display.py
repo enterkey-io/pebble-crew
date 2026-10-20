@@ -25,10 +25,19 @@ class ReactionDisplayTests(unittest.TestCase):
         self.assertIsNone(self.event('message.delta', 'REPLY'))
         self.assertEqual(self.event('message.complete', 'NO_REPLY')['payload']['text'], '')
         self.assertEqual(self.display.prefixes, {})
+
         self.event('message.start')
         self.assertIsNone(self.event('message.delta', 'NO_'))
         self.assertEqual(self.event('message.delta', 'REPLY is a marker')['payload']['text'], 'NO_REPLY is a marker')
         self.assertEqual(self.event('message.delta', ', not a reply.')['payload']['text'], ', not a reply.')
+
+    def test_read_only_snapshot_filters_silence_without_changing_raw_stream_length(self):
+        result = self.display.result('bot_web.conversation.snapshot', {
+            'messages': [{'row_id': 1, 'role': 'assistant', 'text': 'NO_REPLY'}],
+            'inflight': {'assistant': 'NO_REPLY'}, 'stream_length': 8})
+        self.assertEqual(result['messages'][0]['text'], '')
+        self.assertEqual(result['inflight']['assistant'], '')
+        self.assertEqual(result['stream_length'], 8)
 
     def test_tool_segments_restart_detection_and_sessions_do_not_share_prefixes(self):
         self.event('message.start')

@@ -1,6 +1,8 @@
 import { ClientError } from '@hermes-client/core';
 import type { BotBridgeClient } from './bridge';
 import { record } from './json';
+import { decodeStreamPosition } from './stream-position';
+import type { StreamPosition } from './stream-position';
 
 export type CommandSuggestion = { text: string; label: string; description: string };
 export type MessageReaction = {
@@ -290,7 +292,7 @@ export function decodeApprovals(
 }
 export class ConversationDomain {
   constructor(private readonly bridge: Pick<BotBridgeClient, 'invoke'>) {}
-  async send(edit: ChatSend): Promise<{ accepted: boolean; userRowId: string | undefined }> {
+  async send(edit: ChatSend) {
     const value = record(
       await this.bridge.invoke('chat.send', {
         session_id: edit.sessionId,
@@ -300,7 +302,17 @@ export class ConversationDomain {
           : {}),
       }),
     );
-    return { accepted: value.state === 'accepted', userRowId: identity(value.user_row_id) };
+    const disposition =
+      value.status === 'redirected' || value.status === 'steered' || value.status === 'queued'
+        ? value.status
+        : value.status === 'streaming' || value.state === 'accepted'
+          ? 'started'
+          : 'uncertain';
+    return {
+      accepted: disposition !== 'uncertain',
+      disposition,
+      userRowId: identity(value.user_row_id),
+    };
   }
   async sendRoom(edit: { roomId: string; eventId: string; text: string }): Promise<string> {
     const data = record(
@@ -428,22 +440,66 @@ export class ConversationDomain {
   }
 }
 
+export type LiveCorrection = {
+  readonly text: string;
+  readonly offset: number | undefined;
+  readonly rowId: string | undefined;
+};
 export type BotConversation = {
   readonly sessionId: string;
   readonly history: ConversationHistory;
   readonly running: boolean;
   readonly inflight: string;
+  readonly corrections: readonly LiveCorrection[];
+  readonly activeUserId: string | undefined;
+  readonly streamPosition: StreamPosition | undefined;
+  readonly deferred: readonly { text: string; rowId: string | undefined }[];
 };
 export function decodeBotConversation(value: unknown): BotConversation {
   const data = record(value);
   const sessionId = identity(data.session_id);
   if (!sessionId) throw new ClientError('INVALID_RESPONSE');
   const inflight = optionalRecord(data.inflight);
+  const assistant = boundedText(inflight?.assistant);
+  const corrections = Array.isArray(inflight?.corrections)
+    ? rows(inflight.corrections)
+        .slice(0, 128)
+        .map((value) => boundedText(value, 16000))
+    : [];
+  const offsets = inflight?.correction_offsets;
+  const correctionIds = Array.isArray(data.correction_row_ids) ? data.correction_row_ids : [];
+  const characters = Array.from(assistant);
+  const usable =
+    Array.isArray(offsets) &&
+    offsets.length === corrections.length &&
+    offsets.every(
+      (offset, index) =>
+        typeof offset === 'number' &&
+        Number.isSafeInteger(offset) &&
+        offset >= 0 &&
+        offset <= characters.length &&
+        (!index || offset >= offsets[index - 1]),
+    );
   return {
     sessionId,
     history: decodeHistory(data),
     running: data.running === true,
-    inflight: boundedText(inflight?.assistant),
+    inflight: assistant,
+    corrections: corrections.map((text, index) => ({
+      text,
+      offset: usable ? characters.slice(0, offsets[index]).join('').length : undefined,
+      rowId: identity(correctionIds[index]),
+    })),
+    activeUserId: identity(data.active_user_row_id),
+    streamPosition: decodeStreamPosition(data.stream_position),
+    deferred: Array.isArray(data.deferred_prompts)
+      ? rows(data.deferred_prompts)
+          .slice(0, 128)
+          .map((value) => {
+            const prompt = record(value);
+            return { text: boundedText(prompt.text, 16000), rowId: identity(prompt.row_id) };
+          })
+      : [],
   };
 }
 export function approvalKey(target: ApprovalTarget): string {

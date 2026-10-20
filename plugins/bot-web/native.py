@@ -31,6 +31,8 @@ class NativeGateway:
         self.work_supported = False
         from .reactions import ReactionDisplay
         self.display = ReactionDisplay()
+        from .stream_position import StreamPositions
+        self.stream_positions = StreamPositions()
 
     async def has_stored_bot_chat(self, profile):
         # Read-only safety guard: native exact-title lookup hides deliberately retired
@@ -95,7 +97,7 @@ class NativeGateway:
                                 if isinstance(request, dict):
                                     await self._server_request(request)
                 elif frame.get("method") == "event":
-                    event = frame["params"]
+                    event = self.stream_positions.event(frame["params"])
                     if event.get('type') == 'clarify.request':
                         payload = event.get('payload', {})
                         self._capture_questions(payload.get('request_id'), event.get('session_id'), payload, legacy=True)
@@ -267,6 +269,23 @@ class NativeGateway:
         return {'submitted': True}
 
     async def call(self, method, params):
+        if method != 'bot_web.conversation.snapshot':
+            return await self._call(method, params)
+        sid = params.get('session_id')
+        # Streaming does not invalidate a snapshot. Only a turn boundary does.
+        # Its text length fences deltas even when their event is emitted just
+        # after the native history lock was released.
+        for _ in range(3):
+            generation = self.stream_positions.generation(sid)
+            result = await self._call(method, params)
+            if (generation == self.stream_positions.generation(sid)
+                    and result.get('running', False) == generation[1]
+                    and result.get('snapshot_consistent', True)):
+                offset = result['stream_length'] if generation[1] else None
+                return {**result, 'stream_position': self.stream_positions.position(sid, offset)}
+        raise NativeError('Conversation changed while opening; reopen it')
+
+    async def _call(self, method, params):
         if not self.healthy or len(self.pending) >= 32 or self.process is None or self.process.returncode is not None:
             raise NativeError("Hermes gateway unavailable")
         rid = uuid.uuid4().hex
@@ -284,6 +303,8 @@ class NativeGateway:
                 if isinstance(result, dict) and isinstance(result.get('pending_clarify'), dict):
                     pending = result['pending_clarify']
                     self._capture_questions(pending.get('request_id'), params.get('session_id') or result.get('session_id'), pending, legacy=True)
+                if method == 'bot_web.conversation.snapshot' and isinstance(result, dict):
+                    result = {**result, 'stream_length': len((result.get('inflight') or {}).get('assistant') or '')}
                 return self.display.result(method, result)
         except (TimeoutError, BrokenPipeError, ConnectionError) as error:
             # A timed-out mutation may have been accepted. Never retry automatically.

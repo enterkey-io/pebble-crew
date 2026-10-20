@@ -9,10 +9,17 @@ export type Crew = {
   members: string[];
 };
 export type Organization = { sections: Section[]; crews: Crew[] };
+export type RailDropZone =
+  { kind: 'section'; id: string } | { kind: 'item'; item: RailItem; placement: Placement };
+export type RailDrop = {
+  target: Placement;
+  beforeId?: string | undefined;
+  edge: 'before' | 'after' | 'inside';
+};
 export type OrganizationEditor =
-  | { kind: 'new-section' }
+  | { kind: 'new-section'; item?: RailItem }
   | { kind: 'edit-section'; id: string }
-  | { kind: 'new-crew' }
+  | { kind: 'new-crew'; pebbleId?: string }
   | { kind: 'new-group-chat' }
   | { kind: 'edit-crew'; id: string };
 
@@ -93,6 +100,38 @@ export function placeCrew(
             : items,
       };
     }),
+  };
+}
+
+/** Resolve a whole sidebar entity before allowing a nested DOM drop target to consume it. */
+export function railDropTarget(
+  org: Organization,
+  dragged: RailDrag['kind'],
+  zone: RailDropZone,
+  after: boolean,
+): RailDrop | undefined {
+  if (dragged === 'section')
+    return zone.kind === 'section' && zone.id !== 'pebbles'
+      ? { target: zone, edge: 'before' }
+      : undefined;
+  if (zone.kind === 'section')
+    return sectionAccepts(zone.id, dragged) ? { target: zone, edge: 'inside' } : undefined;
+  if (dragged === 'pebble' && zone.item.kind === 'crew')
+    return { target: { kind: 'crew', id: zone.item.id }, edge: 'inside' };
+  if (
+    (dragged === 'crew' && zone.placement.kind === 'crew') ||
+    (zone.placement.kind === 'section' && !sectionAccepts(zone.placement.id, dragged))
+  )
+    return undefined;
+  const siblings =
+    zone.placement.kind === 'crew'
+      ? org.crews.find((c) => c.id === zone.placement.id)?.members
+      : org.sections.find((s) => s.id === zone.placement.id)?.items.map((item) => item.id);
+  const index = siblings?.indexOf(zone.item.id) ?? -1;
+  return {
+    target: zone.placement,
+    beforeId: after ? siblings?.[index + 1] : zone.item.id,
+    edge: after ? 'after' : 'before',
   };
 }
 

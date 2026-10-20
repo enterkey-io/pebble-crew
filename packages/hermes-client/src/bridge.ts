@@ -13,6 +13,7 @@ export interface BridgeEvent {
   readonly type: string;
   readonly session_id?: string;
   readonly seq?: number;
+  readonly stream_position?: unknown;
   readonly payload?: Readonly<Record<string, unknown>>;
 }
 export type DownloadedMedia = { blob: Blob; name: string };
@@ -299,7 +300,7 @@ export class BotBridgeClient {
         throw new ClientError('INVALID_RESPONSE');
       return {
         blob: new Blob(parts, {
-          type: ['image/png', 'image/jpeg', 'image/webp'].includes(mime)
+          type: ['image/png', 'image/jpeg', 'image/webp', 'video/mp4'].includes(mime)
             ? mime
             : 'application/octet-stream',
         }),

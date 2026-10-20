@@ -1,3 +1,4 @@
+import { openSidebarMenu, sidebarItem } from '../sidebar-menu';
 import { test, expect } from '@playwright/test';
 import { installFixture } from './fixtures';
 
@@ -15,9 +16,9 @@ test('unsaved profile tool choices survive transport replacement', async ({ page
   });
   await page.goto('/');
   await expect(page.getByLabel('Message', { exact: true })).toBeEnabled();
-  if (!(await page.getByRole('button', { name: 'Actions for Mica', exact: true }).isVisible()))
+  if (!(await sidebarItem(page, 'Mica').isVisible()))
     await page.getByRole('button', { name: 'Toggle navigation', exact: true }).click();
-  await page.getByRole('button', { name: 'Actions for Mica', exact: true }).click();
+  await openSidebarMenu(page, 'Mica');
   await page.getByRole('menuitem', { name: 'Edit pebble', exact: true }).click();
   await page.getByRole('tab', { name: 'Tools & skills', exact: true }).click();
   const browser = page.getByRole('checkbox', { name: 'Browser', exact: true });
@@ -44,9 +45,9 @@ test('an unconfirmed tool save cannot be replayed from the open editor', async (
   await installFixture(context);
   await page.goto('/');
   await expect(page.getByLabel('Message', { exact: true })).toBeEnabled();
-  if (!(await page.getByRole('button', { name: 'Actions for Mica', exact: true }).isVisible()))
+  if (!(await sidebarItem(page, 'Mica').isVisible()))
     await page.getByRole('button', { name: 'Toggle navigation', exact: true }).click();
-  await page.getByRole('button', { name: 'Actions for Mica', exact: true }).click();
+  await openSidebarMenu(page, 'Mica');
   await page.getByRole('menuitem', { name: 'Edit pebble', exact: true }).click();
   await page.getByRole('tab', { name: 'Tools & skills', exact: true }).click();
   await page.getByRole('checkbox', { name: 'Browser', exact: true }).check();

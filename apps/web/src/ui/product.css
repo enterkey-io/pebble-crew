@@ -79,6 +79,9 @@
   position: absolute;
   inset: 0 0 auto;
 }
+.message-image[data-media='video'] {
+  aspect-ratio: 16 / 9;
+}
 .message-image-download {
   position: absolute;
   right: 6px;

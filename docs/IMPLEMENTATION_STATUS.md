@@ -1,6 +1,6 @@
 # Installed-owner implementation status
 
-**0.7.8-preview.21 candidate:** neutral circular composer actions; blue unread
+**0.7.8-preview.21 candidate:** Whole-Crew sidebar dragging, independent collapse chevrons, right-click/press-and-hold action menus and contextual Crew/section creation; darker dark-mode rail and matching main/details surfaces. Send during active native turns with separate Stop; native-anchored live restoration with a positioned snapshot/event handoff; inline MP4 playback and a zoomable video viewer; locally filtered slash commands with in-conversation results; neutral circular composer actions; blue unread
 indicators at the row edge and pinned badge position; centered photo zoom; full
 org-card interactions and shared handle inputs. Task lanes have padded drop
 indicators and persistent owner-local ordering. Activity retains a fixed header

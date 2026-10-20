@@ -257,3 +257,31 @@ Main Pebble's chat links to the originating agent's request card. Owner-local
 delivery receipts notify the current Main once about another agent's pending
 management or native tool approval. Unknown delivery outcomes are not replayed.
 Private request specifications and credentials are excluded from the notification.
+
+## Busy Bot Chat sends (0.7.8-preview.21)
+
+`chat.send` continues to invoke native `prompt.submit` without a `queued` override.
+Native `status` receipts distinguish `streaming`, `redirected`, `steered` and
+`queued`; only an actual `user_row_id` addresses a persisted user row. Attachment
+`state` receipts remain separate. A lost or unrecognized receipt is uncertain and
+must not be retried automatically.
+
+`bot.open` includes native `inflight.corrections` and `correction_offsets`. Offsets
+count Unicode code points. Optional `active_user_row_id` and `correction_row_ids`
+are read from the current native turn's structural cursor; they never derive from
+searching for matching text. Without a proven anchor, stored history remains
+authoritative. These fields do not correlate a browser request with a native row.
+
+`stream_position` on bot snapshots and session events contains an owner-local
+gateway `epoch`, monotonic `turn` and cumulative raw delta `offset` (Unicode code
+points). A running snapshot's offset covers its complete native inflight text;
+queued event deltas trim that covered prefix. Turn start/completion frames are
+fenced by the same lifetime and turn. Positions are presentation watermarks, not
+native row identities or delivery receipts. They retain no text on our systems.
+`deferred_prompts` carries accepted native fallback envelopes with text and an
+optional actual `row_id`, so restoration preserves them without a queue UI.
+
+`media.read` returns `video/mp4` only for a recognized ISO base media file-type
+box. The authenticated canonical-row and reference checks, chunk verification,
+and 10 MiB limit remain unchanged. Unknown content stays download-only. Browser
+codec support determines playback; MP4 is a container, not a codec guarantee.

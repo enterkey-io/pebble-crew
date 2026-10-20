@@ -37,9 +37,13 @@ test('role tags use the available row width and only truncate when the row is fu
   await expect(long.locator('[data-slot="badge"]')).toContainText('A genuinely long role');
   const geometry = await long.evaluate((node) => {
     const title = node.querySelector('[data-slot="item-title"]')!.getBoundingClientRect();
-    const menu = node.querySelector('[aria-label="Actions for Rowan"]')!.getBoundingClientRect();
-    return { right: title.right, menu: menu.left, overflow: node.scrollWidth - node.clientWidth };
+    const boundary = node.getBoundingClientRect();
+    return {
+      right: title.right,
+      edge: boundary.right,
+      overflow: node.scrollWidth - node.clientWidth,
+    };
   });
-  expect(geometry.right).toBeLessThanOrEqual(geometry.menu);
+  expect(geometry.right).toBeLessThanOrEqual(geometry.edge);
   expect(geometry.overflow).toBeLessThanOrEqual(1);
 });

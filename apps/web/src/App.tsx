@@ -4,6 +4,7 @@ import { CommandSuggestions } from './chat/CommandSuggestions';
 import { MentionSuggestions, useMentionSuggestions } from './chat/MentionSuggestions';
 import type { CommandSuggestionsHandle } from './chat/CommandSuggestions';
 import { Confirmation } from './components/ai-elements/confirmation';
+import { Tool } from './components/ai-elements/tool';
 import {
   Attachment,
   AttachmentMedia,
@@ -23,6 +24,7 @@ import {
   decodeApprovals,
   decodeRoomReactions,
   approvalKey,
+  StreamHandoff,
 } from '@hermes-client/protocol';
 import type { BridgeEvent, ConversationApproval, HistoryCoverage } from '@hermes-client/protocol';
 import { FirstRun } from './FirstRun';
@@ -52,7 +54,7 @@ import { DetailsDock } from './ui/DetailsDock';
 import { VoiceChat } from './voice/VoiceChat';
 import type { VoiceChatHandle } from './voice/VoiceChat';
 import type { VoiceSettingsRequest } from './voice/decode';
-import { File, Image, Inbox, Menu as MenuIcon, RefreshCw, X } from 'lucide-react';
+import { File, Image, Inbox, Menu as MenuIcon, RefreshCw, X, Terminal } from 'lucide-react';
 import { Button } from './components/ui/button';
 import { IconButton } from './components/ui/icon-button';
 import { Alert, AlertDescription, AlertAction } from './components/ui/alert';
@@ -145,7 +147,8 @@ export function App({ owner }: { owner?: OwnerConnection }) {
   const selected = useRef<Selection | undefined>(undefined);
   const selectionConnection = useRef<BotBridgeClient | undefined>(undefined);
   const selectGeneration = useRef(0);
-  const eventVersion = useRef(0);
+  const streamHandoff = useRef(new StreamHandoff());
+  const openingChat = useRef<{ generation: number; events: BridgeEvent[] } | undefined>(undefined);
   const historyGeneration = useRef(0);
   const [bots, setBots] = useState<Bot[]>([]);
   const [rooms, setRooms] = useState<Row[]>([]);
@@ -173,6 +176,7 @@ export function App({ owner }: { owner?: OwnerConnection }) {
   const [activity, setActivity] = useState('Ready');
   const [running, setRunning] = useState(false);
   const [busy, setBusy] = useState(false);
+  const sendFlight = useRef<symbol | null>(null);
   const [switching, setSwitching] = useState(false);
   const [blocked, setBlocked] = useState(false);
   const [streamState, setStreamState] = useState<'opening' | 'live' | 'lost'>('opening');
@@ -883,6 +887,16 @@ export function App({ owner }: { owner?: OwnerConnection }) {
       else setError('Live updates were interrupted. Reopen the connection.');
       return;
     }
+    if (
+      openingChat.current &&
+      event.session_id &&
+      /^(message\.|tool\.|status\.|error$)/.test(event.type)
+    ) {
+      if (openingChat.current.events.length < 4096) openingChat.current.events.push(event);
+      else if (openingChat.current.events.length === 4096)
+        openingChat.current.events.push({ type: 'bridge.resync' });
+      return;
+    }
     if (!target || target.kind !== 'bot' || event.session_id !== target.sessionId) return;
     if (event.type === 'document.open') {
       try {
@@ -898,8 +912,13 @@ export function App({ owner }: { owner?: OwnerConnection }) {
       }
       return;
     }
-    eventVersion.current++;
     const payload = event.payload ?? {};
+    const handoff = streamHandoff.current.accept(
+      event.type,
+      event.stream_position,
+      text(payload.text),
+    );
+    if (!handoff.accepted) return;
     if (event.type === 'message.reaction') {
       const result = reactionReceipt(payload);
       setMessages((old) =>
@@ -914,7 +933,7 @@ export function App({ owner }: { owner?: OwnerConnection }) {
       setActivity('Thinking');
     }
     if (event.type === 'message.delta') {
-      const delta = text(payload.text);
+      const delta = handoff.text;
       setStream((old) => old + delta);
       if (delta.trim()) setActivity('');
     }
@@ -1150,6 +1169,7 @@ export function App({ owner }: { owner?: OwnerConnection }) {
       setPickingAgents(false);
     }
     try {
+      openingChat.current = { generation, events: [] };
       const data = await new ConversationDomain(client).open(bot.profile);
       if (generation !== selectGeneration.current || current.current !== client)
         return 'superseded';
@@ -1178,9 +1198,15 @@ export function App({ owner }: { owner?: OwnerConnection }) {
       if (workspace && id) rememberConversation(workspace.id, { kind: 'bot', id });
       setBlocked(false);
       observedHistory(target, data.history.coverage);
-      setMessages(sendProjection.current.project(data.history.messages));
+      const restored = sendProjection.current.restore(data);
+      streamHandoff.current.restore(data.streamPosition, data.running);
+      setMessages(restored.messages);
       setRunning(data.running);
-      setStream(data.inflight);
+      setStream(restored.stream);
+      const buffered =
+        openingChat.current?.generation === generation ? openingChat.current.events : [];
+      openingChat.current = undefined;
+      for (const event of buffered) await receive(client, event);
       setActivity(data.running === true ? 'Working' : 'Ready');
       const saved = scrollPositions.current.get(draftKey(target));
       if (saved && !saved.follow) {
@@ -1209,19 +1235,22 @@ export function App({ owner }: { owner?: OwnerConnection }) {
       setRoutines(rows(ownedRoutines.jobs ?? []));
       const pending = await new ConversationDomain(client).approvals(target.sessionId);
       if (selected.current === target) setApprovals(pending);
-      // Reconcile the open/routine-fetch interval against a fresh native snapshot.
-      const version = eventVersion.current;
+      // The first open also authorizes this browser's event subscription for
+      // the session. Snapshot once more after that authorization; positions
+      // merge events that race the response, even under continuous streaming.
+      if (current.current !== client || selected.current !== target) return 'superseded';
+      openingChat.current = { generation, events: [] };
       const snapshot = await new ConversationDomain(client).open(bot.profile);
-      if (
-        current.current === client &&
-        selected.current === target &&
-        version === eventVersion.current
-      ) {
-        observedHistory(target, snapshot.history.coverage);
-        setMessages(sendProjection.current.project(snapshot.history.messages));
-        setRunning(snapshot.running === true);
-        setStream(snapshot.inflight);
-      }
+      if (current.current !== client || selected.current !== target) return 'superseded';
+      const final = sendProjection.current.restore(snapshot);
+      streamHandoff.current.restore(snapshot.streamPosition, snapshot.running);
+      observedHistory(target, snapshot.history.coverage);
+      setMessages(final.messages);
+      setRunning(snapshot.running);
+      setStream(final.stream);
+      const remaining = openingChat.current.events;
+      openingChat.current = undefined;
+      for (const event of remaining) await receive(client, event);
       return current.current === client && selected.current === target ? 'opened' : 'superseded';
     } catch (error) {
       if (generation === selectGeneration.current && current.current === client) {
@@ -1240,6 +1269,7 @@ export function App({ owner }: { owner?: OwnerConnection }) {
       }
       return 'superseded';
     } finally {
+      if (openingChat.current?.generation === generation) openingChat.current = undefined;
       if (generation === selectGeneration.current) {
         focusOnReady.current = matchMedia('(pointer: fine)').matches;
         setBusy(false);
@@ -1383,14 +1413,14 @@ export function App({ owner }: { owner?: OwnerConnection }) {
     };
   }, [client, selection]);
 
-  async function send() {
+  async function send(commandOverride?: string) {
     if (
       !client ||
       !selection ||
       (!draft.trim() && !uploads.files.length) ||
       !uploads.ready ||
       busy ||
-      running ||
+      sendFlight.current ||
       blocked
     )
       return;
@@ -1402,18 +1432,22 @@ export function App({ owner }: { owner?: OwnerConnection }) {
       current.current === connection &&
       selected.current === target &&
       generation === selectGeneration.current;
-    if (target.kind === 'bot' && draft.startsWith('/')) {
+    if (target.kind === 'bot' && (commandOverride ?? draft).startsWith('/')) {
       if (uploads.files.length) {
         setError('Send files separately from commands.');
         return;
       }
       setBusy(true);
+      const commandFlight = Symbol('command');
+      sendFlight.current = commandFlight;
       setError('');
-      const command = draft;
+      const command = commandOverride ?? draft;
       try {
         const output = await new ConversationDomain(client).command(target.sessionId, command);
         if (owns()) {
           setCommandResult({ sessionId: target.sessionId, command, output });
+          followLatest.current = true;
+          setShowLatest(false);
           if (edit === draftEdits.current) {
             setDraft('');
             drafts.current.delete(draftKey(target));
@@ -1422,10 +1456,13 @@ export function App({ owner }: { owner?: OwnerConnection }) {
       } catch (cause) {
         if (owns()) fail(cause);
       } finally {
+        if (sendFlight.current === commandFlight) sendFlight.current = null;
         if (owns()) setBusy(false);
       }
       return;
     }
+    const flight = Symbol('send');
+    sendFlight.current = flight;
     setBusy(true);
     setError('');
     const message = draft;
@@ -1448,7 +1485,13 @@ export function App({ owner }: { owner?: OwnerConnection }) {
           }
         : {}),
     };
-    setMessages(sendProjection.current.begin(pendingMessage, messages));
+    setMessages(
+      sendProjection.current.begin(
+        pendingMessage,
+        messages,
+        running && target.kind === 'bot' ? stream : undefined,
+      ),
+    );
     setDraft('');
     drafts.current.delete(draftKey(target));
     if (target.kind === 'bot') {
@@ -1465,15 +1508,22 @@ export function App({ owner }: { owner?: OwnerConnection }) {
             ? { attachments: { ids: [firstFile, ...restFiles], requestId: crypto.randomUUID() } }
             : {}),
         });
-        if (owns()) setMessages(sendProjection.current.acknowledge(result.userRowId));
-        if (fileIds.length && !result.accepted) throw new Error('Attachment outcome uncertain');
+        if (owns())
+          setMessages(
+            sendProjection.current.acknowledge(
+              result.userRowId,
+              pendingId,
+              result.disposition === 'queued',
+            ),
+          );
+        if (!result.accepted) throw new Error('Send outcome uncertain');
       } else {
         const receipt = await new ConversationDomain(client).sendRoom({
           roomId: text(selection.room.room_id),
           eventId: roomEventId,
           text: message,
         });
-        if (owns()) setMessages(sendProjection.current.acknowledge(receipt));
+        if (owns()) setMessages(sendProjection.current.acknowledge(receipt, pendingId));
       }
       if (owns()) {
         uploads.sent(draftKey(target), fileIds);
@@ -1493,6 +1543,7 @@ export function App({ owner }: { owner?: OwnerConnection }) {
       }
       if (owns()) setError('Your message may not have been sent. Reopen this chat to check.');
     } finally {
+      if (sendFlight.current === flight) sendFlight.current = null;
       if (generation === selectGeneration.current && current.current === connection) {
         focusOnReady.current = true;
         setBusy(false);
@@ -1908,6 +1959,8 @@ export function App({ owner }: { owner?: OwnerConnection }) {
       />
     </Suspense>
   ) : null;
+  const transcript = sendProjection.current.display(messages, stream);
+  const hasMessage = !!draft.trim() || uploads.files.length > 0;
   return (
     <DocumentActions.Provider
       value={(source) => {
@@ -2081,25 +2134,6 @@ export function App({ owner }: { owner?: OwnerConnection }) {
                       )}
                     </div>
                   </header>
-                  {commandResult &&
-                    selection?.kind === 'bot' &&
-                    commandResult.sessionId === selection.sessionId && (
-                      <Alert className="mx-4 mb-2 w-auto shrink-0">
-                        <AlertDescription>
-                          <pre className="max-h-36 overflow-auto whitespace-pre-wrap font-sans text-xs">
-                            {commandResult.output}
-                          </pre>
-                        </AlertDescription>
-                        <Button
-                          variant="quiet"
-                          size="icon"
-                          aria-label="Dismiss command result"
-                          onClick={() => setCommandResult(undefined)}
-                        >
-                          <X />
-                        </Button>
-                      </Alert>
-                    )}
                   <div
                     ref={setVoiceBarTarget}
                     className="shrink-0"
@@ -2177,6 +2211,24 @@ export function App({ owner }: { owner?: OwnerConnection }) {
                     <Transcript
                       footer={
                         <>
+                          {commandResult &&
+                            selection?.kind === 'bot' &&
+                            commandResult.sessionId === selection.sessionId && (
+                              <div
+                                role="region"
+                                aria-label={`${commandResult.command} result`}
+                                className="my-3 min-w-0 max-w-full"
+                              >
+                                <Tool
+                                  id="slash-command"
+                                  icon={Terminal}
+                                  name={commandResult.command}
+                                  state="complete"
+                                  output={commandResult.output}
+                                  defaultOpen
+                                />
+                              </div>
+                            )}
                           {selection?.kind === 'bot' && client.supportsQuestions && (
                             <QuestionCards
                               key={selection.sessionId}
@@ -2271,7 +2323,8 @@ export function App({ owner }: { owner?: OwnerConnection }) {
                           ? reactToMessage
                           : undefined
                       }
-                      messages={withSharedFiles(messages, sharedFiles)}
+                      messages={withSharedFiles(transcript.messages, sharedFiles)}
+                      liveIds={transcript.liveIds}
                       onDownloadFile={(file) => {
                         if (selection?.kind !== 'bot') return;
                         void client
@@ -2288,8 +2341,6 @@ export function App({ owner }: { owner?: OwnerConnection }) {
                       }}
                       title={title}
                       crew={selection?.kind === 'room'}
-                      stream={stream}
-                      reply={sendProjection.current.reply}
                       running={running}
                       activity={running && stopping ? 'Stopping' : activity}
                       authorName={(name) =>
@@ -2433,11 +2484,12 @@ export function App({ owner }: { owner?: OwnerConnection }) {
                             enabled={!blocked && !busy}
                             sessionId={selection.sessionId}
                             text={draft}
-                            onChoose={(text) => {
+                            onChoose={(text, execute) => {
                               draftEdits.current++;
                               setDraft(text);
                               drafts.current.set(draftKey(selection), text);
                               composer.current?.focus();
+                              if (execute) void send(text);
                             }}
                           />
                         )}
@@ -2552,7 +2604,7 @@ export function App({ owner }: { owner?: OwnerConnection }) {
                           />
                           <ComposerAction
                             mode={
-                              running
+                              running && !hasMessage
                                 ? stopping
                                   ? 'stopping'
                                   : 'stop'
@@ -2561,7 +2613,7 @@ export function App({ owner }: { owner?: OwnerConnection }) {
                                   : 'send'
                             }
                             disabled={
-                              running
+                              running && !hasMessage
                                 ? stopping || blocked
                                 : !selection ||
                                   (!voiceAction && !draft.trim() && !uploads.files.length) ||
@@ -2571,6 +2623,9 @@ export function App({ owner }: { owner?: OwnerConnection }) {
                             }
                             onStop={() => void stop()}
                             onVoice={() => voicePanel.current?.open()}
+                            separateStop={running && hasMessage}
+                            stopDisabled={stopping || blocked}
+                            stopping={stopping}
                           />
                         </PromptInputFrame>
                       </div>

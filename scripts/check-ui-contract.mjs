@@ -104,6 +104,17 @@ requireRule(
   sourceContract(read('apps/web/src/chat/Rail.tsx')).renders('PebbleTile', '../ui/PebbleTile'),
   'Pinned pebbles must use PebbleTile; default Button icon/layout rules cannot own avatar cards.',
 );
+for (const [path, source] of [
+  ['chat/Rail.tsx', '../ui/primitives'],
+  ['ui/OrganizationRail.tsx', './primitives'],
+]) {
+  const text = read('apps/web/src/' + path);
+  requireRule(
+    sourceContract(text).renders('ContextActions', source) &&
+      !/MoreHorizontal|pc-overflow|pc-pin-actions/.test(text),
+    `${path} must use shared right-click/press-and-hold ContextActions, without sidebar overflow buttons.`,
+  );
+}
 for (const path of ['NewPebble.tsx', 'ExistingPebbleSetup.tsx', 'PebbleEditor.tsx']) {
   const contract = sourceContract(read(`apps/web/src/${path}`));
   requireRule(

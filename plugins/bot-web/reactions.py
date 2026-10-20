@@ -31,9 +31,11 @@ class ReactionDisplay:
         return event
 
     def result(self, method, result):
-        if method not in {'session.resume', 'session.history', 'session.events.since'} or not isinstance(result, dict):
+        if method not in {'session.resume', 'session.history', 'session.events.since', 'bot_web.conversation.snapshot'} or not isinstance(result, dict):
             return result
         from gateway.response_filters import is_intentional_silence_response
+        if isinstance(result.get('inflight'), dict) and is_intentional_silence_response(result['inflight'].get('assistant')):
+            result = {**result, 'inflight': {**result['inflight'], 'assistant': ''}}
         if isinstance(result.get('messages'), list):
             result = {**result, 'messages': [
                 {**row, 'text': '', 'codex_message_items': None} if row.get('role') == 'assistant' and row.get('status') != 'error'

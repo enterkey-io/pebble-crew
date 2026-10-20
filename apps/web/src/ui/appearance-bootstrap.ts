@@ -20,6 +20,6 @@ export function initializeAppearance(choice?: AppearanceMode): AppearanceMode {
   root.style.colorScheme = dark ? 'dark' : 'light';
   document
     .querySelector('meta[name="theme-color"]')
-    ?.setAttribute('content', dark ? '#0c0c0e' : '#faf9f6');
+    ?.setAttribute('content', dark ? '#111113' : '#faf9f6');
   return mode;
 }

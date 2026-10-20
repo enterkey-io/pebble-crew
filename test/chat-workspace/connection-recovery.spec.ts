@@ -72,14 +72,13 @@ test('reconnecting keeps composer controls, typography, focus and the editable d
   await page.goto('/');
   const field = page.getByRole('textbox', { name: 'Message', exact: true });
   const attachment = page.getByRole('button', { name: 'Add attachment', exact: true });
-  const voice = page.getByRole('button', { name: 'Voice chat', exact: true });
   const send = page.getByRole('button', { name: 'Send message', exact: true });
   await expect(field).toBeEnabled();
   await expect(attachment).toBeEnabled();
   await field.fill('Draft');
   const fieldNode = (await field.elementHandle())!;
   const attachmentNode = (await attachment.elementHandle())!;
-  const voiceNode = (await voice.elementHandle())!;
+  const actionNode = (await send.elementHandle())!;
   const measure = () =>
     field.evaluate((node) => {
       const form = node.closest('form')!;
@@ -117,12 +116,12 @@ test('reconnecting keeps composer controls, typography, focus and the editable d
     await expect.poll(() => reconnecting).toBe(true);
     await expect(attachment).toHaveCount(1);
     expect(await attachmentNode.evaluate((node) => node.isConnected)).toBe(true);
-    expect(await voiceNode.evaluate((node) => node.isConnected)).toBe(true);
+    expect(await actionNode.evaluate((node) => node.isConnected)).toBe(true);
     expect(await fieldNode.evaluate((node) => node.isConnected)).toBe(true);
     await expect(field).toBeEnabled();
     await expect(field).toBeFocused();
     await expect(attachment).toBeDisabled();
-    await expect(voice).toBeDisabled();
+    await expect(page.getByRole('button', { name: 'Voice chat', exact: true })).toHaveCount(0);
     await expect(send).toBeDisabled();
     await page.keyboard.type(' offline');
     await expect(field).toHaveValue('Draft offline');

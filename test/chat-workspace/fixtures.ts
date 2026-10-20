@@ -80,7 +80,9 @@ export async function installFixture(
     attachments?: boolean;
     voice?: boolean;
     projects?: boolean;
+    organization?: OrganizationState;
     messages?: (Record<string, unknown> & { row_id: number })[];
+    open?: (profile: string) => unknown | Promise<unknown>;
   } = {},
 ) {
   const messages = options.messages ?? history;
@@ -91,7 +93,7 @@ export async function installFixture(
       headers: {
         ...response.headers(),
         'content-security-policy':
-          "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data: blob:; connect-src 'self' https:;",
+          "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data: blob:; media-src 'self' blob:; connect-src 'self' https:;",
       },
     });
   });
@@ -111,7 +113,7 @@ export async function installFixture(
     description: 'Existing personality',
     role: { title: '', description: '', responsibilities: '', boundaries: '', expectedOutputs: '' },
   });
-  let organization: OrganizationState = {
+  let organization: OrganizationState = options.organization ?? {
     revision: 0,
     sections: [
       {
@@ -506,14 +508,16 @@ export async function installFixture(
       if (bot) bot.unread = false;
     }
     if (operation === 'bot.open')
-      result = {
-        session_id: `session-${params.profile}`,
-        messages: messages.map((m) => ({
-          ...m,
-          display_metadata: { reactions: reactions.get(m.row_id) ?? [] },
-        })),
-        running: false,
-      };
+      result = options.open
+        ? await options.open(params.profile)
+        : {
+            session_id: `session-${params.profile}`,
+            messages: messages.map((m) => ({
+              ...m,
+              display_metadata: { reactions: reactions.get(m.row_id) ?? [] },
+            })),
+            running: false,
+          };
     if (operation === 'chat.history')
       result = {
         messages: messages.map((m) => ({

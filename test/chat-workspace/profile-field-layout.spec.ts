@@ -1,3 +1,4 @@
+import { openSidebarMenu, sidebarItem } from '../sidebar-menu';
 import { test, expect, type Page } from '@playwright/test';
 import { installFixture } from './fixtures';
 test.use({ serviceWorkers: 'block' });
@@ -54,9 +55,9 @@ test('Add and Edit keep field labels aligned with their controls', async ({
   await fieldLayout(page);
   await page.screenshot({ path: info.outputPath('new-fields.png'), animations: 'disabled' });
   await page.getByRole('button', { name: /^Close Create a pebble$/ }).click();
-  if (!(await page.getByRole('button', { name: 'Actions for Mica', exact: true }).isVisible()))
+  if (!(await sidebarItem(page, 'Mica').isVisible()))
     await page.getByRole('button', { name: 'Toggle navigation' }).click();
-  await page.getByRole('button', { name: 'Actions for Mica', exact: true }).click();
+  await openSidebarMenu(page, 'Mica');
   await page.getByRole('menuitem', { name: 'Edit pebble', exact: true }).click();
   await fieldLayout(page);
   await page.screenshot({ path: info.outputPath('edit-fields.png'), animations: 'disabled' });
