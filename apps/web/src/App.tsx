@@ -2261,7 +2261,7 @@ export function App({ owner }: { owner?: OwnerConnection }) {
                           </p>
                         )}
                         {!!uploads.files.length && (
-                          <ul className="attachment-chips">
+                          <ul className="attachment-chips pc-composer-width">
                             {uploads.files.map((file) => (
                               <Attachment
                                 asChild
@@ -2326,7 +2326,7 @@ export function App({ owner }: { owner?: OwnerConnection }) {
                           />
                         )}
                         <PromptInputFrame
-                          className="pc-composer pc-composer-row"
+                          className="pc-composer pc-composer-row pc-composer-width"
                           onSubmit={(e) => {
                             e.preventDefault();
                             void send();
