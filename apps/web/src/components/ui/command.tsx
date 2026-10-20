@@ -57,15 +57,23 @@ function CommandDialog({
 
 function CommandInput({
   className,
+  variant = 'default',
   ...props
-}: React.ComponentProps<typeof CommandPrimitive.Input>) {
+}: React.ComponentProps<typeof CommandPrimitive.Input> & { variant?: 'default' | 'search' }) {
   return (
-    <div data-slot="command-input-wrapper" className="flex h-9 items-center gap-2 border-b px-3">
+    <div
+      data-slot="command-input-wrapper"
+      className={cn(
+        'flex h-9 items-center gap-2 border-b px-3',
+        variant === 'search' && 'h-15 gap-3 border-0 px-5',
+      )}
+    >
       <SearchIcon className="size-4 shrink-0 opacity-50" />
       <CommandPrimitive.Input
         data-slot="command-input"
         className={cn(
           'flex h-10 w-full rounded-md bg-transparent py-3 text-sm outline-hidden placeholder:text-muted-foreground disabled:cursor-not-allowed disabled:opacity-50',
+          variant === 'search' && 'h-15 rounded-none py-3 text-base',
           className,
         )}
         {...props}

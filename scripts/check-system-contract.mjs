@@ -111,6 +111,7 @@ const operations = new Set([
   'work.task.create',
   'work.task.update',
   'work.task.comment',
+  'work.task.move',
 ]);
 for (const path of [
   'App.tsx',

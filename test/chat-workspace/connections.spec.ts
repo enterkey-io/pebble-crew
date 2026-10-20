@@ -70,7 +70,7 @@ test('tool discovery preserves native policy; an explicit edit is guarded and sa
   await page.getByRole('button', { name: 'Choose tools', exact: true }).click();
   await page.getByRole('checkbox', { name: 'search_documents', exact: true }).check();
   await page.getByRole('button', { name: 'Connections', exact: true }).click();
-  await expect(page.getByRole('heading', { name: 'Discard unsaved changes?' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Discard changes?' })).toBeVisible();
   await page.getByRole('button', { name: 'Keep editing', exact: true }).click();
   await page.getByRole('button', { name: 'Save changes', exact: true }).click();
   await expect(

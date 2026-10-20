@@ -159,10 +159,34 @@ async def exercise(root, home, port):
                 assert adapter.task(project['slug'], tasks[0]['id'])['runs'] == []
         finally:
             work.close()
+        # A real comment mention wakes the existing canonical native conversation once.
+        from bot_web.work_delivery import deliver
+        work = WorkService(store, workspace_path().with_name('work.sqlite'))
+        try:
+            operation = { 'workspace_id': catalog['workspace_id'], 'operation_id': str(uuid.uuid4()),
+                'board': project['slug'], 'id': tasks[0]['id'], 'body': '@aurora verify the original sources.' }
+            work.invoke('work.task.comment', operation)
+            work.invoke('work.task.comment', operation)
+            before = Model.turns
+            await deliver(workspace, gateway)
+            async with asyncio.timeout(60):
+                while True:
+                    event = await events.get()
+                    if event.get('session_id') == sid and event['type'] == 'message.complete':
+                        assert event.get('payload', {}).get('status') != 'error'
+                        break
+            assert Model.turns == before + 1, 'Mention did not produce exactly one native reply'
+            await deliver(workspace, gateway)
+            await asyncio.sleep(.2)
+            assert Model.turns == before + 1, 'Mention retried a confirmed wake'
+            view = work.invoke('work.task', {'workspace_id': catalog['workspace_id'], 'board': project['slug'], 'id': tasks[0]['id']})
+            assert len(view['mentions']) == 1 and view['mentions'][0]['state'] == 'sent', view['mentions']
+        finally:
+            work.close()
         assert soul.read_bytes() == original
         print(json.dumps({'revision': gateway.build['revision'], 'deferred_work_schema': True,
             'saved_tool_selection': True, 'native_model_project_and_task': True, 'workers': 0,
-            'model': 'deterministic-local-only', 'persona_preserved': True}))
+            'model': 'deterministic-local-only', 'persona_preserved': True, 'mention_woke_existing_bot_once': True}))
     finally:
         store.db.close()
         await gateway.stop()

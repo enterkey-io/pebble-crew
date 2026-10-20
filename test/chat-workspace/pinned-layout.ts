@@ -7,6 +7,9 @@ export async function expectPinnedLayout(pins: Locator) {
     tiles.map((tile) => {
       const card = tile.getBoundingClientRect();
       const avatar = tile.querySelector('.agent-avatar')!.getBoundingClientRect();
+      const graphic = tile
+        .querySelector('.agent-avatar svg.avatar,.agent-avatar img')!
+        .getBoundingClientRect();
       const nameNode = tile.querySelector('strong')!;
       const name = nameNode.getBoundingClientRect();
       const titleNode = tile.querySelector('.pc-pin-title')!;
@@ -23,6 +26,8 @@ export async function expectPinnedLayout(pins: Locator) {
         ancestors.push(getComputedStyle(node).opacity);
       return {
         avatarTop: avatar.top - card.top,
+        graphicRatio: graphic.width / avatar.width,
+        nameWidth: name.width,
         nameOffset: name.top - card.top,
         titleOffset: title.top - card.top,
         titleTextHeight: range.getBoundingClientRect().height,
@@ -44,6 +49,8 @@ export async function expectPinnedLayout(pins: Locator) {
     }),
   );
   for (const tile of layout) {
+    expect(tile.graphicRatio).toBeGreaterThanOrEqual(0.95);
+    expect(tile.nameWidth).toBeGreaterThan(24);
     expect(tile.nameColor).toBe(tile.foreground);
     expect(tile.ancestors.every((opacity) => opacity === '1')).toBe(true);
     expect(tile.titleTextHeight).toBeLessThanOrEqual(tile.titleLineHeight + 1);

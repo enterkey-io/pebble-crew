@@ -1,0 +1,6 @@
+@layer components {
+  /* Informational tooltips must never intercept another control, including while exiting. */
+  [data-radix-popper-content-wrapper]:has(> [data-slot='tooltip-content']) {
+    pointer-events: none;
+  }
+}

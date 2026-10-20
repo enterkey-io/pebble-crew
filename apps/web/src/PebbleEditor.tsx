@@ -36,7 +36,7 @@ import {
   ReportingField,
 } from './ui/pebble-profile-fields';
 import { PageHeader, FormSection, Notice } from './ui/primitives';
-import { Drawer } from './chat/Drawer';
+import { DiscardChanges } from './ui/DiscardChanges';
 import { safeError } from '@hermes-client/core';
 export function PebbleEditor({
   client,
@@ -434,26 +434,14 @@ export function PebbleEditor({
           Saving…
         </span>
       )}
-      {discard && (
-        <Drawer title="Unsaved changes" variant="dialog" onClose={() => setDiscard(false)}>
-          <h2>Discard unsaved changes?</h2>
-          <div className="form-actions">
-            <Button variant="secondary" onClick={() => setDiscard(false)}>
-              Keep editing
-            </Button>
-            <Button
-              variant="secondary"
-              className="danger-text"
-              onClick={() => {
-                onDirtyChange(false);
-                onClose();
-              }}
-            >
-              Discard changes
-            </Button>
-          </div>
-        </Drawer>
-      )}
+      <DiscardChanges
+        open={discard}
+        onOpenChange={setDiscard}
+        onDiscard={() => {
+          onDirtyChange(false);
+          onClose();
+        }}
+      />
     </>
   );
 }

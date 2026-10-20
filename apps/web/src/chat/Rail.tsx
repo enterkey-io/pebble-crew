@@ -1,3 +1,4 @@
+import { PebbleTile } from '../ui/PebbleTile';
 import { Button } from '../components/ui/button';
 import { useState } from 'react';
 import type { Dispatch, SetStateAction } from 'react';
@@ -21,7 +22,6 @@ import { AgentAvatar } from '../AgentAvatar';
 import { Menu } from '../ui/primitives';
 import type { MenuItem } from '../ui/primitives';
 import { IconButton } from '../components/ui/icon-button';
-import { Badge } from '../components/ui/badge';
 import { OrganizationRail, OrganizationDialog } from '../ui/OrganizationRail';
 import { NavigationItem } from '../ui/NavigationItem';
 import { Item, ItemMedia, ItemContent, ItemTitle, ItemDescription } from '../components/ui/item';
@@ -312,7 +312,8 @@ export function Rail({
       {client.supportsProjects && (
         <ToggleGroup
           type="single"
-          className="pc-area-switch"
+          className="pc-area-switch w-auto"
+          variant="segmented"
           aria-label="App area"
           value={area}
           onValueChange={(value) => {
@@ -400,9 +401,10 @@ export function Rail({
                       key={identity(b)?.id ?? b.profile}
                     >
                       <div className="pc-pin-actions">{controls(b)}</div>
-                      <Button
-                        variant="ghost"
-                        className="pc-pin-open hover:bg-transparent dark:hover:bg-transparent"
+                      <PebbleTile
+                        name={b.name}
+                        title={identity(b)?.role.title ?? ''}
+                        avatar={face(identity(b)!.id, true)}
                         aria-label={`${b.name} ${identity(b)?.role.title ?? ''} Bot Chat`}
                         aria-current={selected === b.profile ? 'page' : undefined}
                         aria-disabled={!online}
@@ -410,22 +412,15 @@ export function Rail({
                           if (online) onOpen(b);
                         }}
                       >
-                        {face(identity(b)!.id, true)}
-                        <strong>{b.name}</strong>{' '}
                         {pendingPins[identity(b)?.id ?? ''] && (
                           <span className="pin-saving sr-only" role="status">
                             Saving pin…
                           </span>
                         )}
-                        {identity(b)?.role.title && (
-                          <Badge className="pc-pin-title" variant="secondary" aria-hidden="true">
-                            {identity(b)?.role.title}
-                          </Badge>
-                        )}
                         {identity(b)?.unread && (
                           <span className="unread-dot" aria-label="Unread messages" />
                         )}
-                      </Button>
+                      </PebbleTile>
                     </motion.div>
                   ))}
                 </div>

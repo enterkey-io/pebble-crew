@@ -124,11 +124,11 @@ export function AgentAvatar({
       )}
       {orchestrator && (
         <span className="avatar-star" role="img" aria-label="Main Pebble">
-          <Star aria-hidden="true" />
+          <Star className="size-[9px]" aria-hidden="true" />
         </span>
       )}
       {look.kind === 'photo' && !image && (
-        <svg className="empty-photo" viewBox="0 0 48 48" aria-hidden="true">
+        <svg className="empty-photo size-full" viewBox="0 0 48 48" aria-hidden="true">
           <circle cx="24" cy="18" r="7" />
           <path d="M11 39v-3a13 13 0 0 1 26 0v3" />
         </svg>

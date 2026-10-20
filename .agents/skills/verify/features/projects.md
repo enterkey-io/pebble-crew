@@ -5,11 +5,13 @@ New task in either area; routines stay with agents. A native Project has one
 linked native board. General tasks is for small unfiled work.
 
 Run work.spec.ts with playwright.chat.config.ts and playwright.mobile.config.ts.
-The journeys create separate boards, assign Triage tasks, edit instructions,
+The journeys create separate boards, assign Triage tasks, edit task details,
 render Markdown comments, preserve chat drafts and task conflicts across
 transport restoration, and reconcile lost responses/partial creates without
 creating another record. Geometry checks require readable non-overlapping
-columns on both phones. Inspect settled desktop, iPhone and Android captures.
+columns on both phones. Light/dark controls, content-sized dialogs, untouched
+Cancel, compact destructive confirmation, movement through status/menu/drag and
+comment handle completion are covered. Inspect settled desktop, iPhone and Android captures.
 
 Run npm run test:owner-browser for real owner login, project/task creation,
 editing, comments and persistence after reload against the native bridge.
@@ -17,12 +19,16 @@ editing, comments and persistence after reload against the native bridge.
 Run scripts/fixture/projects_smoke.py with each pinned prepared Python/native
 source. It checks actual RPC/native services, stable cross-profile catalog
 scope, stale writes, idempotency, each partial-create boundary, native create
-middleware and the worker database fence. It runs no models or workers.
+middleware and the worker database fence. It also exercises native To do promotion, dispatcher claims with a substituted
+spawn boundary, completion, stale moves and mention recovery. No model or real
+worker process is started by this service-only check.
 
 Run scripts/fixture/work_model_smoke.py on both native builds for actual deferred
 workspace_work schema discovery with saved tool selection and catalog listing
 disabled. A deterministic loopback model creates a project and its triage task,
-then observes native readback. No worker starts and the persona is unchanged.
+then observes native readback. A task comment then wakes the canonical Bot Chat
+exactly once and confirms its delivery receipt. No worker starts and the persona
+is unchanged.
 
 Safe native task-detail edits are available on 0.21.7, and read-only on 0.21.0.
 Unlinked/conflicting imported boards remain readable until their native mapping

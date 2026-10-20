@@ -126,6 +126,7 @@ if (command === 'init' || command === 'recover') {
     '.html': 'text/html; charset=utf-8',
     '.js': 'text/javascript; charset=utf-8',
     '.css': 'text/css; charset=utf-8',
+    '.ttf': 'font/ttf',
     '.json': 'application/json',
     '.webmanifest': 'application/manifest+json',
     '.png': 'image/png',

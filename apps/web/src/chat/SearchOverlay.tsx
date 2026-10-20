@@ -228,7 +228,7 @@ export function SearchOverlay({
         }}
       >
         <DialogContent
-          className="pc-search"
+          className="pc-search gap-0 overflow-hidden p-0 sm:max-w-[640px]"
           showCloseButton={false}
           onCloseAutoFocus={(event) => {
             event.preventDefault();
@@ -239,13 +239,14 @@ export function SearchOverlay({
           <DialogDescription className="sr-only">
             Search on your own Hermes server.
           </DialogDescription>
-          <Command shouldFilter={false}>
+          <Command shouldFilter={false} className="bg-card">
             <CommandInput
+              variant="search"
               placeholder="Search Pebble Crew…"
               value={query}
               onValueChange={setQuery}
             />
-            <CommandList>
+            <CommandList className="max-h-[min(480px,60dvh)] px-3 pb-3">
               {busy ? (
                 <p className="search-status" role="status">
                   Searching…
@@ -263,7 +264,12 @@ export function SearchOverlay({
                     {hits.map((hit) => {
                       const Icon = icons[hit.kind];
                       return (
-                        <CommandItem key={hit.id} value={hit.id} onSelect={() => void select(hit)}>
+                        <CommandItem
+                          className="min-h-12 gap-3 rounded-lg px-3 py-2"
+                          key={hit.id}
+                          value={hit.id}
+                          onSelect={() => void select(hit)}
+                        >
                           <Icon />
                           <span>
                             <strong>{hit.title}</strong>

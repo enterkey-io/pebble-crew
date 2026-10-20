@@ -1,4 +1,8 @@
-import { useEffect, useState } from 'react';
+import { motion } from 'motion/react';
+import { useTaskMovement } from './use-task-movement';
+import { workMoveStatuses } from '@hermes-client/protocol';
+import { Menu } from '../ui/primitives';
+import { useEffect, useRef, useState } from 'react';
 import { Flag, Menu as MenuIcon, MoreHorizontal } from 'lucide-react';
 import { WorkDomain } from '@hermes-client/protocol';
 import type {
@@ -51,6 +55,30 @@ export function WorkArea({
   const [view, setView] = useState<WorkBoardView>();
   const [error, setError] = useState('');
   const [retry, setRetry] = useState(0);
+  const dragged = useRef<string | undefined>(undefined);
+  const [over, setOver] = useState<string>();
+  const movement = useTaskMovement({
+    client,
+    workspaceId: catalog.workspaceId,
+    board,
+    onChanged: (task) => {
+      setView((current) =>
+        current
+          ? {
+              ...current,
+              columns: current.columns.map((column) => ({
+                ...column,
+                tasks: [
+                  ...column.tasks.filter((row) => row.id !== task.id),
+                  ...(column.status === task.status ? [task] : []),
+                ],
+              })),
+            }
+          : current,
+      );
+      setRetry((n) => n + 1);
+    },
+  });
   useEffect(() => {
     let live = true;
     let timer: ReturnType<typeof setTimeout>;
@@ -119,6 +147,15 @@ export function WorkArea({
           </Button>
         </Notice>
       )}
+      {movement.error && <Notice error>{movement.error}</Notice>}
+      {movement.uncertain && (
+        <Notice>
+          The move is not yet confirmed.{' '}
+          <Button variant="quiet" onClick={() => void movement.check()}>
+            Check move
+          </Button>
+        </Notice>
+      )}
       {summary?.mapping === 'conflict' && (
         <Notice>
           This board has conflicting project links in Hermes. You can view its tasks while those
@@ -146,6 +183,34 @@ export function WorkArea({
               key={column.status}
               className="pc-work-column"
               aria-label={statusNames[column.status]}
+              data-drag-over={over === column.status || undefined}
+              onDragOver={(event) => {
+                if (
+                  dragged.current &&
+                  workMoveStatuses.some((status) => status === column.status)
+                ) {
+                  event.preventDefault();
+                  setOver(column.status);
+                }
+              }}
+              onDragLeave={(event) => {
+                if (
+                  !event.currentTarget.contains(
+                    event.relatedTarget instanceof Node ? event.relatedTarget : null,
+                  )
+                )
+                  setOver(undefined);
+              }}
+              onDrop={(event) => {
+                event.preventDefault();
+                const task = current.columns
+                  .flatMap((c) => c.tasks)
+                  .find((t) => t.id === dragged.current);
+                const status = workMoveStatuses.find((status) => status === column.status);
+                if (task && status) void movement.move(task, status);
+                dragged.current = undefined;
+                setOver(undefined);
+              }}
             >
               <header className="flex items-center gap-2 px-1 pb-3">
                 <h2 className="text-sm font-medium">{statusNames[column.status]}</h2>
@@ -157,27 +222,62 @@ export function WorkArea({
                 {column.tasks.map((task) => {
                   const assignee = workspace.bots.find((b) => b.profile === task.assignee);
                   return (
-                    <Card asChild key={task.id} className="gap-0 py-0 shadow-none">
-                      <Button
-                        variant="ghost"
-                        className="h-auto min-h-24 w-full flex-col items-start gap-3 whitespace-normal rounded-xl p-4 text-left"
-                        aria-label={`Open task ${task.title}`}
-                        onClick={() => onTask(task.id)}
+                    <motion.div key={task.id} layout transition={{ duration: 0.18 }}>
+                      <Card
+                        className="relative gap-0 py-0 shadow-none"
+                        draggable={!movement.busy && !movement.uncertain}
+                        onDragStart={(event) => {
+                          dragged.current = task.id;
+                          event.dataTransfer.setData('text/plain', task.id);
+                          event.dataTransfer.effectAllowed = 'move';
+                        }}
+                        onDragEnd={() => {
+                          dragged.current = undefined;
+                          setOver(undefined);
+                        }}
                       >
-                        <span className="break-words text-sm font-medium">{task.title}</span>
-                        <span className="flex w-full items-center gap-2 text-xs font-normal text-muted-foreground">
-                          <span className="min-w-0 flex-1 truncate">
-                            {assignee?.name ?? task.assignee ?? 'Unassigned'}
-                          </span>
-                          {task.priority !== 0 && (
-                            <span className="inline-flex items-center gap-1">
-                              <Flag className="size-3" />
-                              {task.priority >= 2 ? 'Urgent' : task.priority > 0 ? 'High' : 'Low'}
+                        <Button
+                          variant="ghost"
+                          className="h-auto min-h-24 w-full flex-col items-start gap-3 whitespace-normal rounded-xl p-4 pr-12 text-left"
+                          aria-label={`Open task ${task.title}`}
+                          onClick={() => onTask(task.id)}
+                        >
+                          <span className="break-words text-sm font-medium">{task.title}</span>
+                          <span className="flex w-full items-center gap-2 text-xs font-normal text-muted-foreground">
+                            <span className="min-w-0 flex-1 truncate">
+                              {assignee?.name ?? task.assignee ?? 'Unassigned'}
                             </span>
-                          )}
-                        </span>
-                      </Button>
-                    </Card>
+                            {task.priority !== 0 && (
+                              <span className="inline-flex items-center gap-1">
+                                <Flag className="size-3" />
+                                {task.priority >= 2 ? 'Urgent' : task.priority > 0 ? 'High' : 'Low'}
+                              </span>
+                            )}
+                          </span>
+                        </Button>
+                        <div className="absolute right-1 top-1">
+                          <Menu
+                            label={`Task actions for ${task.title}`}
+                            placement="row-actions"
+                            disabled={movement.busy || !!movement.uncertain}
+                            items={[
+                              {
+                                label: 'Move to',
+                                action: () => {},
+                                items: workMoveStatuses
+                                  .filter((status) => status !== task.status)
+                                  .map((status) => ({
+                                    label: statusNames[status],
+                                    action: () => {
+                                      void movement.move(task, status);
+                                    },
+                                  })),
+                              },
+                            ]}
+                          />
+                        </div>
+                      </Card>
+                    </motion.div>
                   );
                 })}
                 {!column.tasks.length && (

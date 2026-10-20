@@ -60,13 +60,13 @@ class BotOperations:
                 "cursor": max(0, int((row.get('canonical_session') or {}).get('live_message_count', (row.get('canonical_session') or {}).get('message_count')) or 0)),
                 "conversation_id": str((row.get('canonical_session') or {}).get('resolved_id') or (row.get('canonical_session') or {}).get('id') or ''), **row.get('_presentation_clock', {})}
 
-    async def greet(self, profile, text):
+    async def greet(self, profile, text, title='Introduction in Pebble Crew', queued=False):
         opened = await self.invoke('bot.open', {'profile': profile})
         sid = opened['session_id']
         if await self.stamp(profile) != self.session_incarnations.get(sid):
             raise InvalidOperation('This profile changed before its introduction')
         return await self.gateway.call('prompt.submit', {'session_id': sid, 'text': text,
-            'display_kind': 'hidden', 'title_preview': 'Introduction in Pebble Crew'})
+            'display_kind': 'hidden', 'title_preview': title, 'queued': queued})
 
     async def enable_existing(self, profile):
         identifier(profile)

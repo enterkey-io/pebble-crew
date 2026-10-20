@@ -12,12 +12,14 @@ export function Drawer({
   onClose,
   onBeforeClose,
   variant = 'drawer',
+  sizing = 'editor',
 }: {
   title: string;
   children: ReactNode;
   onClose: () => boolean | void;
   onBeforeClose?: () => boolean;
   variant?: 'drawer' | 'dialog';
+  sizing?: 'editor' | 'content';
 }) {
   const [open, setOpen] = useState(true);
   const content = useRef<HTMLDivElement>(null);
@@ -65,7 +67,8 @@ export function Drawer({
     >
       <DialogContent
         ref={content}
-        className="product-dialog"
+        size={sizing}
+        className={sizing === 'content' ? 'pc-work-dialog' : 'product-dialog'}
         showCloseButton={false}
         aria-label={title}
         onOpenAutoFocus={focusContent}
@@ -87,6 +90,7 @@ export function Drawer({
       <SheetContent
         ref={content}
         className="product-sheet"
+        size="panel"
         side={title === 'navigation' ? 'left' : 'right'}
         aria-label={title}
         showCloseButton={false}

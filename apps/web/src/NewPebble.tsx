@@ -31,7 +31,7 @@ import { Button } from './components/ui/button';
 import { IconButton } from './components/ui/icon-button';
 import { Textarea } from './components/ui/textarea';
 import { LoadingBar } from './components/ui/loading-bar';
-import { Drawer } from './chat/Drawer';
+import { DiscardChanges } from './ui/DiscardChanges';
 import { RequestReview } from './chat/RequestReview';
 type Row = Record<string, unknown>;
 type Step =
@@ -397,25 +397,15 @@ export function NewPebble({
           )}
         </Form>
       )}
-      {backConfirm && (
-        <Drawer title="Unsaved changes" variant="dialog" onClose={() => setBackConfirm(false)}>
-          <h2>Discard unsaved changes?</h2>
-          <div className="form-actions">
-            <Button variant="secondary" onClick={() => setBackConfirm(false)}>
-              Keep editing
-            </Button>
-            <Button
-              onClick={() => {
-                setBackConfirm(false);
-                onDirtyChange(false);
-                setStep({ kind: step.kind === 'configure' ? 'existing' : 'choose' });
-              }}
-            >
-              Discard changes
-            </Button>
-          </div>
-        </Drawer>
-      )}
+      <DiscardChanges
+        open={backConfirm}
+        onOpenChange={setBackConfirm}
+        onDiscard={() => {
+          setBackConfirm(false);
+          onDirtyChange(false);
+          setStep({ kind: step.kind === 'configure' ? 'existing' : 'choose' });
+        }}
+      />
     </EditorSurface>
   );
 }

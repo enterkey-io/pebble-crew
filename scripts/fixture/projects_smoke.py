@@ -126,6 +126,65 @@ async def verify(home):
                 except InvalidOperation as error:
                     assert error.code == 'STALE_REVISION'
                 assert adapter.task(receipt['board'], receipt['task_id'])['task']['title'] == 'Native CLI edit'
+        # Explicit queue movement uses native CAS and the native dispatcher, never a chat prompt.
+        queued = invoke('work.task.create', {**create, 'operation_id': str(uuid.uuid4()), 'board': 'default', 'title': 'Queue fixture'})
+        qref = {**scope, 'board': 'default', 'id': queued['task_id']}
+        qtask = invoke('work.task', qref)['task']
+        move = {**qref, 'operation_id': str(uuid.uuid4()), 'expected_revision': qtask['revision'], 'status': 'todo'}
+        moved = invoke('work.task.move', move)
+        assert moved == invoke('work.task.move', move)
+        assert invoke('work.task', qref)['task']['status'] == 'todo'
+        try:
+            invoke('work.task.move', {**move, 'operation_id': str(uuid.uuid4()), 'status': 'blocked'})
+            raise AssertionError('Stale move was accepted')
+        except InvalidOperation as error:
+            assert error.code == 'STALE_REVISION'
+        if catalog['capabilities']['edit_details']:
+            queued_task = invoke('work.task', qref)['task']
+            invoke('work.task.update', {**create, **qref, 'operation_id': str(uuid.uuid4()),
+                'title': queued_task['title'], 'body': queued_task['body'],
+                'assignee': primary['profile'], 'expected_revision': queued_task['revision']})
+            assert invoke('work.task', qref)['task']['assignee'] == primary['profile']
+        from bot_web.work_delivery import tick, settle
+        dispatched = []
+        def native_dispatch(adapter, slug):
+            with closing(adapter.api._conn(board=slug)) as conn:
+                return adapter.dispatcher(conn, board=slug, spawn_fn=lambda task, workspace, **kw: dispatched.append(task.id), reconcile_orphans=False)
+        with patch.object(NativeWork, 'dispatch', native_dispatch):
+            assert tick() == []
+            assert dispatched == [queued['task_id']], dispatched
+            assert invoke('work.task', qref)['task']['status'] == 'running'
+            assert tick() == []
+            assert dispatched == [queued['task_id']], 'Duplicate dispatcher claim'
+        qtask = invoke('work.task', qref)['task']
+        invoke('work.task.move', {**move, 'operation_id': str(uuid.uuid4()), 'expected_revision': qtask['revision'], 'status': 'done'})
+        assert invoke('work.task', qref)['task']['status'] == 'done'
+        mention = {**qref, 'operation_id': str(uuid.uuid4()), 'body': '@AURORA please read this. @aurora Again. user@example.com @missing'}
+        invoke('work.task.comment', mention)
+        invoke('work.task.comment', mention)
+        jobs = tick()
+        assert len(jobs) == 1 and jobs[0]['profile'] == primary['profile'], jobs
+        assert 'please read this' in jobs[0]['text'] and queued['task_id'] in jobs[0]['text']
+        assert settle(jobs[0]['id'], 'sending')
+        assert not settle(jobs[0]['id'], 'sending')
+        assert tick() == [], 'A claimed wake was replayed'
+        settle('', 'recover')
+        assert invoke('work.task', qref)['mentions'][0]['state'] == 'uncertain'
+        assert tick() == [], 'An uncertain wake was replayed after restart'
+        # Dependency refusals are definite validation errors, not uncertain writes or stale edits.
+        parent = invoke('work.task.create', {**create, 'operation_id': str(uuid.uuid4()), 'board': 'default', 'title': 'Prerequisite'})
+        child = invoke('work.task.create', {**create, 'operation_id': str(uuid.uuid4()), 'board': 'default', 'title': 'Dependent task'})
+        adapter = NativeWork(primary['profile'])
+        with adapter.scoped(), closing(adapter.api._conn(board='default')) as conn:
+            adapter.kanban.link_tasks(conn, parent['task_id'], child['task_id'])
+        child_ref = {**scope, 'board': 'default', 'id': child['task_id']}
+        child_task = invoke('work.task', child_ref)['task']
+        try:
+            invoke('work.task.move', {**child_ref, 'operation_id': str(uuid.uuid4()), 'expected_revision': child_task['revision'], 'status': 'done'})
+            raise AssertionError('Completed a task with unfinished prerequisites')
+        except InvalidOperation as error:
+            assert error.code == 'INVALID_PARAMETERS', error.code
+        assert invoke('work.task', child_ref)['task']['status'] == 'triage'
         # Recover each committed native boundary before its receipt advances.
         for step in ('create_project', 'create_board', 'link_project'):
             partial = {**scope, 'operation_id': str(uuid.uuid4()), 'name': 'Resume '+step, 'description': ''}
@@ -165,7 +224,7 @@ async def verify(home):
             'edit_details': catalog['capabilities']['edit_details'], 'separate_projects': 5,
             'idempotent_task_and_comment': True, 'partial_project_recovered': ['project', 'board', 'link'],
             'catalog_survives_main_transfer': True, 'native_project_policy_and_worker_fence': True,
-            'workers': 0, 'model_turns': 0}))
+            'native_queue_claim_and_completion': True, 'stale_move_rejected': True, 'mention_identity_and_retry': True, 'workers': 0, 'model_turns': 0}))
     finally:
         store.db.close()
         await native.stop()

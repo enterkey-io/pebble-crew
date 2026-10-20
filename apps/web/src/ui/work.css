@@ -1,5 +1,6 @@
 .pc-area-switch {
   align-self: stretch;
+  width: auto;
   justify-content: flex-start;
   margin: 0 20px 12px;
 }
@@ -50,4 +51,39 @@
     gap: 16px;
     padding: 0 16px max(16px, env(safe-area-inset-bottom));
   }
+}
+
+/* Content-sized shared dialogs, with one scroll surface only when needed. */
+.pc-work-editor {
+  gap: 20px;
+  width: 100%;
+  flex: none;
+}
+.pc-work-editor .page-header {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+.pc-work-editor .page-header h1 {
+  font-size: 18px;
+  letter-spacing: -0.25px;
+}
+.pc-work-editor [data-slot='editor-body'] {
+  flex: none;
+  overflow: visible;
+}
+.pc-work-dialog .ui-tabs-root,
+.pc-work-editor .ui-tab-panel {
+  flex: none;
+}
+.pc-work-editor .ui-tab-panel {
+  margin-top: 0;
+  overflow: visible;
+}
+
+.pc-work-column[data-drag-over] {
+  border-radius: var(--radius-lg);
+  background: var(--surface-hover);
+  outline: 1px solid var(--ring);
+  outline-offset: 6px;
 }

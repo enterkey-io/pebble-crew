@@ -35,6 +35,11 @@ class WorkStore:
         self.db = sqlite3.connect(self.path, timeout=5)
         self.db.executescript('''
             CREATE TABLE IF NOT EXISTS catalog(workspace TEXT PRIMARY KEY, identity TEXT NOT NULL);
+            CREATE TABLE IF NOT EXISTS dispatch_boards(slug TEXT PRIMARY KEY);
+            CREATE TABLE IF NOT EXISTS mentions(
+                id TEXT PRIMARY KEY, profile TEXT NOT NULL, identity TEXT NOT NULL,
+                board TEXT NOT NULL, task TEXT NOT NULL, comment INTEGER NOT NULL,
+                state TEXT NOT NULL);
             CREATE TABLE IF NOT EXISTS intents(
                 id TEXT PRIMARY KEY, actor TEXT NOT NULL, fingerprint TEXT NOT NULL,
                 state TEXT NOT NULL, evidence TEXT NOT NULL);
@@ -88,3 +93,19 @@ class WorkStore:
         if row is None:
             return {'id': ident, 'state': 'absent'}
         return {'id': ident, 'state': row[0], **json.loads(row[1])}
+
+    def finish_task(self, intent, board, task, mentions=(), dispatch=False):
+        from .work_native import task_revision
+        evidence = {'board': board, 'task_id': task['id'], 'revision': task_revision(task)}
+        with self.db:
+            if dispatch:
+                self.db.execute('INSERT OR IGNORE INTO dispatch_boards VALUES(?)', (board,))
+            for bot, comment_id in mentions:
+                self.db.execute('INSERT OR IGNORE INTO mentions VALUES(?,?,?,?,?,?,?)',
+                    (intent+':'+bot['id'], bot['profile'], bot['id'], board, task['id'], comment_id, 'pending'))
+            self.db.execute("UPDATE intents SET state='completed',evidence=? WHERE id=?", (json.dumps(evidence), intent))
+        return {'id': intent, 'state': 'completed', **evidence}
+
+    def mention_states(self, board, task):
+        return [{'id': r[0], 'profile': r[1], 'comment_id': r[2], 'state': r[3]} for r in self.db.execute(
+            'SELECT id,profile,comment,state FROM mentions WHERE board=? AND task=?', (board, task))]

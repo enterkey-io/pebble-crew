@@ -1,3 +1,7 @@
+import { Skeleton } from '../components/ui/skeleton';
+import { TaskComment } from './TaskComment';
+import { TaskMovement } from './TaskMovement';
+import { useTaskMovement } from './use-task-movement';
 import { useEffect, useReducer, useState } from 'react';
 import type { WorkTaskView } from '@hermes-client/protocol';
 import { EditorSurface, TabbedEditor } from '../ui/EditorSurface';
@@ -49,10 +53,21 @@ export function TaskEditor(props: SharedProps & { board: string; id: string }) {
   if (!view)
     return (
       <EditorSurface
-        className="entity-page"
+        className="pc-work-editor"
         header={<PageHeader title="Task" onClose={props.onClose} />}
       >
         <LoadingBar active={!error} label="Loading task" />
+        {!error && (
+          <div className="grid gap-5" aria-hidden="true">
+            <Skeleton className="h-9 w-36" />
+            <Skeleton className="h-14 w-full" />
+            <div className="grid grid-cols-2 gap-5">
+              <Skeleton className="h-14 w-full" />
+              <Skeleton className="h-14 w-full" />
+            </div>
+            <Skeleton className="h-32 w-full" />
+          </div>
+        )}
         {error && (
           <Notice error>
             {error}
@@ -63,12 +78,20 @@ export function TaskEditor(props: SharedProps & { board: string; id: string }) {
         )}
       </EditorSurface>
     );
-  return <TaskForm {...props} view={view} onRefresh={() => setRefresh((n) => n + 1)} />;
+  return (
+    <TaskForm
+      {...props}
+      view={view}
+      onTaskChanged={(task) => setView((current) => (current ? { ...current, task } : current))}
+      onRefresh={() => setRefresh((n) => n + 1)}
+    />
+  );
 }
 
 function TaskForm({
   view,
   onRefresh,
+  onTaskChanged,
   client,
   catalog,
   workspace,
@@ -76,7 +99,11 @@ function TaskForm({
   onNavigate,
   onClose,
   onSaved,
-}: SharedProps & { view: WorkTaskView; onRefresh: () => void }) {
+}: SharedProps & {
+  view: WorkTaskView;
+  onRefresh: () => void;
+  onTaskChanged: (task: WorkTaskView['task']) => void;
+}) {
   const [edit, dispatch] = useReducer(workReducer, view.task, workSession);
   const [tab, setTab] = useState('details');
   const [busy, setBusy] = useState(false),
@@ -94,10 +121,19 @@ function TaskForm({
     onDirtyChange(dirty);
     return () => onDirtyChange(false);
   }, [dirty, onDirtyChange]);
+  const movement = useTaskMovement({
+    client,
+    workspaceId: catalog.workspaceId,
+    board: view.board.slug,
+    onChanged: (task) => {
+      onTaskChanged(task);
+      onSaved();
+    },
+  });
   const domain = new WorkDomain(client);
   const close = () => onNavigate(onClose);
   async function save(commentOnly = false) {
-    if (busy || unconfirmed || (!commentOnly && edit.conflict)) return;
+    if (busy || movement.busy || unconfirmed || (!commentOnly && edit.conflict)) return;
     setBusy(true);
     setError('');
     const operationId = crypto.randomUUID();
@@ -139,7 +175,7 @@ function TaskForm({
   }
   return (
     <TabbedEditor
-      className="entity-page"
+      className="pc-work-editor"
       aria-label="Task"
       header={
         <PageHeader
@@ -219,10 +255,22 @@ function TaskForm({
               void save();
             }}
           >
+            <TaskMovement
+              status={view.task.status}
+              needsSave={workDirty(edit)}
+              disabled={busy || !!unconfirmed || edit.conflict}
+              movement={{
+                ...movement,
+                choose: (status) => {
+                  void movement.move(view.task, status);
+                },
+              }}
+            />
             <fieldset
               className="grid gap-5"
               disabled={
                 busy ||
+                movement.busy ||
                 !catalog.capabilities.editDetails ||
                 !['general', 'linked'].includes(view.board.mapping)
               }
@@ -240,15 +288,17 @@ function TaskForm({
               </Label>
               <Assignment
                 value={edit.draft}
-                allowAssignment={view.task.status === 'triage'}
+                allowAssignment={['triage', 'todo', 'ready', 'blocked', 'scheduled'].includes(
+                  view.task.status,
+                )}
                 workspace={workspace}
                 onChange={(patch) => dispatch({ type: 'change', patch })}
               />
               <Label layout="stacked">
-                Instructions
+                Details
                 <Textarea
                   sizing="fixed"
-                  className="min-h-48"
+                  className="min-h-28"
                   maxLength={32000}
                   value={edit.draft.body}
                   onChange={(event) =>
@@ -304,6 +354,21 @@ function TaskForm({
                   {comment.author === 'owner' ? 'You' : comment.author}
                 </span>
                 <MessageBody text={comment.body} />
+                {view.mentions
+                  .filter((m) => m.commentId === comment.id)
+                  .map((mention) => (
+                    <span key={mention.id} className="text-xs text-muted-foreground">
+                      @
+                      {workspace.bots.find((b) => b.profile === mention.profile)?.handle ??
+                        mention.profile}{' '}
+                      ·{' '}
+                      {mention.state === 'sent'
+                        ? 'Notified'
+                        : mention.state === 'pending' || mention.state === 'sending'
+                          ? 'Notification queued'
+                          : 'Delivery unconfirmed'}
+                    </span>
+                  ))}
               </article>
             ))}
             {!view.comments.length && (
@@ -315,15 +380,7 @@ function TaskForm({
                 void save(true);
               }}
             >
-              <Label layout="stacked">
-                Comment
-                <Textarea
-                  sizing="fixed"
-                  required
-                  value={comment}
-                  onChange={(event) => setComment(event.target.value)}
-                />
-              </Label>
+              <TaskComment value={comment} onChange={setComment} workspace={workspace} />
               <div className="flex justify-end">
                 <Button
                   disabled={

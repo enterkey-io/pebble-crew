@@ -8,18 +8,25 @@ its own project board.
 A project board links one native Hermes Project to one native Kanban board.
 There is no Pebble Crew task database or execution service. Tasks, comments,
 statuses, results and runs stay in Hermes. The plugin keeps only a stable catalog
-identity and save/recovery receipts on that same host.
+identity, save/recovery receipts and mention-delivery cursors on that same host.
 
-New tasks enter **Triage**. Creating, assigning and commenting do not start an
-agent. This phase exposes native status and results; starting workers, moving
-execution states and review controls remain in the later execution phase.
+New tasks enter **Triage**. Creating or editing details does not start work.
+Drag a card to **To do**, use its **Move to** menu, or change Status in the task
+editor to queue it. Assigned tasks run through Hermes’s native dispatcher,
+respecting dependencies, profile limits and execution policy. Unassigned tasks
+wait for an assignee. In progress is set by Hermes when a worker claims the task.
+
+Comments offer `@handle` completion. Posting a mention notifies that enrolled
+Pebble in its existing Bot Chat, including the task reference and comment.
+This does not reassign the task. Activity shows queued, delivered or unconfirmed
+notifications; an uncertain delivery is not silently repeated.
 Routines stay with their agents and are created through chat.
 
 ## Editing and recovery
 
-Open a task card to edit its title, instructions, assignee and priority, or use
-Activity to add a formatted comment. Assignment changes here are limited to
-Triage tasks. Native instructions support Markdown and checklists.
+Open a task card to edit its title, details, assignee and priority, or use
+Activity to add a formatted comment. You can reassign queued or paused work;
+active work must be paused first. Task details support Markdown and checklists.
 
 Confirmed saves close the task editor. A change made by another client or in
 Hermes appears without losing an unsaved draft; choose which edits to retain
@@ -57,4 +64,7 @@ an owner's unrestricted shell or direct database access.
 - Native deferred agent tool: `scripts/fixture/work_model_smoke.py` on both builds
 
 Native acceptance uses disposable homes and a deterministic loopback model.
-Install, update, status and native-service checks do not run models or workers.
+Install, update and status checks do not run models or workers. Native queue
+acceptance substitutes the worker spawn boundary while exercising real claims
+and completion. Mention acceptance uses an actual isolated Bot Chat and local
+model; no owner infrastructure or provider credentials are used.
