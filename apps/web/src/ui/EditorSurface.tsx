@@ -53,14 +53,20 @@ export function TabbedEditor({
   value,
   onChange,
   children,
+  contentSized = false,
   ...props
 }: Omit<ComponentProps<typeof EditorSurface>, 'navigation' | 'bodyClassName' | 'onChange'> & {
   tabs: readonly { id: string; label: string }[];
   value: string;
   onChange: (value: string) => void;
+  contentSized?: boolean;
 }) {
   return (
-    <Tabs value={value} onValueChange={onChange} className="ui-tabs-root min-h-0 flex-1 gap-0">
+    <Tabs
+      value={value}
+      onValueChange={onChange}
+      className={cn('ui-tabs-root min-h-0 gap-0', contentSized ? 'flex-initial' : 'flex-1')}
+    >
       <EditorSurface
         {...props}
         bodyClassName="contents"
@@ -74,7 +80,13 @@ export function TabbedEditor({
           </TabsList>
         }
       >
-        <TabsContent value={value} className="ui-tab-panel">
+        <TabsContent
+          value={value}
+          className={cn(
+            'ui-tab-panel',
+            contentSized && 'flex-initial overflow-y-auto scroll-py-1 pb-1',
+          )}
+        >
           {children}
         </TabsContent>
       </EditorSurface>

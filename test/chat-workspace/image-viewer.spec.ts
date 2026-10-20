@@ -129,9 +129,13 @@ test('photo viewer supports wheel, keyboard and mouse pan without disturbing cha
   const viewport = page.viewportSize();
   if (!viewport) throw new Error('Viewer test requires a viewport');
   if (!(info.project.use.isMobile && info.project.use.browserName === 'webkit')) {
-    await page.mouse.move(viewport.width / 2, viewport.height / 2);
+    // Off-center wheel input must still keep the image centered, in both axes.
+    await page.mouse.move(viewport.width * 0.8, viewport.height * 0.65);
     await page.mouse.wheel(0, -240);
     await expect.poll(async () => (await bounds(image)).width).toBeGreaterThan(fit.width * 1.05);
+    const zoomed = await bounds(image);
+    expect(Math.abs(zoomed.x + zoomed.width / 2 - viewport.width / 2)).toBeLessThan(1);
+    expect(Math.abs(zoomed.y + zoomed.height / 2 - viewport.height / 2)).toBeLessThan(1);
   }
   await expect(page.getByRole('log')).toHaveJSProperty('scrollTop', scroll);
   await page.keyboard.press('Control+Digit0');

@@ -225,3 +225,29 @@ URLs, symlinks, hard links, binary data and oversized documents are refused.
 Viewer rendering uses the shared Markdown components with raw HTML disabled and
 remote images represented as links. It neither executes content nor fetches
 remote images. This is a read-only preview; the file remains on Hermes.
+
+## Conversation cards (0.7.8-preview.21)
+
+The additive `questions` capability advertises the supported native clarify
+transport. `questions.pending` is scoped to an opened `session_id`; it returns
+bounded requests containing `id`, `questions` (`qid`, `question`, optional
+`choices`, `multi_select`) and locked `answers`. `questions.respond` requires
+that session, request `id`, `question_id` and an `answer` (string, string array
+for multiple choice, or null to skip). Receipts are `answered` or `expired`.
+The current adapter uses native `clarify.lock`; the older adapter uses native
+`clarify.respond`. Hermes must have its built-in clarify tool enabled for an
+agent to request one. The integration does not silently grant toolsets.
+
+`questions.changed` carries only session-scoped invalidation. No answer is sent
+in that event. Reopening and answering require the same native profile identity
+and an authorized session. Native tool approvals retain their existing exact
+request, command and owner-decision path; moving the UI into chat does not grant
+agents authority to approve them.
+
+`requests.changed` invalidates management-request metadata for authenticated
+browsers. Cards are read through the existing `requests.list` operation, and
+approve/deny preserve the intent fingerprint and deletion confirmation. The
+Main Pebble's chat links to the originating agent's request card. Owner-local
+delivery receipts notify the current Main once about another agent's pending
+management or native tool approval. Unknown delivery outcomes are not replayed.
+Private request specifications and credentials are excluded from the notification.

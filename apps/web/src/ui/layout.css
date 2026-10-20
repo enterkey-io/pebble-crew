@@ -99,6 +99,7 @@
   margin-bottom: 10px;
 }
 .pc-row {
+  position: relative;
   display: grid;
   grid-template-columns: minmax(0, 1fr) 32px;
   align-items: center;
@@ -106,6 +107,9 @@
   border-radius: 10px;
   padding-right: 4px;
   transition: background-color var(--motion-hover);
+}
+.pc-row[data-unread] {
+  padding-right: 18px;
 }
 .pc-row:hover,
 .pc-row.is-selected {
@@ -353,10 +357,13 @@
   stroke: currentColor;
   stroke-width: 2;
 }
-.avatar-star {
+.avatar-star,
+.avatar-unread {
   position: absolute;
   right: 8%;
   bottom: 12%;
+}
+.avatar-star {
   width: 12px;
   height: 12px;
   display: grid;

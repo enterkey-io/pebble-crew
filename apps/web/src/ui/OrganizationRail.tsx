@@ -6,6 +6,7 @@ import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
 import { ChevronDown, MoreHorizontal, Pin, SlidersHorizontal, Users } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { NavigationItem } from './NavigationItem';
+import { UnreadDot } from './UnreadDot';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
@@ -45,7 +46,14 @@ import type { Organization, OrganizationEditor, Placement, RailDrag } from './or
 import { useOverlayHistory } from './overlay-history';
 import { EmptyMenuItem } from './primitives';
 
-type RailPebble = { id: string; name: string; title: string; preview: string; pinned: boolean };
+type RailPebble = {
+  id: string;
+  name: string;
+  title: string;
+  preview: string;
+  pinned: boolean;
+  unread?: boolean;
+};
 type ChangeOrganization = Dispatch<SetStateAction<Organization>>;
 const dragFormat = 'application/x-pebble-crew-rail';
 function drag(event: DragEvent, item: RailDrag) {
@@ -253,6 +261,7 @@ export function OrganizationRail({
         transition={move}
         key={id}
         className={`pc-row pebble-row ${activeId === id ? 'is-selected' : ''}`}
+        data-unread={pebble.unread || undefined}
         draggable
         onDragStartCapture={(event) => drag(event, { kind: 'pebble', id })}
         onDragEnd={() => setOver('')}
@@ -281,6 +290,7 @@ export function OrganizationRail({
             onChange={onChange}
           />
         )}
+        {pebble.unread && <UnreadDot />}
       </motion.div>
     );
   }

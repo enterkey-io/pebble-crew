@@ -664,6 +664,18 @@
       "accepted": [
         "rpc"
       ]
+    },
+    "questions.pending": {
+      "preferred": "rpc",
+      "accepted": [
+        "rpc"
+      ]
+    },
+    "questions.respond": {
+      "preferred": "rpc",
+      "accepted": [
+        "rpc"
+      ]
     }
   }
 }

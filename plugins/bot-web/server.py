@@ -81,9 +81,12 @@ def create_app(token, origins, hosts, gateway=None, trust=None, workspace=None, 
         if workspace:
             from .reporting import recover
             recover(workspace.store)
+            from .request_delivery import recover as recover_requests
+            recover_requests(workspace.store)
             await native.call('bot_web.work_delivery', {'action': 'recover'})
         async def watch_roster():
             revision = None
+            request_revision = None
             next_snapshot = 0
             next_work = 0
             while True:
@@ -91,6 +94,12 @@ def create_app(token, origins, hosts, gateway=None, trust=None, workspace=None, 
                 if workspace:
                     if time.monotonic() >= next_work:
                         next_work = time.monotonic() + 5
+                        from .request_delivery import deliver as deliver_requests, deliver_native
+                        try:
+                            await deliver_requests(workspace)
+                            await deliver_native(workspace, native)
+                        except Exception:
+                            pass  # An uncertain notification is never automatically resubmitted.
                         from .work_delivery import deliver
                         try:
                             await deliver(workspace, native)
@@ -106,6 +115,14 @@ def create_app(token, origins, hosts, gateway=None, trust=None, workspace=None, 
                 try:
                     next_snapshot = time.monotonic() + 4
                     snapshot = await workspace.invoke('workspace.snapshot', {})
+                    requests = tuple((r['id'], r['state']) for r in workspace.store.requests())
+                    if requests != request_revision:
+                        request_revision = requests
+                        for queue in tuple(native.listeners):
+                            try:
+                                queue.put_nowait({'type': 'requests.changed'})
+                            except asyncio.QueueFull:
+                                pass
                     if snapshot['revision'] != revision:
                         revision = snapshot['revision']
                         for queue in tuple(native.listeners):
@@ -246,7 +263,7 @@ def create_app(token, origins, hosts, gateway=None, trust=None, workspace=None, 
                                "expires": request.scope.get("bot.ticket_expires"), "ended": None}
         build = getattr(native, "build", None) or {}
         return {"connection": connection, "protocol": "hermes-bot-web.v1", "bridge_version": VERSION,
-                "capabilities": {"existing_agents": True, "owner_login": owner_trust is not None, "workspace": bool(workspace), "reporting": 1 if workspace else None, "projects": bool(workspace and getattr(native, 'work_supported', False)), "attachments": bool(files), "generated_media": True, "reactions": True, "live_voice": live_voice_supported(), "secrets": bool(getattr(native, "build", None) and native.build.get("server_requests")), "computer": computer.supported},
+                "capabilities": {"existing_agents": True, "owner_login": owner_trust is not None, "workspace": bool(workspace), "reporting": 1 if workspace else None, "projects": bool(workspace and getattr(native, 'work_supported', False)), "attachments": bool(files), "generated_media": True, "reactions": True, "live_voice": live_voice_supported(), "secrets": bool(getattr(native, "build", None) and native.build.get("server_requests")), "questions": bool(getattr(native, "build", None)), "computer": computer.supported},
                 "hermes_version": build.get("version"), "hermes_revision": build.get("revision")}
 
     @app.post("/v1/renew")
@@ -287,19 +304,19 @@ def create_app(token, origins, hosts, gateway=None, trust=None, workspace=None, 
             if not definition or not any(PROTOCOL_CATALOG['routes'][name]['path'] == request.url.path
                                          for name in definition['accepted']):
                 raise InvalidOperation('Operation unavailable on this route')
-            if operation.startswith(("chat.", "files.", "media.", "voice.", "secrets.")) and params.get("session_id") not in client["sessions"]:
+            if operation.startswith(("chat.", "files.", "media.", "voice.", "secrets.", "questions.")) and params.get("session_id") not in client["sessions"]:
                 raise InvalidOperation("Session belongs to another connection")
             if operation in {'voice.status', 'voice.preferences', 'voice.credential', 'voice.session', 'voice.submit', 'voice.end'}:
                 result = await voice.invoke(operation, params)
             elif operation in {'chat.commands', 'chat.command'}:
                 from .commands import invoke as command
                 result = await command(ops, operation, params)
-            elif operation in {'secrets.pending', 'secrets.respond'}:
+            elif operation in {'secrets.pending', 'secrets.respond', 'questions.pending', 'questions.respond'}:
                 sid = params.get('session_id')
                 profile = ops.sessions.get(sid)
                 if not profile or await ops.stamp(profile) != ops.session_incarnations.get(sid):
                     raise InvalidOperation('Reopen this Pebble before answering')
-                result = await native.secret_prompt(operation, params)
+                result = await (native.question_prompt(operation, params) if operation.startswith('questions.') else native.secret_prompt(operation, params))
             elif operation == 'media.read':
                 blob, name, mime = await media.read(params)
                 from urllib.parse import quote
@@ -418,8 +435,8 @@ def create_app(token, origins, hosts, gateway=None, trust=None, workspace=None, 
                     if event.get("type") == "bridge.resync":
                         yield json.dumps(event) + "\n\n"
                         break
-                    if event.get('type') == 'workspace.changed':
-                        yield '{"type":"workspace.changed"}\n\n'
+                    if event.get('type') in {'workspace.changed', 'requests.changed'}:
+                        yield json.dumps({'type': event['type']}) + '\n\n'
                         continue
                     if event.get("session_id") in client["sessions"]:
                         yield json.dumps(event, ensure_ascii=False) + "\n\n"

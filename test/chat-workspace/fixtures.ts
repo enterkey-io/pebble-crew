@@ -225,6 +225,7 @@ export async function installFixture(
           capabilities: {
             live_voice: options.voice === true,
             secrets: options.voice === true,
+            questions: options.voice === true,
             workspace: true,
             reporting: 1,
             projects: options.projects === true,

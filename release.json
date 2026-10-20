@@ -1,6 +1,6 @@
 {
-  "version": "0.7.8-preview.20",
-  "tag": "v0.7.8-preview.20",
+  "version": "0.7.8-preview.21",
+  "tag": "v0.7.8-preview.21",
   "channel": "preview",
   "repository": "enterkey-io/pebble-crew",
   "bridge_protocol": "hermes-bot-web.v1",

@@ -17,7 +17,9 @@ export function ComposerAction({
   return (
     <Button
       type={sending ? 'submit' : 'button'}
-      className={sending ? 'send-button' : 'stop-button'}
+      variant="secondary"
+      size="icon"
+      className={`self-end size-9 shrink-0 rounded-full bg-foreground p-0 text-background hover:bg-foreground/90 pointer-coarse:size-11 ${sending ? 'send-button' : 'stop-button'}`}
       aria-label={sending ? 'Send message' : mode === 'stopping' ? 'Stopping' : 'Stop'}
       disabled={disabled}
       onPointerDown={() => (pressed.current = action)}

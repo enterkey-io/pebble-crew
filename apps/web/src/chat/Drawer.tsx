@@ -13,6 +13,7 @@ export function Drawer({
   onBeforeClose,
   variant = 'drawer',
   sizing = 'editor',
+  restoreFocus,
 }: {
   title: string;
   children: ReactNode;
@@ -20,6 +21,7 @@ export function Drawer({
   onBeforeClose?: () => boolean;
   variant?: 'drawer' | 'dialog';
   sizing?: 'editor' | 'content';
+  restoreFocus?: () => HTMLElement | null;
 }) {
   const [open, setOpen] = useState(true);
   const content = useRef<HTMLDivElement>(null);
@@ -43,10 +45,20 @@ export function Drawer({
       return;
     }
     event.preventDefault();
-    if (document.querySelector('[role="dialog"][data-state="open"]')) return;
-    const previous = trigger.current;
-    if (previous instanceof HTMLElement && previous.isConnected) previous.focus();
-    else document.querySelector<HTMLElement>('.chat-title,.rail-toolbar button')?.focus();
+    requestAnimationFrame(() => {
+      if (document.querySelector('[role="dialog"][data-state="open"]')) return;
+      const previous = trigger.current;
+      const destination =
+        restoreFocus?.() ??
+        (previous instanceof HTMLElement &&
+        previous.isConnected &&
+        previous.matches('button,a,input,textarea,[tabindex]')
+          ? previous
+          : document.querySelector<HTMLElement>(
+              '.pc-chat-identity,.pc-rail-header [aria-label="New"]',
+            ));
+      destination?.focus({ preventScroll: true });
+    });
   }
   function focusContent(event: Event) {
     event.preventDefault();

@@ -73,6 +73,9 @@ import type { OwnerConnection } from './OwnerShell';
 import { WorkspaceSetup } from './WorkspaceSetup';
 import { StartupScreen } from './StartupScreen';
 import { OrgChart } from './OrgChart';
+import { RequestDomain } from '@hermes-client/protocol';
+import { ConversationRequests } from './chat/ConversationRequests';
+import { QuestionCards } from './chat/QuestionCards';
 import { useWorkCatalog } from './work/use-work';
 import { WorkArea } from './work/WorkArea';
 import { WorkDialog } from './work/WorkDialogs';
@@ -310,6 +313,8 @@ export function App({ owner }: { owner?: OwnerConnection }) {
   const [review, setReview] = useState<Row>();
   const [reviewBusy, setReviewBusy] = useState(false);
   const [requestCount, setRequestCount] = useState(0);
+  const [cardsVersion, setCardsVersion] = useState(0);
+  const [requestFocus, setRequestFocus] = useState<string>();
   const [removedDraft, setRemovedDraft] = useState('');
   const rosterLoader = useRef(new RosterLoader());
   const workspaceRef = useRef(workspace);
@@ -798,7 +803,12 @@ export function App({ owner }: { owner?: OwnerConnection }) {
   async function receive(connection: BotBridgeClient, event: BridgeEvent) {
     if (current.current !== connection) return;
     voicePanel.current?.event(event);
-    if (event.type === 'workspace.changed') {
+    if (event.type === 'questions.changed') {
+      setCardsVersion((version) => version + 1);
+      return;
+    }
+    if (event.type === 'workspace.changed' || event.type === 'requests.changed') {
+      setCardsVersion((version) => version + 1);
       await loadRoster(connection, true);
       return;
     }
@@ -1606,25 +1616,7 @@ export function App({ owner }: { owner?: OwnerConnection }) {
         setSettingsTab('agents');
         setSettings(true);
       }}
-    >
-      {approvals.map((approval) => (
-        <Confirmation
-          key={approvalKey(approval.target)}
-          className="approval"
-          title="Approval needed"
-          description={approval.description}
-          value={
-            approvalSubmitting[approvalKey(approval.target)]
-              ? { kind: 'submitting', message: 'Sending decision' }
-              : {
-                  kind: 'pending',
-                  disabled: blocked,
-                  onDecision: (choice) => void approve(approval, choice),
-                }
-          }
-        />
-      ))}
-    </Inspector>
+    />
   );
 
   if (!client)
@@ -2002,8 +1994,25 @@ export function App({ owner }: { owner?: OwnerConnection }) {
                           label={`${requestCount} ${requestCount === 1 ? 'request' : 'requests'} to review`}
                           icon={Inbox}
                           onClick={() => {
-                            setSettingsTab('requests');
-                            setSettings(true);
+                            void new RequestDomain(client)
+                              .list()
+                              .then((requests) => {
+                                const request = requests.find(
+                                  (request) =>
+                                    request.state === 'pending' &&
+                                    bots.some((bot) => bot.profile === request.actor),
+                                );
+                                const bot = bots.find((bot) => bot.profile === request?.actor);
+                                if (request && bot) {
+                                  setRequestFocus(request.id);
+                                  setArea('chat');
+                                  void open(bot);
+                                } else {
+                                  setSettingsTab('requests');
+                                  setSettings(true);
+                                }
+                              })
+                              .catch(fail);
                           }}
                         />
                       )}
@@ -2112,43 +2121,86 @@ export function App({ owner }: { owner?: OwnerConnection }) {
                   >
                     <Transcript
                       footer={
-                        selection?.kind === 'bot' &&
-                        (capabilities.voice || capabilities.secrets) ? (
-                          <VoiceChat
-                            key={selection.sessionId}
-                            ref={voicePanel}
-                            client={client}
-                            sessionId={selection.sessionId}
-                            running={running}
-                            onActiveChange={setVoiceActive}
-                            barTarget={voiceBarTarget}
-                            agentName={selection.bot.name}
-                            avatar={
-                              <PebbleAvatar
-                                bot={selection.bot}
-                                workspace={workspace}
-                                client={client}
-                                state={agentStates[selection.bot.profile]}
-                              />
-                            }
-                            onOpenSettings={(request) =>
-                              navigate(() => {
-                                setVoiceSettingsRequest(request);
-                                setAgentSettingsTab('voice');
-                                setEditProfile(selection.bot.profile);
-                                setSettingsTab('agents');
-                                setSettings(true);
-                              })
-                            }
-                            onAccepted={(message) =>
-                              setMessages((previous) =>
-                                previous.some((item) => item.id === message.id)
-                                  ? previous
-                                  : [...previous, message],
-                              )
-                            }
-                          />
-                        ) : undefined
+                        <>
+                          {selection?.kind === 'bot' && client.supportsQuestions && (
+                            <QuestionCards
+                              key={selection.sessionId}
+                              client={client}
+                              sessionId={selection.sessionId}
+                              version={cardsVersion}
+                            />
+                          )}
+                          {approvals.map((approval) => (
+                            <Confirmation
+                              key={approvalKey(approval.target)}
+                              title="Approval needed"
+                              description={approval.description}
+                              value={
+                                approvalSubmitting[approvalKey(approval.target)]
+                                  ? { kind: 'submitting', message: 'Sending decision' }
+                                  : {
+                                      kind: 'pending',
+                                      disabled: blocked,
+                                      onDecision: (choice) => void approve(approval, choice),
+                                    }
+                              }
+                            />
+                          ))}
+                          {selection?.kind === 'bot' && workspace && (
+                            <ConversationRequests
+                              key={selection.bot.profile}
+                              client={client}
+                              profile={selection.bot.profile}
+                              workspace={workspace}
+                              version={cardsVersion}
+                              focusId={requestFocus}
+                              onOpen={(profile, requestId) => {
+                                const bot = bots.find((bot) => bot.profile === profile);
+                                if (bot) {
+                                  setRequestFocus(requestId);
+                                  void open(bot);
+                                }
+                              }}
+                            />
+                          )}
+                          {selection?.kind === 'bot' &&
+                          (capabilities.voice || capabilities.secrets) ? (
+                            <VoiceChat
+                              key={selection.sessionId}
+                              ref={voicePanel}
+                              client={client}
+                              sessionId={selection.sessionId}
+                              running={running}
+                              onActiveChange={setVoiceActive}
+                              barTarget={voiceBarTarget}
+                              agentName={selection.bot.name}
+                              avatar={
+                                <PebbleAvatar
+                                  bot={selection.bot}
+                                  workspace={workspace}
+                                  client={client}
+                                  state={agentStates[selection.bot.profile]}
+                                />
+                              }
+                              onOpenSettings={(request) =>
+                                navigate(() => {
+                                  setVoiceSettingsRequest(request);
+                                  setAgentSettingsTab('voice');
+                                  setEditProfile(selection.bot.profile);
+                                  setSettingsTab('agents');
+                                  setSettings(true);
+                                })
+                              }
+                              onAccepted={(message) =>
+                                setMessages((previous) =>
+                                  previous.some((item) => item.id === message.id)
+                                    ? previous
+                                    : [...previous, message],
+                                )
+                              }
+                            />
+                          ) : undefined}
+                        </>
                       }
                       ownerColor={
                         selection?.kind === 'bot'
@@ -2231,15 +2283,6 @@ export function App({ owner }: { owner?: OwnerConnection }) {
                       {showLatest && (
                         <Button variant="secondary" className="jump-latest" onClick={jumpToLatest}>
                           ↓ Latest messages
-                        </Button>
-                      )}
-                      {approvals.length > 0 && (
-                        <Button
-                          variant="secondary"
-                          className="approval-nudge"
-                          onClick={() => setDetails(true)}
-                        >
-                          Approval needed · Review
                         </Button>
                       )}
                       <div
@@ -2492,6 +2535,13 @@ export function App({ owner }: { owner?: OwnerConnection }) {
             }
             variant="dialog"
             sizing="content"
+            restoreFocus={() =>
+              document.querySelector<HTMLElement>(
+                workDialog.kind === 'task'
+                  ? `[data-task-id="${CSS.escape(workDialog.id)}"] button`
+                  : '.pc-work-header [data-create-task]',
+              ) ?? document.querySelector<HTMLElement>('.pc-rail-header [aria-label="New"]')
+            }
             onBeforeClose={() => {
               if (!dirtyEditor.current) return true;
               pendingNavigation.current = () => setWorkDialog(undefined);

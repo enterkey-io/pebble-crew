@@ -245,7 +245,19 @@ for (const theme of ['light', 'dark'] as const) {
           );
         }).length,
     );
-    expect(scrollers).toBe(0);
+    expect(scrollers).toBeLessThanOrEqual(phone(info) ? 1 : 0);
+    if (scrollers) {
+      const area = (await dialog.locator('[data-slot="tabs-content"]').boundingBox())!;
+      const bounds = (await dialog.boundingBox())!;
+      expect(area.height).toBeGreaterThan(bounds.height - 180);
+      await dialog.getByRole('button', { name: 'Save', exact: true }).scrollIntoViewIfNeeded();
+      await expect(dialog.getByRole('button', { name: 'Save', exact: true })).toBeInViewport({
+        ratio: 0.999,
+      });
+      await expect(dialog.getByRole('button', { name: 'Close Task', exact: true })).toBeInViewport({
+        ratio: 0.999,
+      });
+    }
     await dialog.getByLabel('Title', { exact: true }).fill('An unsaved edit');
     await expect(dialog.getByRole('combobox', { name: 'Status', exact: true })).toBeDisabled();
     await expect(dialog.getByText('Save edits first', { exact: true })).toBeVisible();
@@ -435,8 +447,9 @@ for (const theme of ['light', 'dark']) {
       return { background: style.backgroundColor, foreground: style.color };
     });
     const channels = colors.background.match(/\d+/g)?.map(Number);
-    expect(channels?.[0]).toBeGreaterThan((channels?.[1] ?? 255) + 30);
-    expect(channels?.[1]).toBeGreaterThan(channels?.[2] ?? 255);
+    expect(
+      Math.max(...(channels ?? []).slice(0, 3)) - Math.min(...(channels ?? []).slice(0, 3)),
+    ).toBeLessThan(12);
     if (!phone(info))
       await expect(
         page.getByRole('button', { name: 'Toggle navigation', exact: true }),

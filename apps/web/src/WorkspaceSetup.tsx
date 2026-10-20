@@ -2,7 +2,7 @@ import { Label } from './components/ui/label';
 import { Checkbox } from './components/ui/checkbox';
 import { Form } from './components/ui/form';
 import { Button } from './components/ui/button';
-import { Input } from './components/ui/input';
+import { InputGroup, InputGroupAddon, InputGroupInput } from './components/ui/input-group';
 import { useEffect, useState } from 'react';
 import type { BotBridgeClient } from '@hermes-client/protocol';
 import { decodeWorkspaceSnapshot } from '@hermes-client/protocol';
@@ -93,9 +93,10 @@ export function WorkspaceSetup({
       <Form onSubmit={(e) => void finish(e)}>
         <Label layout="stacked">
           Handle
-          <span className="handle-input">
-            <span>@</span>
-            <Input
+          <InputGroup>
+            <InputGroupAddon aria-hidden="true">@</InputGroupAddon>
+            <InputGroupInput
+              aria-label="Handle"
               value={handle}
               onChange={(e) => setHandle(e.target.value)}
               required
@@ -104,7 +105,7 @@ export function WorkspaceSetup({
               autoComplete="off"
               spellCheck={false}
             />
-          </span>
+          </InputGroup>
         </Label>
         <AvatarChooser
           look={look}

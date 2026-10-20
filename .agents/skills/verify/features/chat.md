@@ -47,6 +47,21 @@ downloads a multi-chunk CSV, and restores that selected conversation after reloa
 
 Use native-owner and `scripts/fixture/reactions_smoke.py` for native reaction schema discovery and model receipt behavior. The latter needs an isolated prepared Hermes checkout. CI covers both supported reaction builds.
 
+`unread.spec.ts` checks blue pulsing row-edge indicators and the pinned avatar's
+lower-right badge, replacement/restoration of the Main star, read receipts and
+reduced motion in both themes. It runs on desktop, iPhone and Android. Geometry
+reads for animated drawers must compare elements in the same frame or wait for
+the settled relation; separate bounding-box reads can sample different frames.
+
+`conversation-cards.spec.ts` checks native approvals in the transcript, Main
+notifications linking to the exact originating request, fingerprint preservation
+and native structured question answers. `scripts/fixture/conversation_cards_smoke.py`
+exercises real clarify and approval tools plus one Main notification per request
+on both pinned builds, using disposable homes and a deterministic loopback model.
+The older build requires its native clarify toolset enabled in the synthetic CLI
+configuration. Do not confuse a missing toolset with a transport failure, and do
+not change an owner's tool configuration as part of acceptance.
+
 ## Gotchas
 
 Browser fixture hooks interrupt a real browser response stream, but simulate the external native service. Do not claim native model/tool discovery from those checks. Message-motion checks sample real frames, not just settled geometry; reduced motion and manual scrolling have separate cases. Geometry assertions need an explicit rounding tolerance; a successful rerun does not repair a flaky assertion.

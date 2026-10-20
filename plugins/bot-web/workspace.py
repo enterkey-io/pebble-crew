@@ -41,6 +41,12 @@ class WorkspaceStore:
         self.db.executescript('''
             CREATE TABLE IF NOT EXISTS workspace(id INTEGER PRIMARY KEY CHECK(id=1), revision INTEGER NOT NULL, data TEXT NOT NULL);
             CREATE TABLE IF NOT EXISTS requests(id TEXT PRIMARY KEY, actor TEXT NOT NULL, action TEXT NOT NULL, spec TEXT NOT NULL, fingerprint TEXT NOT NULL, state TEXT NOT NULL, result TEXT, created INTEGER NOT NULL, UNIQUE(actor,fingerprint));
+            CREATE TABLE IF NOT EXISTS request_notifications(
+                request TEXT PRIMARY KEY REFERENCES requests(id), actor_identity TEXT NOT NULL,
+                state TEXT NOT NULL, recipient_identity TEXT);
+            CREATE TABLE IF NOT EXISTS native_approval_notifications(
+                id TEXT PRIMARY KEY, actor_identity TEXT NOT NULL,
+                state TEXT NOT NULL, recipient_identity TEXT);
             CREATE TABLE IF NOT EXISTS voice_credential(id INTEGER PRIMARY KEY CHECK(id=1), profile TEXT NOT NULL, fingerprint TEXT NOT NULL);
         ''')
         from .presentation import init_store
@@ -71,7 +77,12 @@ class WorkspaceStore:
             raise InvalidOperation('Request too large')
         fingerprint = hashlib.sha256((action + raw).encode()).hexdigest()
         with self.db:
-            self.db.execute('INSERT OR IGNORE INTO requests VALUES(?,?,?,?,?,?,NULL,?)', (str(uuid.uuid4()), actor, action, raw, fingerprint, 'pending', int(time.time())))
+            ident = str(uuid.uuid4())
+            inserted = self.db.execute('INSERT OR IGNORE INTO requests VALUES(?,?,?,?,?,?,NULL,?)', (ident, actor, action, raw, fingerprint, 'pending', int(time.time()))).rowcount
+            state = self.read()
+            bot = state['bots'].get(actor)
+            if inserted and bot and actor != state.get('orchestrator'):
+                self.db.execute('INSERT INTO request_notifications VALUES(?,?,?,NULL)', (ident, bot['id'], 'pending'))
         return self.db.execute('SELECT id,state FROM requests WHERE actor=? AND fingerprint=?', (actor, fingerprint)).fetchone()
 
     def requests(self):

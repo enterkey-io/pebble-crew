@@ -213,8 +213,21 @@ export async function installWorkFixture(context: BrowserContext) {
         moveResponse = undefined;
         await wait;
       }
-      task.status = params.status;
-      task.revision = nextRevision();
+      if (task.status !== params.status) {
+        task.status = params.status;
+        task.revision = nextRevision();
+      }
+      if ('before_id' in params) {
+        const rest = (tasks.get(board.slug) ?? []).filter((row) => row.id !== task.id);
+        const column = rest.filter((row) => row.status === task.status);
+        const index =
+          params.before_id === null
+            ? column.length
+            : column.findIndex((row) => row.id === params.before_id);
+        if (index < 0) return route.fulfill({ status: 409, json: { code: 'STALE_REVISION' } });
+        column.splice(index, 0, task);
+        tasks.set(board.slug, [...rest.filter((row) => row.status !== task.status), ...column]);
+      }
     }
     if (operation === 'work.task.update') {
       if (task.revision !== params.expected_revision)

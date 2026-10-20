@@ -68,10 +68,11 @@ test('populated production workspace: layout, drafts, scroll, crew authors and r
   fixture.setApprovals([{ request_id: 'exact-approval', command: 'Review synthetic operation' }]);
   await emit(page, 'approval.request');
   await page.setViewportSize({ width: 720, height: 450 });
-  const approvalDialog = page.locator('.details-panel');
+  await page.keyboard.press('Escape');
+  const approvalDialog = log.locator('[data-slot="confirmation"]');
   await expect(approvalDialog).toContainText('Review synthetic operation');
   await approvalDialog.getByRole('button', { name: 'Deny', exact: true }).click();
-  await expect(approvalDialog.locator('.approval')).toHaveCount(0);
+  await expect(approvalDialog).toHaveCount(0);
   await page.keyboard.press('Escape');
   await page.setViewportSize({ width: 1912, height: 1121 });
   await page.screenshot({ path: 'test-results/workspace-wide.png' });

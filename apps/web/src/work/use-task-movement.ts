@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { WorkDomain } from '@hermes-client/protocol';
-import type { BotBridgeClient, WorkTask, WorkMoveStatus } from '@hermes-client/protocol';
+import type { BotBridgeClient, WorkTask, WorkStatus } from '@hermes-client/protocol';
 import { safeError } from '@hermes-client/core';
 import { moveIntent } from './move-intent';
 
@@ -13,17 +13,21 @@ export function useTaskMovement({
   client: BotBridgeClient;
   workspaceId: string;
   board: string;
-  onChanged: (task: WorkTask) => void;
+  onChanged: (task: WorkTask, beforeId?: string | null) => void;
 }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
-  const [uncertain, setUncertain] = useState<{ operationId: string; taskId: string }>();
+  const [uncertain, setUncertain] = useState<{
+    operationId: string;
+    taskId: string;
+    beforeId: string | null | undefined;
+  }>();
   const domain = new WorkDomain(client);
-  async function read(taskId: string) {
-    onChanged((await domain.task({ workspaceId, board, id: taskId })).task);
+  async function read(taskId: string, beforeId?: string | null) {
+    onChanged((await domain.task({ workspaceId, board, id: taskId })).task, beforeId);
   }
-  async function move(task: WorkTask, status: WorkMoveStatus) {
-    if (busy || uncertain || status === task.status) return;
+  async function move(task: WorkTask, status: WorkStatus, beforeId?: string | null) {
+    if (busy || uncertain || (status === task.status && beforeId === undefined)) return;
     setBusy(true);
     setError('');
     let operationId: string | undefined;
@@ -32,7 +36,7 @@ export function useTaskMovement({
       // preserving the position and assignee the owner actually acted on.
       const latest = (await domain.task({ workspaceId, board, id: task.id })).task;
       const intent = moveIntent(task, latest, status);
-      if (intent === 'already') {
+      if (intent === 'already' && beforeId === undefined) {
         onChanged(latest);
         return;
       }
@@ -49,9 +53,10 @@ export function useTaskMovement({
         expectedRevision: latest.revision,
         operationId,
         status,
+        ...(beforeId !== undefined ? { beforeId } : {}),
       });
-      if (receipt.kind === 'pending') setUncertain({ operationId, taskId: task.id });
-      else await read(task.id);
+      if (receipt.kind === 'pending') setUncertain({ operationId, taskId: task.id, beforeId });
+      else await read(task.id, beforeId);
     } catch (cause) {
       const failure = safeError(cause);
       if (failure.code === 'STALE_REVISION') {
@@ -61,7 +66,7 @@ export function useTaskMovement({
         setError('Hermes could not move this task. Check its dependencies and current state.');
       } else if (['UPDATE_REQUIRED', 'REQUIRES_SETUP'].includes(failure.code)) {
         setError(failure.message);
-      } else if (operationId) setUncertain({ operationId, taskId: task.id });
+      } else if (operationId) setUncertain({ operationId, taskId: task.id, beforeId });
       else setError('The task could not be loaded. Try again when Hermes is connected.');
     } finally {
       setBusy(false);
@@ -73,7 +78,7 @@ export function useTaskMovement({
     try {
       const receipt = await domain.receipt({ workspaceId, operationId: uncertain.operationId });
       if (receipt.kind !== 'pending') {
-        await read(uncertain.taskId);
+        await read(uncertain.taskId, uncertain.beforeId);
         setUncertain(undefined);
       } else setError('The move is still unconfirmed. Check Hermes before trying again.');
     } catch {

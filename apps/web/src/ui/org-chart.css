@@ -29,10 +29,10 @@
   overflow: hidden;
   isolation: isolate;
 }
-.pc-org-content {
+.pc-org-transform {
   cursor: grab;
 }
-.pc-org-content:active {
+.pc-org-transform:active {
   cursor: grabbing;
 }
 .pc-org-diagram {

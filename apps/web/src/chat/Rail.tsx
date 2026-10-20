@@ -52,12 +52,14 @@ export function PebbleAvatar({
   client,
   state,
   large,
+  unread = false,
 }: {
   bot: ChatBot;
   workspace?: WorkspaceState | undefined;
   client: BotBridgeClient;
   state?: Activity | undefined;
   large?: boolean | undefined;
+  unread?: boolean;
 }) {
   const identity = workspace?.bots.find((b) => b.profile === bot.profile);
   return identity ? (
@@ -67,6 +69,7 @@ export function PebbleAvatar({
       client={client}
       look={identity.appearance}
       orchestrator={workspace?.orchestrator === bot.profile}
+      unread={unread && !!identity.unread}
       state={state ?? 'ready'}
       large={large ?? false}
       revision={workspace?.revision}
@@ -221,6 +224,7 @@ export function Rail({
         client={client}
         state={states[bot.profile]}
         large={large}
+        unread={large}
       />
     ) : null;
   };
@@ -410,9 +414,6 @@ export function Rail({
                             Saving pin…
                           </span>
                         )}
-                        {identity(b)?.unread && (
-                          <span className="unread-dot" aria-label="Unread messages" />
-                        )}
                       </PebbleTile>
                     </motion.div>
                   ))}
@@ -434,6 +435,7 @@ export function Rail({
                             preview:
                               b.preview || row.preview || row.role.description || '@' + row.handle,
                             pinned: pinned(b),
+                            unread: !!row.unread,
                           },
                         ]
                       : [];

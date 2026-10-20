@@ -101,7 +101,7 @@ test('private first use, native onboarding, idle keepalive, reconnection, settin
   await expect(picker.getByRole('button', { name: 'Upload photo', exact: true })).toBeVisible();
   await picker.getByRole('button', { name: 'Animated', exact: true }).click();
   await page.getByRole('checkbox', { name: 'Send an introduction' }).uncheck();
-  await page.locator('.handle-input input').fill('aurora');
+  await page.getByLabel('Handle', { exact: true }).fill('aurora');
   await page.getByRole('button', { name: 'Snow', exact: true }).click();
   await page.getByRole('button', { name: 'petal', exact: true }).click();
   await expect(

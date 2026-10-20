@@ -9,6 +9,8 @@ export default tseslint.config(
       '**/artifacts/**',
       '**/.wrangler/**',
       '**/worker-configuration.d.ts',
+      '.audit/**',
+      '.superdesign/**',
     ],
   },
   {

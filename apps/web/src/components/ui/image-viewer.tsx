@@ -1,4 +1,4 @@
-import { useRef } from 'react';
+import { useCallback, useRef } from 'react';
 import { useReducedMotion } from 'motion/react';
 import { Minus, Plus, Scan, X } from 'lucide-react';
 import { TransformComponent, TransformWrapper } from 'react-zoom-pan-pinch';
@@ -26,10 +26,46 @@ export default function ImageViewerContent({
   const dragged = useRef(false);
   const reduced = useReducedMotion();
   const duration = reduced ? 0 : 180;
+  function zoomBy(step: number) {
+    const controller = controls.current;
+    if (controller)
+      void controller.centerView(
+        Math.max(1, Math.min(16, controller.instance.state.scale * Math.exp(step))),
+        duration,
+      );
+  }
+  const attachSurface = useCallback((element: HTMLDivElement | null) => {
+    surface.current = element;
+    if (!element) return;
+    function wheel(event: WheelEvent) {
+      if (!event.deltaY || (event.target instanceof Element && event.target.closest('button')))
+        return;
+      const controller = controls.current;
+      if (!controller) return;
+      event.preventDefault();
+      event.stopPropagation();
+      const delta =
+        event.deltaY *
+        (event.deltaMode === 1 ? 16 : event.deltaMode === 2 ? element!.clientHeight : 1);
+      const scale = Math.max(
+        1,
+        Math.min(
+          16,
+          controller.instance.state.scale * Math.exp(-Math.max(-300, Math.min(300, delta)) * 0.002),
+        ),
+      );
+      void controller.centerView(scale, 0);
+    }
+    element.addEventListener('wheel', wheel, { passive: false, capture: true });
+    return () => {
+      element.removeEventListener('wheel', wheel, { capture: true });
+      surface.current = null;
+    };
+  }, []);
   useOverlayHistory(open, () => onOpenChange(false));
   return (
     <DialogContent
-      ref={surface}
+      ref={attachSurface}
       variant="image"
       showCloseButton={false}
       onOpenAutoFocus={(event) => {
@@ -41,9 +77,9 @@ export default function ImageViewerContent({
       onKeyDownCapture={(event) => {
         if (!(event.ctrlKey || event.metaKey) || event.altKey) return;
         const action = ['+', '='].includes(event.key)
-          ? () => controls.current?.zoomIn(0.35, duration)
+          ? () => zoomBy(0.35)
           : ['-', '_'].includes(event.key)
-            ? () => controls.current?.zoomOut(0.35, duration)
+            ? () => zoomBy(-0.35)
             : event.key === '0'
               ? () => controls.current?.centerView(1, duration)
               : undefined;
@@ -69,6 +105,7 @@ export default function ImageViewerContent({
         velocityAnimation={{ disabled: !!reduced }}
         autoAlignment={{ animationTime: duration, velocityAlignmentTime: duration }}
         zoomAnimation={{ animationTime: duration }}
+        wheel={{ disabled: true }}
         onPanning={() => (dragged.current = true)}
         onPinchStart={() => (dragged.current = true)}
       >
@@ -102,7 +139,7 @@ export default function ImageViewerContent({
             label="Zoom out"
             icon={Minus}
             size="icon-lg"
-            onClick={() => void controls.current?.zoomOut(0.35, duration)}
+            onClick={() => zoomBy(-0.35)}
           />
           <IconButton
             className={controlClassName}
@@ -116,7 +153,7 @@ export default function ImageViewerContent({
             label="Zoom in"
             icon={Plus}
             size="icon-lg"
-            onClick={() => void controls.current?.zoomIn(0.35, duration)}
+            onClick={() => zoomBy(0.35)}
           />
         </div>
       </TransformWrapper>

@@ -1,5 +1,16 @@
 # Installed-owner implementation status
 
+**0.7.8-preview.21 candidate:** neutral circular composer actions; blue unread
+indicators at the row edge and pinned badge position; centered photo zoom; full
+org-card interactions and shared handle inputs. Task lanes have padded drop
+indicators and persistent owner-local ordering. Activity retains a fixed header
+and one scroll owner with a reachable comment form. Approval and native question
+cards live in the conversation. Pending management/tool approvals notify the
+Main Pebble once through the existing Bot Chat without releasing the owner gate.
+Native credentials remain on the owner's Hermes host. Both pinned builds have
+passed deterministic native card/notification checks; final package publication
+and owner installation remain separate gates.
+
 **0.7.8-preview.20 candidate:** Main Pebble reporting/Instructions management has
 no blocking switch. Per-turn guidance requires asking before unsolicited changes;
 a clear owner request already authorizes its change. The org view is a connected,
@@ -13,9 +24,8 @@ to the existing Bot Chat, with durable uncertainty handling. Worker guidance
 requires progress and verified-result comments. Owner pauses of idle tasks cannot
 briefly put them in the execution queue.
 
-Primary actions and unread/review indicators share a terracotta accent with
-separate accessible light/dark foregrounds. Surfaces, row selection and focus
-remain neutral. Publication, package acceptance and owner installation are tracked
+The initial terracotta accent is superseded by preview.21: actions, selection
+and focus remain neutral. Unread messages use blue indicators. Publication, package acceptance and owner installation are tracked
 separately; this source entry does not claim the owner's host has been updated.
 
 **0.7.8-preview.19 candidate:** shared components own dialog sizing, destructive

@@ -34,6 +34,7 @@ export class BotBridgeClient {
   #computer = false;
   #liveVoice = false;
   #secrets = false;
+  #questions = false;
   #reactions = false;
   #rpcActive = 0;
   readonly #rpcWaiting: (() => void)[] = [];
@@ -46,6 +47,9 @@ export class BotBridgeClient {
   }
   get supportsSecrets(): boolean {
     return this.#secrets;
+  }
+  get supportsQuestions(): boolean {
+    return this.#questions;
   }
   get supportsComputer(): boolean {
     return this.#computer;
@@ -109,6 +113,7 @@ export class BotBridgeClient {
     this.#computer = !!data.capabilities && record(data.capabilities).computer === true;
     this.#liveVoice = !!data.capabilities && record(data.capabilities).live_voice === true;
     this.#secrets = !!data.capabilities && record(data.capabilities).secrets === true;
+    this.#questions = !!data.capabilities && record(data.capabilities).questions === true;
     this.#reactions = !!data.capabilities && record(data.capabilities).reactions === true;
   }
 

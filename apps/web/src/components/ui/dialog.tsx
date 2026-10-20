@@ -62,7 +62,7 @@ function DialogContent({
           size === 'editor' &&
             'flex h-[min(640px,calc(100dvh-48px))] w-[640px] max-w-[calc(100vw-32px)] flex-col gap-0 overflow-hidden p-0 sm:max-w-[640px] max-md:h-[calc(var(--app-viewport-height,100dvh)-32px)]',
           size === 'content' &&
-            'top-[max(24px,8dvh)] translate-y-0 max-md:top-[calc(var(--app-viewport-top,0px)+16px)] any-pointer-coarse:top-[calc(var(--app-viewport-top,0px)+16px)] flex h-auto max-h-[calc(var(--app-viewport-height,100dvh)-32px)] w-[560px] max-w-[calc(100vw-32px)] flex-col overflow-y-auto overscroll-contain sm:max-w-[560px]',
+            'top-[max(24px,8dvh)] translate-y-0 max-md:top-[calc(var(--app-viewport-top,0px)+16px)] any-pointer-coarse:top-[calc(var(--app-viewport-top,0px)+16px)] flex h-auto max-h-[calc(var(--app-viewport-height,100dvh)-max(48px,16dvh))] max-md:max-h-[calc(var(--app-viewport-height,100dvh)-32px)] any-pointer-coarse:max-h-[calc(var(--app-viewport-height,100dvh)-32px)] w-[560px] max-w-[calc(100vw-32px)] flex-col overflow-hidden sm:max-w-[560px]',
           className,
         )}
         {...props}
