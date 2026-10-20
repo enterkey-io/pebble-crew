@@ -32,6 +32,29 @@ export async function installWorkFixture(context: BrowserContext) {
     string,
     { id: number; author: string; body: string; created_at: number }[]
   >();
+  const history = new Map<
+    string,
+    {
+      id: number;
+      kind: string;
+      created_at: number;
+      actor: string | null;
+      status: string | null;
+      summary: string | null;
+    }[]
+  >();
+  const runs = new Map<
+    string,
+    {
+      id: number;
+      profile: string;
+      status: string;
+      started_at: number;
+      ended_at: number;
+      outcome: string;
+      summary: string;
+    }[]
+  >();
   const receipts = new Map<string, Record<string, unknown>>();
   const calls: string[] = [];
   let moveResponse: Promise<void> | undefined;
@@ -143,7 +166,7 @@ export async function installWorkFixture(context: BrowserContext) {
         body: params.body,
         priority: params.priority,
         assignee: params.assignee,
-        status: 'triage',
+        status: params.status ?? 'triage',
         project_id: board.project_id,
         result: null,
         revision: nextRevision(),
@@ -176,6 +199,8 @@ export async function installWorkFixture(context: BrowserContext) {
             board,
             task,
             comments: comments.get(task.id) ?? [],
+            events: history.get(task.id) ?? [],
+            runs: runs.get(task.id) ?? [],
             dependencies: [],
           },
         },
@@ -227,6 +252,8 @@ export async function installWorkFixture(context: BrowserContext) {
     tasks,
     calls,
     nextRevision,
+    history,
+    runs,
     holdNextMove: (wait: Promise<void>) => {
       moveResponse = wait;
     },

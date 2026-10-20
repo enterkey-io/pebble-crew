@@ -1,5 +1,6 @@
 import { Skeleton } from '../components/ui/skeleton';
 import { TaskComment } from './TaskComment';
+import { TaskActivity } from './TaskActivity';
 import { TaskMovement } from './TaskMovement';
 import { useTaskMovement } from './use-task-movement';
 import { useEffect, useReducer, useState } from 'react';
@@ -177,13 +178,7 @@ function TaskForm({
     <TabbedEditor
       className="pc-work-editor"
       aria-label="Task"
-      header={
-        <PageHeader
-          title="Task"
-          subtitle={`${view.board.name} · ${statusNames[view.task.status]}`}
-          onClose={close}
-        />
-      }
+      header={<PageHeader title="Task" onClose={close} />}
       tabs={[
         { id: 'details', label: 'Details' },
         { id: 'activity', label: 'Activity' },
@@ -255,6 +250,23 @@ function TaskForm({
               void save();
             }}
           >
+            <Label layout="stacked">
+              Title
+              <Input
+                required
+                disabled={
+                  busy ||
+                  movement.busy ||
+                  !catalog.capabilities.editDetails ||
+                  !['general', 'linked'].includes(view.board.mapping)
+                }
+                maxLength={500}
+                value={edit.draft.title}
+                onChange={(event) =>
+                  dispatch({ type: 'change', patch: { title: event.target.value } })
+                }
+              />
+            </Label>
             <TaskMovement
               status={view.task.status}
               needsSave={workDirty(edit)}
@@ -275,17 +287,6 @@ function TaskForm({
                 !['general', 'linked'].includes(view.board.mapping)
               }
             >
-              <Label layout="stacked">
-                Title
-                <Input
-                  required
-                  maxLength={500}
-                  value={edit.draft.title}
-                  onChange={(event) =>
-                    dispatch({ type: 'change', patch: { title: event.target.value } })
-                  }
-                />
-              </Label>
               <Assignment
                 value={edit.draft}
                 allowAssignment={['triage', 'todo', 'ready', 'blocked', 'scheduled'].includes(
@@ -348,32 +349,7 @@ function TaskForm({
           </Form>
         ) : (
           <div className="grid gap-6">
-            {view.comments.map((comment) => (
-              <article key={comment.id} className="grid gap-2">
-                <span className="text-xs text-muted-foreground">
-                  {comment.author === 'owner' ? 'You' : comment.author}
-                </span>
-                <MessageBody text={comment.body} />
-                {view.mentions
-                  .filter((m) => m.commentId === comment.id)
-                  .map((mention) => (
-                    <span key={mention.id} className="text-xs text-muted-foreground">
-                      @
-                      {workspace.bots.find((b) => b.profile === mention.profile)?.handle ??
-                        mention.profile}{' '}
-                      ·{' '}
-                      {mention.state === 'sent'
-                        ? 'Notified'
-                        : mention.state === 'pending' || mention.state === 'sending'
-                          ? 'Notification queued'
-                          : 'Delivery unconfirmed'}
-                    </span>
-                  ))}
-              </article>
-            ))}
-            {!view.comments.length && (
-              <p className="text-sm text-muted-foreground">No comments yet.</p>
-            )}
+            <TaskActivity view={view} workspace={workspace} />
             <Form
               onSubmit={(event) => {
                 event.preventDefault();

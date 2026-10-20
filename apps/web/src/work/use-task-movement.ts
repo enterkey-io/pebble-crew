@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { WorkDomain } from '@hermes-client/protocol';
 import type { BotBridgeClient, WorkTask, WorkMoveStatus } from '@hermes-client/protocol';
 import { safeError } from '@hermes-client/core';
+import { moveIntent } from './move-intent';
 
 export function useTaskMovement({
   client,
@@ -25,13 +26,27 @@ export function useTaskMovement({
     if (busy || uncertain || status === task.status) return;
     setBusy(true);
     setError('');
-    const operationId = crypto.randomUUID();
+    let operationId: string | undefined;
     try {
+      // A move does not overwrite task text. Refresh that text's revision while
+      // preserving the position and assignee the owner actually acted on.
+      const latest = (await domain.task({ workspaceId, board, id: task.id })).task;
+      const intent = moveIntent(task, latest, status);
+      if (intent === 'already') {
+        onChanged(latest);
+        return;
+      }
+      if (intent === 'changed') {
+        onChanged(latest);
+        setError('This task moved or was reassigned in Hermes. Review its current position.');
+        return;
+      }
+      operationId = crypto.randomUUID();
       const receipt = await domain.moveTask({
         workspaceId,
         board,
         id: task.id,
-        expectedRevision: task.revision,
+        expectedRevision: latest.revision,
         operationId,
         status,
       });
@@ -46,7 +61,8 @@ export function useTaskMovement({
         setError('Hermes could not move this task. Check its dependencies and current state.');
       } else if (['UPDATE_REQUIRED', 'REQUIRES_SETUP'].includes(failure.code)) {
         setError(failure.message);
-      } else setUncertain({ operationId, taskId: task.id });
+      } else if (operationId) setUncertain({ operationId, taskId: task.id });
+      else setError('The task could not be loaded. Try again when Hermes is connected.');
     } finally {
       setBusy(false);
     }

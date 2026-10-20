@@ -1,6 +1,6 @@
 ---
 name: manage-team
-description: Read workspace identity and propose native agent changes for owner approval.
+description: Read reporting relationships, carry out Main Pebble changes and propose other team changes.
 ---
 
 Read `workspace_agents` with action `describe` and spec `{}` first. Use the current
@@ -13,23 +13,25 @@ unattached, including managers with their own reports; never invent a manager or
 an extra Main Pebble from titles or old messages. Invalid relationships need
 owner repair. Reporting, crews, sidebar sections and task dependencies are separate.
 
-When `management.can_manage` is true, the verified Main Pebble can directly change
-reporting and the one optional Instructions field, without owner approval for each
-change. Use `workspace_agents` action `agent.reporting.update` with spec:
+The current Main Pebble always has the capability to change reporting and the
+one optional Instructions field. Ask the owner before making an unsolicited
+change. A clear owner request already authorizes that specific change: carry it
+out without asking for the same permission again. Do not ask the owner to enable
+a management switch. `management.can_manage` identifies the current Main Pebble,
+not a revocable setting. Use `workspace_agents` action `agent.reporting.update` with spec:
 `profile`, `id`, `manager` (native profile or null), `manager_id` (current id or null),
 `instructions` (complete desired instructions up to 12000 characters, or null
 to preserve all existing instructions when changing only reporting),
 `expected_revision` and `policy_revision` from the latest describe context.
 Read the target's existing role first and preserve its applicable instructions.
 Refresh identities before submitting. The native persona, SOUL, memory, model,
-skills and credentials stay in place. This cannot change the management grant,
-transfer Main Pebble or confer additional tools or secret access.
+skills and credentials stay in place. This cannot transfer Main Pebble or confer additional tools or secret access.
 
 The result is a durable queued change, not completed work. Read describe's
 `reporting_changes` by request_id until applied or refused. Applying/uncertain
 changes must not be replayed. On stale revision, read current state and reconsider
 instead of overwriting another edit. When refused or uncertain, report the actual
-receipt and ask for inspection if needed. A revoked grant stops queued changes.
+receipt and ask for inspection if needed. A change of Main Pebble identity stops queued changes from its predecessor.
 Other agents still use the owner-reviewed proposal actions below.
 
 Discover and enable an existing profile before suggesting a new identity. To
@@ -62,7 +64,7 @@ propose a change, use exactly one of the following actions and spec fields:
   Select installed resources; no arbitrary URLs, commands, code or credentials.
 
 Use the latest workspace revision. The proposal actions below create pending requests for
-review in the owner's app; authorized agent.reporting.update uses the direct path above. No role, including Main Pebble, can self-approve,
+review in the owner's app; Main Pebble agent.reporting.update uses the direct path above. No role, including Main Pebble, can self-approve,
 change trust, grant privileges or transfer the Main Pebble. Reuse an existing
 request after uncertain outcomes; never create duplicates or manually edit files.
 Read request state through `describe`; pending, partial and uncertain are not

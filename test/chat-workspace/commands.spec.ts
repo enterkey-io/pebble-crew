@@ -43,6 +43,25 @@ test('native slash suggestions use the open conversation and commands never beco
   await expect(field).toBeEnabled();
   await field.fill('/');
   await expect(page.getByRole('option', { name: '/model Change model' })).toBeVisible();
+  const suggestions = page.locator('[data-slot="command"][aria-label="Hermes commands"]');
+  const assertAnchored = async () => {
+    const menu = await suggestions.boundingBox();
+    const composer = await page.locator('[data-slot="prompt-input"]').boundingBox();
+    expect(menu).not.toBeNull();
+    expect(composer).not.toBeNull();
+    expect(Math.abs(menu!.x - composer!.x)).toBeLessThan(1);
+    expect(Math.abs(menu!.width - composer!.width)).toBeLessThan(1);
+    expect(composer!.y - menu!.y - menu!.height).toBeCloseTo(8, 0);
+  };
+  await assertAnchored();
+  if (!page.viewportSize() || page.viewportSize()!.width > 767) {
+    await page.setViewportSize({ width: 1920, height: 1000 });
+    await assertAnchored();
+    await page.getByRole('button', { name: /Show details$/ }).click();
+    await expect(page.getByRole('button', { name: /Hide details$/ })).toBeVisible();
+    await expect(page.locator('.pc-details')).toBeInViewport({ ratio: 0.999 });
+    await assertAnchored();
+  }
   await page.screenshot({
     path: `test-results/verification/slash-commands-${page.viewportSize()?.width}.png`,
   });

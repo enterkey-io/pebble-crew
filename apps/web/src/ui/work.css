@@ -84,6 +84,11 @@
 .pc-work-column[data-drag-over] {
   border-radius: var(--radius-lg);
   background: var(--surface-hover);
-  outline: 1px solid var(--ring);
-  outline-offset: 6px;
+  box-shadow: inset 0 0 0 1px var(--ring);
+}
+.pc-task-card[draggable='true'] {
+  cursor: grab;
+}
+.pc-task-card[draggable='true']:active {
+  cursor: grabbing;
 }

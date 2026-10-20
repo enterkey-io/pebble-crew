@@ -105,6 +105,29 @@ function decodeTaskView(value: unknown) {
     workspaceId: text(data.workspace_id, 128),
     board: decodeBoard(data.board),
     task: decodeWorkTask(data.task),
+    events: list(data.events ?? [], (value) => {
+      const event = record(value);
+      return {
+        id: integer(event.id),
+        kind: text(event.kind),
+        createdAt: integer(event.created_at),
+        actor: nullableText(event.actor),
+        status: nullableText(event.status),
+        summary: nullableText(event.summary, 500000),
+      };
+    }),
+    runs: list(data.runs ?? [], (value) => {
+      const run = record(value);
+      return {
+        id: integer(run.id),
+        profile: nullableText(run.profile),
+        status: text(run.status),
+        startedAt: integer(run.started_at),
+        endedAt: run.ended_at == null ? null : integer(run.ended_at),
+        outcome: nullableText(run.outcome),
+        summary: nullableText(run.summary, 500000),
+      };
+    }),
     comments: list(data.comments, (value) => {
       const comment = record(value);
       return {
@@ -140,7 +163,14 @@ export type WorkReceipt =
   | {
       kind: 'pending';
       id: string;
-      state: 'absent' | 'reserved' | 'project_created' | 'board_created' | 'assigned' | 'uncertain';
+      state:
+        | 'absent'
+        | 'reserved'
+        | 'project_created'
+        | 'board_created'
+        | 'task_created'
+        | 'assigned'
+        | 'uncertain';
     };
 function decodeReceipt(value: unknown): WorkReceipt {
   const data = record(value),
@@ -154,6 +184,7 @@ function decodeReceipt(value: unknown): WorkReceipt {
         'reserved',
         'project_created',
         'board_created',
+        'task_created',
         'assigned',
         'uncertain',
       ]),
@@ -223,13 +254,16 @@ export class WorkDomain {
       }),
     );
   }
-  async createTask(ref: Mutation & { board: string; draft: WorkTaskDraft }) {
+  async createTask(
+    ref: Mutation & { board: string; draft: WorkTaskDraft; status?: WorkMoveStatus },
+  ) {
     return decodeReceipt(
       await this.bridge.invoke('work.task.create', {
         workspace_id: ref.workspaceId,
         operation_id: ref.operationId,
         board: ref.board,
         ...ref.draft,
+        ...(ref.status ? { status: ref.status } : {}),
       }),
     );
   }

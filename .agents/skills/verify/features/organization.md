@@ -29,8 +29,10 @@ named cards and remain selectable as managers. Editing a card opens the shared
 Profile/Role editor. Returning to chat preserves the draft and reading position.
 
 Run `org-chart.spec.ts` in both production browser configurations. These journeys
-edit reporting/Instructions, retain hidden cards and an unsent draft, and revoke
-Main Pebble management. Inspect the settled desktop, iPhone and Android captures.
+edit reporting/Instructions, retain hidden cards and an unsent draft, and verify
+there is no management switch even for legacy disabled metadata. Chart checks
+assert fixed card dimensions and actual SVG endpoints at the connected cards,
+pan/zoom controls, keyboard focus and phone pinch/pan. Inspect the settled desktop, iPhone and Android captures.
 Native owner browser acceptance saves a reporting change through the chart and
 checks it after reload.
 
@@ -38,6 +40,6 @@ Run `scripts/fixture/workspace_smoke.py` with each pinned native source installe
 in its own prepared environment: Python 3.14 for af0cd4df, Python 3.12 for
 29112bef. It uses disposable profiles and a deterministic local model to invoke
 Main Pebble management and observe an applied receipt without a browser approval.
-Unit reporting checks cover authority, revocation, stale edits, cycles, identity
+Unit reporting checks cover always-available Main authority, transfer fencing, legacy-disabled metadata, stale edits, cycles, identity
 replacement, migration backup and interrupted-application receipts. Install/update
 checks remain model-free; native acceptance is separate and synthetic.

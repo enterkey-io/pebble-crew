@@ -64,3 +64,20 @@ class WorkReceiptTests(unittest.TestCase):
                 with self.assertRaises(InvalidOperation): store.catalog(state)
             finally:
                 store.close()
+
+    def test_repeated_watch_registration_cannot_skip_a_worker_outcome(self):
+        from types import SimpleNamespace
+        with tempfile.TemporaryDirectory() as folder:
+            store = WorkStore(Path(folder) / 'work.sqlite')
+            state = {'bots': {'aurora': {'id':'stable-one', 'profile':'aurora', 'enrolled':True}}}
+            events = [{'id':1}]
+            native = SimpleNamespace(task=lambda board, task: {'events':events})
+            try:
+                store.watch_task(native,state,'default','one','aurora')
+                events.append({'id':2})
+                store.watch_task(native,state,'default','one','aurora')
+                self.assertEqual(store.db.execute('SELECT cursor FROM task_watches').fetchone(), (1,))
+                state['bots']['aurora']['id']='replacement'
+                store.watch_task(native,state,'default','one','aurora')
+                self.assertEqual(store.db.execute('SELECT identity,cursor FROM task_watches').fetchone(), ('replacement',2))
+            finally: store.close()

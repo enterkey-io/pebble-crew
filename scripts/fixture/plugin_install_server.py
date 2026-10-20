@@ -321,9 +321,9 @@ def main():
                                 protected_files[path] = hashlib.sha256(path.read_bytes()).hexdigest()
                     runtime = plugin / 'runtime.py'
                     original = runtime.read_text()
-                    modified = original.replace('Read your workspace. The authorized Main Pebble',
-                        'Inspect your workspace. The authorized Main Pebble')
-                    assert modified != original
+                    modified = original.replace("description='Read your workspace.",
+                        "description='Inspect your workspace.", 1)
+                    assert modified != original, 'The registered workspace tool description was not mutated for runtime-sync acceptance'
                     runtime.write_text(modified)
                     pending = runtime_paths['beta'].with_name('.bot-web-next')
                     pending.mkdir()
@@ -425,7 +425,7 @@ def main():
             except Exception as error:
                 self.send_response(500)
                 self.end_headers()
-                self.wfile.write(str(error).encode())
+                self.wfile.write((str(error) or repr(error)).encode())
 
     control = ThreadingHTTPServer(('127.0.0.1', 0), Control)
     threading.Thread(target=control.serve_forever, daemon=True).start()

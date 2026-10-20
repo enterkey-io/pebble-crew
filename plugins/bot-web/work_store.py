@@ -40,6 +40,13 @@ class WorkStore:
                 id TEXT PRIMARY KEY, profile TEXT NOT NULL, identity TEXT NOT NULL,
                 board TEXT NOT NULL, task TEXT NOT NULL, comment INTEGER NOT NULL,
                 state TEXT NOT NULL);
+            CREATE TABLE IF NOT EXISTS task_watches(
+                board TEXT NOT NULL, task TEXT NOT NULL, profile TEXT NOT NULL,
+                identity TEXT NOT NULL, cursor INTEGER NOT NULL, PRIMARY KEY(board,task));
+            CREATE TABLE IF NOT EXISTS task_notifications(
+                id TEXT PRIMARY KEY, board TEXT NOT NULL, task TEXT NOT NULL,
+                event INTEGER NOT NULL, profile TEXT NOT NULL, identity TEXT NOT NULL,
+                state TEXT NOT NULL);
             CREATE TABLE IF NOT EXISTS intents(
                 id TEXT PRIMARY KEY, actor TEXT NOT NULL, fingerprint TEXT NOT NULL,
                 state TEXT NOT NULL, evidence TEXT NOT NULL);
@@ -109,3 +116,13 @@ class WorkStore:
     def mention_states(self, board, task):
         return [{'id': r[0], 'profile': r[1], 'comment_id': r[2], 'state': r[3]} for r in self.db.execute(
             'SELECT id,profile,comment,state FROM mentions WHERE board=? AND task=?', (board, task))]
+
+    def watch_task(self, native, state, board, task, profile):
+        bot = state['bots'].get(profile)
+        if not bot or not bot.get('enrolled') or not bot.get('available', True) or bot.get('deleted'):
+            return
+        detail = native.task(board, task)
+        cursor = max((e['id'] for e in detail.get('events', [])), default=0)
+        with self.db:
+            self.db.execute('INSERT INTO task_watches VALUES(?,?,?,?,?) ON CONFLICT(board,task) DO UPDATE SET cursor=CASE WHEN task_watches.profile=excluded.profile AND task_watches.identity=excluded.identity THEN task_watches.cursor ELSE excluded.cursor END,profile=excluded.profile,identity=excluded.identity',
+                (board, task, profile, bot['id'], cursor))

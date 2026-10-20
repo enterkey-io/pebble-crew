@@ -76,7 +76,7 @@ export const CommandSuggestions = forwardRef<
     <Command
       shouldFilter={false}
       value={items[index]?.text ?? ''}
-      className="mb-2 h-auto rounded-xl border p-1 shadow-md"
+      className="pc-composer-width mb-2 h-auto rounded-xl border p-1 shadow-md"
       aria-label="Hermes commands"
     >
       {loading && <LoadingBar active label="Loading commands" />}

@@ -8,9 +8,11 @@ its own project board.
 A project board links one native Hermes Project to one native Kanban board.
 There is no Pebble Crew task database or execution service. Tasks, comments,
 statuses, results and runs stay in Hermes. The plugin keeps only a stable catalog
-identity, save/recovery receipts and mention-delivery cursors on that same host.
+identity, save/recovery receipts and notification-delivery cursors on that same host.
 
-New tasks enter **Triage**. Creating or editing details does not start work.
+New tasks default to **Triage**. Choose a different initial Status when creating
+a task. An assigned task explicitly created in **To do** or **Ready** starts work;
+Triage and task-detail edits alone do not start a worker.
 Drag a card to **To do**, use its **Move to** menu, or change Status in the task
 editor to queue it. Assigned tasks run through Hermes’s native dispatcher,
 respecting dependencies, profile limits and execution policy. Unassigned tasks
@@ -20,6 +22,12 @@ Comments offer `@handle` completion. Posting a mention notifies that enrolled
 Pebble in its existing Bot Chat, including the task reference and comment.
 This does not reassign the task. Activity shows queued, delivered or unconfirmed
 notifications; an uncertain delivery is not silently repeated.
+Activity also shows native status changes, worker starts, progress comments and
+completion summaries with timestamps. The plugin routes outcomes from assigned
+work queued here to that Pebble’s existing Bot Chat. A worker’s final CLI reply
+alone is not a delivered chat message. Interrupted notification attempts are
+recorded as unconfirmed and are not replayed automatically.
+
 Routines stay with their agents and are created through chat.
 
 ## Editing and recovery
@@ -65,6 +73,8 @@ an owner's unrestricted shell or direct database access.
 
 Native acceptance uses disposable homes and a deterministic loopback model.
 Install, update and status checks do not run models or workers. Native queue
-acceptance substitutes the worker spawn boundary while exercising real claims
-and completion. Mention acceptance uses an actual isolated Bot Chat and local
+service acceptance substitutes the worker spawn boundary while exercising real claims
+and completion. The separate native model acceptance starts a real dispatcher-owned
+worker against its deterministic loopback provider, checks task events/comments and
+confirms one outcome delivered to the existing Bot Chat. Mention acceptance uses an actual isolated Bot Chat and local
 model; no owner infrastructure or provider credentials are used.

@@ -1,6 +1,7 @@
 import { test, expect } from '@playwright/test';
 import { readFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
+import { focusOrgCard } from '../chat-workspace/org-chart-driver';
 import { SHAPES } from '../../apps/web/src/avatar-lab/engine';
 test('private first use, native onboarding, idle keepalive, reconnection, settings and ordinary login', async ({
   page,
@@ -478,7 +479,7 @@ test('private first use, native onboarding, idle keepalive, reconnection, settin
   await page.getByRole('menuitem', { name: 'Org chart', exact: true }).click();
   const org = page.getByRole('region', { name: 'Org chart', exact: true });
   await expect(org.getByRole('heading', { name: 'Unattached', exact: true })).toBeVisible();
-  await org.getByRole('button', { name: 'Edit Nova', exact: true }).click();
+  await (await focusOrgCard(page, 'Nova')).click();
   await page.getByRole('tab', { name: 'Role', exact: true }).click();
   const manager = page.getByRole('combobox', { name: 'Reports to', exact: true });
   await expect(manager).toContainText('No manager');
@@ -489,14 +490,15 @@ test('private first use, native onboarding, idle keepalive, reconnection, settin
     .fill('Verify results and report to Alpha Stone.');
   await page.getByRole('button', { name: 'Save role', exact: true }).click();
   await expect(page.getByRole('region', { name: 'Edit Nova', exact: true })).toHaveCount(0);
-  await expect(org.getByRole('button', { name: 'Edit Nova', exact: true })).toBeVisible();
+  await expect(org.getByRole('button', { name: /^Edit Nova(?:\s|$)/ })).toBeInViewport();
+  await org.getByRole('button', { name: 'Fit chart', exact: true }).click();
   await page.screenshot({ animations: 'disabled', path: 'test-results/native-org-desktop.png' });
   await org.getByRole('button', { name: 'Close Org chart', exact: true }).click();
   await expect(page.getByLabel('Message', { exact: true })).toHaveValue('Keep this native draft');
   await page.reload();
   await page.getByRole('button', { name: 'Your account', exact: true }).click();
   await page.getByRole('menuitem', { name: 'Org chart', exact: true }).click();
-  await org.getByRole('button', { name: 'Edit Nova', exact: true }).click();
+  await (await focusOrgCard(page, 'Nova')).click();
   await page.getByRole('tab', { name: 'Role', exact: true }).click();
   await expect(manager).toContainText('Alpha Stone');
   await expect(page.getByLabel('Instructions', { exact: true })).toHaveValue(

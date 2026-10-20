@@ -65,12 +65,20 @@ test('shared design system: account settings, connections, requests, editor and 
   await page.screenshot({ animations: 'disabled', path: 'test-results/edit-pebble-profile.png' });
   await page.getByRole('tab', { name: 'Role', exact: true }).click();
   await page.getByLabel('Instructions', { exact: true }).fill('Coordinate the team.');
-  await page.getByRole('button', { name: 'Save role', exact: true }).click();
+  const saveRole = page.getByRole('button', { name: 'Save role', exact: true });
+  const primary = await saveRole.evaluate((node) => getComputedStyle(node).backgroundColor);
+  const channels = primary.match(/\d+/g)!.map(Number);
+  expect(channels[0]! - channels[1]!).toBeGreaterThan(30);
+  await saveRole.click();
   await expect(page.getByText('Role saved.', { exact: true })).toBeVisible();
   await accessible(page);
   await page.screenshot({ animations: 'disabled', path: 'test-results/edit-pebble-role.png' });
   await page.getByRole('tab', { name: 'Tools & skills', exact: true }).click();
   await expect(page.getByLabel('Browser', { exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Save tools & skills', exact: true })).toHaveCSS(
+    'background-color',
+    primary,
+  );
   await accessible(page);
 });
 

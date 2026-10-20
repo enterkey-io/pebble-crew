@@ -3,7 +3,7 @@ import { useTaskMovement } from './use-task-movement';
 import { workMoveStatuses } from '@hermes-client/protocol';
 import { Menu } from '../ui/primitives';
 import { useEffect, useRef, useState } from 'react';
-import { Flag, Menu as MenuIcon, MoreHorizontal } from 'lucide-react';
+import { Flag, PanelLeftOpen, MoreHorizontal } from 'lucide-react';
 import { WorkDomain } from '@hermes-client/protocol';
 import type {
   BotBridgeClient,
@@ -112,9 +112,9 @@ export function WorkArea({
       <header className="pc-work-header">
         <IconButton
           quiet
-          className="mobile-nav"
+          className="md:hidden"
           label="Toggle navigation"
-          icon={MenuIcon}
+          icon={PanelLeftOpen}
           onClick={onNavigate}
         />
         <div className="min-w-0 flex-1">
@@ -224,7 +224,7 @@ export function WorkArea({
                   return (
                     <motion.div key={task.id} layout transition={{ duration: 0.18 }}>
                       <Card
-                        className="relative gap-0 py-0 shadow-none"
+                        className="pc-task-card relative gap-0 py-0 shadow-none"
                         draggable={!movement.busy && !movement.uncertain}
                         onDragStart={(event) => {
                           dragged.current = task.id;
@@ -238,7 +238,7 @@ export function WorkArea({
                       >
                         <Button
                           variant="ghost"
-                          className="h-auto min-h-24 w-full flex-col items-start gap-3 whitespace-normal rounded-xl p-4 pr-12 text-left"
+                          className="h-auto min-h-24 w-full cursor-grab active:cursor-grabbing flex-col items-start gap-3 whitespace-normal rounded-xl p-4 pr-12 text-left"
                           aria-label={`Open task ${task.title}`}
                           onClick={() => onTask(task.id)}
                         >

@@ -1,5 +1,6 @@
 """Explicitly scoped native projects and tasks, with owner-local retry receipts."""
 import json
+import os
 import re
 from pathlib import Path
 
@@ -140,8 +141,18 @@ class WorkService:
 
     def task(self, native, state, board, ident):
         detail = native.task(board['slug'], identifier(ident))
+        runs = detail.get('runs', [])
+        events = []
+        for event in detail.get('events', []):
+            payload = event.get('payload') if isinstance(event.get('payload'), dict) else {}
+            run = next((r for r in runs if r['id'] == event.get('run_id')), {})
+            events.append({**{key: event.get(key) for key in ('id', 'kind', 'created_at')},
+                'actor': payload.get('author') or payload.get('profile') or run.get('profile') or (detail['task'].get('created_by') if event['kind'] == 'created' else None),
+                'status': payload.get('status'), 'summary': payload.get('summary') or payload.get('reason')})
         return {'workspace_id': state['id'], 'board': board, 'task': task_view(detail['task']),
             'comments': [{key: c.get(key) for key in ('id', 'author', 'body', 'created_at')} for c in detail['comments']],
+            'events': events,
+            'runs': [{key: r.get(key) for key in ('id', 'profile', 'status', 'started_at', 'ended_at', 'outcome', 'summary')} for r in runs],
             'dependencies': detail.get('link_tasks', []), 'mentions': self.store.mention_states(board['slug'], ident)}
 
     def assignee(self, state, value):
@@ -163,7 +174,10 @@ class WorkService:
             native.task(board['slug'], ident)
         else:
             fields(params, base + ['title', 'body', 'assignee', 'priority']
+                + (['status'] if operation == 'work.task.create' and 'status' in params else [])
                 + (['id', 'expected_revision'] if operation == 'work.task.update' else []))
+            if operation == 'work.task.create' and params.get('status', 'triage') not in ('triage', 'todo', 'ready', 'blocked', 'done', 'archived'):
+                raise InvalidOperation('Choose an available task status')
             patch = {'title': text(params['title'], 500, False), 'body': text(params['body'], 32000)}
             if type(params['priority']) is not int or not -(2**31) <= params['priority'] < 2**31:
                 raise InvalidOperation('Choose a valid priority')
@@ -178,9 +192,27 @@ class WorkService:
         if intent['state'] == 'completed':
             return intent
         if operation == 'work.task.create':
-            task = native.create_task(board['slug'], {**patch, 'assignee': assignee}, board['project_id'], 'pebble:'+intent['id'])
-            if task['status'] != 'triage' or task.get('project_id') != board['project_id']:
-                raise InvalidOperation('The saved task’s board and project could not be confirmed')
+            if intent['state'] == 'uncertain':
+                return intent
+            if intent['state'] == 'reserved':
+                author = 'owner' if actor == 'owner' else '@'+next(b['handle'] for b in state['bots'].values() if b['id'] == actor)
+                task = native.create_task(board['slug'], {**patch, 'assignee': assignee}, board['project_id'], 'pebble:'+intent['id'], author)
+                if task['status'] != 'triage' or task.get('project_id') != board['project_id']:
+                    raise InvalidOperation('The saved task’s board and project could not be confirmed')
+                intent = self.store.save(intent['id'], 'task_created', {'board': board['slug'], 'task_id': task['id'], 'revision': task_revision(task)})
+            task = native.task(board['slug'], intent['task_id'])['task']
+            if task_revision(task) != intent['revision']:
+                raise InvalidOperation('The newly created task changed in Hermes. Review it before starting work.', 'STALE_REVISION')
+            status = params.get('status', 'triage')
+            if status != 'triage':
+                if status in ('todo', 'ready'):
+                    self.store.watch_task(native, state, board['slug'], task['id'], assignee)
+                self.store.save(intent['id'], 'uncertain', {'board': board['slug'], 'task_id': task['id']})
+                try:
+                    task = native.move_task(board['slug'], task['id'], intent['revision'], status)
+                except InvalidOperation:
+                    self.store.save(intent['id'], 'task_created', {key: intent[key] for key in ('board', 'task_id', 'revision')})
+                    raise
         elif operation == 'work.task.comment':
             if intent['state'] != 'reserved':
                 return intent  # A crash after native append is uncertain; never append twice.
@@ -203,8 +235,10 @@ class WorkService:
                 current = native.assign_task(board['slug'], ident, expected, assignee)
                 expected = task_revision(current)
                 self.store.save(intent['id'], 'assigned', {'board': board['slug'], 'task_id': ident, 'revision': expected})
+            if current['status'] in ('todo', 'ready'):
+                self.store.watch_task(native, state, board['slug'], ident, assignee)
             task = native.edit_task(board['slug'], ident, expected, patch)
-        return self.store.finish_task(intent['id'], board['slug'], task, dispatch=operation == 'work.task.update' and task['status'] in ('todo', 'ready'))
+        return self.store.finish_task(intent['id'], board['slug'], task, dispatch=task['status'] in ('todo', 'ready'))
 
 
     def move_task(self, native, state, board, params, actor):
@@ -220,6 +254,7 @@ class WorkService:
             raise InvalidOperation('This task changed. Review it before moving.', 'STALE_REVISION')
         if params['status'] in ('todo', 'ready') and current.get('assignee'):
             self.assignee(state, current['assignee'])
+            self.store.watch_task(native, state, board['slug'], ident, current['assignee'])
         self.store.save(intent['id'], 'uncertain', {'board': board['slug'], 'task_id': ident})
         try:
             task = native.move_task(board['slug'], ident, params['expected_revision'], params['status'])
@@ -227,6 +262,9 @@ class WorkService:
             # A native CAS/transition refusal is definite; it did not start work.
             self.store.save(intent['id'], 'reserved', {})
             raise
+        author = 'owner' if actor == 'owner' else '@'+next(b['handle'] for b in state['bots'].values() if b['id'] == actor)
+        labels = {'triage':'Triage','todo':'To do','ready':'Ready','running':'In progress','blocked':'Blocked','scheduled':'Scheduled','review':'Review','done':'Done','archived':'Archived'}
+        native.comment(board['slug'], ident, f"Moved {labels.get(current['status'], current['status'])} → {labels[task['status']]}", author)
         return self.store.finish_task(intent['id'], board['slug'], task, dispatch=params['status'] in ('todo', 'ready'))
 
 
@@ -295,8 +333,8 @@ def register_runtime(ctx):
             if store:
                 store.db.close()
     ctx.register_tool(name='workspace_work', toolset='workspace',
-        description='Use native project boards and tasks. Describe first. Each project gets its own board; General tasks is for unfiled work. Creating tasks saves to Triage. Explicit work.task.move to todo queues assigned work with the native dispatcher.',
-        schema={'name': 'workspace_work', 'description': 'Read bot-web:manage-work. work.describe provides workspace and explicit board references. Use a stable UUID operation_id for retries. Confirm completion from a receipt, never from a queued or uncertain response. Only explicit work.task.move to todo/ready starts the native queue. Comments @mention enrolled handles to notify their existing conversation.',
+        description='Use native project boards and tasks. Describe first. Each project gets its own board; General tasks is for unfiled work. Tasks default to Triage. Explicit creation status or work.task.move to todo/ready queues assigned work with the native dispatcher. Read native events, comments and worker reports for progress.',
+        schema={'name': 'workspace_work', 'description': 'Read bot-web:manage-work. work.describe provides workspace and explicit board references. Use a stable UUID operation_id for retries. Confirm completion from a receipt, never from a queued or uncertain response. Only explicit creation status or work.task.move to todo/ready starts the native queue. Comments @mention enrolled handles to notify their existing conversation.',
             'parameters': {'type': 'object', 'additionalProperties': False, 'required': ['operation', 'params'],
                 'properties': {'operation': {'type': 'string', 'enum': sorted(OPERATIONS)},
                     'params': {'type': 'object', 'additionalProperties': False, 'properties': {
@@ -306,6 +344,18 @@ def register_runtime(ctx):
     ctx.register_skill('manage-work', Path(__file__).with_name('skills') / 'manage-work' / 'SKILL.md',
         description='Create separate native project boards and manage scoped tasks safely, with explicit task movement and comment mentions.')
     ctx.register_middleware('tool_execution', guard_native_create)
+    ctx.register_hook('pre_llm_call', worker_reporting)
+
+
+def worker_reporting(**_kwargs):
+    from agent.delegation_context import is_dispatcher_owned_worker_context
+    if not os.environ.get('HERMES_KANBAN_TASK') or not is_dispatcher_owned_worker_context():
+        return None
+    return {'context': 'Pebble Crew task reporting: use kanban_show to read the task and existing comments before work. '
+        'Leave a concise kanban_comment(task_id=<your native task id>, body=...) with your approach, meaningful progress, blockers and verified result so other agents and the owner can follow the work. '
+        'Use native kanban_complete/kanban_block/kanban_request_review with a concrete summary; a final chat reply alone does not finish the task. '
+        'If the deliverable is a message to the owner, put the exact message in your completion summary/result for delivery to their existing Bot Chat. '
+        'Do not claim a message was sent unless you used a delivery tool and verified it. Never mark unfinished work complete.'}
 
 
 def guard_native_create(tool_name=None, args=None, next_call=None, **_kwargs):
@@ -364,5 +414,5 @@ def runtime_guidance(platform):
     return ('Use workspace_work for project boards and tasks. If deferred, describe it with '
         'tool_describe(names=["workspace_work"]) and invoke via tool_call. Read bot-web:manage-work '
         'and work.describe first. Each substantive project has its own board; General tasks is '
-        'for unfiled work. Task saves stay in Triage and do not start execution. Routine definitions '
+        'for unfiled work. New tasks default to Triage. Only explicit todo/ready status queues assigned execution. Read native task events, comments and worker summaries; post meaningful progress and verified results to the task. Routine definitions '
         'stay with the agent, outside Tasks.')

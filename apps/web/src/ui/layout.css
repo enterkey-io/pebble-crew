@@ -195,9 +195,12 @@
   padding: 12px 24px 20px;
   flex-shrink: 0;
 }
-.pc-composer {
-  margin: auto;
+.pc-composer-width {
+  width: 100%;
   max-width: 744px;
+  margin-inline: auto;
+}
+.pc-composer {
   background: var(--composer);
   border-radius: 25px;
   padding: 7px;

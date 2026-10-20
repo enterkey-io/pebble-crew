@@ -83,15 +83,39 @@ class ReportingTests(unittest.IsolatedAsyncioTestCase):
         self.assertFalse(any(method in {'prompt.submit','profiles.create'} for method,_ in self.native.calls))
         self.assertEqual(json.loads(live_context(self.store,'amy').split('\n',1)[1])['your_role']['responsibilities'],spec['instructions'])
 
-    async def test_subordinate_cannot_manage_and_revocation_fences_queued_changes(self):
+    async def test_legacy_disabled_switch_does_not_block_main_changes(self):
+        state=self.store.read(); state['reporting']['management_enabled']=False
+        self.store.save(state,state['revision'])
+        context=json.loads(live_context(self.store,'default').split('\n',1)[1])
+        self.assertTrue(context['management']['can_manage'])
+        self.assertTrue(context['management']['ask_before_unsolicited_changes'])
+        self.assertTrue(context['management']['owner_request_authorizes_change'])
+        self.assertNotIn('management_enabled', context['management'])
+        self.assertIn('A clear owner request already authorizes that change',context['instructions'])
+        submit(self.store,'default',self.spec()); await drain(self.service)
+        self.assertEqual(receipts(self.store)[0]['state'],'applied')
+        self.assertEqual(self.store.read()['bots']['amy']['manager'],'default')
+
+    async def test_only_current_main_can_manage_and_transfer_fences_queued_changes(self):
         with self.assertRaises(InvalidOperation): submit(self.store,'amy',self.spec())
         submit(self.store,'default',self.spec())
-        state=self.store.read()
-        await self.service.invoke('reporting.policy',{'enabled':False,'expected_revision':state['revision'],'policy_revision':state['reporting']['policy_revision']})
+        await self.service.invoke('workspace.set_orchestrator',{'profile':'amy', 'expected_revision':self.store.read()['revision']})
         await drain(self.service)
         self.assertEqual(receipts(self.store)[0]['state'],'refused')
         self.assertIsNone(self.store.read()['bots']['amy']['manager'])
         with self.assertRaises(InvalidOperation): submit(self.store,'default',self.spec())
+
+    async def test_reopening_a_legacy_disabled_store_restores_compatible_metadata_once(self):
+        state=self.store.read(); state['reporting']['management_enabled']=False
+        self.store.save(state,state['revision'])
+        second=WorkspaceStore(self.file)
+        try:
+            self.assertIs(second.read()['reporting']['management_enabled'],True)
+            revision=second.read()['revision']
+            third=WorkspaceStore(self.file)
+            try: self.assertEqual(third.read()['revision'],revision)
+            finally: third.db.close()
+        finally: second.db.close()
 
     async def test_stale_and_replaced_targets_never_apply(self):
         spec=self.spec(); submit(self.store,'default',spec)

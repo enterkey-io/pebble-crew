@@ -11,7 +11,8 @@ transport restoration, and reconcile lost responses/partial creates without
 creating another record. Geometry checks require readable non-overlapping
 columns on both phones. Light/dark controls, content-sized dialogs, untouched
 Cancel, compact destructive confirmation, movement through status/menu/drag and
-comment handle completion are covered. Inspect settled desktop, iPhone and Android captures.
+comment handle completion are covered. Initial-status creation, grab cursors, inset drop indicators,
+responsive navigation and native event/run history are covered in both themes. Inspect settled desktop, iPhone and Android captures.
 
 Run npm run test:owner-browser for real owner login, project/task creation,
 editing, comments and persistence after reload against the native bridge.
@@ -27,8 +28,10 @@ Run scripts/fixture/work_model_smoke.py on both native builds for actual deferre
 workspace_work schema discovery with saved tool selection and catalog listing
 disabled. A deterministic loopback model creates a project and its triage task,
 then observes native readback. A task comment then wakes the canonical Bot Chat
-exactly once and confirms its delivery receipt. No worker starts and the persona
-is unchanged.
+exactly once and confirms its delivery receipt. A real dispatcher-owned worker
+then comments and completes a greeting task through native tools, its events and
+run summary reach the task detail, and its outcome reaches the existing Bot Chat
+once. The persona is unchanged; only the loopback provider is used.
 
 Safe native task-detail edits are available on 0.21.7, and read-only on 0.21.0.
 Unlinked/conflicting imported boards remain readable until their native mapping

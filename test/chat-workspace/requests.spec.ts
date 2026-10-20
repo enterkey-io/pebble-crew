@@ -58,6 +58,12 @@ test('request review fits phones, keeps fields readable and confirms the exact d
   });
   await page.goto('/');
   await expect(page.getByLabel('Message', { exact: true })).toBeEnabled();
+  const indicator = page.getByRole('button', { name: '1 request to review', exact: true });
+  await expect(indicator).toBeVisible();
+  const dot = await indicator.evaluate((node) => getComputedStyle(node, '::after').backgroundColor);
+  const rgb = dot.match(/\d+/g)?.map(Number);
+  expect(rgb?.[0]).toBeGreaterThan((rgb?.[1] ?? 255) + 30);
+
   const phone =
     testInfo.project.name.includes('iphone') || testInfo.project.name.includes('android');
   if (phone) await page.getByRole('button', { name: 'Toggle navigation', exact: true }).click();
