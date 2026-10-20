@@ -1,5 +1,11 @@
 import { useEffect, useState } from 'react';
-import type { WorkTaskDraft, WorkReceipt } from '@hermes-client/protocol';
+import {
+  workMoveStatuses,
+  type WorkMoveStatus,
+  type WorkTaskDraft,
+  type WorkReceipt,
+} from '@hermes-client/protocol';
+import { statusNames } from './WorkArea';
 import type { WorkDialogTarget } from './work-types';
 import { EditorSurface } from '../ui/EditorSurface';
 import {
@@ -48,6 +54,7 @@ export function WorkCreator({
     priority: 0,
   });
   const [board, setBoard] = useState(target.kind === 'new-task' ? target.board : 'default');
+  const [status, setStatus] = useState<WorkMoveStatus>('triage');
   const [pending, setPending] = useState(false),
     [error, setError] = useState('');
   const [receipt, setReceipt] = useState<WorkReceipt>();
@@ -57,7 +64,7 @@ export function WorkCreator({
     receipt?.kind !== 'project' &&
     receipt?.kind !== 'task' &&
     (target.kind === 'new-task'
-      ? !!(task.title || task.body || task.assignee || task.priority)
+      ? !!(task.title || task.body || task.assignee || task.priority || status !== 'triage')
       : JSON.stringify(projectDraft) !== JSON.stringify(projectBaseline));
   useEffect(() => {
     onDirtyChange(dirty);
@@ -91,7 +98,7 @@ export function WorkCreator({
       const base = { workspaceId: catalog.workspaceId, operationId: id };
       const result =
         target.kind === 'new-task'
-          ? await domain.createTask({ ...base, board, draft: task })
+          ? await domain.createTask({ ...base, board, draft: task, status })
           : target.kind === 'project' && project?.projectId
             ? await domain.updateProject({
                 ...base,
@@ -216,6 +223,27 @@ export function WorkCreator({
                   />
                 </Label>
                 <Label layout="stacked">
+                  Status
+                  <Select
+                    value={status}
+                    onValueChange={(value) => {
+                      const next = workMoveStatuses.find((status) => status === value);
+                      if (next) setStatus(next);
+                    }}
+                  >
+                    <SelectTrigger aria-label="Status">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {workMoveStatuses.map((value) => (
+                        <SelectItem key={value} value={value}>
+                          {statusNames[value]}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </Label>
+                <Label layout="stacked">
                   Project board
                   <Select value={board} onValueChange={setBoard}>
                     <SelectTrigger aria-label="Project board">
@@ -237,6 +265,13 @@ export function WorkCreator({
                   workspace={workspace}
                   onChange={(patch) => setTask({ ...task, ...patch })}
                 />
+                {task.assignee && ['todo', 'ready'].includes(status) && (
+                  <p className="text-xs text-muted-foreground">
+                    {workspace.bots.find((bot) => bot.profile === task.assignee)?.name ??
+                      task.assignee}{' '}
+                    will start when you create this task.
+                  </p>
+                )}
                 <Label layout="stacked">
                   Details
                   <Textarea

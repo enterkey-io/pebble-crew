@@ -119,10 +119,12 @@ class NativeWork:
     def task(self, slug, ident):
         return self.api.get_task(ident, board=slug, run_state_type=None, run_state_name=None)
 
-    def create_task(self, slug, spec, project, key):
-        return self.api.create_task(self.api.CreateTaskBody(title=spec['title'], body=spec['body'],
-            assignee=spec['assignee'], priority=spec['priority'], triage=True,
-            project_id=project, idempotency_key=key), board=slug)['task']
+    def create_task(self, slug, spec, project, key, author='owner'):
+        with closing(self.api._conn(board=slug)) as conn:
+            ident = self.kanban.create_task(conn, title=spec['title'], body=spec['body'],
+                assignee=spec['assignee'], priority=spec['priority'], triage=True,
+                project_id=project, idempotency_key=key, board=slug, created_by=author)
+            return asdict(self.kanban.get_task(conn, ident))
 
     def edit_task(self, slug, ident, expected, patch):
         if not self.edit_details:
@@ -143,6 +145,15 @@ class NativeWork:
         with closing(self.api._conn(board=slug)) as conn:
             return self.kanban.add_comment(conn, ident, author=author, body=body)
 
+    def pause_idle(self, conn, task, reason):
+        # An idle owner pause must never pass through Ready: a dispatcher could
+        # claim it between writes. Use the native writer lock and event log.
+        with self.kanban.write_txn(conn):
+            ok = conn.execute("UPDATE tasks SET status='blocked', block_kind='needs_input', block_recurrences=1 WHERE id=? AND status IN ('triage','todo','scheduled')", (task.id,)).rowcount == 1
+            if ok:
+                self.kanban._append_event(conn, task.id, 'blocked', {'kind': 'needs_input', 'reason': reason, 'source_status': task.status})
+        return ok
+
     def move_task(self, slug, ident, expected, status):
         with closing(self.api._conn(board=slug)) as conn:
             checked = CheckedConnection(conn, ident, expected)
@@ -155,11 +166,30 @@ class NativeWork:
                 else:
                     ok = self.api._set_status_direct(checked, ident, status)
             elif status == 'blocked':
-                ok = self.kanban.block_task(checked, ident, reason='Paused by owner in Pebble Crew')
+                if current.status in ('triage', 'todo', 'scheduled'):
+                    ok = self.pause_idle(checked, current, 'Paused by owner in Pebble Crew')
+                else:
+                    ok = self.kanban.block_task(checked, ident, reason='Paused by owner in Pebble Crew')
             elif status == 'done':
                 import inspect
+                paused = False
+                if current.status in ('triage', 'todo', 'scheduled'):
+                    if not self.kanban._parents_satisfied(conn, ident):
+                        raise InvalidOperation('Finish the prerequisite tasks first')
+                    # Complete through the native lifecycle, from a non-running
+                    # state. Its prerequisite/evidence/handoff gates still run.
+                    paused = self.pause_idle(checked, current, 'Owner marked this task complete in Pebble Crew')
+                    current = self.kanban.get_task(conn, ident)
+                    checked = CheckedConnection(conn, ident, task_revision(asdict(current)))
                 extra = {'force': True} if 'force' in inspect.signature(self.kanban.complete_task).parameters else {}
-                ok = self.kanban.complete_task(checked, ident, result=current.result or 'Marked complete in Pebble Crew', **extra)
+                try:
+                    ok = self.kanban.complete_task(checked, ident, result=current.result or 'Marked complete in Pebble Crew', **extra)
+                    if paused and not ok:
+                        raise RuntimeError('Owner completion paused the task but could not be confirmed')
+                except InvalidOperation:
+                    if paused:
+                        raise RuntimeError('Owner completion paused the task; inspect its current state before retrying') from None
+                    raise
             elif status == 'archived':
                 ok = self.kanban.archive_task(checked, ident)
             else:

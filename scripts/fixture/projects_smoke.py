@@ -84,6 +84,7 @@ async def verify(home):
         assert invoke('work.board', {**scope, 'board': projects[1]['board']})['columns']
         saved_tasks = [t for c in invoke('work.board', {**scope, 'board': receipt['board']})['columns'] for t in c['tasks']]
         assert sum(t['id'] == receipt['task_id'] for t in saved_tasks) == 1
+        assert next(t for t in saved_tasks if t['id'] == receipt['task_id'])['revision'] == detail['task']['revision'], 'Board and detail revisions differ'
         assert len(saved_tasks) == 2 and all(t['project_id'] == projects[0]['project_id'] for t in saved_tasks)
         comment = {**scope, 'operation_id': str(uuid.uuid4()), 'board': receipt['board'], 'id': receipt['task_id'], 'body': 'Check the original publication.'}
         invoke('work.task.comment', comment)
@@ -158,7 +159,29 @@ async def verify(home):
             assert dispatched == [queued['task_id']], 'Duplicate dispatcher claim'
         qtask = invoke('work.task', qref)['task']
         invoke('work.task.move', {**move, 'operation_id': str(uuid.uuid4()), 'expected_revision': qtask['revision'], 'status': 'done'})
-        assert invoke('work.task', qref)['task']['status'] == 'done'
+        outcome = invoke('work.task', qref)
+        assert outcome['task']['status'] == 'done'
+        assert any(e['kind'] == 'claimed' for e in outcome['events'])
+        assert any(e['kind'] == 'completed' for e in outcome['events'])
+        assert outcome['runs'] and any(run['profile'] == outcome['task']['assignee'] for run in outcome['runs'])
+        assert any(c['author'] == 'owner' and '→ Done' in c['body'] for c in outcome['comments'])
+        notices = tick()
+        assert len(notices) == 1 and notices[0]['id'].startswith('task:'), notices
+        assert 'existing Bot Chat' in notices[0]['text']
+        assert settle(notices[0]['id'], 'sending')
+        assert not settle(notices[0]['id'], 'sending')
+        settle(notices[0]['id'], 'sent')
+        assert tick() == [], 'Completion notice replayed'
+        adapter = NativeWork(primary['profile'])
+        for status in ('blocked', 'todo', 'triage', 'done'):
+            created = invoke('work.task.create', {**create, 'operation_id': str(uuid.uuid4()), 'board': 'default', 'assignee': None, 'status': status})
+            assert created['state'] == 'completed'
+            assert invoke('work.task', {**qref, 'id': created['task_id']})['task']['status'] == status
+            if status == 'blocked':
+                with adapter.scoped(), closing(adapter.api._conn(board='default')) as conn:
+                    adapter.kanban.recompute_ready(conn)
+                assert invoke('work.task', {**qref, 'id': created['task_id']})['task']['status'] == 'blocked', 'Owner-paused task was automatically queued'
+
         mention = {**qref, 'operation_id': str(uuid.uuid4()), 'body': '@AURORA please read this. @aurora Again. user@example.com @missing'}
         invoke('work.task.comment', mention)
         invoke('work.task.comment', mention)
@@ -224,7 +247,7 @@ async def verify(home):
             'edit_details': catalog['capabilities']['edit_details'], 'separate_projects': 5,
             'idempotent_task_and_comment': True, 'partial_project_recovered': ['project', 'board', 'link'],
             'catalog_survives_main_transfer': True, 'native_project_policy_and_worker_fence': True,
-            'native_queue_claim_and_completion': True, 'stale_move_rejected': True, 'mention_identity_and_retry': True, 'workers': 0, 'model_turns': 0}))
+            'native_queue_claim_and_completion': True, 'stale_move_rejected': True, 'native_task_history_and_runs': True, 'initial_status_saved': True, 'completion_notification_once': True, 'mention_identity_and_retry': True, 'workers': 0, 'model_turns': 0}))
     finally:
         store.db.close()
         await native.stop()

@@ -402,3 +402,137 @@ test('a late task move cannot put an old board’s task into the newly opened pr
   await expect(page.locator('html')).toHaveAttribute('data-old-task-leaked', 'false');
   await expect(page.getByRole('heading', { name: 'Other project', exact: true })).toBeVisible();
 });
+
+for (const theme of ['light', 'dark']) {
+  test(`task cards, initial status and native activity use the shared interface in ${theme}`, async ({
+    page,
+    context,
+  }, info) => {
+    const fixture = await installWorkFixture(context);
+    const row = {
+      id: 'task-history',
+      title: 'Send hello',
+      body: 'Message me hello, then mark done.',
+      priority: 0,
+      assignee: 'mica',
+      project_id: null,
+      status: 'triage',
+      result: null,
+      revision: fixture.nextRevision(),
+    };
+    fixture.tasks.set('default', [row]);
+    await page.addInitScript(
+      (theme) => localStorage.setItem('pebble-crew.appearance', theme),
+      theme,
+    );
+    await page.goto('/');
+    await expect(page.getByLabel('Message', { exact: true })).toBeEnabled();
+    await navigation(page, info);
+    await page.getByRole('radio', { name: 'Tasks', exact: true }).click();
+    const action = page.getByRole('button', { name: 'New task', exact: true });
+    const colors = await action.evaluate((node) => {
+      const style = getComputedStyle(node);
+      return { background: style.backgroundColor, foreground: style.color };
+    });
+    const channels = colors.background.match(/\d+/g)?.map(Number);
+    expect(channels?.[0]).toBeGreaterThan((channels?.[1] ?? 255) + 30);
+    expect(channels?.[1]).toBeGreaterThan(channels?.[2] ?? 255);
+    if (!phone(info))
+      await expect(
+        page.getByRole('button', { name: 'Toggle navigation', exact: true }),
+      ).toBeHidden();
+    const card = page.getByRole('button', { name: 'Open task Send hello', exact: true });
+    await card.hover();
+    await expect(card).toHaveCSS('cursor', 'grab');
+    if (!phone(info)) {
+      const transfer = await page.evaluateHandle(() => new DataTransfer());
+      await card.locator('..').dispatchEvent('dragstart', { dataTransfer: transfer });
+      const column = page.getByRole('region', { name: 'To do', exact: true });
+      await column.dispatchEvent('dragover', { dataTransfer: transfer });
+      await expect(column).toHaveAttribute('data-drag-over', 'true');
+      expect(await column.evaluate((node) => getComputedStyle(node).boxShadow)).toContain('inset');
+      expect(await column.evaluate((node) => getComputedStyle(node).outlineStyle)).toBe('none');
+      await page.screenshot({
+        path: info.outputPath(`task-drop-${theme}.png`),
+        animations: 'disabled',
+      });
+      await card.locator('..').dispatchEvent('dragend', { dataTransfer: transfer });
+    }
+    await card.click();
+    const title = await page.getByLabel('Title', { exact: true }).boundingBox();
+    const status = await page.getByRole('combobox', { name: 'Status', exact: true }).boundingBox();
+    expect(title!.y).toBeLessThan(status!.y);
+    await page.getByRole('button', { name: 'Close Task', exact: true }).click();
+    // A native text edit between board refreshes cannot cause a false movement conflict.
+    row.body = 'Native edit preserved while moving';
+    row.revision = fixture.nextRevision();
+    await page.getByRole('button', { name: 'Task actions for Send hello', exact: true }).click();
+    await page.getByRole('menuitem', { name: 'Move to', exact: true }).click();
+    await page.getByRole('menuitem', { name: 'To do', exact: true }).click();
+    await expect.poll(() => row.status).toBe('todo');
+    expect(row.body).toBe('Native edit preserved while moving');
+    await expect(page.getByText(/This task changed in Hermes/)).toHaveCount(0);
+    fixture.history.set(row.id, [
+      {
+        id: 1,
+        kind: 'created',
+        created_at: 1700000000,
+        actor: 'owner',
+        status: null,
+        summary: null,
+      },
+      {
+        id: 2,
+        kind: 'claimed',
+        created_at: 1700000060,
+        actor: 'mica',
+        status: null,
+        summary: null,
+      },
+      {
+        id: 3,
+        kind: 'completed',
+        created_at: 1700000120,
+        actor: 'mica',
+        status: null,
+        summary: null,
+      },
+    ]);
+    fixture.runs.set(row.id, [
+      {
+        id: 1,
+        profile: 'mica',
+        status: 'done',
+        started_at: 1700000060,
+        ended_at: 1700000120,
+        outcome: 'completed',
+        summary: 'Hello! Your requested greeting is ready.',
+      },
+    ]);
+    await card.click();
+    await page.getByRole('tab', { name: 'Activity', exact: true }).click();
+    await expect(page.getByText('You · Created task', { exact: true })).toBeVisible();
+    await expect(page.getByText('Mica · Started work', { exact: true })).toBeVisible();
+    await expect(
+      page.getByText('Hello! Your requested greeting is ready.', { exact: true }),
+    ).toBeVisible();
+    await expect(page.getByRole('list', { name: 'Task history' }).locator('time')).toHaveCount(4);
+    await page.screenshot({
+      path: info.outputPath(`native-task-history-${theme}.png`),
+      animations: 'disabled',
+    });
+    await page.getByRole('button', { name: 'Close Task', exact: true }).click();
+    await page.getByRole('button', { name: 'New task', exact: true }).click();
+    await page.getByLabel('Title', { exact: true }).fill('Wait for owner input');
+    await page.getByRole('combobox', { name: 'Status', exact: true }).click();
+    await page.getByRole('option', { name: 'Blocked', exact: true }).click();
+    await page.getByRole('button', { name: 'Create task', exact: true }).click();
+    await expect
+      .poll(
+        () =>
+          fixture.tasks.get('default')?.find((task) => task.title === 'Wait for owner input')
+            ?.status,
+      )
+      .toBe('blocked');
+  });
+}

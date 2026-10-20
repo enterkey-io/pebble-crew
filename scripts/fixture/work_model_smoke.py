@@ -34,6 +34,10 @@ class WorkModel(Model):
     completed = False
     discovered = False
     failure = None
+    worker_step = 0
+    worker_guided = False
+    worker_completed = False
+    owner_notified = False
     project_operation = str(uuid.uuid4())
     task_operation = str(uuid.uuid4())
 
@@ -41,6 +45,30 @@ class WorkModel(Model):
         payload = self.rfile.read(int(self.headers['Content-Length']))
         data = json.loads(payload)
         user = str(next((m.get('content') for m in reversed(data.get('messages', [])) if m.get('role') == 'user'), ''))
+        if user.startswith('work kanban task '):
+            step = WorkModel.worker_step
+            tools = ['kanban_show', 'kanban_comment', 'kanban_complete']
+            name = tools[step] if step < len(tools) else None
+            if name:
+                assert 'Pebble Crew task reporting:' in json.dumps(data['messages']), 'Worker did not receive the reporting protocol'
+                WorkModel.worker_guided = True
+            task_id = user.split('work kanban task ', 1)[1].split()[0]
+            args = [{'task_id': task_id}, {'task_id': task_id, 'body': 'I will prepare the requested greeting and record the result.'},
+                {'task_id': task_id, 'summary': 'Hello! This is the greeting you requested.', 'result': 'Hello! This is the greeting you requested.'}][step] if name else None
+            names = {t['function']['name'] for t in data.get('tools', [])}
+            if name and name not in names and not any('kanban_complete' in json.dumps(m.get('content')) for m in data['messages'] if m.get('role') == 'tool'):
+                return self.respond(data, 'tool_describe', {'names': tools}, None)
+            if name and name not in names:
+                wrapper = next(t['function'] for t in data['tools'] if t['function']['name'] == 'tool_call')
+                nested = {'name': name, 'arguments': args}
+                args = {'calls': [nested]} if 'calls' in wrapper['parameters']['properties'] else nested
+                name = 'tool_call'
+            WorkModel.worker_step += 1
+            if not name: WorkModel.worker_completed = True
+            return self.respond(data, name, args, None if name else 'The greeting is recorded in the completed task.')
+        if 'A Hermes task worker has reported an outcome' in user:
+            WorkModel.owner_notified = True
+            return self.respond(data, None, None, 'Hello! This is the greeting you requested.')
         if 'Synthetic native project management' not in user:
             self.rfile = io.BytesIO(payload)
             return super().do_POST()
@@ -86,8 +114,11 @@ class WorkModel(Model):
             nested = {'name': name, 'arguments': arguments}
             arguments = {'calls': [nested]} if 'calls' in wrapper['parameters']['properties'] else nested
             name = 'tool_call'
+        self.respond(data, name, arguments, reply)
+
+    def respond(self, data, name, arguments, reply):
         message = {'role': 'assistant', 'content': reply} if reply else {
-            'role': 'assistant', 'content': None, 'tool_calls': [{'id': 'work-'+str(step), 'type': 'function',
+            'role': 'assistant', 'content': None, 'tool_calls': [{'id': 'work-'+str(WorkModel.step)+'-'+str(WorkModel.worker_step), 'type': 'function',
                 'function': {'name': name, 'arguments': json.dumps(arguments)}}]}
         reason = 'stop' if reply else 'tool_calls'
         response = {'created': int(time.time()), 'id': 'work-proof', 'object': 'chat.completion', 'model': 'fixture-model',
@@ -183,9 +214,56 @@ async def exercise(root, home, port):
             assert len(view['mentions']) == 1 and view['mentions'][0]['state'] == 'sent', view['mentions']
         finally:
             work.close()
+        # Run a genuine dispatcher-owned CLI worker, then deliver its native outcome
+        # into the already existing Bot Chat. The only provider is this loopback model.
+        work = WorkService(store, workspace_path().with_name('work.sqlite'))
+        worker_pid = None
+        try:
+            greeting = work.invoke('work.task.create', {'workspace_id': catalog['workspace_id'],
+                'operation_id': str(uuid.uuid4()), 'board': project['slug'], 'title': 'Message me hello',
+                'body': 'Message me hello, then mark this task done.', 'assignee': 'default', 'priority': 0, 'status': 'todo'})
+            ref = {'workspace_id': catalog['workspace_id'], 'board': project['slug'], 'id': greeting['task_id']}
+            adapter = NativeWork('default')
+            with adapter.scoped():
+                adapter.dispatch(project['slug'])
+                worker_pid = adapter.task(project['slug'], greeting['task_id'])['task'].get('worker_pid')
+            async with asyncio.timeout(90):
+                while True:
+                    outcome = work.invoke('work.task', ref)
+                    if outcome['task']['status'] in ('done', 'blocked'): break
+                    await asyncio.sleep(.2)
+            assert outcome['task']['status'] == 'done', outcome
+            assert WorkModel.worker_guided and WorkModel.worker_step >= 3
+            assert outcome['comments'] and outcome['runs'], outcome
+            assert any(event['kind'] == 'completed' for event in outcome['events'])
+            await deliver(workspace, gateway)
+            async with asyncio.timeout(60):
+                while True:
+                    event = await events.get()
+                    if event.get('session_id') == sid and event['type'] == 'message.complete': break
+            assert WorkModel.owner_notified
+            transcript = await ops.invoke('chat.history', {'session_id': sid})
+            assert 'Hello! This is the greeting you requested.' in json.dumps(transcript)
+            notices = list(work.store.db.execute('SELECT state FROM task_notifications'))
+            assert notices == [('sent',)], notices
+            await deliver(workspace, gateway)
+            assert list(work.store.db.execute('SELECT state FROM task_notifications')) == notices
+        finally:
+            if worker_pid:
+                import psutil
+                try:
+                    child = psutil.Process(worker_pid)
+                    if greeting['task_id'] in ' '.join(child.cmdline()):
+                        child.wait(timeout=5)
+                except psutil.TimeoutExpired:
+                    child.terminate()
+                    child.wait(timeout=5)
+                except psutil.NoSuchProcess:
+                    pass
+            work.close()
         assert soul.read_bytes() == original
         print(json.dumps({'revision': gateway.build['revision'], 'deferred_work_schema': True,
-            'saved_tool_selection': True, 'native_model_project_and_task': True, 'workers': 0,
+            'saved_tool_selection': True, 'native_model_project_and_task': True, 'real_dispatcher_worker': True, 'worker_reporting_protocol': True, 'native_history': True, 'result_delivered_to_existing_bot_chat_once': True,
             'model': 'deterministic-local-only', 'persona_preserved': True, 'mention_woke_existing_bot_once': True}))
     finally:
         store.db.close()

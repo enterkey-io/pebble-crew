@@ -25,6 +25,18 @@ for native acceptance.
 | Disk updates are mistaken for loaded native code         | Owner-local runtime status distinguishes absent, verified and unknown disk copies; loaded state stays unknown. Exact-package CI covers provisioning, partial sync, changed tool definitions and historical Python rollback without install/update model turns.                                                                     |
 | Legacy UI overrides and duplicate dialogs return         | All product styles load in the components layer below kit utilities. DialogContent owns sizing; DiscardChanges owns every discard prompt; Button owns destructive states. check:ui rejects the old paths and audit-agent-guards rejects the historical source. Desktop/phone checks cover light/dark contrast and compact dialogs. |
 
+Main Pebble reporting/Instructions management has no enable switch. Ask-first
+behavior belongs in current agent guidance: unsolicited changes need a question;
+a clear owner request already authorizes that change. Server checks still enforce
+current Main identity, stable targets, acyclic reporting and current revisions.
+Tests must cover legacy disabled metadata and a Main transfer with queued work.
+
+Org chart verification checks fixed card geometry and rendered parent/report
+connector endpoints. Task history comes from native Hermes events/comments/runs.
+A native acceptance task must produce its result in the existing Bot Chat; a
+worker's final CLI reply alone does not prove delivery. Keep install/update checks
+model-free and run that scenario only in disposable acceptance homes.
+
 Use the project [verification skill](.agents/skills/verify/SKILL.md) for the
 maintained app-driving recipe and feature map.
 

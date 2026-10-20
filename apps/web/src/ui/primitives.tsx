@@ -2,7 +2,7 @@ import { Alert, AlertDescription } from '../components/ui/alert';
 import { Typography } from '../components/ui/typography';
 import type { LucideIcon } from 'lucide-react';
 import type { ReactNode } from 'react';
-import { X, MoreHorizontal, Menu as MenuIcon } from 'lucide-react';
+import { X, MoreHorizontal, PanelLeftOpen } from 'lucide-react';
 import { IconButton } from '../components/ui/icon-button';
 import { Button } from '../components/ui/button';
 import { Tabs as RootTabs, TabsList, TabsTrigger, TabsContent } from '../components/ui/tabs';
@@ -40,9 +40,9 @@ export function PageHeader({
       {onNavigate && (
         <IconButton
           quiet
-          className="mobile-nav"
+          className="md:hidden"
           label="Toggle navigation"
-          icon={MenuIcon}
+          icon={PanelLeftOpen}
           onClick={onNavigate}
         />
       )}

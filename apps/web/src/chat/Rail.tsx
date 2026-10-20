@@ -13,7 +13,6 @@ import {
   Eye,
   EyeOff,
   LogOut,
-  Inbox,
   PanelsTopLeft,
 } from 'lucide-react';
 import { ToggleGroup, ToggleGroupItem } from '../components/ui/toggle-group';
@@ -332,13 +331,7 @@ export function Rail({
                 key={board.slug}
                 className="min-h-12 px-3"
                 title={board.name}
-                media={
-                  board.slug === 'default' ? (
-                    <Inbox className="size-4 text-muted-foreground" />
-                  ) : (
-                    <PanelsTopLeft className="size-4 text-muted-foreground" />
-                  )
-                }
+                media={<PanelsTopLeft className="size-4 text-muted-foreground" />}
                 aria-current={board.slug === selectedBoard ? 'page' : undefined}
                 onClick={() => onBoard(board.slug)}
                 action={
