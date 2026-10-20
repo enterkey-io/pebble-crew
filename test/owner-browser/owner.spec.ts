@@ -471,10 +471,7 @@ test('private first use, native onboarding, idle keepalive, reconnection, settin
     .getByLabel('Instructions', { exact: true })
     .fill('Verify results and report to Alpha Stone.');
   await page.getByRole('button', { name: 'Save role', exact: true }).click();
-  await expect(
-    page.getByRole('tabpanel', { name: 'Role', exact: true }).getByRole('status'),
-  ).toHaveText('Role saved.');
-  await page.getByRole('button', { name: 'Close Edit Nova', exact: true }).click();
+  await expect(page.getByRole('region', { name: 'Edit Nova', exact: true })).toHaveCount(0);
   await expect(org.getByRole('button', { name: 'Edit Nova', exact: true })).toBeVisible();
   await page.screenshot({ animations: 'disabled', path: 'test-results/native-org-desktop.png' });
   await org.getByRole('button', { name: 'Close Org chart', exact: true }).click();

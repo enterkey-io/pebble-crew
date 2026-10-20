@@ -7,7 +7,7 @@ import { Disclosure } from './components/ui/disclosure';
 import { TabbedEditor } from './ui/EditorSurface';
 import { LoadingBar } from './components/ui/loading-bar';
 import { Button } from './components/ui/button';
-import { useEffect, useReducer, useState } from 'react';
+import { useEffect, useReducer, useRef, useState } from 'react';
 import type {
   WorkspaceAgentCapabilities,
   BotBridgeClient,
@@ -45,6 +45,7 @@ export function PebbleEditor({
   onChange,
   onClose,
   onDirtyChange,
+  closeOnSave = false,
   retired = false,
   initialTab = 'identity',
   callActive = false,
@@ -57,6 +58,7 @@ export function PebbleEditor({
   onChange: (state: WorkspaceState) => void;
   onClose: () => void;
   onDirtyChange: (dirty: boolean) => void;
+  closeOnSave?: boolean;
   retired?: boolean;
   initialTab?: 'identity' | 'voice';
   callActive?: boolean;
@@ -123,10 +125,19 @@ export function PebbleEditor({
     };
   }, [client, bot.profile]);
   const dirty = profileDirty(edit) || toolsDirty(toolEdit);
+  const saved = useRef(false);
   useEffect(() => {
     onDirtyChange(dirty);
     return () => onDirtyChange(false);
   }, [dirty, onDirtyChange]);
+  useEffect(() => {
+    if (busy || !saved.current) return;
+    saved.current = false;
+    if (closeOnSave && !dirty) {
+      onDirtyChange(false);
+      onClose();
+    }
+  }, [busy, closeOnSave, dirty, onClose, onDirtyChange]);
   async function save(section: 'profile' | 'role' | 'tools' | 'lead') {
     if (
       busy ||
@@ -183,6 +194,7 @@ export function PebbleEditor({
       setNotice(
         `${section === 'tools' ? 'Tools and skills' : section === 'role' ? 'Role' : section === 'lead' ? 'Main Pebble' : 'Profile'} saved.`,
       );
+      saved.current = true;
     } catch (e) {
       if (!confirmed) {
         setUncertain(true);

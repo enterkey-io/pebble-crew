@@ -115,8 +115,13 @@ export function OrgChart({
         {error && <Notice>{error}</Notice>}
         <div className="pc-org-management">
           <label htmlFor="main-pebble-management">
-            <span>Main Pebble management</span>
-            <span className="pc-org-hint">Reporting relationships and agent instructions</span>
+            <span>
+              Let {forest.main?.name ?? 'the Main Pebble'} manage reporting and instructions
+            </span>
+            <span className="pc-org-hint">
+              Can change who reports to whom and edit each pebble’s instructions without asking you
+              first.
+            </span>
           </label>
           <Switch
             id="main-pebble-management"

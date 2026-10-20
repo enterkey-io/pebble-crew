@@ -49,7 +49,7 @@ import { DetailsDock } from './ui/DetailsDock';
 import { VoiceChat } from './voice/VoiceChat';
 import type { VoiceChatHandle } from './voice/VoiceChat';
 import type { VoiceSettingsRequest } from './voice/decode';
-import { File, Image, AudioLines, Menu as MenuIcon, RefreshCw, X } from 'lucide-react';
+import { File, Image, AudioLines, Inbox, Menu as MenuIcon, RefreshCw, X } from 'lucide-react';
 import { Button } from './components/ui/button';
 import { IconButton } from './components/ui/icon-button';
 import { Alert, AlertDescription, AlertAction } from './components/ui/alert';
@@ -1778,6 +1778,7 @@ export function App({ owner }: { owner?: OwnerConnection }) {
         onNavigate={navigate}
         key={`${settingsTab}:${editProfile ?? ''}`}
         onDirtyChange={onDirtyChange}
+        closeOnSave={orgOpen}
         initialTab={settingsTab}
         initialAgentTab={agentSettingsTab}
         callActive={voiceActive}
@@ -1915,16 +1916,16 @@ export function App({ owner }: { owner?: OwnerConnection }) {
                     />
                     <div className="header-actions">
                       {requestCount > 0 && (
-                        <Button
-                          variant="quiet"
-                          className="request-count"
+                        <IconButton
+                          quiet
+                          className="request-indicator"
+                          label={`${requestCount} ${requestCount === 1 ? 'request' : 'requests'} to review`}
+                          icon={Inbox}
                           onClick={() => {
                             setSettingsTab('requests');
                             setSettings(true);
                           }}
-                        >
-                          {requestCount} to review
-                        </Button>
+                        />
                       )}
                       {selection?.kind === 'bot' && (
                         <IconButton

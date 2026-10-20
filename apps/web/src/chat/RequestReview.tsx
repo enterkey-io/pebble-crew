@@ -113,7 +113,9 @@ export function RequestReview({
         <>
           {deleting && (
             <Label className="flex-col items-start">
-              Type <strong>{String(spec.profile)}</strong> to confirm
+              <span>
+                Type <strong>{String(spec.profile)}</strong> to confirm
+              </span>
               <Input
                 aria-label="Confirm profile name"
                 autoComplete="off"
@@ -122,7 +124,7 @@ export function RequestReview({
               />
             </Label>
           )}
-          <div className="choice-row">
+          <div className="request-actions">
             <Button
               type="button"
               variant="secondary"

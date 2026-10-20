@@ -5,6 +5,37 @@
   gap: 8px;
   margin-left: auto;
 }
+.request-indicator {
+  position: relative;
+}
+.request-indicator::after {
+  content: '';
+  position: absolute;
+  top: 3px;
+  right: 3px;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--foreground);
+  animation: request-pulse 2.4s ease-in-out infinite;
+  pointer-events: none;
+}
+@keyframes request-pulse {
+  0%,
+  100% {
+    opacity: 0.5;
+    transform: scale(0.85);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1.1);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .request-indicator::after {
+    animation: none;
+  }
+}
 .mobile-nav {
   display: none;
 }
@@ -945,26 +976,51 @@
   padding-bottom: 24px;
 }
 .product-sheet > .request-card {
-  padding: 12px 24px;
+  padding: 20px;
+}
+.request-list {
+  display: grid;
+  gap: 16px;
+  min-width: 0;
 }
 .request-card {
+  min-width: 0;
+  flex-shrink: 0;
+  gap: 20px;
+  padding: 20px;
   font-size: 13px;
+  line-height: 1.6;
+  overflow-wrap: anywhere;
+}
+.request-card [data-slot='item-title'] {
+  line-clamp: unset;
+  -webkit-line-clamp: unset;
 }
 .request-card h3 {
   font-size: 16px;
   font-weight: 550;
-  margin: 8px 0 16px;
+  margin: 0;
 }
-.request-card dl {
+.request-fields {
   display: grid;
-  grid-template-columns: auto 1fr;
-  gap: 8px 16px;
+  min-width: 0;
+  gap: 16px;
+  margin: 0;
   font-size: 12px;
 }
-.request-card dt {
+.request-fields > div {
+  display: grid;
+  min-width: 0;
+  grid-template-columns: minmax(100px, 0.4fr) minmax(0, 1fr);
+  gap: 4px 20px;
+}
+.request-fields dt {
   color: var(--muted-foreground);
 }
-.request-card dd {
+.request-fields dd {
+  min-width: 0;
+  margin: 0;
+  white-space: pre-wrap;
   overflow-wrap: anywhere;
 }
 .request-card pre {
@@ -972,6 +1028,34 @@
   overflow: auto;
   white-space: pre-wrap;
   font-size: 12px;
+}
+.request-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 12px;
+}
+.request-card label {
+  align-items: stretch;
+  gap: 8px;
+}
+@media (max-width: 767px) {
+  .request-card,
+  .product-sheet > .request-card {
+    padding: 16px;
+  }
+  .request-fields > div {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .request-actions {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .request-actions > button {
+    min-height: 44px;
+    height: auto;
+    white-space: normal;
+  }
 }
 .choice-row {
   display: flex;

@@ -49,7 +49,7 @@ test('org chart preserves unattached branches and edits through the shared profi
     .getByLabel('Instructions', { exact: true })
     .fill('Verify your result, then send Mica a concise report.');
   await page.getByRole('button', { name: 'Save role', exact: true }).click();
-  await page.getByRole('button', { name: 'Close Edit Sage', exact: true }).click();
+  await expect(page.getByRole('region', { name: 'Edit Sage', exact: true })).toHaveCount(0);
   await expect(branch.getByRole('button', { name: 'Edit Sage', exact: true })).toBeVisible();
   await emit(page, 'workspace.changed');
   await expect(branch.getByRole('button', { name: 'Edit Sage', exact: true })).toBeVisible();
@@ -58,6 +58,48 @@ test('org chart preserves unattached branches and edits through the shared profi
   await expect(page.getByLabel('Message', { exact: true })).toHaveValue('Keep this draft');
   await expect.poll(() => transcript.evaluate((element) => element.scrollTop)).toBe(120);
   expect(fixture.state.bots.find((bot) => bot.profile === 'sage')?.manager).toBe('mica');
+});
+
+test('org card stays open on a refused save and preserves unsaved changes from another tab', async ({
+  page,
+  context,
+}, testInfo) => {
+  const fixture = await installFixture(context);
+  let refuse = true;
+  await context.route('https://hermes.fixture.invalid/v1/rpc', async (route) => {
+    if (route.request().postDataJSON().operation === 'roles.update' && refuse)
+      return route.fulfill({
+        status: 409,
+        json: { code: 'STALE_REVISION', error: 'Workspace changed' },
+      });
+    return route.fallback();
+  });
+  await page.goto('/');
+  await expect(page.getByLabel('Message', { exact: true })).toBeEnabled();
+  if (testInfo.project.name.includes('iphone') || testInfo.project.name.includes('android'))
+    await page.getByRole('button', { name: 'Toggle navigation', exact: true }).click();
+  await page.getByRole('button', { name: 'Your account', exact: true }).click();
+  await page.getByRole('menuitem', { name: 'Org chart', exact: true }).click();
+  await page.getByRole('button', { name: 'Edit Mica', exact: true }).click();
+  await page.getByLabel('Name', { exact: true }).fill('Mica Research');
+  await page.getByRole('tab', { name: 'Role', exact: true }).click();
+  await page.getByLabel('Instructions', { exact: true }).fill('Verify sources and report to Arlo.');
+  await page.getByRole('button', { name: 'Save role', exact: true }).click();
+  await expect(page.getByRole('alert')).toBeVisible();
+  await expect(page.getByLabel('Instructions', { exact: true })).toHaveValue(
+    'Verify sources and report to Arlo.',
+  );
+  expect(fixture.state.bots.find((bot) => bot.profile === 'mica')?.role.responsibilities).not.toBe(
+    'Verify sources and report to Arlo.',
+  );
+  refuse = false;
+  await page.getByRole('button', { name: 'Save role', exact: true }).click();
+  await expect(page.getByText('Role saved.', { exact: true })).toBeVisible();
+  await page.getByRole('tab', { name: 'Profile', exact: true }).click();
+  await expect(page.getByLabel('Name', { exact: true })).toHaveValue('Mica Research');
+  await page.getByRole('button', { name: 'Save profile', exact: true }).click();
+  await expect(page.getByRole('dialog', { name: 'Edit pebble', exact: true })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Edit Mica Research', exact: true })).toBeVisible();
 });
 
 test('owner can revoke Main Pebble management without losing the reporting cards', async ({
@@ -71,7 +113,7 @@ test('owner can revoke Main Pebble management without losing the reporting cards
     await page.getByRole('button', { name: 'Toggle navigation', exact: true }).click();
   await page.getByRole('button', { name: 'Your account', exact: true }).click();
   await page.getByRole('menuitem', { name: 'Org chart', exact: true }).click();
-  const grant = page.getByRole('switch', { name: /Main Pebble management/ });
+  const grant = page.getByRole('switch', { name: /Let Arlo manage reporting and instructions/ });
   await expect(grant).toBeChecked();
   await grant.click();
   await expect(grant).not.toBeChecked();

@@ -22,6 +22,7 @@ export function WorkspaceSettings({
   initialTab = 'general',
   initialProfile,
   onDirtyChange,
+  closeOnSave = false,
   onNavigate,
   initialAgentTab,
   callActive = false,
@@ -33,6 +34,7 @@ export function WorkspaceSettings({
   voiceRequest?: import('./voice/decode').VoiceSettingsRequest | undefined;
   onVoiceReady?: ((profile: string) => void) | undefined;
   onDirtyChange: (dirty: boolean) => void;
+  closeOnSave?: boolean;
   onNavigate: (action: () => void) => void;
   owner?: boolean;
   initialTab?: 'agents' | 'requests' | 'connections' | 'account' | 'general';
@@ -61,18 +63,22 @@ export function WorkspaceSettings({
     [loading, setLoading] = useState(false);
   const [requests, setRequests] = useState<Row[]>([]);
   const [refresh, setRefresh] = useState(0);
+  const requestsLoaded = useRef(false);
+  useEffect(() => {
+    setError('');
+    setNotice('');
+  }, [tab, profile]);
   useEffect(() => {
     let live = true;
     let timer: ReturnType<typeof setTimeout>;
-    setError('');
-    setNotice('');
     if (tab === 'requests') {
-      setLoading(true);
+      setLoading(!requestsLoaded.current);
       const load = async () => {
         try {
           const data = (await client.invoke('requests.list', {})) as { requests: Row[] };
           if (live) {
             setRequests(data.requests);
+            requestsLoaded.current = true;
             setLoading(false);
           }
         } catch {
@@ -85,7 +91,10 @@ export function WorkspaceSettings({
         }
       };
       void load();
-    } else setLoading(false);
+    } else {
+      requestsLoaded.current = false;
+      setLoading(false);
+    }
     return () => {
       live = false;
       clearTimeout(timer);
@@ -137,6 +146,7 @@ export function WorkspaceSettings({
         onChange={onChange}
         onClose={onClose}
         onDirtyChange={onDirtyChange}
+        closeOnSave={closeOnSave}
       />
     ) : (
       <section className="entity-page">
@@ -183,20 +193,22 @@ export function WorkspaceSettings({
               <p>Changes proposed by your pebbles appear here.</p>
             </div>
           )}
-          {requests.map((r) => (
-            <RequestReview
-              key={String(r.id)}
-              request={r}
-              busy={busy}
-              onDecision={(a, c) => void decide(r, a, c)}
-              onInspect={() => {
-                void client
-                  .invoke('requests.reconcile', { id: r.id })
-                  .then((value) => setNotice(String((value as Row).message)))
-                  .catch((e) => setError(safeError(e).message));
-              }}
-            />
-          ))}
+          <div className="request-list">
+            {requests.map((r) => (
+              <RequestReview
+                key={String(r.id)}
+                request={r}
+                busy={busy}
+                onDecision={(a, c) => void decide(r, a, c)}
+                onInspect={() => {
+                  void client
+                    .invoke('requests.reconcile', { id: r.id })
+                    .then((value) => setNotice(String((value as Row).message)))
+                    .catch((e) => setError(safeError(e).message));
+                }}
+              />
+            ))}
+          </div>
         </>
       )}
       {tab === 'connections' &&
