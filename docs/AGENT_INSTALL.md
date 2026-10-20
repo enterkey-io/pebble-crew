@@ -72,13 +72,13 @@ installation.
 
 ## 3. Obtain the immutable combined release
 
-Candidate: `v0.7.8-preview.17`. If these assets are not published, stop and report
+Candidate: `v0.7.8-preview.18`. If these assets are not published, stop and report
 that the candidate is unavailable. Do not substitute main or an API-only package.
 
-- [Manifest](https://github.com/enterkey-io/pebble-crew/releases/download/v0.7.8-preview.17/workspace-manifest.json)
-- [SHA256SUMS](https://github.com/enterkey-io/pebble-crew/releases/download/v0.7.8-preview.17/SHA256SUMS)
-- [Complete plugin](https://github.com/enterkey-io/pebble-crew/releases/download/v0.7.8-preview.17/workspace-plugin-preview.zip)
-- [Source](https://github.com/enterkey-io/pebble-crew/releases/download/v0.7.8-preview.17/workspace-source-preview.zip)
+- [Manifest](https://github.com/enterkey-io/pebble-crew/releases/download/v0.7.8-preview.18/workspace-manifest.json)
+- [SHA256SUMS](https://github.com/enterkey-io/pebble-crew/releases/download/v0.7.8-preview.18/SHA256SUMS)
+- [Complete plugin](https://github.com/enterkey-io/pebble-crew/releases/download/v0.7.8-preview.18/workspace-plugin-preview.zip)
+- [Source](https://github.com/enterkey-io/pebble-crew/releases/download/v0.7.8-preview.18/workspace-source-preview.zip)
 
 Verify size and SHA-256 against both manifest and checksum file. Reject absolute
 archive paths, traversal, symlinks and entries escaping private staging. The
@@ -208,7 +208,7 @@ with `hermes bot-web setup-link` (use `--renew-setup` only if it expired).
 remaining seconds). Its output contains the private file path, never the secret.
 
 Event parsing and legacy access controls are specified in
-[the wire protocol](https://github.com/enterkey-io/pebble-crew/blob/v0.7.8-preview.17/docs/WIRE_PROTOCOL.md).
+[the wire protocol](https://github.com/enterkey-io/pebble-crew/blob/v0.7.8-preview.18/docs/WIRE_PROTOCOL.md).
 Never use global revocation for diagnostic cleanup: use DELETE `/v1/connect`
 with the probe's own lease. Global revocation now requires `hermes bot-web revoke
 --all` or the operator-only HTTP body `{"all":true}`.
@@ -229,7 +229,7 @@ The updater stages dependencies and compatibility checks before switching the
 release. The manager adopts it without replacing keys or data. Failed readiness
 restores the previous release.
 
-For preview.15 → preview.17, host-first ordering is required. The new `v2` host
+When upgrading preview.15 or earlier to this release, host-first ordering is required. The new `v2` host
 accepts existing `v1` runtimes; the old `v1` host cannot accept the new `v2` runtime.
 Do not run `sync-runtime --source-package` before activation for this transition,
 edit contract declarations, or bypass compatibility checks. A previous sync-first
@@ -242,7 +242,19 @@ hermes bot-web rollback
 hermes bot-web verify --public
 ```
 
-This release adds owner-local reporting metadata and a document presentation tool.
+This release includes reporting controls, the document viewer and native project
+boards under Chat | Tasks. Each project board links one Hermes Project to its own
+native Kanban board. New tasks enter Triage; saving does not start workers or
+models. Routines stay in agent chats, separate from project boards.
+
+Preserve `$HERMES_HOME/bot-web/` in full, including the new `work.sqlite` catalog
+bindings and recovery receipts. Native projects and tasks remain in Hermes. After
+host activation, synchronize enrolled runtime copies and restart their processes
+so agents can discover `workspace_work` and `bot-web:manage-work`. Confirm Tasks
+appears after login; do not create owner projects or tasks as upgrade probes.
+Both pinned Hermes builds support reading, project/task creation and comments.
+Task-detail editing requires 0.21.7; the older build shows those fields read-only.
+
 The reporting migration saves a private backup before updating metadata. Preserve
 that backup and the previous release. Historical integrations that cannot read the
 new reporting contract are refused before activation; do not force a tree-only
