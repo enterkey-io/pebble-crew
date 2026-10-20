@@ -3,12 +3,17 @@ from pathlib import Path
 from hashlib import sha256
 import json
 import shutil
+import subprocess
 from zipfile import ZipFile, ZipInfo, ZIP_DEFLATED
 import os
+from html.parser import HTMLParser
+from urllib.parse import urlsplit
 
 root = Path(__file__).resolve().parents[1]
 release = json.loads((root / "release.json").read_text())
 destination = root / "artifacts/packages"
+tracked = set(subprocess.check_output(
+    ['git', 'ls-files', '-z'], cwd=root).decode().split('\0')) if (root / '.git').exists() else None
 destination.mkdir(parents=True, exist_ok=True)
 build = Path(os.environ['WORKSPACE_BUILD_ROOT']).resolve() if os.environ.get('WORKSPACE_BUILD_ROOT') else None
 web_root = build / 'web' if build else root / 'apps/web/dist'
@@ -34,13 +39,27 @@ def archive(name, files):
 def web_payload():
     allowed = {'index.html', 'avatar-lab.html', '_headers', 'install.html', 'install.md',
                'install.css', 'connection.json', 'version.json', 'manifest.webmanifest',
-               'service-worker.js', 'offline.html', 'offline.css'}
+               'service-worker.js', 'offline.html', 'offline.css', 'appearance-init.js'}
     files = [path for path in web_root.rglob('*') if path.is_file() and not path.is_symlink()
             and (str(path.relative_to(web_root)) in allowed or path.relative_to(web_root).parts[0] in {'assets', 'licenses', 'icons'})]
-    required = {'manifest.webmanifest', 'service-worker.js', 'offline.html', 'offline.css',
+    required = {'manifest.webmanifest', 'service-worker.js', 'offline.html', 'offline.css', 'appearance-init.js',
                 'icons/pebble.svg', 'icons/pebble-180.png', 'icons/pebble-192.png', 'icons/pebble-512.png'}
     if not required.issubset({str(path.relative_to(web_root)) for path in files}):
-        raise ValueError('The web build is missing required PWA assets')
+        raise ValueError('The web build is missing required startup or PWA assets')
+    class EntryAssets(HTMLParser):
+        def handle_starttag(self, tag, attrs):
+            if tag not in {'script', 'link'}:
+                return
+            attrs = dict(attrs)
+            reference = urlsplit(attrs.get('src' if tag == 'script' else 'href', ''))
+            if reference.scheme or reference.netloc or not reference.path:
+                return
+            target = reference.path.lstrip('/')
+            if target not in packaged:
+                raise ValueError(f'Entry HTML references an unpackaged asset: {target}')
+    packaged = {str(path.relative_to(web_root)) for path in files}
+    for name in ('index.html', 'avatar-lab.html'):
+        EntryAssets().feed((web_root / name).read_text())
     return files
 
 
@@ -58,6 +77,8 @@ for name in ("apps/owner-worker/migrations/0001_owner.sql",
     owner.append((root / name, name))
 for directory in ("apps", "packages"):
     for package in (root / directory).glob("*/package.json"):
+        if tracked is not None and str(package.relative_to(root)) not in tracked:
+            continue
         owner.append((package, str(package.relative_to(root))))
 for example in (root / "deploy").glob("*.example"):
     owner.append((example, str(example.relative_to(root))))
@@ -81,15 +102,18 @@ plugin += [(runtime_manifest, 'bot-web/web-runtime/payload.json')]
 plugin += [(root / "LICENSE", "LICENSE"), (root / "docs/AGENT_INSTALL.md", "AGENT_INSTALL.md")]
 archive("workspace-plugin-preview.zip", plugin)
 source = []
-for directory in ("apps", "packages", "plugins", "scripts", "test", "docs", ".github", "deploy"):
+# A checkout may contain another task's unpublished drafts. Ship tracked paths only.
+
+for directory in ("apps", "packages", "plugins", "scripts", "test", "docs", ".github", "deploy", ".agents/skills/verify"):
     for path in (root / directory).rglob("*"):
         if (path.is_file() and not path.is_symlink() and not {"dist", "node_modules", "__pycache__", "artifacts", ".wrangler", ".local", ".superdesign"}.intersection(path.parts)
                 and path.suffix in {".ts", ".tsx", ".css", ".html", ".md", ".json", ".mjs", ".js", ".webmanifest", ".svg", ".png", ".py", ".yml", ".yaml", ".txt", ".sql", ".jsonc", ".example"}
-                and not path.name.startswith(".env") and path.name not in {"auth.json", "credentials.json", "config.yaml"}):
+                and not path.name.startswith(".env") and path.name not in {"auth.json", "credentials.json", "config.yaml"}
+                and (tracked is None or str(path.relative_to(root)) in tracked)):
             source.append((path, str(path.relative_to(root))))
 for name in ("AGENTS.md", "README.md", "PROGRESS.md", "IMPLEMENTATION_PLAN.md", "WEB_APP_PLAN.md", "LICENSE", "release.json",
              "package.json", "package-lock.json", "tsconfig.json", "eslint.config.mjs", "vitest.config.ts",
-             "playwright.config.ts", "playwright.ui-review.config.ts", "vite.ui-lab.config.ts", "playwright.chat.config.ts", "playwright.mobile.config.ts", "playwright.avatar.config.ts", "playwright.owner.config.ts", "vite.client.config.ts", "vite.web.config.ts", ".nvmrc", ".gitignore",
+             "playwright.config.ts", "playwright.ui-review.config.ts", "vite.ui-lab.config.ts", "playwright.chat.config.ts", "playwright.mobile.config.ts", "playwright.system.config.ts", "playwright.avatar.config.ts", "playwright.owner.config.ts", "vite.client.config.ts", "vite.web.config.ts", ".nvmrc", ".gitignore",
              ".prettierrc.json", ".prettierignore"):
     source.append((root / name, name))
 archive("workspace-source-preview.zip", source)

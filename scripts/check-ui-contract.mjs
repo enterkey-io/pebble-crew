@@ -1,5 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
+import { sourceContract } from './ui-source-contract.mjs';
 
 const revision = process.argv[2];
 const errors = [];
@@ -43,14 +44,37 @@ requireRule(
   'Drag whole rows; do not reintroduce exposed handles, empty-section instructions, or reorder menu clutter.',
 );
 for (const path of ['NewPebble.tsx', 'ExistingPebbleSetup.tsx', 'PebbleEditor.tsx']) {
+  const contract = sourceContract(read(`apps/web/src/${path}`));
   requireRule(
-    read(`apps/web/src/${path}`).includes('PebbleProfileFields'),
+    contract.renders('PebbleProfileFields', './ui/pebble-profile-fields'),
     `${path} must use shared profile fields so name, avatar, title and description cannot diverge.`,
   );
   requireRule(
-    /<ReportingField\b/.test(read(`apps/web/src/${path}`)) &&
-      /<RoleDetails\b/.test(read(`apps/web/src/${path}`)),
+    contract.renders('ReportingField', './ui/pebble-profile-fields') &&
+      contract.renders('RoleDetails', './ui/pebble-profile-fields'),
     `${path} must expose shared reporting and detailed role controls.`,
+  );
+  requireRule(
+    contract.ownsProfileSession(),
+    `${path} must use profileReducer; controls and editing ownership must stay shared.`,
+  );
+  requireRule(
+    !contract
+      .rawOperations()
+      .some((operation) =>
+        [
+          'workspace.describe',
+          'agent.onboard',
+          'bots.profile.update',
+          'roles.update',
+          'agent.capabilities',
+        ].includes(operation),
+      ),
+    `${path} must use WorkspaceDomain for profile reads and writes; do not cast transport results in the UI.`,
+  );
+  requireRule(
+    !contract.unsupportedImports().length,
+    `${path} must use supported package exports, not legacy workspace or internal source imports.`,
   );
 }
 if (errors.length) {

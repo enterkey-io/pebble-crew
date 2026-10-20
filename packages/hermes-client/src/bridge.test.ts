@@ -10,6 +10,28 @@ function connectedResponse() {
 }
 
 describe('direct Bot Mode bridge', () => {
+  it('negotiates reporting writes without breaking older bridge request schemas', async () => {
+    for (const reporting of [undefined, 1]) {
+      const fetcher = vi
+        .fn<typeof fetch>()
+        .mockResolvedValueOnce(
+          Response.json({
+            protocol: 'hermes-bot-web.v1',
+            connection,
+            capabilities: { workspace: true, reporting },
+          }),
+        )
+        .mockResolvedValue(Response.json({ result: { state: 'completed' } }));
+      const client = new BotBridgeClient(endpoint, token, fetcher);
+      await client.connect();
+      await client.invoke('bots.profile.update', { profile: 'default' });
+      const body = JSON.parse(String(fetcher.mock.calls[1]?.[1]?.body));
+      expect(body.params).toEqual(
+        reporting ? { profile: 'default', reporting_version: 1 } : { profile: 'default' },
+      );
+    }
+  });
+
   it('bounds concurrent RPC calls and cancels queued mutations on disconnect', async () => {
     const replies: ((r: Response) => void)[] = [];
     const fetcher = vi.fn<typeof fetch>().mockImplementation(async (input, options) => {
@@ -142,7 +164,7 @@ describe('direct Bot Mode bridge', () => {
     await current.connect();
     expect(current.supportsExistingAgents).toBe(true);
     current.disconnect();
-    expect(current.supportsExistingAgents).toBe(false);
+    expect(current.supportsExistingAgents).toBe(true);
   });
   it('keeps credentials in headers, refuses redirects/cookies and preserves endpoint prefix', async () => {
     const fetcher = vi
@@ -285,11 +307,17 @@ describe('direct Bot Mode bridge', () => {
     expect(observer).toHaveBeenCalledTimes(1);
   });
 
-  it('rejects late responses after disconnect and submits a bounded lease close', async () => {
+  it('retains known features while disconnect rejects late responses and closes the lease', async () => {
     let resolve: (response: Response) => void = () => undefined;
     const fetcher = vi
       .fn<typeof fetch>()
-      .mockResolvedValueOnce(connectedResponse())
+      .mockResolvedValueOnce(
+        Response.json({
+          protocol: 'hermes-bot-web.v1',
+          connection,
+          capabilities: { workspace: true, attachments: true, generated_media: true },
+        }),
+      )
       .mockImplementationOnce(
         () =>
           new Promise<Response>((done) => {
@@ -299,11 +327,39 @@ describe('direct Bot Mode bridge', () => {
       .mockResolvedValueOnce(Response.json({ disconnected: true }));
     const client = new BotBridgeClient(endpoint, token, fetcher);
     await client.connect();
+    expect(client.supportsAttachments).toBe(true);
+    expect(client.supportsGeneratedMedia).toBe(true);
+    expect(client.supportsWorkspace).toBe(true);
     const pending = client.invoke('chat.send', { session_id: 'live', text: 'Hello' });
     client.disconnect();
+    expect(client.supportsAttachments).toBe(true);
+    expect(client.supportsGeneratedMedia).toBe(true);
+    expect(client.supportsWorkspace).toBe(true);
     resolve(Response.json({ result: { accepted: true } }));
     await expect(pending).rejects.toMatchObject({ code: 'DISCONNECTED' });
     expect(fetcher.mock.calls[2]![1]).toMatchObject({ method: 'DELETE' });
     await expect(client.invoke('bots.list', {})).rejects.toMatchObject({ code: 'DISCONNECTED' });
+    expect(fetcher).toHaveBeenCalledTimes(3);
   });
+});
+
+describe('full-profile photo routing', () => {
+  it.each(['agent.onboard', 'bots.profile.update'])(
+    'sends %s through the avatar route',
+    async (operation) => {
+      const fetcher = vi
+        .fn<typeof fetch>()
+        .mockResolvedValueOnce(connectedResponse())
+        .mockResolvedValue(Response.json({ result: { state: 'completed', profile: 'synthetic' } }));
+      const client = new BotBridgeClient(endpoint, token, fetcher);
+      await client.connect();
+      await client.invoke(operation, {
+        profile: 'synthetic',
+        photo: 'data:image/png;base64,' + 'a'.repeat(100_000),
+      });
+      expect(String(fetcher.mock.calls[1]![0])).toBe(
+        'https://personal.example.test/bridge/v1/avatar',
+      );
+    },
+  );
 });

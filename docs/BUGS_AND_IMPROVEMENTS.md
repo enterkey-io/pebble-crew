@@ -4,6 +4,128 @@ Track owner reports here through implementation, verification and release. A
 published fix is separate from updating and verifying the owner's installation.
 New reports receive a stable ID; later work updates the existing entry.
 
+## Unreleased org chart phase one
+
+| ID     | Report                                                              | Change                                                                                                                                                                                                                                                                                                             |
+| ------ | ------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| PC-085 | Reporting structure and expectations are hard to inspect and manage | Org chart in the account menu, shared card editing, unattached branches, current manager/direct-report context, and owner-revocable Main Pebble management with durable receipts. Implemented locally with native, production browser and exact-package verification. Not released or installed on the owner host. |
+
+Verification: 172 client unit checks, 307 plugin checks, both pinned native Hermes builds, desktop/iPhone/Android journeys, native owner persistence and exact-package install/update/rollback checks passed. Evidence is kept in `.audit/org-phase1/evidence/proof.json`.
+
+## Document viewing
+
+| ID     | Report                                            | Planned behavior                                                                                                                                                                                                                                                                                                                 |
+| ------ | ------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| PC-084 | Markdown and text attachments only offer Download | Add View beside Download, opening an in-app side panel with formatted Markdown/plain text. Let agents request opening a verified conversation file; preserve chat position and drafts. Implemented in preview.16. Native direct-chat sharing is an explicit tool action; normal Markdown links remain available to reopen files. |
+
+## Unreleased reply activity
+
+| ID     | Report                                                        | Change                                                                                                                                            |
+| ------ | ------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------- |
+| PC-082 | Writing status duplicates the reply already appearing         | Hide the activity label as reply text appears. Keep thinking, tool work and stopping visible, with a stable activity lane.                        |
+| PC-083 | Reconnecting removes composer controls and distorts the field | Retain negotiated features and the mounted, editable draft field while offline. Disable send, attachment, voice and command requests until ready. |
+
+Implemented locally. Browser verification and publication are separate from
+updating the owner's installation.
+
+## 0.7.8-preview.15 role editing and shared voice setup
+
+| ID     | Report                                                    | Change                                                                                                                                                                            |
+| ------ | --------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| PC-080 | Role has cramped, unclear responsibilities/boundary boxes | One optional Instructions field for the job, steps and limits. Older saved text carries over; Title/Description stay in Profile.                                                  |
+| PC-081 | Voice asks to approve the same saved key again            | One persistent owner-wide native credential choice; each pebble keeps its own voice. Completed replacement requests do not replay on tab changes. No key copies between profiles. |
+
+Source, browser, native and exact-package verification passed. Publication is
+separate from updating the owner's installation.
+
+## 0.7.8-preview.15 chat photo viewer
+
+| ID     | Report                               | Change                                                                                                        |
+| ------ | ------------------------------------ | ------------------------------------------------------------------------------------------------------------- |
+| PC-079 | Chat photos cannot open at full size | Borderless viewer with wheel, Ctrl/Cmd shortcuts, pinch zoom, drag-to-pan, fit controls and accessible close. |
+
+Implemented locally with clean source checks, desktop/iPhone/Android browser
+journeys and screenshot review. These exercise the production bundle with a
+synthetic Hermes boundary; physical-device gestures and owner acceptance remain
+separate. Publication does not update the owner's Hermes.
+
+## 0.7.8-preview.14 voice choices
+
+| ID     | Report                                               | Change                                                                                                                             |
+| ------ | ---------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
+| PC-076 | Speed affects preview but not live calls             | Removed the unreliable speed control and app-generated delivery hint. Native voice selection and owner instructions remain intact. |
+| PC-077 | Voice names make choices hard to compare             | Group native choices under Female and Male using documented metadata; unclassified/custom choices remain under Other.              |
+| PC-078 | Mobile voice errors or reopened navigation disappear | A dialog removed by its parent does not issue a second close notification. Focus restoration preserves a newer open dialog.        |
+
+Implemented and verified locally with source checks, desktop/phone browser flows,
+and isolated native acceptance. Release-package verification and publication are
+separate from upgrading the owner's installation.
+
+## 0.7.8-preview.8 navigation corrections
+
+| ID     | Report                                      | Change                                                                                                                                                             |
+| ------ | ------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| PC-073 | Pinned titles wrap and tiles look dimmed    | Pinned names use the normal foreground. Fixed avatar/name/title rows keep tiles aligned; long titles truncate on one line. Desktop and phone checks measure both.  |
+| PC-074 | Details shows an edit label and loses Files | A labeled edit icon opens the existing editor. Files stays visible, reports unsupported connections and retains its selected tab through transport restoration.    |
+| PC-075 | Personal photo is a top-level account item  | Photo management lives in Settings → Account. The duplicate menu action and dialog are removed; photo save, failure, restoration and removal use that single flow. |
+
+## PC-072 — chat retained legacy layout after the component migration
+
+Owner report confirmed: preview.5 rendered only shared bubble-content and
+metadata wrappers. Legacy CSS still owned row widths, bubble padding/radius,
+in-bubble timestamps and floating actions. The shared component import checks
+and behavior tests did not establish completion of the presentation migration.
+
+The preview.6 correction replaces that path with the complete shadcn Message
+composition: the owner's muted Bubble, an unboxed agent response and actions
+and timestamps in MessageFooter. Markdown uses Typography, Code Block and Table
+without product CSS overrides. Receipt identity, native reactions, selected
+Pebble colors and the single viewport controller remain feature responsibilities.
+The standard Bubble's 80-percent maximum replaces the old per-device width rules.
+Legacy presentation rules and unused bubble tokens are removed. A structural
+negative control rejects their reintroduction; installed browser journeys check
+the actual geometry and stable live/final response elements. Complete desktop and
+phone journeys, clean source checks, AI catalog states and isolated native-owner
+acceptance passed. Screenshot review caught and corrected a touch tooltip left
+over the conversation, with failing-before/passing-after phone coverage. Package
+acceptance/publication remain separate from updating the owner's installation.
+
+## 0.7.8-preview.4 candidate
+
+| ID     | Report                                             | Change                                                                                                                                                                                              |
+| ------ | -------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| PC-068 | Existing agents infer a separate boss above Aurora | Shared native context/introduction resolves the Main Pebble and full reporting path by identity; job titles do not alter the graph.                                                                 |
+| PC-069 | Voice needs guided private setup                   | Native OpenAI Live integration, private secret card, voice/requested speed and preview, explicit call controls and exact reply receipts. Legacy Hermes reports unsupported; no custom Grok adapter. |
+| PC-070 | Owner bubble color and White naming                | Owner bubbles use the selected Pebble palette with readable dark text. White is named Snow; existing white IDs and neutral gray owner bubbles remain.                                               |
+
+Publication is separate from upgrading the owner's installation. Verification
+limits and voice provenance are recorded in [the voice plan](VOICE_IMPLEMENTATION_PLAN.md).
+
+## 0.7.7 reliability and message motion
+
+See the [implementation plan](AGENT_RELIABILITY_PLAN.md) for the retained baseline
+and verification limits. These changes require updating the installed plugin;
+local acceptance is separate from the owner's deployment.
+
+| ID     | Finding                                                           | Evidence and next step                                                                                                                                                                                                                                                                                    |
+| ------ | ----------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| PC-064 | Connections loses unsaved tool access after transport restoration | Feature-owned edit reducer retains tool choices and transient key text across a new lease; divergent saved policies require an explicit decision. Desktop/iPhone/Android recovery tests exercise the production screens.                                                                                  |
+| PC-065 | Detailed photos fail full-profile Add/Edit requests               | One inert catalog supplies client, Node proxy and Python operation routing/body limits. All four photo-bearing operations use `/v1/avatar`, with bounded legacy RPC compatibility. Native owner acceptance saves a detailed 512px image above 64 KiB, switches to a shape, then restores the saved photo. |
+| PC-066 | Workspace boundary accepts malformed nested data as typed state   | Complete network decoding precedes UI replacement. Retained malformed snapshots are rejected; valid native Unicode lengths and optional/null fields remain supported. No malformed owner-host response has been observed.                                                                                 |
+| PC-067 | New messages pop into view and move the conversation in one frame | New bubbles enter once under stable receipt keys; one viewport follower eases toward growing content. Real-frame desktop/phone checks cover user and first reply insertion, manual scroll and reduced motion. Existing completion/reaction checks retain DOM, timestamp and control placement.            |
+
+Add, import and Edit share profile ownership and conflict rules. Delayed older
+snapshots cannot replace newer edits. Tools retain unsaved choices on reconnect;
+uncertain writes require review rather than automatic replay. AST checks require
+real screen composition and supported profile-domain imports.
+
+Runtime status is owner-local disk evidence; loaded native code remains unknown.
+Synchronization records private per-profile receipts/backups, supports native
+managed profiles with no prior integration copy, and preserves a failed/partial
+result. Final-package acceptance includes changed tool definitions and historical
+Python-runtime rollback, with current packaged web assets. Update checks do not
+run models or edit personas.
+
 ## 0.7.6 setup and return-to-app corrections
 
 | ID     | Report                                                             | Repair and verification                                                                                                                                                                                                                                     |

@@ -94,7 +94,7 @@ async def exercise(root, home, port):
         await gateway.stop()
         from bot_web.setup import sync_runtime
         before = Model.turns
-        sync_runtime()
+        sync_runtime(native_idle=True)
         assert Model.turns == before
         assert soul.read_bytes() == original_soul
         print(json.dumps({'supported_revision': gateway.build['revision'], 'native_agent_reaction': True,

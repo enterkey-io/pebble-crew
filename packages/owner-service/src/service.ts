@@ -4,6 +4,7 @@ import { username } from 'better-auth/plugins';
 import { hashPassword } from 'better-auth/crypto';
 import { importJWK, SignJWT } from 'jose';
 import type { JWK } from 'jose';
+import { ownerBodyLimit, photoPixels, encodeOwnerPhoto, ownerPhotoValue } from './photo';
 
 export type Statement = { sql: string; values?: (string | number | null)[] };
 export interface OwnerDatabase {
@@ -122,7 +123,8 @@ export function createOwnerService(
           return json({ error: 'Request denied' }, 403);
         if (request.headers.get('Sec-Fetch-Site') === 'cross-site')
           return json({ error: 'Request denied' }, 403);
-        if (Number(request.headers.get('Content-Length') ?? '0') > 8192)
+        const bodyLimit = ownerBodyLimit(url.pathname, request.method);
+        if (Number(request.headers.get('Content-Length') ?? '0') > bodyLimit)
           return json({ error: 'Request too large' }, 413);
         // Bound chunked bodies too; neither the auth library nor JSON parser sees an unlimited stream.
         if (request.method !== 'GET' && request.method !== 'HEAD') {
@@ -134,7 +136,7 @@ export function createOwnerService(
               const part = await reader.read();
               if (part.done) break;
               size += part.value.byteLength;
-              if (size > 8192) {
+              if (size > bodyLimit) {
                 await reader.cancel();
                 return json({ error: 'Request too large' }, 413);
               }
@@ -254,6 +256,42 @@ export function createOwnerService(
         const session = await auth.api.getSession({ headers: request.headers });
         if (!claimed || !session || session.user.id !== claimed.user_id)
           return json({ error: 'Sign in to your workspace.' }, 401);
+        if (url.pathname === '/api/owner/photo' && request.method === 'POST') {
+          if (request.headers.get('Content-Type')?.split(';')[0] !== 'application/json')
+            return json({ error: 'Choose a photo.' }, 400);
+          if (!(await limited('owner-photo:' + claimed.user_id, 10, 60)))
+            return json({ error: 'Try again in a minute.' }, 429);
+          const pixels = photoPixels(await request.json());
+          const image = pixels ? await encodeOwnerPhoto(pixels) : null;
+          const current = await auth.api.getSession({ headers: request.headers });
+          if (
+            !current ||
+            current.session.id !== session.session.id ||
+            current.user.id !== claimed.user_id
+          )
+            return json({ error: 'Sign in to your workspace.' }, 401);
+          await store.batch([
+            {
+              sql: 'UPDATE "user" SET image=?,updatedAt=? WHERE id=? AND EXISTS(SELECT 1 FROM session WHERE id=? AND userId=?) AND EXISTS(SELECT 1 FROM owner_claim WHERE id=1 AND user_id=?)',
+              values: [
+                image,
+                new Date().toISOString(),
+                claimed.user_id,
+                session.session.id,
+                claimed.user_id,
+                claimed.user_id,
+              ],
+            },
+          ]);
+          const saved = await auth.api.getSession({ headers: request.headers });
+          if (
+            !saved ||
+            saved.session.id !== session.session.id ||
+            saved.user.id !== claimed.user_id
+          )
+            return json({ error: 'Sign in to your workspace.' }, 401);
+          return json({ image: ownerPhotoValue(saved.user.image) });
+        }
         if (url.pathname === '/api/instance/config' && request.method === 'GET')
           return json({ bridgeUrl: settings.bridgeUrl, installationId: settings.installationId });
         if (url.pathname === '/api/hermes/ticket' && request.method === 'POST') {

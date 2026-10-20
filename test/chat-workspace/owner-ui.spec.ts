@@ -67,7 +67,13 @@ test('menus open beside their work, connection stays visible, search has neutral
   await page.keyboard.press('Escape');
   await page.getByRole('button', { name: 'Your account', exact: true }).click();
   const account = page.locator('[data-placement="account"]');
-  await expect(account.locator('[role="menuitem"] svg')).toHaveCount(3);
+  await expect(account.getByRole('menuitem')).toHaveText([
+    'Org chart',
+    'Settings',
+    'Show hidden pebbles',
+    'Sign out',
+  ]);
+  await expect(account.locator('[role="menuitem"] svg')).toHaveCount(4);
   const insets = await account.locator('[role="menuitem"]').evaluateAll((items) =>
     items.map((item) => {
       const c = getComputedStyle(item);
@@ -131,7 +137,7 @@ test('existing agents get identity, appearance and role setup before native enro
   const fixture = await installFixture(context);
   const calls: { operation: string; params: Record<string, unknown> }[] = [];
   page.on('request', (r) => {
-    if (new URL(r.url()).pathname === '/v1/rpc') calls.push(r.postDataJSON());
+    if (['/v1/rpc', '/v1/avatar'].includes(new URL(r.url()).pathname)) calls.push(r.postDataJSON());
   });
   await ready(page);
   await newPebble(page);
@@ -149,10 +155,9 @@ test('existing agents get identity, appearance and role setup before native enro
   await page.getByLabel('Description', { exact: true }).fill('Explores useful questions');
   await page.getByRole('combobox', { name: 'Reports to', exact: true }).click();
   await page.getByRole('option', { name: 'Mica', exact: true }).click();
-  await page.getByText('Responsibilities & boundaries', { exact: true }).click();
-  await page.getByLabel('Responsibilities', { exact: true }).fill('Research and summarize');
-  await page.getByLabel('Boundaries', { exact: true }).fill('Ask before publishing');
-  await page.getByLabel('Expected outputs', { exact: true }).fill('A concise research brief');
+  const instructions =
+    'Research and summarize. Ask before publishing. Return a concise research brief.';
+  await page.getByLabel('Instructions', { exact: true }).fill(instructions);
   await expect(
     page.getByRole('checkbox', { name: 'Send me a welcome message', exact: true }),
   ).toBeChecked();
@@ -166,9 +171,9 @@ test('existing agents get identity, appearance and role setup before native enro
   expect(added.appearance).toEqual({ kind: 'shape', shape: 'seed', color: 'moss' });
   expect(added.role.title).toBe('Researcher');
   expect(added.manager).toBe('mica');
-  expect(added.role.responsibilities).toBe('Research and summarize');
-  expect(added.role.boundaries).toBe('Ask before publishing');
-  expect(added.role.expectedOutputs).toBe('A concise research brief');
+  expect(added.role.responsibilities).toBe(instructions);
+  expect(added.role.boundaries).toBe('');
+  expect(added.role.expectedOutputs).toBe('');
   await expect.poll(() => calls.filter((c) => c.operation === 'agent.welcome').length).toBe(1);
   expect(calls.filter((c) => c.operation === 'agent.onboard')).toHaveLength(1);
   expect(calls.some((c) => c.operation === 'chat.send')).toBe(false);
@@ -177,13 +182,11 @@ test('existing agents get identity, appearance and role setup before native enro
   expect(calls.filter((c) => c.operation === 'agent.welcome')).toHaveLength(1);
   await page.getByRole('button', { name: 'Actions for Hazel', exact: true }).click();
   await page.getByRole('menuitem', { name: 'Edit pebble', exact: true }).click();
+  await page.getByRole('tab', { name: 'Role', exact: true }).click();
   await expect(page.getByRole('combobox', { name: 'Reports to', exact: true })).toContainText(
     'Mica',
   );
-  await page.getByText('Responsibilities & boundaries', { exact: true }).click();
-  await expect(page.getByLabel('Responsibilities', { exact: true })).toHaveValue(
-    'Research and summarize',
-  );
+  await expect(page.getByLabel('Instructions', { exact: true })).toHaveValue(instructions);
 });
 
 test('Edit uses the same profile controls, persists names and retains all shape/color choices in photo mode', async ({
@@ -299,7 +302,8 @@ test('a lost creation reply checks the same request and finishes setup without c
   fixture.loseNextCreationReply();
   const operations: string[] = [];
   page.on('request', (r) => {
-    if (new URL(r.url()).pathname === '/v1/rpc') operations.push(r.postDataJSON().operation);
+    if (['/v1/rpc', '/v1/avatar'].includes(new URL(r.url()).pathname))
+      operations.push(r.postDataJSON().operation);
   });
   await ready(page);
   await newPebble(page);

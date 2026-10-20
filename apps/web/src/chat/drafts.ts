@@ -1,0 +1,64 @@
+const prefix = 'pebblecrew.draft.v1.';
+
+function removeSavedDrafts(scope: string) {
+  try {
+    const keys = Array.from({ length: localStorage.length }, (_, i) => localStorage.key(i));
+    for (const key of keys) if (key?.startsWith(scope)) localStorage.removeItem(key);
+  } catch {
+    // Storage restrictions must not prevent typing or signing out.
+  }
+}
+
+export function clearSavedDrafts() {
+  removeSavedDrafts(prefix);
+}
+
+/** Unsent text stays in this browser, scoped to the native workspace and conversation identity. */
+export class ConversationDrafts {
+  private scope = '';
+  private values = new Map<string, string>();
+
+  bind(workspaceId: string | undefined) {
+    if (!workspaceId) return;
+    const next = `${prefix}${encodeURIComponent(workspaceId)}.`;
+    if (next === this.scope) return;
+    this.scope = next;
+    this.values.clear();
+  }
+
+  get(conversation: string): string | undefined {
+    const memory = this.values.get(conversation);
+    if (memory !== undefined || !this.scope) return memory;
+    try {
+      return localStorage.getItem(this.scope + encodeURIComponent(conversation)) ?? undefined;
+    } catch {
+      return undefined;
+    }
+  }
+
+  set(conversation: string, text: string) {
+    if (!text) return this.delete(conversation);
+    this.values.set(conversation, text);
+    if (!this.scope) return;
+    try {
+      localStorage.setItem(this.scope + encodeURIComponent(conversation), text);
+    } catch {
+      // Retain the in-memory draft if browser storage is unavailable or full.
+    }
+  }
+
+  delete(conversation: string) {
+    this.values.delete(conversation);
+    if (!this.scope) return;
+    try {
+      localStorage.removeItem(this.scope + encodeURIComponent(conversation));
+    } catch {
+      // The in-memory composer remains usable without storage access.
+    }
+  }
+
+  clear() {
+    this.values.clear();
+    if (this.scope) removeSavedDrafts(this.scope);
+  }
+}

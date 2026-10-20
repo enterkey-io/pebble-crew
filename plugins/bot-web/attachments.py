@@ -208,3 +208,66 @@ class AttachmentStore:
                 self.db.execute("UPDATE sends SET state='accepted' WHERE id=?", (request_id,))
                 self.db.executemany("UPDATE files SET state='sent' WHERE id=?", [(row['id'],) for row in files])
             return {'state': 'accepted', 'submitted': True, **({'user_row_id': receipt['user_row_id']} if isinstance(receipt.get('user_row_id'), (int, str)) else {})}
+
+
+MAX_BYTES = MAX_FILE
+CHUNK_BYTES = 1024 * 1024
+
+
+def image_type(data):
+    try:
+        from PIL import Image
+        with Image.open(io.BytesIO(data)) as image:
+            if image.format not in {'PNG', 'JPEG', 'WEBP'} or image.width * image.height > 32_000_000 or getattr(image, 'n_frames', 1) != 1:
+                return 'application/octet-stream'
+            mime = Image.MIME[image.format]
+            image.verify()
+            return mime
+    except Exception:
+        return 'application/octet-stream'
+
+
+class GeneratedMedia:
+    def __init__(self, ops):
+        self.ops = ops
+        self.lock = asyncio.Lock()
+
+    async def read(self, params):
+        fields(params, ['session_id', 'row_id', 'reference'])
+        sid = identifier(params['session_id'])
+        if (sid not in self.ops.sessions or type(params['row_id']) is not int
+                or not 0 < params['row_id'] <= 9007199254740991
+                or not re.fullmatch(r'[0-9a-f]{64}', str(params['reference']))):
+            raise InvalidOperation('Choose a saved assistant file')
+        profile = self.ops.sessions[sid]
+        async with self.lock:
+            stamp = await self.ops.stamp(profile)
+            if stamp != self.ops.session_incarnations.get(sid):
+                raise InvalidOperation('Conversation changed')
+            bot = await self.ops.bot(profile)
+            canonical = (bot.get('canonical_session') or {}).get('id')
+            if not canonical:
+                raise InvalidOperation('Conversation unavailable')
+            target = {'session_id': sid, 'profile': profile, 'incarnation': stamp,
+                      'canonical': canonical, 'row_id': params['row_id'], 'reference': params['reference']}
+            data, revision, size, name = bytearray(), '', None, ''
+            while size is None or len(data) < size:
+                chunk = await self.ops.gateway.call('bot_web.media', {**target, 'offset': len(data), 'revision': revision})
+                if (type(chunk.get('size')) is not int or not 0 < chunk['size'] <= MAX_BYTES
+                        or not isinstance(chunk.get('name'), str) or not 0 < len(chunk['name']) <= 180
+                        or re.search(r'[\x00-\x1f/\\]', chunk['name'])
+                        or not re.fullmatch(r'[0-9a-f]{64}', str(chunk.get('revision', '')))
+                        or not isinstance(chunk.get('data'), str) or len(chunk['data']) > (CHUNK_BYTES + 2) // 3 * 4):
+                    raise InvalidOperation('Invalid shared file response')
+                part = base64.b64decode(chunk['data'], validate=True)
+                if not revision:
+                    revision, size, name = chunk['revision'], chunk['size'], chunk['name']
+                if (revision != chunk['revision'] or size != chunk['size'] or name != chunk['name']
+                        or len(part) != min(CHUNK_BYTES, size - len(data))):
+                    raise InvalidOperation('Shared file changed')
+                data.extend(part)
+            if (await self.ops.stamp(profile) != stamp
+                    or ((await self.ops.bot(profile)).get('canonical_session') or {}).get('id') != canonical):
+                raise InvalidOperation('Conversation changed')
+            blob = bytes(data)
+            return blob, name, await asyncio.to_thread(image_type, blob)

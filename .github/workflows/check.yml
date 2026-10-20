@@ -7,20 +7,25 @@ permissions:
 jobs:
   check:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          fetch-depth: 0 # Unit rollback fixtures read the exact historical Python payload.
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version-file: .nvmrc
           cache: npm
       - run: npm ci --ignore-scripts
       - run: npm run check
-      - run: npm run test:owner-worker
+      - run: node scripts/check-release-ui.mjs
+      - run: python3 -m venv /tmp/bot-web-test-env
+      - run: /tmp/bot-web-test-env/bin/pip install -r test/plugin/requirements.txt
+      - run: /tmp/bot-web-test-env/bin/python -m unittest discover -s test/plugin -p 'test_*.py'
       - run: npx playwright install --with-deps chromium webkit
+      - run: npm run test:owner-worker
       - run: npm run test:avatars
       - run: npx playwright test --config playwright.chat.config.ts
-      - run: npm run test:mobile
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         if: always()
         with:
@@ -29,14 +34,53 @@ jobs:
           if-no-files-found: ignore
           retention-days: 7
       - run: npm audit --omit=dev --audit-level=high
-      - run: python3 -m venv /tmp/bot-web-test-env
-      - run: /tmp/bot-web-test-env/bin/pip install -r test/plugin/requirements.txt
-      - run: /tmp/bot-web-test-env/bin/python -m unittest discover -s test/plugin -p 'test_*.py'
-  native-owner:
+  mobile-ui:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - run: npm ci --ignore-scripts
+      - run: npm run build
+      - run: npx playwright install --with-deps chromium webkit
+      - run: npm run test:mobile
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        if: always()
+        with:
+          name: synthetic-phone-screenshots
+          path: test-results/**/*.png
+          if-no-files-found: ignore
+          retention-days: 7
+  component-system:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - run: npm ci --ignore-scripts
+      - run: npx playwright install --with-deps chromium webkit
+      - run: VITE_SYSTEM_WORKBENCH=1 WORKSPACE_BUILD_ROOT="$RUNNER_TEMP/system-build" npm run build
+      - run: WORKSPACE_BUILD_ROOT="$RUNNER_TEMP/system-build" npx playwright test --config playwright.system.config.ts
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        if: always()
+        with:
+          name: component-system-evidence
+          path: test-results/system/**
+          if-no-files-found: ignore
+          retention-days: 7
+  native-owner:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          fetch-depth: 0 # Installed rollback checks the exact pre-contract integration source.
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           repository: enterkey-io/hermes-agent
@@ -59,8 +103,29 @@ jobs:
           echo "$RUNNER_TEMP/hermes-ui-env/bin" >> "$GITHUB_PATH"
           echo "HERMES_NATIVE_ROOT=$GITHUB_WORKSPACE/native-hermes" >> "$GITHUB_ENV"
           echo "HERMES_NATIVE_PYTHON=$RUNNER_TEMP/hermes-ui-env/bin/python" >> "$GITHUB_ENV"
+      - run: python scripts/fixture/voice_preferences_smoke.py
+      - run: python scripts/fixture/workspace_smoke.py
       - run: npm run test:owner-browser
       - run: python scripts/fixture/reactions_smoke.py
+      - run: python scripts/fixture/media_smoke.py
+      - run: python scripts/fixture/documents_smoke.py
+      - run: python scripts/fixture/projects_smoke.py
+      - run: python scripts/fixture/work_model_smoke.py
+      - run: python scripts/package.py
+      - run: node scripts/verify-release.mjs
+        env:
+          WORKSPACE_PLUGIN_ARCHIVE: ${{ github.workspace }}/artifacts/packages/workspace-plugin-preview.zip
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        if: always()
+        with:
+          name: installed-package-evidence
+          path: |
+            artifacts/installed-package-acceptance.json
+            artifacts/plugin-login.png
+            artifacts/installed-plugin-failure.png
+            artifacts/packages/workspace-manifest.json
+          if-no-files-found: ignore
+          retention-days: 7
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         if: failure()
         with:
@@ -82,5 +147,11 @@ jobs:
         with:
           python-version: '3.12'
       - run: python -m venv "$RUNNER_TEMP/hermes-legacy-env"
-      - run: '"$RUNNER_TEMP/hermes-legacy-env/bin/pip" install uv -e ./native-hermes -r test/plugin/requirements.txt'
+      - run: |
+          "$RUNNER_TEMP/hermes-legacy-env/bin/pip" install uv -e './native-hermes[web]' -r test/plugin/requirements.txt
       - run: '"$RUNNER_TEMP/hermes-legacy-env/bin/python" scripts/fixture/reactions_smoke.py'
+      - run: '"$RUNNER_TEMP/hermes-legacy-env/bin/python" scripts/fixture/media_smoke.py'
+      - run: '"$RUNNER_TEMP/hermes-legacy-env/bin/python" scripts/fixture/documents_smoke.py'
+      - run: '"$RUNNER_TEMP/hermes-legacy-env/bin/python" scripts/fixture/workspace_smoke.py'
+      - run: '"$RUNNER_TEMP/hermes-legacy-env/bin/python" scripts/fixture/projects_smoke.py'
+      - run: '"$RUNNER_TEMP/hermes-legacy-env/bin/python" scripts/fixture/work_model_smoke.py'

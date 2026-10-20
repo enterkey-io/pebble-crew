@@ -1,13 +1,16 @@
+import { Item, ItemContent, ItemTitle, ItemDescription } from '../components/ui/item';
 import { useEffect, useState } from 'react';
 import { Tabs } from '../ui/primitives';
-import { Icon } from './Icon';
+import { Pencil, X } from 'lucide-react';
+import { IconButton } from '../components/ui/icon-button';
+import { LoadingBar } from '../components/ui/loading-bar';
 import { Switch } from '../components/ui/switch';
 import { FilesPanel } from './FilesPanel';
 import { ComputerPanel } from './ComputerPanel';
 import type { ReactNode } from 'react';
 import type { ChatBot } from './Rail';
 import { PebbleAvatar, CrewAvatar } from './Rail';
-import type { WorkspaceState } from '../workspace';
+import type { WorkspaceSnapshot as WorkspaceState } from '@hermes-client/protocol';
 import type { BotBridgeClient } from '@hermes-client/protocol';
 import type { Row } from '../conversation';
 export function Inspector({
@@ -44,7 +47,7 @@ export function Inspector({
   useEffect(() => {
     let live = true;
     setComputer(false);
-    setTab('routines');
+    setTab((current) => (current === 'computer' ? 'routines' : current));
     if (client.supportsComputer && bot)
       void client
         .invoke('computer.status', { profile: bot.profile })
@@ -72,9 +75,15 @@ export function Inspector({
   return (
     <>
       <header>
-        <button className="icon-button details-close" aria-label="Close details" onClick={onClose}>
-          <Icon name="close" />
-        </button>
+        {identity && (
+          <IconButton
+            className="pc-details-edit"
+            label={`Edit ${identity.name}`}
+            icon={Pencil}
+            onClick={onEdit}
+          />
+        )}
+        <IconButton className="details-close" label="Close details" icon={X} onClick={onClose} />
       </header>
       <div className="pc-details-identity identity-summary">
         {bot ? (
@@ -85,11 +94,6 @@ export function Inspector({
         <h2>{bot?.name ?? String(room?.name ?? 'Details')}</h2>
         {identity?.role.title && <p>{identity.role.title}</p>}
         {identity && <span className="handle">@{identity.handle}</span>}
-        {identity && (
-          <button className="text-button" onClick={onEdit}>
-            Edit pebble
-          </button>
-        )}
       </div>
       <div className="inspector-body">
         {children}
@@ -98,9 +102,7 @@ export function Inspector({
             <Tabs
               tabs={[
                 { id: 'routines', label: 'Routines' },
-                ...(client.supportsAttachments && sessionId
-                  ? [{ id: 'files', label: 'Files' }]
-                  : []),
+                { id: 'files', label: 'Files' },
                 ...(computer ? [{ id: 'computer', label: 'Computer' }] : []),
               ]}
               value={tab}
@@ -108,13 +110,21 @@ export function Inspector({
             >
               {tab === 'computer' ? (
                 <ComputerPanel client={client} profile={bot.profile} name={bot.name} />
-              ) : tab === 'files' && sessionId ? (
-                <FilesPanel
-                  client={client}
-                  sessionId={sessionId}
-                  version={filesVersion}
-                  focusId={target?.tab === 'files' ? target.id : undefined}
-                />
+              ) : tab === 'files' ? (
+                client.supportsAttachments ? (
+                  sessionId ? (
+                    <FilesPanel
+                      client={client}
+                      sessionId={sessionId}
+                      version={filesVersion}
+                      focusId={target?.tab === 'files' ? target.id : undefined}
+                    />
+                  ) : (
+                    <LoadingBar active label="Loading files" />
+                  )
+                ) : (
+                  <p className="empty-note">Files aren’t available on this connection.</p>
+                )
               ) : (
                 <div className="routine-list">
                   {routines.map((r) => {
@@ -122,18 +132,24 @@ export function Inspector({
                     const enabled =
                       r.enabled !== false && r.paused !== true && r.state !== 'paused';
                     return (
-                      <div className="pc-routine routine" key={id} data-routine-id={id}>
-                        <div>
-                          <strong>{String(r.name ?? 'Routine')}</strong>
-                          <p>{String(r.schedule_display ?? r.schedule ?? '')}</p>
-                        </div>
+                      <Item
+                        className="pc-routine routine flex-nowrap px-0"
+                        key={id}
+                        data-routine-id={id}
+                      >
+                        <ItemContent>
+                          <ItemTitle>{String(r.name ?? 'Routine')}</ItemTitle>
+                          <ItemDescription className="text-xs">
+                            {String(r.schedule_display ?? r.schedule ?? '')}
+                          </ItemDescription>
+                        </ItemContent>
                         <Switch
                           checked={enabled}
                           aria-label={`${enabled ? 'Pause' : 'Resume'} ${String(r.name ?? 'routine')}`}
                           disabled={!!pending}
                           onCheckedChange={() => onToggle(r)}
                         />
-                      </div>
+                      </Item>
                     );
                   })}
                   {!routines.length && <p className="empty-note">No routines yet.</p>}

@@ -159,6 +159,12 @@ try {
       String(bridgePort),
       '--cert',
       ca,
+      ...(process.env.WORKSPACE_PLUGIN_ARCHIVE
+        ? ['--archive', process.env.WORKSPACE_PLUGIN_ARCHIVE]
+        : []),
+      ...(process.env.WORKSPACE_PREVIOUS_ARCHIVE
+        ? ['--previous-archive', process.env.WORKSPACE_PREVIOUS_ARCHIVE]
+        : []),
     ],
     { env: { ...process.env, PYTHONPATH: source }, stdio: ['ignore', 'pipe', 'pipe'] },
   );
@@ -183,7 +189,7 @@ try {
   browser = await chromium.launch(
     process.env.BOT_WEB_TEST_CHROMIUM ? { executablePath: process.env.BOT_WEB_TEST_CHROMIUM } : {},
   );
-  const context = await browser.newContext({ ignoreHTTPSErrors: true });
+  const context = await browser.newContext({ ignoreHTTPSErrors: true, colorScheme: 'dark' });
   page = await context.newPage();
   const origins = new Set(),
     errors = [];
@@ -194,6 +200,11 @@ try {
   page.on('request', (r) => origins.add(new URL(r.url()).origin));
   page.on('pageerror', (e) => errors.push(e.message));
   const setupLink = (await readFile(join(state, 'setup-link.txt'), 'utf8')).trim();
+  const appearanceAsset = await page.request.get(new URL('/appearance-init.js', origin).href);
+  checks.theme_startup_asset_is_packaged =
+    appearanceAsset.status() === 200 &&
+    appearanceAsset.headers()['content-type']?.includes('javascript') === true;
+  expect(checks.theme_startup_asset_is_packaged).toBe(true);
   await page.goto(setupLink);
   const pwaAssets = [
     '/manifest.webmanifest',
@@ -232,10 +243,17 @@ try {
   );
   await page.getByRole('checkbox', { name: 'Send an introduction' }).uncheck();
   await page.locator('.handle-input input').fill('aurora');
-  await page.getByRole('button', { name: 'White', exact: true }).click();
+  await page.getByRole('button', { name: 'Snow', exact: true }).click();
   await page.getByRole('button', { name: 'Start chatting', exact: true }).click();
   const message = page.getByLabel('Message', { exact: true });
   await expect(message).toBeEnabled();
+  await message.fill('/');
+  await expect(page.getByRole('option').filter({ hasText: '/model' }).first()).toBeVisible();
+  await message.fill('/model');
+  await page.getByRole('button', { name: 'Send message', exact: true }).click();
+  await expect(page.getByRole('alert')).toContainText('Use /model <model name>');
+  await page.getByRole('button', { name: 'Dismiss command result', exact: true }).click();
+  checks.native_slash_catalog_and_command_are_packaged = true;
   await message.fill('Synthetic installed plugin round trip');
   await page.getByRole('button', { name: 'Send message', exact: true }).click();
   await expect(page.getByText('Native fixture reply', { exact: true }).last()).toBeVisible();
@@ -250,6 +268,31 @@ try {
   await page.getByRole('button', { name: 'Remove private-fixture.txt', exact: true }).click();
   await expect(page.locator('.attachment-chips')).toHaveCount(0);
   checks.actual_combined_authenticated_upload_and_remove = true;
+  await page.getByRole('button', { name: 'Your account', exact: true }).click();
+  await expect(page.getByRole('menuitem', { name: 'Your photo', exact: true })).toHaveCount(0);
+  await page.getByRole('menuitem', { name: 'Settings', exact: true }).click();
+  await page.getByRole('tab', { name: 'Account', exact: true }).click();
+  const accountSettings = page.getByRole('region', { name: 'Settings', exact: true });
+  await expect(accountSettings.getByRole('tab', { name: 'Account', exact: true })).toHaveAttribute(
+    'aria-selected',
+    'true',
+  );
+  const raster = await page.request.get(origin + '/icons/pebble-192.png');
+  await accountSettings.getByLabel('Your photo', { exact: true }).setInputFiles({
+    name: 'synthetic-account.png',
+    mimeType: 'image/png',
+    buffer: await raster.body(),
+  });
+  await expect(
+    accountSettings.getByRole('button', { name: 'Change photo', exact: true }),
+  ).toBeEnabled();
+  const accountImage = await accountSettings.locator('img').getAttribute('src');
+  expect(accountImage).toMatch(/^data:image\/png;base64,/);
+  await expect
+    .poll(() => accountSettings.locator('img').evaluate((img) => img.naturalWidth))
+    .toBe(192);
+  await accountSettings.getByRole('button', { name: 'Close Settings', exact: true }).click();
+  checks.actual_combined_account_photo_upload = true;
   console.log('Installed package: first use and native Bot Mode reply passed.');
   console.log('Synthetic model audit after first turn:', await control('audit'));
   const cookie = (await context.cookies()).find((c) => c.name.includes('session_token'));
@@ -281,22 +324,61 @@ try {
     checks[kind + '_crash_recovers_without_pairing_and_keeps_draft'] = true;
     console.log('Crash recovery passed:', kind);
   }
+  if (process.env.WORKSPACE_PREVIOUS_ARCHIVE) {
+    await control('contract-upgrade');
+    await page.reload();
+    await expect(message).toBeEnabled();
+    await expect(page.getByText('Native fixture reply', { exact: true }).last()).toBeVisible();
+    const metadata = await page.request.get(origin + '/version.json');
+    expect((await metadata.json()).tag).toBe(
+      JSON.parse(await readFile('release.json', 'utf8')).tag,
+    );
+    checks.actual_preview15_upgrade_serves_candidate_version = true;
+    checks.actual_preview15_upgrade_preserves_login_and_native_history = true;
+    await expect(page.locator('.pc-rail-footer .personal-avatar img')).toHaveAttribute(
+      'src',
+      accountImage,
+    );
+    checks.actual_preview15_upgrade_preserves_account_photo = true;
+    console.log('Actual preview.15 to candidate host-first upgrade passed.');
+  }
+  await message.fill('Unsent native owner draft\nkept after refreshing');
+  await page.reload();
+  await expect(message).toBeEnabled();
+  await expect(message).toHaveValue('Unsent native owner draft\nkept after refreshing');
+  checks.owner_draft_survives_full_page_reload = true;
+  await message.fill('');
   await control('update');
   await expect(message).toBeEnabled();
   await page.reload();
   await expect(message).toBeEnabled();
   await expect(page.getByText('Native fixture reply', { exact: true }).last()).toBeVisible();
   checks.update_preserves_login_and_native_history = true;
+  await expect(page.locator('.pc-rail-footer .personal-avatar img')).toHaveAttribute(
+    'src',
+    accountImage,
+  );
+  checks.update_preserves_account_photo = true;
   await control('rollback');
   await page.reload();
   await expect(message).toBeEnabled();
   checks.rollback_preserves_login = true;
+  await expect(page.locator('.pc-rail-footer .personal-avatar img')).toHaveAttribute(
+    'src',
+    accountImage,
+  );
+  checks.rollback_preserves_account_photo = true;
   console.log('Installed update and explicit rollback passed; testing failed activation.');
   await control('failed-update');
   await page.reload();
   await expect(message).toBeEnabled();
   await expect(page.getByText('Native fixture reply', { exact: true }).last()).toBeVisible();
   checks.failed_activation_rolls_back_with_login_and_history = true;
+  await expect(page.locator('.pc-rail-footer .personal-avatar img')).toHaveAttribute(
+    'src',
+    accountImage,
+  );
+  checks.failed_activation_preserves_account_photo = true;
   console.log('Synthetic model audit after recovery:', await control('audit'));
   const denied = await page.request.post(origin + '/v1/rpc', {
     headers: { Origin: 'https://unapproved.example' },
@@ -315,6 +397,7 @@ try {
     await readFile(join(directory, 'installation-results.json'), 'utf8'),
   );
   const result = {
+    application_revision: execFileSync('git', ['rev-parse', 'HEAD'], { encoding: 'utf8' }).trim(),
     source_revision: execFileSync('git', ['-C', source, 'rev-parse', 'HEAD'], {
       encoding: 'utf8',
     }).trim(),

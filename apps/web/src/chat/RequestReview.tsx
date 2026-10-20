@@ -1,5 +1,8 @@
+import { ApprovalSurface } from '../components/ai-elements/confirmation';
+import { Label } from '../components/ui/label';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
+import { Disclosure } from '../components/ui/disclosure';
 import { useState } from 'react';
 import type { Row } from '../conversation';
 export function RequestReview({
@@ -26,12 +29,16 @@ export function RequestReview({
     'agent.attach': 'Change tools and skills',
   };
   return (
-    <article className={`request-card ${deleting ? 'destructive-request' : ''}`}>
-      <h3>{titles[String(r.action)] ?? String(r.action)}</h3>
-      <p>
-        <strong>{String(spec.profile ?? spec.display_name ?? spec.name ?? 'Agent')}</strong> ·{' '}
-        {String(r.state)}
-      </p>
+    <ApprovalSurface
+      className={`request-card ${deleting ? 'destructive-request' : ''}`}
+      title={titles[String(r.action)] ?? String(r.action)}
+      description={
+        <>
+          <strong>{String(spec.profile ?? spec.display_name ?? spec.name ?? 'Agent')}</strong> ·{' '}
+          {String(r.state)}
+        </>
+      }
+    >
       {deleting && (
         <p>
           Removes this Hermes profile, its personality files, memory, local conversations, skills
@@ -95,30 +102,29 @@ export function RequestReview({
           })}
       </dl>
       {spec.soul != null && (
-        <details>
-          <summary>Personality</summary>
+        <Disclosure title="Personality">
           <p className="preserve-whitespace">{String(spec.soul)}</p>
-        </details>
+        </Disclosure>
       )}
       {Boolean(result.reason || result.error) && (
         <p role="status">{String(result.reason ?? result.error)}</p>
       )}
       {r.state === 'pending' && (
         <>
-          <label>
-            {deleting && (
-              <>
+          {deleting && (
+            <Label className="flex-col items-start">
+              <span>
                 Type <strong>{String(spec.profile)}</strong> to confirm
-                <Input
-                  aria-label="Confirm profile name"
-                  autoComplete="off"
-                  value={confirmation}
-                  onChange={(e) => setConfirmation(e.target.value)}
-                />
-              </>
-            )}
-          </label>
-          <div className="choice-row">
+              </span>
+              <Input
+                aria-label="Confirm profile name"
+                autoComplete="off"
+                value={confirmation}
+                onChange={(e) => setConfirmation(e.target.value)}
+              />
+            </Label>
+          )}
+          <div className="request-actions">
             <Button
               type="button"
               variant="secondary"
@@ -144,6 +150,6 @@ export function RequestReview({
           Check outcome
         </Button>
       )}
-    </article>
+    </ApprovalSurface>
   );
 }

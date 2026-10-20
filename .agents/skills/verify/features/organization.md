@@ -1,0 +1,43 @@
+# Organization
+
+## Sub-features
+
+Pins, a flat unsectioned list, optional collapsible sections, whole-row reordering, valid item kinds, Crew chats, scoped settings, hidden/deleted profile reconciliation and menu placement.
+
+## How to get to it (user POV)
+
+Use the rail's New menu or a row's action menu. Click a Crew to open its chat. Use its action menu for settings. Drag whole rows and section headers, or use Alt+Arrow for keyboard movement.
+
+Unsectioned pebbles appear below pins with no heading. Move to section → None returns a pebble to that list. A historical collapsed Pebbles destination must not hide it.
+
+## Driving it with Playwright
+
+Find current organization and sidebar specs with `rg --files test/chat-workspace test/mobile`. Run those specs against the matching production configuration. Verify empty built-ins disappear, custom empty sections stay usable, Crews hold Crews, pins are centered and the actual action buttons sit at row/tile edges. Check 44px touch targets and settled phone screenshots.
+
+Run `unsectioned.spec.ts` in both production browser configurations for the historical collapsed list and custom-section round trip.
+
+## Gotchas
+
+The reference entry now imports the production app, but a version match alone does not prove every deployed asset or native runtime copy matches. A 0.00001px browser rounding difference is not a user-visible layout defect. Use a deliberate subpixel tolerance while keeping meaningful overlap/target requirements strict.
+
+
+## Org chart and reporting
+
+Open Your account → Org chart. The Main Pebble reports to the owner; other
+agents may be unattached, with real subtrees beneath them. Hidden agents keep
+named cards and remain selectable as managers. Editing a card opens the shared
+Profile/Role editor. Returning to chat preserves the draft and reading position.
+
+Run `org-chart.spec.ts` in both production browser configurations. These journeys
+edit reporting/Instructions, retain hidden cards and an unsent draft, and revoke
+Main Pebble management. Inspect the settled desktop, iPhone and Android captures.
+Native owner browser acceptance saves a reporting change through the chart and
+checks it after reload.
+
+Run `scripts/fixture/workspace_smoke.py` with each pinned native source installed
+in its own prepared environment: Python 3.14 for af0cd4df, Python 3.12 for
+29112bef. It uses disposable profiles and a deterministic local model to invoke
+Main Pebble management and observe an applied receipt without a browser approval.
+Unit reporting checks cover authority, revocation, stale edits, cycles, identity
+replacement, migration backup and interrupted-application receipts. Install/update
+checks remain model-free; native acceptance is separate and synthetic.

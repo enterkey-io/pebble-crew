@@ -1,6 +1,7 @@
 import { useRef, useState } from 'react';
 import { SmilePlus } from 'lucide-react';
 import { Button } from '../components/ui/button';
+import { Tooltip, TooltipContent, TooltipTrigger } from '../components/ui/tooltip';
 import {
   DropdownMenu,
   DropdownMenuTrigger,
@@ -34,17 +35,22 @@ export function ReactionPicker({
         if (open) setContainer(trigger.current?.closest('main') ?? null);
       }}
     >
-      <DropdownMenuTrigger asChild>
-        <Button
-          ref={trigger}
-          variant="quiet"
-          size="icon-sm"
-          aria-label="React to message"
-          disabled={disabled || pending}
-        >
-          <SmilePlus />
-        </Button>
-      </DropdownMenuTrigger>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <DropdownMenuTrigger asChild>
+            <Button
+              ref={trigger}
+              variant="ghost"
+              size="icon-sm"
+              aria-label="React to message"
+              disabled={disabled || pending}
+            >
+              <SmilePlus />
+            </Button>
+          </DropdownMenuTrigger>
+        </TooltipTrigger>
+        <TooltipContent>React to message</TooltipContent>
+      </Tooltip>
       <DropdownMenuContent
         container={container}
         onInteractOutside={(event) => {
@@ -90,31 +96,37 @@ export function MessageReactions({
   const [pending, setPending] = useState(false);
   if (!reactions.length) return null;
   return (
-    <div className="pc-reactions" aria-label="Reactions">
+    <>
       {[...new Set(reactions.map((r) => r.emoji))].map((emoji) => {
         const matching = reactions.filter((r) => r.emoji === emoji);
         const own = matching.some((r) => r.author === 'user');
         const who = matching.map((r) => (r.author === 'user' ? 'You' : agentName)).join(' and ');
         return (
-          <button
+          <Button
             key={emoji}
             type="button"
-            className="pc-reaction"
+            variant="quiet"
+            size="icon-sm"
+            className="w-auto min-w-8 gap-1 px-0 text-lg"
             aria-label={`${emoji} · ${who}`}
             aria-pressed={own}
-            disabled={!onReact || pending}
+            aria-disabled={!onReact || pending}
             title={who}
             onClick={() => {
-              if (!onReact) return;
+              if (!onReact || pending) return;
               setPending(true);
               void onReact(id, own ? null : emoji).finally(() => setPending(false));
             }}
           >
             <span aria-hidden="true">{emoji}</span>
-            {matching.length > 1 && <small aria-hidden="true">{matching.length}</small>}
-          </button>
+            {matching.length > 1 && (
+              <small className="text-xs text-muted-foreground" aria-hidden="true">
+                {matching.length}
+              </small>
+            )}
+          </Button>
         );
       })}
-    </div>
+    </>
   );
 }

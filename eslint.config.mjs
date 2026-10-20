@@ -2,7 +2,15 @@ import js from '@eslint/js';
 import tseslint from 'typescript-eslint';
 
 export default tseslint.config(
-  { ignores: ['**/dist/**', 'node_modules/**', '**/artifacts/**', '**/worker-configuration.d.ts'] },
+  {
+    ignores: [
+      '**/dist/**',
+      'node_modules/**',
+      '**/artifacts/**',
+      '**/.wrangler/**',
+      '**/worker-configuration.d.ts',
+    ],
+  },
   {
     files: ['**/*.ts', '**/*.tsx'],
     extends: [js.configs.recommended, ...tseslint.configs.recommended],

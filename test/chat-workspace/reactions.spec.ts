@@ -47,19 +47,47 @@ test('reactions can be added, replaced, removed and restored without sending a m
     await expect(emoji).toHaveCSS('border-top-width', '0px');
     await expect(emoji).toHaveCSS('box-shadow', 'none');
   }
-  const bubble = (await row.locator('.pc-bubble').boundingBox())!;
-  const reactions = (await row.locator('.pc-reactions').boundingBox())!;
-  expect(reactions.x - bubble.x).toBeGreaterThan(0);
-  expect(reactions.x - bubble.x).toBeLessThan(24);
-  expect(reactions.y).toBeLessThan(bubble.y + bubble.height);
-  expect(reactions.y + reactions.height).toBeGreaterThan(bubble.y + bubble.height);
-  expect((await row.getByRole('button', { name: '😂 · You' }).boundingBox())!.height).toBeLessThan(
-    30,
-  );
+  const overlap = await row.evaluate((node) => {
+    const bubble = node.querySelector('[data-slot="bubble-content"]')!.getBoundingClientRect();
+    const reactions = node.querySelector('[data-slot="bubble-reactions"]')!.getBoundingClientRect();
+    return {
+      left: reactions.left - bubble.left,
+      top: reactions.top - bubble.bottom,
+      bottom: reactions.bottom - bubble.bottom,
+    };
+  });
+  expect(overlap.left).toBeGreaterThan(0);
+  expect(overlap.left).toBeLessThan(24);
+  expect(overlap.top).toBeLessThan(0);
+  expect(overlap.bottom).toBeGreaterThan(0);
+  const movingOverlap = await row.evaluate(async (node) => {
+    const pane = node.closest<HTMLElement>('[role="log"]')!;
+    const original = pane.scrollTop;
+    const samples = [];
+    for (const offset of [0, 36, 72, 0]) {
+      pane.scrollTop = original - offset;
+      await new Promise(requestAnimationFrame);
+      const bubble = node.querySelector('[data-slot="bubble-content"]')!.getBoundingClientRect();
+      const reaction = node
+        .querySelector('[data-slot="bubble-reactions"]')!
+        .getBoundingClientRect();
+      samples.push({ top: reaction.top - bubble.bottom, bottom: reaction.bottom - bubble.bottom });
+    }
+    pane.scrollTop = original;
+    return samples;
+  });
+  for (const sample of movingOverlap) {
+    expect(sample.top).toBeLessThan(0);
+    expect(sample.bottom).toBeGreaterThan(0);
+  }
+  expect(
+    (await row.getByRole('button', { name: '😂 · You' }).boundingBox())!.height,
+  ).toBeGreaterThanOrEqual(32);
+  expect((await emoji.locator('span').boundingBox())!.height).toBeLessThan(30);
   await page.reload();
   await expect(row.getByRole('button', { name: '😂 · You', exact: true })).toBeVisible();
   await row.getByRole('button', { name: '😂 · You', exact: true }).click();
-  await expect(row.locator('.pc-reactions')).toHaveCount(0);
+  await expect(row.locator('[data-slot="bubble-reactions"]')).toHaveCount(0);
   expect(sends).toBe(0);
 });
 
@@ -124,5 +152,7 @@ test('agent reaction events paint the exact message, not the latest bubble', asy
   });
   const row = page.locator('[data-message-id="24"]');
   await expect(row.getByRole('button', { name: '👍 · Arlo', exact: true })).toBeVisible();
-  await expect(page.locator('[data-message-id="28"] .pc-reactions')).toHaveCount(0);
+  await expect(page.locator('[data-message-id="28"] [data-slot="bubble-reactions"]')).toHaveCount(
+    0,
+  );
 });

@@ -1,10 +1,12 @@
 import { useEffect, useRef, useState } from 'react';
 import { Star } from 'lucide-react';
+import { Button } from './components/ui/button';
+import { Toggle } from './components/ui/toggle';
 import { AvatarView, AvatarScheduler } from './avatar-lab/renderer';
 import { BODY_PATHS, COLORS, SHAPES } from './avatar-lab/engine';
 import { previewPhoto } from './avatar-lab/photo';
 import type { Activity } from './avatar-lab/engine';
-import type { Appearance } from './workspace';
+import type { Appearance } from '@hermes-client/protocol';
 import type { BotBridgeClient } from '@hermes-client/protocol';
 let clock: AvatarScheduler | undefined;
 let users = 0;
@@ -200,27 +202,32 @@ export function AvatarChooser({
       <div className="avatar-preview" role="img" aria-label="Selected avatar">
         <AgentAvatar id="appearance-preview" look={look} photo={photo || storedPhoto} large />
       </div>
-      <div className="avatar-modes" role="group" aria-label="Avatar style">
-        <button
+      <div className="flex gap-1" role="group" aria-label="Avatar style">
+        <Toggle
           type="button"
-          aria-pressed={look.kind === 'shape'}
-          onClick={() => choose({ ...look, kind: 'shape' })}
+          pressed={look.kind === 'shape'}
+          onPressedChange={() => choose({ ...look, kind: 'shape' })}
         >
           Animated
-        </button>
-        <button
+        </Toggle>
+        <Toggle
           type="button"
-          aria-pressed={look.kind === 'photo'}
-          onClick={() => choose({ ...look, kind: 'photo' })}
+          pressed={look.kind === 'photo'}
+          onPressedChange={() => choose({ ...look, kind: 'photo' })}
         >
           Photo
-        </button>
+        </Toggle>
       </div>
       {look.kind === 'photo' && (
         <div className="photo-upload">
-          <button type="button" disabled={decoding} onClick={() => fileInput.current?.click()}>
+          <Button
+            type="button"
+            variant="secondary"
+            disabled={decoding}
+            onClick={() => fileInput.current?.click()}
+          >
             {decoding ? 'Opening photo…' : photo || storedPhoto ? 'Change photo' : 'Upload photo'}
-          </button>
+          </Button>
           <input
             ref={fileInput}
             hidden
@@ -255,16 +262,17 @@ export function AvatarChooser({
       )}
       <>
         <div className="shape-choices">
-          <div className="avatar-shapes" role="group" aria-label="Avatar shape">
+          <div className="grid grid-cols-5 gap-2" role="group" aria-label="Avatar shape">
             {SHAPES.map((shape) => (
-              <button
+              <Toggle
+                className="h-12 w-11 p-0 pointer-coarse:min-h-11 pointer-coarse:min-w-11"
                 key={shape}
                 type="button"
                 aria-label={shape}
-                aria-pressed={look.shape === shape}
-                onClick={() => choose({ ...look, kind: 'shape', shape })}
+                pressed={look.shape === shape}
+                onPressedChange={() => choose({ ...look, kind: 'shape', shape })}
               >
-                <svg viewBox="0 0 100 108" aria-hidden="true" focusable="false">
+                <svg className="size-9" viewBox="0 0 100 108" aria-hidden="true" focusable="false">
                   <path
                     d={BODY_PATHS[shape]}
                     fill={COLORS.find((c) => c.id === look.color)?.hex ?? COLORS[0].hex}
@@ -274,20 +282,21 @@ export function AvatarChooser({
                     <rect x="56" y="40" width="8" height="18" rx="4" />
                   </g>
                 </svg>
-              </button>
+              </Toggle>
             ))}
           </div>
-          <div className="avatar-colors" role="group" aria-label="Avatar color">
+          <div className="grid grid-cols-6 gap-1" role="group" aria-label="Avatar color">
             {COLORS.map((color) => (
-              <button
+              <Toggle
+                className="size-9 min-w-0 rounded-full p-0 pointer-coarse:size-11"
                 key={color.id}
                 type="button"
                 aria-label={color.label}
-                aria-pressed={look.color === color.id}
-                onClick={() => choose({ ...look, kind: 'shape', color: color.id })}
+                pressed={look.color === color.id}
+                onPressedChange={() => choose({ ...look, kind: 'shape', color: color.id })}
               >
-                <span style={{ background: color.hex }} />
-              </button>
+                <span className="size-[22px] rounded-full" style={{ background: color.hex }} />
+              </Toggle>
             ))}
           </div>
         </div>

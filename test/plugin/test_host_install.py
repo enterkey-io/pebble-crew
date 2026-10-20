@@ -6,6 +6,7 @@ from pathlib import Path
 import sys
 import tempfile
 import unittest
+from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[2]
 if "bot_web" not in sys.modules:
@@ -82,11 +83,13 @@ class HostInstallTests(unittest.TestCase):
 
     def test_rollback_changes_only_release_pointer(self):
         value = self.config()
-        (self.root / 'releases' / ('b' * 24)).mkdir(parents=True)
+        from bot_web.payload import copy_payload
+        copy_payload(ROOT / 'plugins/bot-web', self.root / 'releases' / ('b' * 24))
         owner = self.root / 'owner'
         owner.mkdir()
         (owner / 'settings.json').write_text('do not rotate')
-        rollback(self.root)
+        with patch("bot_web.host_install.enrolled_runtime_paths", return_value={}):
+            rollback(self.root)
         result = load_install(self.root)
         self.assertEqual(result['active_release'], value['previous_release'])
         self.assertEqual(result['previous_release'], value['active_release'])

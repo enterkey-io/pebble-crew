@@ -1,13 +1,17 @@
-import { useEffect, useRef, useState } from 'react';
-import { ChevronDown, ExternalLink } from 'lucide-react';
+import { Label } from '../components/ui/label';
+import { Form } from '../components/ui/form';
+import { useEffect, useReducer, useRef, useState } from 'react';
+import { ExternalLink } from 'lucide-react';
 import type { BotBridgeClient } from '@hermes-client/protocol';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
 import { Checkbox } from '../components/ui/checkbox';
+import { Disclosure } from '../components/ui/disclosure';
 import { LoadingBar } from '../components/ui/loading-bar';
 import { Notice } from '../ui/primitives';
-import { permissions, probe, authFlow, keySaved, policyLabel, policyKey, toolTitle } from './model';
-import type { Connection, Permission, ToolPolicy, Tool, AuthFlow, Remote } from './model';
+import { permissions, probe, authFlow, keySaved, policyLabel, toolTitle } from './model';
+import type { Connection, Permission, Tool, AuthFlow, Remote } from './model';
+import { emptyPolicyEdit, policyDirty, reducePolicyEdit } from './edit-session';
 
 export function ConnectionDetail({
   client,
@@ -24,7 +28,8 @@ export function ConnectionDetail({
 }) {
   const name = connection.name;
   const [access, setAccess] = useState<Remote<Permission>>({ kind: 'loading' });
-  const [draft, setDraft] = useState<ToolPolicy>({ kind: 'native' });
+  const [edit, dispatch] = useReducer(reducePolicyEdit, emptyPolicyEdit);
+  const draft = edit.draft;
   const [tools, setTools] = useState<Tool[]>();
   const [toolsOpen, setToolsOpen] = useState(false);
   const [toolQuery, setToolQuery] = useState('');
@@ -37,8 +42,9 @@ export function ConnectionDetail({
   const [flow, setFlow] = useState<AuthFlow>();
   const [retry, setRetry] = useState(0);
   const keyInput = useRef<HTMLInputElement>(null);
-  const permission = access.kind === 'ready' ? access.value : undefined;
-  const toolsDirty = !!permission && policyKey(draft) !== policyKey(permission.policy);
+  const permission = edit.kind === 'ready' ? edit.remote : undefined;
+  const conflict = edit.kind === 'ready' && edit.conflict;
+  const toolsDirty = policyDirty(edit);
   const dirty = !!key || toolsDirty;
   useEffect(() => {
     if (keyOpen) keyInput.current?.focus({ preventScroll: true });
@@ -56,7 +62,7 @@ export function ConnectionDetail({
         const next = permissions(value);
         if (live) {
           setAccess({ kind: 'ready', value: next });
-          setDraft(next.policy);
+          dispatch({ type: 'receive', value: next });
         }
       })
       .catch(() => {
@@ -69,6 +75,7 @@ export function ConnectionDetail({
   async function refreshAccess() {
     const next = permissions(await client.invoke('connections.permissions', { profile, name }));
     setAccess({ kind: 'ready', value: next });
+    dispatch({ type: 'receive', value: next });
   }
   useEffect(() => {
     if (!flow || flow.state === 'approved' || flow.state === 'error') return;
@@ -85,7 +92,7 @@ export function ConnectionDetail({
           );
           if (!live) return;
           setAccess({ kind: 'ready', value: nextAccess });
-          setDraft(nextAccess.policy);
+          dispatch({ type: 'receive', value: nextAccess });
           setTools(undefined);
           setNotice('Signed in.');
           onChanged();
@@ -152,6 +159,17 @@ export function ConnectionDetail({
       />
       {error && <Notice error>{error}</Notice>}
       {notice && <Notice>{notice}</Notice>}
+      {conflict && (
+        <Notice>
+          Tool access changed elsewhere.
+          <Button variant="link" onClick={() => dispatch({ type: 'discard' })}>
+            Use saved settings
+          </Button>
+          <Button variant="link" onClick={() => dispatch({ type: 'keep' })}>
+            Keep my changes
+          </Button>
+        </Notice>
+      )}
       <section className="connection-section" aria-labelledby="connection-access-title">
         <h3 id="connection-access-title">Connection</h3>
         <div className="connection-detail-actions">
@@ -214,7 +232,7 @@ export function ConnectionDetail({
                 Add or replace API key
               </Button>
             ) : (
-              <form
+              <Form
                 onSubmit={(event) => {
                   event.preventDefault();
                   void run(async () => {
@@ -235,7 +253,9 @@ export function ConnectionDetail({
                   });
                 }}
               >
-                <label htmlFor="connection-api-key">API key</label>
+                <Label layout="stacked" htmlFor="connection-api-key">
+                  API key
+                </Label>
                 <Input
                   ref={keyInput}
                   id="connection-api-key"
@@ -260,124 +280,122 @@ export function ConnectionDetail({
                     Cancel
                   </Button>
                 </div>
-              </form>
+              </Form>
             )}
           </div>
         )}
       </section>
       {permission && (
-        <section className="connection-section">
-          <button
-            className="connection-disclosure"
-            disabled={busy || !!authorizing}
-            aria-expanded={toolsOpen}
-            aria-controls="connection-tools"
-            onClick={() => {
-              setToolsOpen(!toolsOpen);
-              if (!toolsOpen && !tools) void run(check);
-            }}
-          >
-            <span>
-              <strong>Tool access</strong>
-              <small>{policyLabel(permission.policy)}</small>
-            </span>
-            <ChevronDown aria-hidden="true" data-open={toolsOpen} />
-          </button>
-          {toolsOpen && (
-            <div id="connection-tools" className="connection-tools">
-              {tools && draft.kind === 'native' && (
-                <>
-                  <p>Keep Hermes settings, or choose an exact list.</p>
-                  <Button
-                    variant="secondary"
-                    disabled={busy || !!authorizing}
-                    onClick={() => setDraft({ kind: 'custom', names: [] })}
-                  >
-                    Choose tools
-                  </Button>
-                </>
-              )}
-              {tools && draft.kind === 'custom' && (
-                <form
-                  onSubmit={(event) => {
-                    event.preventDefault();
-                    void run(async () => {
-                      const next = permissions(
-                        await client.invoke('connections.permissions', {
-                          profile,
-                          name,
-                          tools: draft.names,
-                          expected: permission.fingerprint,
-                        }),
-                      );
-                      setAccess({ kind: 'ready', value: next });
-                      setDraft(next.policy);
-                      setNotice('Tool access saved. Applies when this pebble restarts.');
-                    });
-                  }}
-                >
-                  {tools.length > 8 && (
-                    <Input
-                      aria-label="Search tools"
-                      placeholder="Search tools"
-                      value={toolQuery}
-                      onChange={(event) => setToolQuery(event.target.value)}
-                    />
-                  )}
-                  <fieldset aria-label={`${name} tools`}>
-                    {[
-                      ...tools,
-                      ...draft.names
-                        .filter((n) => !tools.some((t) => t.name === n))
-                        .map((n) => ({ name: n, description: 'Unavailable in the latest check' })),
-                    ]
-                      .filter((tool) =>
-                        `${tool.name} ${tool.description}`
-                          .toLowerCase()
-                          .includes(toolQuery.toLowerCase()),
-                      )
-                      .map((tool, index) => (
-                        <label
-                          className="connection-tool"
-                          key={tool.name}
-                          htmlFor={`connection-tool-${index}`}
-                        >
-                          <Checkbox
-                            id={`connection-tool-${index}`}
-                            aria-label={tool.name}
-                            disabled={busy || !!authorizing}
-                            checked={draft.names.includes(tool.name)}
-                            onCheckedChange={(selected) =>
-                              setDraft({
-                                kind: 'custom',
-                                names:
-                                  selected === true
-                                    ? [...draft.names, tool.name]
-                                    : draft.names.filter((n) => n !== tool.name),
-                              })
-                            }
-                          />
-                          <span>
-                            <strong title={tool.name}>{toolTitle(tool.name)}</strong>
-                            {tool.description && <small>{tool.description}</small>}
-                          </span>
-                        </label>
-                      ))}
-                  </fieldset>
-                  {!tools.length && !draft.names.length && <p>No tools available.</p>}
-                  <div className="connection-detail-actions connection-tool-save">
-                    <Button disabled={busy || !!authorizing || !toolsDirty}>Save changes</Button>
-                  </div>
-                </form>
-              )}
-              {!tools && !busy && (
-                <Button variant="secondary" onClick={() => void run(check)}>
-                  Retry
-                </Button>
-              )}
-            </div>
+        <Disclosure
+          title="Tool access"
+          description={policyLabel(permission.policy)}
+          className="connection-section"
+          contentClassName="connection-tools"
+          disabled={busy || !!authorizing}
+          open={toolsOpen}
+          onOpenChange={(open) => {
+            setToolsOpen(open);
+            if (open && !tools) void run(check);
+          }}
+        >
+          {tools && draft.kind === 'native' && (
+            <>
+              <p>Keep Hermes settings, or choose an exact list.</p>
+              <Button
+                variant="secondary"
+                disabled={busy || !!authorizing}
+                onClick={() => dispatch({ type: 'change', value: { kind: 'custom', names: [] } })}
+              >
+                Choose tools
+              </Button>
+            </>
           )}
-        </section>
+          {tools && draft.kind === 'custom' && (
+            <Form
+              onSubmit={(event) => {
+                event.preventDefault();
+                if (conflict) return;
+                const submitted = draft;
+                void run(async () => {
+                  const next = permissions(
+                    await client.invoke('connections.permissions', {
+                      profile,
+                      name,
+                      tools: draft.names,
+                      expected: permission.fingerprint,
+                    }),
+                  );
+                  setAccess({ kind: 'ready', value: next });
+                  dispatch({ type: 'saved', value: next, submitted });
+                  setNotice('Tool access saved. Applies when this pebble restarts.');
+                });
+              }}
+            >
+              {tools.length > 8 && (
+                <Input
+                  aria-label="Search tools"
+                  placeholder="Search tools"
+                  value={toolQuery}
+                  onChange={(event) => setToolQuery(event.target.value)}
+                />
+              )}
+              <fieldset aria-label={`${name} tools`}>
+                {[
+                  ...tools,
+                  ...draft.names
+                    .filter((n) => !tools.some((t) => t.name === n))
+                    .map((n) => ({ name: n, description: 'Unavailable in the latest check' })),
+                ]
+                  .filter((tool) =>
+                    `${tool.name} ${tool.description}`
+                      .toLowerCase()
+                      .includes(toolQuery.toLowerCase()),
+                  )
+                  .map((tool, index) => (
+                    <Label
+                      className="connection-tool"
+                      key={tool.name}
+                      htmlFor={`connection-tool-${index}`}
+                    >
+                      <Checkbox
+                        id={`connection-tool-${index}`}
+                        aria-label={tool.name}
+                        disabled={busy || !!authorizing}
+                        checked={draft.names.includes(tool.name)}
+                        onCheckedChange={(selected) =>
+                          dispatch({
+                            type: 'change',
+                            value: {
+                              kind: 'custom',
+                              names:
+                                selected === true
+                                  ? [...draft.names, tool.name]
+                                  : draft.names.filter((n) => n !== tool.name),
+                            },
+                          })
+                        }
+                      />
+                      <span>
+                        <strong title={tool.name}>{toolTitle(tool.name)}</strong>
+                        {tool.description && <small>{tool.description}</small>}
+                      </span>
+                    </Label>
+                  ))}
+              </fieldset>
+              {!tools.length && !draft.names.length && <p>No tools available.</p>}
+              <div className="connection-detail-actions connection-tool-save">
+                <Button disabled={busy || !!authorizing || !toolsDirty || conflict}>
+                  Save changes
+                </Button>
+              </div>
+            </Form>
+          )}
+          {!tools && !busy && (
+            <Button variant="secondary" onClick={() => void run(check)}>
+              Retry
+            </Button>
+          )}
+        </Disclosure>
       )}
     </div>
   );

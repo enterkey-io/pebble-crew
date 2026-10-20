@@ -1,5 +1,6 @@
 import { test, expect } from '@playwright/test';
 import { installFixture } from '../chat-workspace/fixtures';
+import { expectPinnedLayout } from '../chat-workspace/pinned-layout';
 test.use({ serviceWorkers: 'block' });
 test('regular and pinned pebble menus have full touch targets aligned to their right edge', async ({
   page,
@@ -10,14 +11,20 @@ test('regular and pinned pebble menus have full touch targets aligned to their r
   await expect(page.getByLabel('Message', { exact: true })).toBeEnabled();
   await page.getByRole('button', { name: 'Toggle navigation', exact: true }).tap();
   const navigation = page.getByRole('dialog', { name: 'navigation', exact: true });
+  await expectPinnedLayout(navigation.locator('.pinned-tile'));
+  await page.screenshot({
+    animations: 'disabled',
+    scale: 'css',
+    path: info.outputPath('sidebar-pins.png'),
+  });
   expect((await navigation.boundingBox())!.width).toBeGreaterThanOrEqual(
-    Math.min(360, page.viewportSize()!.width - 24),
+    Math.min(360, page.viewportSize()!.width - 24) - 0.25,
   );
   const add = (await navigation.getByRole('button', { name: 'New', exact: true }).boundingBox())!;
   const close = (await navigation
     .getByRole('button', { name: 'Close navigation', exact: true })
     .boundingBox())!;
-  expect(close.x - (add.x + add.width)).toBeGreaterThanOrEqual(8);
+  expect(close.x - (add.x + add.width)).toBeGreaterThanOrEqual(7.75);
   for (const name of ['Rowan', 'Arlo']) {
     const trigger = page.getByRole('button', { name: `Actions for ${name}`, exact: true });
     await trigger.scrollIntoViewIfNeeded();

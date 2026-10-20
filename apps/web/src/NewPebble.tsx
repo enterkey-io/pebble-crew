@@ -1,10 +1,23 @@
-import { useEffect, useState, useCallback } from 'react';
+import { Label } from './components/ui/label';
+import { Checkbox } from './components/ui/checkbox';
+import { Form } from './components/ui/form';
+import { Disclosure } from './components/ui/disclosure';
+import { EditorSurface } from './ui/EditorSurface';
+import { useEffect, useState, useCallback, useReducer } from 'react';
 import { ArrowLeft, ChevronRight, UserPlus, Users } from 'lucide-react';
 import type { BotBridgeClient } from '@hermes-client/protocol';
+import { WorkspaceDomain, decodeModelGrant } from '@hermes-client/protocol';
 import { safeError } from '@hermes-client/core';
-import { workspaceState } from './workspace';
-import type { WorkspaceState, Role } from './workspace';
+import type { WorkspaceSnapshot as WorkspaceState } from '@hermes-client/protocol';
+import {
+  emptyProfile,
+  profileSession,
+  profileReducer,
+  profileDirty,
+} from './profiles/edit-session';
+import { profileWriteError } from './profiles/save-outcome';
 import { AgentPicker } from './AgentPicker';
+import { NavigationItem } from './ui/NavigationItem';
 import { ExistingPebbleSetup } from './ExistingPebbleSetup';
 import {
   PebbleProfileFields,
@@ -52,21 +65,12 @@ export function NewPebble({
     [onDirtyChange],
   );
   const [step, setStep] = useState<Step>({ kind: 'choose' });
-  const [value, setValue] = useState<ProfileDraft>({
-    name: '',
-    handle: '',
-    appearance: { kind: 'shape', shape: 'pebble', color: 'iris' },
-    photo: '',
-  });
-  const [role, setRole] = useState<Role>({
-      title: '',
-      description: '',
-      responsibilities: '',
-      boundaries: '',
-      expectedOutputs: '',
-    }),
-    [manager, setManager] = useState(state.orchestrator || ''),
-    [soul, setSoul] = useState(''),
+  const [edit, dispatch] = useReducer(profileReducer, undefined, () =>
+    profileSession(emptyProfile()),
+  );
+  const value = edit.draft,
+    { role, manager } = value;
+  const [soul, setSoul] = useState(''),
     [handleTouched, setHandleTouched] = useState(false),
     [introduce, setIntroduce] = useState(true),
     [avatarBusy, setAvatarBusy] = useState(false);
@@ -75,6 +79,7 @@ export function NewPebble({
     [busy, setBusy] = useState(false),
     [error, setError] = useState(''),
     [request, setRequest] = useState<Row>();
+  const [uncertain, setUncertain] = useState(false);
   useEffect(() => {
     if (step.kind !== 'create') return;
     let live = true;
@@ -82,7 +87,7 @@ export function NewPebble({
     void client
       .invoke('models.describe', {})
       .then((v) => {
-        if (live) setModel(v as WorkspaceState['model_grant']);
+        if (live) setModel(decodeModelGrant(v));
       })
       .catch(() => {
         if (live) setError('Model settings could not be loaded.');
@@ -94,38 +99,32 @@ export function NewPebble({
       live = false;
     };
   }, [client, step.kind]);
-  const createDirty = !!(
-    value.name ||
-    value.handle ||
-    value.photo ||
-    soul ||
-    Object.values(role).some(Boolean) ||
-    manager !== (state.orchestrator || '') ||
-    value.appearance.shape !== 'pebble' ||
-    value.appearance.color !== 'iris'
-  );
+  const createDirty = profileDirty(edit) || !!soul;
   useEffect(() => {
     if (step.kind !== 'configure') onDirtyChange(step.kind === 'create' && !request && createDirty);
     return () => onDirtyChange(false);
   }, [step.kind, createDirty, request, onDirtyChange]);
   function patch(change: Partial<ProfileDraft>) {
-    setValue((old) => ({
-      ...old,
-      ...change,
-      ...(change.name !== undefined && !handleTouched
-        ? {
-            handle: change.name
-              .toLowerCase()
-              .replace(/[^a-z0-9_-]+/g, '-')
-              .replace(/^-+|-+$/g, '')
-              .slice(0, 32),
-          }
-        : {}),
-    }));
+    dispatch({
+      type: 'change',
+      patch: {
+        ...change,
+        ...(change.name !== undefined && !handleTouched
+          ? {
+              handle: change.name
+                .toLowerCase()
+                .replace(/[^a-z0-9_-]+/g, '-')
+                .replace(/^-+|-+$/g, '')
+                .slice(0, 32),
+            }
+          : {}),
+      },
+    });
     if (change.handle !== undefined) setHandleTouched(true);
   }
   async function finishProfile(target: { profile: string; id: string }) {
-    const next = workspaceState(await client.invoke('workspace.describe', {}));
+    const domain = new WorkspaceDomain(client);
+    const next = await domain.describeWorkspace();
     if (
       !next.bots.some(
         (b) => b.profile === target.profile && b.id === target.id && b.available !== false,
@@ -133,17 +132,21 @@ export function NewPebble({
     )
       throw new Error('The created profile is unavailable.');
     setCreatedIdentity(target);
-    await client.invoke('agent.onboard', {
-      profile: target.profile,
-      id: target.id,
+    const result = await domain.onboardExisting({
+      target,
       name: value.name,
       handle: value.handle,
       appearance: value.appearance,
-      photo: value.appearance.kind === 'photo' ? value.photo || null : null,
+      photo: value.photo ? { kind: 'replace', data: value.photo } : { kind: 'preserve' },
       role,
-      manager: manager || next.orchestrator,
-      expected_revision: next.revision,
+      manager: manager || null,
+      expectedRevision: next.revision,
     });
+    if (result.kind !== 'confirmed') {
+      setUncertain(result.kind === 'uncertain');
+      setError(profileWriteError(result));
+      return;
+    }
     await onDone(target.profile, introduce);
   }
   function creationIdentity(completed: Row) {
@@ -182,7 +185,7 @@ export function NewPebble({
     }
   }
   async function create() {
-    if (busy || (!createdIdentity && (!model?.supported || request))) return;
+    if (busy || uncertain || (!createdIdentity && (!model?.supported || request))) return;
     setBusy(true);
     setError('');
     const nativeName = value.handle.replace(/_/g, '-');
@@ -190,7 +193,7 @@ export function NewPebble({
       let target = createdIdentity;
       if (!target) {
         if (!model?.supported) return;
-        const latest = workspaceState(await client.invoke('workspace.describe', {}));
+        const latest = await new WorkspaceDomain(client).describeWorkspace();
         const spec = {
           name: nativeName,
           display_name: value.name,
@@ -202,7 +205,7 @@ export function NewPebble({
           model_fingerprint: model.fingerprint,
           skills: [],
           toolsets: ['workspace', 'skills'],
-          manager: manager || latest.orchestrator,
+          manager: manager || null,
           team: null,
           expected_revision: latest.revision,
         };
@@ -241,39 +244,47 @@ export function NewPebble({
           ? 'Add your agent'
           : 'Create a pebble';
   return (
-    <section className="entity-page new-pebble" aria-label="New pebble">
-      <div className="new-pebble-header">
-        {step.kind !== 'choose' && (
-          <IconButton
-            label="Back"
-            icon={ArrowLeft}
-            disabled={busy}
-            onClick={() => {
-              if (
-                (step.kind === 'create' && createDirty && !request) ||
-                (step.kind === 'configure' && childDirty)
-              ) {
-                setBackConfirm(true);
-                return;
-              }
-              setStep({ kind: step.kind === 'configure' ? 'existing' : 'choose' });
-            }}
-          />
-        )}
-        <PageHeader title={title} onClose={onClose} />
-      </div>
+    <EditorSurface
+      className="entity-page new-pebble"
+      aria-label="New pebble"
+      bodyClassName="contents"
+      header={
+        <div className="new-pebble-header">
+          {step.kind !== 'choose' && (
+            <IconButton
+              label="Back"
+              icon={ArrowLeft}
+              disabled={busy}
+              onClick={() => {
+                if (
+                  (step.kind === 'create' && createDirty && !request) ||
+                  (step.kind === 'configure' && childDirty)
+                ) {
+                  setBackConfirm(true);
+                  return;
+                }
+                setStep({ kind: step.kind === 'configure' ? 'existing' : 'choose' });
+              }}
+            />
+          )}
+          <PageHeader title={title} onClose={onClose} />
+        </div>
+      }
+    >
       {step.kind === 'choose' ? (
-        <div className="creation-choices">
-          <Button variant="ghost" onClick={() => setStep({ kind: 'existing' })}>
-            <Users />
-            <span>Add existing Hermes agent</span>
-            <ChevronRight />
-          </Button>
-          <Button variant="ghost" onClick={() => setStep({ kind: 'create' })}>
-            <UserPlus />
-            <span>Create new pebble</span>
-            <ChevronRight />
-          </Button>
+        <div className="grid gap-3">
+          <NavigationItem
+            title="Add existing Hermes agent"
+            media={<Users className="size-5" />}
+            action={<ChevronRight />}
+            onClick={() => setStep({ kind: 'existing' })}
+          />
+          <NavigationItem
+            title="Create new pebble"
+            media={<UserPlus className="size-5" />}
+            action={<ChevronRight />}
+            onClick={() => setStep({ kind: 'create' })}
+          />
         </div>
       ) : step.kind === 'existing' ? (
         <AgentPicker
@@ -292,7 +303,7 @@ export function NewPebble({
           onDirtyChange={reportChildDirty}
         />
       ) : (
-        <form
+        <Form
           className="profile-form"
           onSubmit={(event) => {
             event.preventDefault();
@@ -325,22 +336,30 @@ export function NewPebble({
                 <PebbleProfileFields value={value} onChange={patch} onAvatarBusy={setAvatarBusy}>
                   <RoleBasics
                     {...role}
-                    onChange={(change) => setRole((old) => ({ ...old, ...change }))}
+                    onChange={(change) =>
+                      dispatch({ type: 'change', patch: { role: { ...role, ...change } } })
+                    }
                   />
-                  <ReportingField state={state} manager={manager} onChange={setManager} />
+                  <ReportingField
+                    state={state}
+                    manager={manager}
+                    onChange={(manager) => dispatch({ type: 'change', patch: { manager } })}
+                  />
                   <RoleDetails
+                    context="new"
                     role={role}
-                    onChange={(change) => setRole((old) => ({ ...old, ...change }))}
+                    onChange={(change) =>
+                      dispatch({ type: 'change', patch: { role: { ...role, ...change } } })
+                    }
                   />
                 </PebbleProfileFields>
-                <details className="form-disclosure">
-                  <summary>Model and personality</summary>
+                <Disclosure title="Model and personality" className="mt-6">
                   <p>
                     {model?.supported
                       ? `${model.provider} · ${model.model}`
                       : 'Configure your model in Hermes to create a new pebble.'}
                   </p>
-                  <label>
+                  <Label layout="stacked">
                     Personality
                     <Textarea
                       rows={4}
@@ -348,24 +367,24 @@ export function NewPebble({
                       value={soul}
                       onChange={(e) => setSoul(e.target.value)}
                     />
-                  </label>
-                </details>
+                  </Label>
+                </Disclosure>
               </>
             )}
           </div>
           {(!request || createdIdentity) && (
             <footer className="profile-footer">
-              <label className="intro-choice">
-                <input
-                  type="checkbox"
+              <Label className="intro-choice">
+                <Checkbox
                   checked={introduce}
-                  onChange={(e) => setIntroduce(e.target.checked)}
+                  onCheckedChange={(checked) => setIntroduce(checked === true)}
                 />
                 Send me a welcome message
-              </label>
+              </Label>
               <Button
                 disabled={
                   busy ||
+                  uncertain ||
                   loading ||
                   !connected ||
                   (!createdIdentity && !model?.supported) ||
@@ -376,7 +395,7 @@ export function NewPebble({
               </Button>
             </footer>
           )}
-        </form>
+        </Form>
       )}
       {backConfirm && (
         <Drawer title="Unsaved changes" variant="dialog" onClose={() => setBackConfirm(false)}>
@@ -397,6 +416,6 @@ export function NewPebble({
           </div>
         </Drawer>
       )}
-    </section>
+    </EditorSurface>
   );
 }

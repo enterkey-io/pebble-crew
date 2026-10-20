@@ -1,9 +1,10 @@
 import { useEffect, useRef, useState } from 'react';
 import { Check, ChevronRight, Search } from 'lucide-react';
 import type { BotBridgeClient } from '@hermes-client/protocol';
-import type { WorkspaceState } from './workspace';
+import type { WorkspaceSnapshot as WorkspaceState } from '@hermes-client/protocol';
 import { AgentAvatar } from './AgentAvatar';
-import { Input } from './components/ui/input';
+import { InputGroup, InputGroupAddon, InputGroupInput } from './components/ui/input-group';
+import { NavigationItem } from './ui/NavigationItem';
 import { LoadingBar } from './components/ui/loading-bar';
 type Agent = {
   profile: string;
@@ -80,9 +81,11 @@ export function AgentPicker({
   );
   return (
     <section className="agent-picker" aria-label="Existing Hermes agents">
-      <div className="agent-search-field">
-        <Search aria-hidden="true" />
-        <Input
+      <InputGroup>
+        <InputGroupAddon>
+          <Search aria-hidden="true" />
+        </InputGroupAddon>
+        <InputGroupInput
           ref={input}
           type="search"
           aria-label="Search Hermes agents"
@@ -90,7 +93,7 @@ export function AgentPicker({
           value={query}
           onChange={(e) => setQuery(e.target.value)}
         />
-      </div>
+      </InputGroup>
       <LoadingBar active={loading} label="Loading agents" />
       {error && (
         <p role="alert" className="error">
@@ -102,26 +105,24 @@ export function AgentPicker({
           const added = agent.managed && agent.canonical && !agent.hidden,
             bot = state.bots.find((b) => b.profile === agent.profile);
           return (
-            <button
-              className="agent-choice"
+            <NavigationItem
               key={agent.profile}
               disabled={!connected || added}
               onClick={() => onChoose(agent.profile)}
-            >
-              {bot && (
-                <AgentAvatar
-                  id={bot.id}
-                  profile={bot.profile}
-                  client={client}
-                  look={bot.appearance}
-                />
-              )}
-              <span>
-                <strong>{agent.name}</strong>
-                <small>@{bot?.handle ?? agent.profile}</small>
-              </span>
-              {added ? <Check aria-label="Added" /> : <ChevronRight aria-hidden="true" />}
-            </button>
+              title={agent.name}
+              description={`@${bot?.handle ?? agent.profile}`}
+              action={added ? <Check aria-label="Added" /> : <ChevronRight aria-hidden="true" />}
+              media={
+                bot && (
+                  <AgentAvatar
+                    id={bot.id}
+                    profile={bot.profile}
+                    client={client}
+                    look={bot.appearance}
+                  />
+                )
+              }
+            />
           );
         })}
         {!loading && !visible.length && (

@@ -4,13 +4,18 @@ from pathlib import Path
 import sys
 
 
-def main():
+def load_code(name='bot_web'):
     code = Path(__file__).resolve().parent
-    spec = importlib.util.spec_from_file_location("bot_web", code / "__init__.py",
+    spec = importlib.util.spec_from_file_location(name, code / "__init__.py",
         submodule_search_locations=[str(code)])
     module = importlib.util.module_from_spec(spec)
-    sys.modules["bot_web"] = module
+    sys.modules[name] = module
     spec.loader.exec_module(module)
+    return module
+
+
+def main():
+    load_code()
     from bot_web.host_service import main as run
     run()
 

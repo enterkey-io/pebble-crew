@@ -8,7 +8,7 @@ const server = createServer(
     const upstream = request(
       {
         hostname: '127.0.0.1',
-        port: 8096,
+        port: Number(process.argv[4] ?? 8099),
         path: incoming.url,
         method: incoming.method,
         headers: incoming.headers,

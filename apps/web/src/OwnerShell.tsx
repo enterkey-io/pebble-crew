@@ -1,39 +1,19 @@
+import { Label } from './components/ui/label';
+import { Form } from './components/ui/form';
 import { Input } from './components/ui/input';
 import { Button } from './components/ui/button';
 import { useEffect, useState } from 'react';
 import { App } from './App';
 import { useAppViewport } from './ui/viewport';
+import { StartupScreen } from './StartupScreen';
+import { ownerRequest, OwnerRequestError } from './owner-request';
+import { OwnerPhotoProvider, sessionPhoto } from './OwnerPhoto';
+import { clearSavedDrafts } from './chat/drafts';
+import { Disclosure } from './components/ui/disclosure';
 
 export interface OwnerConnection {
   ticket: () => Promise<{ ticket: string; bridgeUrl: string }>;
   logout: () => Promise<void>;
-}
-export class OwnerRequestError extends Error {
-  constructor(
-    message: string,
-    readonly status: number,
-  ) {
-    super(message);
-  }
-}
-export async function ownerRequest(path: string, body?: unknown) {
-  const response = await fetch(path, {
-    method: body === undefined ? 'GET' : 'POST',
-    credentials: 'same-origin',
-    cache: 'no-store',
-    redirect: 'error',
-    headers: body === undefined ? {} : { 'Content-Type': 'application/json' },
-    ...(body === undefined ? {} : { body: JSON.stringify(body) }),
-  });
-  const value: unknown = await response.json();
-  if (!response.ok)
-    throw new OwnerRequestError(
-      value && typeof value === 'object' && 'error' in value && typeof value.error === 'string'
-        ? value.error
-        : 'Please sign in.',
-      response.status,
-    );
-  return value;
 }
 export function OwnerShell({ setupProof = '' }: { setupProof?: string } = {}) {
   useAppViewport();
@@ -46,6 +26,7 @@ export function OwnerShell({ setupProof = '' }: { setupProof?: string } = {}) {
   const [proof, setProof] = useState(setupProof);
   const usingSetupLink = Boolean(setupProof);
   const [error, setError] = useState('');
+  const [image, setImage] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   async function check() {
     try {
@@ -65,6 +46,7 @@ export function OwnerShell({ setupProof = '' }: { setupProof?: string } = {}) {
         return;
       }
       const session = await ownerRequest('/api/auth/get-session');
+      setImage(sessionPhoto(session));
       setMode(session ? 'ready' : 'login');
     } catch {
       setMode('unavailable');
@@ -83,7 +65,12 @@ export function OwnerShell({ setupProof = '' }: { setupProof?: string } = {}) {
         await ownerRequest('/api/bootstrap', { username, password, proof });
         setProof('');
       }
-      await ownerRequest('/api/auth/sign-in/username', { username, password, rememberMe: true });
+      const signedIn = await ownerRequest('/api/auth/sign-in/username', {
+        username,
+        password,
+        rememberMe: true,
+      });
+      setImage(sessionPhoto(signedIn));
       setPassword('');
       setConfirmation('');
       setMode('ready');
@@ -94,27 +81,31 @@ export function OwnerShell({ setupProof = '' }: { setupProof?: string } = {}) {
     }
   }
   if (mode === 'preview') return <App />;
+  if (mode === 'loading') return <StartupScreen />;
   if (mode === 'ready')
     return (
-      <App
-        owner={{
-          ticket: async () => {
-            try {
-              return (await ownerRequest('/api/hermes/ticket', {})) as {
-                ticket: string;
-                bridgeUrl: string;
-              };
-            } catch (error) {
-              if (error instanceof OwnerRequestError && error.status === 401) setMode('login');
-              throw error;
-            }
-          },
-          logout: async () => {
-            await ownerRequest('/api/auth/sign-out', {});
-            setMode('login');
-          },
-        }}
-      />
+      <OwnerPhotoProvider image={image} onUnauthorized={() => setMode('login')}>
+        <App
+          owner={{
+            ticket: async () => {
+              try {
+                return (await ownerRequest('/api/hermes/ticket', {})) as {
+                  ticket: string;
+                  bridgeUrl: string;
+                };
+              } catch (error) {
+                if (error instanceof OwnerRequestError && error.status === 401) setMode('login');
+                throw error;
+              }
+            },
+            logout: async () => {
+              await ownerRequest('/api/auth/sign-out', {});
+              clearSavedDrafts();
+              setMode('login');
+            },
+          }}
+        />
+      </OwnerPhotoProvider>
     );
   return (
     <main className="owner-entry">
@@ -122,11 +113,9 @@ export function OwnerShell({ setupProof = '' }: { setupProof?: string } = {}) {
         <h1>
           {mode === 'setup'
             ? 'Create your login'
-            : mode === 'loading'
-              ? 'Loading…'
-              : mode === 'unavailable'
-                ? 'Unable to connect'
-                : 'Sign in'}
+            : mode === 'unavailable'
+              ? 'Unable to connect'
+              : 'Sign in'}
         </h1>
         {mode === 'unavailable' ? (
           <>
@@ -135,14 +124,14 @@ export function OwnerShell({ setupProof = '' }: { setupProof?: string } = {}) {
               Try again
             </Button>
           </>
-        ) : mode === 'loading' ? null : (
+        ) : (
           <>
             {mode === 'setup' && !usingSetupLink && (
               <p>Open your private setup link to continue.</p>
             )}
-            <form onSubmit={(e) => void submit(e)}>
+            <Form onSubmit={(e) => void submit(e)}>
               {mode === 'setup' && !usingSetupLink && (
-                <label>
+                <Label layout="stacked">
                   Private setup code
                   <Input
                     required
@@ -150,9 +139,9 @@ export function OwnerShell({ setupProof = '' }: { setupProof?: string } = {}) {
                     value={proof}
                     onChange={(e) => setProof(e.target.value.trim())}
                   />
-                </label>
+                </Label>
               )}
-              <label>
+              <Label layout="stacked">
                 Username
                 <Input
                   required
@@ -164,8 +153,8 @@ export function OwnerShell({ setupProof = '' }: { setupProof?: string } = {}) {
                   value={username}
                   onChange={(e) => setUsername(e.target.value)}
                 />
-              </label>
-              <label>
+              </Label>
+              <Label layout="stacked">
                 Password
                 <Input
                   required
@@ -177,9 +166,9 @@ export function OwnerShell({ setupProof = '' }: { setupProof?: string } = {}) {
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                 />
-              </label>
+              </Label>
               {mode === 'setup' && (
-                <label>
+                <Label layout="stacked">
                   Confirm password
                   <Input
                     required
@@ -188,7 +177,7 @@ export function OwnerShell({ setupProof = '' }: { setupProof?: string } = {}) {
                     value={confirmation}
                     onChange={(e) => setConfirmation(e.target.value)}
                   />
-                </label>
+                </Label>
               )}
               {error && (
                 <p className="error" role="alert">
@@ -198,12 +187,11 @@ export function OwnerShell({ setupProof = '' }: { setupProof?: string } = {}) {
               <Button variant="default" className="primary" disabled={busy}>
                 {busy ? 'Please wait…' : mode === 'setup' ? 'Create login' : 'Sign in'}
               </Button>
-            </form>
+            </Form>
             {mode === 'login' && (
-              <details>
-                <summary>Forgot your password?</summary>
+              <Disclosure title="Forgot your password?">
                 <p>Ask your Hermes agent to reset your login.</p>
-              </details>
+              </Disclosure>
             )}
           </>
         )}

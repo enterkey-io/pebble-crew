@@ -3,14 +3,14 @@ import { useEffect, useState } from 'react';
 import type { BotBridgeClient } from '@hermes-client/protocol';
 import { Notice } from '../ui/primitives';
 import { LoadingBar } from '../components/ui/loading-bar';
-export type SharedFile = {
-  id: string;
-  name: string;
-  kind: string;
-  size: number;
-  state: string;
-  created?: number;
-};
+export type { SharedConversationFile as SharedFile } from '@hermes-client/protocol';
+import type { SharedConversationFile as SharedFile } from '@hermes-client/protocol';
+import { ConversationDomain } from '@hermes-client/protocol';
+import { Item, ItemContent, ItemTitle, ItemDescription } from '../components/ui/item';
+import { IconButton } from '../components/ui/icon-button';
+import { Download, Eye } from 'lucide-react';
+import { documentFormat } from '@hermes-client/protocol';
+import { useDocumentActions } from '../documents/DocumentReader';
 export function fileSize(size: number) {
   return size < 1024
     ? `${size} B`
@@ -29,6 +29,7 @@ export function FilesPanel({
   version: number;
   focusId?: string | undefined;
 }) {
+  const openDocument = useDocumentActions();
   const [files, setFiles] = useState<SharedFile[]>([]),
     [loading, setLoading] = useState(true),
     [error, setError] = useState(''),
@@ -38,11 +39,9 @@ export function FilesPanel({
     let live = true;
     setLoading(true);
     setError('');
-    void client
-      .invoke('files.list', { session_id: sessionId })
-      .then((v) => {
-        const list = (v as { files: SharedFile[] }).files;
-        if (!Array.isArray(list)) throw new Error();
+    void new ConversationDomain(client)
+      .files(sessionId)
+      .then((list) => {
         if (live) setFiles(list);
       })
       .catch(() => {
@@ -92,25 +91,37 @@ export function FilesPanel({
           </Button>
         </Notice>
       )}
-      {!loading && !files.length ? (
+      {!loading && !error && !files.length ? (
         <p className="empty-note">No files shared here yet.</p>
       ) : (
         <ul className="file-list">
           {files.map((file) => (
-            <li key={file.id} data-file-id={file.id}>
-              <span>
-                <strong>{file.name}</strong>
-                <small>{fileSize(file.size)} · Shared in this chat</small>
-              </span>
-              <Button
-                variant="secondary"
-                disabled={!!busy}
-                aria-label={`Download ${file.name}`}
-                onClick={() => void download(file)}
-              >
-                {busy === file.id ? 'Downloading…' : 'Download'}
-              </Button>
-            </li>
+            <Item asChild key={file.id} className="flex-nowrap px-0">
+              <li data-file-id={file.id}>
+                <ItemContent>
+                  <ItemTitle className="break-all">{file.name}</ItemTitle>
+                  <ItemDescription className="text-xs">{fileSize(file.size)}</ItemDescription>
+                </ItemContent>
+                {documentFormat(file.name) && openDocument && (
+                  <IconButton
+                    label={`View ${file.name}`}
+                    icon={Eye}
+                    onClick={() =>
+                      openDocument({
+                        name: file.name,
+                        load: () => client.downloadFile(sessionId, file.id),
+                      })
+                    }
+                  />
+                )}
+                <IconButton
+                  label={`Download ${file.name}`}
+                  icon={Download}
+                  disabled={!!busy}
+                  onClick={() => void download(file)}
+                />
+              </li>
+            </Item>
           ))}
         </ul>
       )}

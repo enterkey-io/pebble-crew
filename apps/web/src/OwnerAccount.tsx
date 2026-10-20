@@ -1,7 +1,10 @@
+import { Label } from './components/ui/label';
+import { Form } from './components/ui/form';
 import { Button } from './components/ui/button';
 import { Input } from './components/ui/input';
 import { useState } from 'react';
-import { ownerRequest } from './OwnerShell';
+import { ownerRequest } from './owner-request';
+import { PersonalPhotoControls } from './OwnerPhoto';
 export function OwnerAccount() {
   const [current, setCurrent] = useState('');
   const [next, setNext] = useState('');
@@ -10,8 +13,10 @@ export function OwnerAccount() {
   const [message, setMessage] = useState('');
   return (
     <section className="owner-account">
+      <h2>Your photo</h2>
+      <PersonalPhotoControls />
       <h2>Change password</h2>
-      <form
+      <Form
         onSubmit={async (e) => {
           e.preventDefault();
           setBusy(true);
@@ -34,7 +39,7 @@ export function OwnerAccount() {
           }
         }}
       >
-        <label>
+        <Label layout="stacked">
           Current password
           <Input
             required
@@ -43,8 +48,8 @@ export function OwnerAccount() {
             value={current}
             onChange={(e) => setCurrent(e.target.value)}
           />
-        </label>
-        <label>
+        </Label>
+        <Label layout="stacked">
           New password
           <Input
             required
@@ -55,8 +60,8 @@ export function OwnerAccount() {
             value={next}
             onChange={(e) => setNext(e.target.value)}
           />
-        </label>
-        <label>
+        </Label>
+        <Label layout="stacked">
           Confirm new password
           <Input
             required
@@ -65,11 +70,11 @@ export function OwnerAccount() {
             value={confirm}
             onChange={(e) => setConfirm(e.target.value)}
           />
-        </label>
+        </Label>
         <div className="form-actions">
           <Button disabled={busy}>Change password</Button>
         </div>
-      </form>
+      </Form>
       <div className="account-devices">
         <div>
           <h2>Other devices</h2>

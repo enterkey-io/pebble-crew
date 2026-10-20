@@ -86,10 +86,10 @@ test('stream completion keeps the whole touch message row in place', async ({
   await emit(page, 'message.start');
   const reply = 'Your research is ready.';
   await emit(page, 'message.delta', { text: reply });
-  const live = page.locator('.pc-message.streaming');
+  const live = page.locator('[data-message-phase="live"]');
   await expect(live).toBeVisible();
   const element = (await live.elementHandle())!;
-  const controls = await live.locator('.pc-message-actions').innerHTML();
+  const controls = await live.locator('[data-slot="message-footer"]').innerHTML();
   const time = await live.locator('time').textContent();
   const before = (await live.boundingBox())!.height;
   await page.screenshot({
@@ -120,7 +120,7 @@ test('stream completion keeps the whole touch message row in place', async ({
   expect(await element.evaluate((node) => node.isConnected)).toBe(true);
   expect((await saved.boundingBox())!.height).toBeCloseTo(before, 0);
   expect(await saved.locator('time').textContent()).toBe(time);
-  expect(await saved.locator('.pc-message-actions button').count()).toBe(2);
+  expect(await saved.locator('[data-slot="message-footer"] button').count()).toBe(2);
   // Completion may enable the reaction button, but must not introduce another control.
   expect((controls.match(/<button/g) ?? []).length).toBe(2);
   await page.screenshot({

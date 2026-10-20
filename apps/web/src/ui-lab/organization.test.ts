@@ -7,6 +7,7 @@ import {
   placePebble,
   readRailDrag,
   reorderSection,
+  sectionChoiceLabel,
 } from '../ui/organization';
 import type { Organization } from '../ui/organization';
 function occurrences(org: Organization, id: string) {
@@ -16,6 +17,21 @@ function occurrences(org: Organization, id: string) {
   );
 }
 describe('reference organization', () => {
+  it('keeps the unsectioned destination out of section ordering and calls it None in menus', () => {
+    const root = { id: 'pebbles', name: 'Pebbles', collapsed: true, items: [] };
+    const org = {
+      ...initialOrganization,
+      sections: [initialOrganization.sections[0]!, root, initialOrganization.sections[1]!],
+    };
+    expect(sectionChoiceLabel(root)).toBe('None');
+    expect(nudgeSection(org, 'pebbles', 1)).toBe(org);
+    expect(reorderSection(org, 'pebbles', 'personal')).toBe(org);
+    expect(nudgeSection(org, 'crews', -1).sections.map((s) => s.id)).toEqual([
+      'pebbles',
+      'crews',
+      'personal',
+    ]);
+  });
   it('reorders visible rows without treating the pin shelf as intervening rows', () => {
     expect(
       nudgeItem(initialOrganization, { kind: 'pebble', id: 'sample-2' }, -1, [

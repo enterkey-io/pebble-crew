@@ -18,6 +18,18 @@ import threading
 import time
 
 
+def isolated_user_environment(directory):
+    root = Path(directory)
+    binary = root / 'fixture-bin'
+    binary.mkdir(exist_ok=True)
+    keychain = binary / 'security'
+    keychain.write_text('#!/bin/sh\nexit 1\n')
+    keychain.chmod(0o700)
+    return {'HOME': str(root), 'XDG_CONFIG_HOME': str(root / '.config'),
+            'CLAUDE_CONFIG_DIR': str(root / '.claude'),
+            'PATH': str(binary) + ':' + os.environ.get('PATH', f'{Path(sys.executable).parent}:/usr/bin:/bin')}
+
+
 def load_plugin(root):
     spec = importlib.util.spec_from_file_location("bot_web", root / "plugins/bot-web/__init__.py",
         submodule_search_locations=[str(root / "plugins/bot-web")])
@@ -72,6 +84,23 @@ class Model(BaseHTTPRequestHandler):
             Model.saw_native_tool = True
         text = "Native fixture reply"
         latest_user = next((m for m in reversed(data.get("messages", [])) if m.get("role") == "user"), {})
+        if 'nativegeneratedmedia' in str(latest_user.get('content')) or 'nativedocument' in str(latest_user.get('content')):
+            import re
+            context = '\n'.join(str(message.get('content')) for message in data.get('messages', []))
+            target = re.search(r'host-visible generated output directory (.+?) \(create it', context)
+            assert target, 'Native model was not given its real media-sharing capability'
+            output = Path(target[1])
+            assert output.is_relative_to(Path(os.environ['HERMES_HOME']))
+            output.mkdir(parents=True, exist_ok=True)
+            from PIL import Image, ImageDraw
+            image = Image.new('RGB', (320, 240), '#222225')
+            drawing = ImageDraw.Draw(image)
+            for index, height in enumerate([56, 94, 138, 172]):
+                drawing.rounded_rectangle((32 + index * 68, 210 - height, 72 + index * 68, 210), radius=6, fill='#a8b99a')
+            image.save(output / 'chart one.png')
+            (output / 'plan.md').write_text('# Project plan\n\n**Native document proof**\n\n- Preserve existing personalities\n- Verify before release\n\n```python\nprint(42)\n```\n')
+            (output / 'figures.csv').write_bytes(b'column,value\n' * 110000)
+            text = 'Here are the results.\n\n![Project chart](<' + str(output / 'chart one.png') + '>)\n\n[Download figures](<' + str(output / 'figures.csv') + '>)'
         tools = data.get("tools", [])
         tool_names = {t.get('function', {}).get('name') for t in tools}
         def can_call(name):
@@ -109,7 +138,22 @@ class Model(BaseHTTPRequestHandler):
             text = "Slow fixture reply"
         message = {"role": "assistant", "content": text}
         finish = "stop"
-        if discover_reaction:
+        document_turn = 'nativedocument' in str(latest_user.get('content'))
+        document_results = json.dumps(Model.tool_results)
+        if document_turn and 'requested' not in document_results:
+            if 'pebble_open_document' not in tool_names and 'parameters' not in document_results:
+                assert 'tool_describe(names=[\"pebble_open_document\"])' in json.dumps(data).replace('\\\"', '\"'), 'Document discovery guidance missing'
+                name, arguments = 'tool_describe', {'names': ['pebble_open_document']}
+            else:
+                assert 'pebble_open_document' in json.dumps(data), 'Document tool schema missing'
+                name, arguments = 'pebble_open_document', {'path': str(output / 'plan.md')}
+            message = {'role': 'assistant', 'content': None, 'tool_calls': [{'id': 'fixture-document', 'type': 'function', 'function': {'name': name, 'arguments': json.dumps(arguments)}}]}
+            finish = 'tool_calls'
+        elif document_turn:
+            assert 'requested' in document_results and 'true' in document_results, document_results
+            text = 'Here is the [Project plan](<' + str(output / 'plan.md') + '>).'
+            message = {'role': 'assistant', 'content': text}
+        elif discover_reaction:
             Model.reaction_describe_requested = True
             message = {'role': 'assistant', 'content': None, 'tool_calls': [{'id': 'fixture-reaction-describe',
                 'type': 'function', 'function': {'name': 'tool_describe', 'arguments': json.dumps({'names': ['pebble_react']})}}]}
@@ -152,7 +196,7 @@ class Model(BaseHTTPRequestHandler):
         self.end_headers()
         if data.get("stream"):
             delta = {"role": "assistant", "content": text}
-            if handoff or approval or attachment or reaction or discover_reaction:
+            if finish == 'tool_calls':
                 delta = {"role": "assistant", "tool_calls": [{"index": 0, **message["tool_calls"][0]}]}
             for delta, reason in [(delta, None), ({}, finish)]:
                 chunk = {**output, "object": "chat.completion.chunk", "choices": [{"index": 0,
@@ -167,7 +211,7 @@ def seed(home, port):
     from hermes_cli.profiles import create_profile
     from hermes_state import SessionDB
 
-    config = ("model:\n  default: fixture-model\n  provider: custom:fixture\nproviders:\n"
+    config = ("auth:\n  adopt_external_logins: false\nmodel:\n  default: fixture-model\n  provider: custom:fixture\nproviders:\n"
               f"  fixture:\n    base_url: http://127.0.0.1:{port}/v1\n    api_key: fixture-only\n"
               "agent:\n  max_turns: 3\n  bot_mode_protocol: true\n"
               "approvals:\n  mode: manual\n"
@@ -464,6 +508,8 @@ def main():
             HERMES_HOME=str(home), HERMES_RUNTIME_DIR=str(Path(directory) / "runtime"),
             PYTHONPYCACHEPREFIX=str(Path(directory) / "pycache"), PYTHONUNBUFFERED="1",
             NO_PROXY="127.0.0.1,localhost", HERMES_NO_AUTO_INSTALL="1")
+        os.environ.update(isolated_user_environment(directory))
+        (home / 'config.yaml').write_text('auth:\n  adopt_external_logins: false\n')
         model = ThreadingHTTPServer(("127.0.0.1", 0), Model)
         thread = threading.Thread(target=model.serve_forever, daemon=True)
         thread.start()

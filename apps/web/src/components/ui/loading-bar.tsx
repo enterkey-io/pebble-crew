@@ -1,6 +1,14 @@
 import { useEffect, useState } from 'react';
 
-export function LoadingBar({ active, label = 'Loading' }: { active: boolean; label?: string }) {
+export function LoadingBar({
+  active,
+  label = 'Loading',
+  as: Tag = 'div',
+}: {
+  active: boolean;
+  label?: string;
+  as?: 'div' | 'span';
+}) {
   const [visible, setVisible] = useState(false);
   useEffect(() => {
     if (!active) {
@@ -11,8 +19,8 @@ export function LoadingBar({ active, label = 'Loading' }: { active: boolean; lab
     return () => clearTimeout(delay);
   }, [active]);
   return (
-    <div className="loading-track" aria-hidden={!visible}>
+    <Tag className="loading-track" aria-hidden={!visible}>
       {visible && <span className="loading-bar" role="progressbar" aria-label={label} />}
-    </div>
+    </Tag>
   );
 }

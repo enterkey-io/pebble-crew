@@ -1,15 +1,17 @@
+import { TabbedEditor } from './ui/EditorSurface';
 import { LoadingBar } from './components/ui/loading-bar';
 import { Button } from './components/ui/button';
 import { safeError } from '@hermes-client/core';
 import { useEffect, useRef, useState } from 'react';
 import type { BotBridgeClient } from '@hermes-client/protocol';
-import { workspaceState } from './workspace';
-import type { WorkspaceState, WorkspaceBot } from './workspace';
+import { decodeWorkspaceSnapshot } from '@hermes-client/protocol';
+import type { WorkspaceSnapshot as WorkspaceState, WorkspaceBot } from '@hermes-client/protocol';
 import { OwnerAccount } from './OwnerAccount';
+import { GeneralSettings } from './GeneralSettings';
 import { ConnectionsPanel } from './connections/ConnectionsPanel';
 import { RequestReview } from './chat/RequestReview';
 import { PebbleEditor } from './PebbleEditor';
-import { PageHeader, Notice, Tabs } from './ui/primitives';
+import { PageHeader, Notice } from './ui/primitives';
 type Row = Record<string, unknown>;
 export function WorkspaceSettings({
   client,
@@ -17,15 +19,25 @@ export function WorkspaceSettings({
   onChange,
   onClose,
   owner = false,
-  initialTab = 'account',
+  initialTab = 'general',
   initialProfile,
   onDirtyChange,
+  closeOnSave = false,
   onNavigate,
+  initialAgentTab,
+  callActive = false,
+  voiceRequest,
+  onVoiceReady,
 }: {
+  initialAgentTab?: 'identity' | 'voice';
+  callActive?: boolean;
+  voiceRequest?: import('./voice/decode').VoiceSettingsRequest | undefined;
+  onVoiceReady?: ((profile: string) => void) | undefined;
   onDirtyChange: (dirty: boolean) => void;
+  closeOnSave?: boolean;
   onNavigate: (action: () => void) => void;
   owner?: boolean;
-  initialTab?: 'agents' | 'requests' | 'connections' | 'account';
+  initialTab?: 'agents' | 'requests' | 'connections' | 'account' | 'general';
   initialProfile?: string | undefined;
   client: BotBridgeClient;
   state: WorkspaceState;
@@ -51,18 +63,22 @@ export function WorkspaceSettings({
     [loading, setLoading] = useState(false);
   const [requests, setRequests] = useState<Row[]>([]);
   const [refresh, setRefresh] = useState(0);
+  const requestsLoaded = useRef(false);
+  useEffect(() => {
+    setError('');
+    setNotice('');
+  }, [tab, profile]);
   useEffect(() => {
     let live = true;
     let timer: ReturnType<typeof setTimeout>;
-    setError('');
-    setNotice('');
     if (tab === 'requests') {
-      setLoading(true);
+      setLoading(!requestsLoaded.current);
       const load = async () => {
         try {
           const data = (await client.invoke('requests.list', {})) as { requests: Row[] };
           if (live) {
             setRequests(data.requests);
+            requestsLoaded.current = true;
             setLoading(false);
           }
         } catch {
@@ -75,7 +91,10 @@ export function WorkspaceSettings({
         }
       };
       void load();
-    } else setLoading(false);
+    } else {
+      requestsLoaded.current = false;
+      setLoading(false);
+    }
     return () => {
       live = false;
       clearTimeout(timer);
@@ -92,7 +111,7 @@ export function WorkspaceSettings({
         fingerprint: r.fingerprint,
         ...(confirmation == null ? {} : { confirmation }),
       })) as Row;
-      onChange(workspaceState(await client.invoke('workspace.describe', {})));
+      onChange(decodeWorkspaceSnapshot(await client.invoke('workspace.describe', {})));
       setNotice(
         result.state === 'completed'
           ? 'Change completed.'
@@ -116,6 +135,10 @@ export function WorkspaceSettings({
     return bot ? (
       <PebbleEditor
         retired={retired}
+        initialTab={initialAgentTab ?? 'identity'}
+        callActive={callActive}
+        voiceRequest={voiceRequest}
+        onVoiceReady={onVoiceReady ? () => onVoiceReady(bot.profile) : undefined}
         key={bot.id}
         client={client}
         bot={bot}
@@ -123,6 +146,7 @@ export function WorkspaceSettings({
         onChange={onChange}
         onClose={onClose}
         onDirtyChange={onDirtyChange}
+        closeOnSave={closeOnSave}
       />
     ) : (
       <section className="entity-page">
@@ -136,40 +160,40 @@ export function WorkspaceSettings({
     ? profile
     : (connectionBots[0]?.profile ?? '');
   return (
-    <section className="settings-panel entity-page" aria-label="Settings">
-      <PageHeader title="Settings" onClose={() => onNavigate(onClose)} />
-      <Tabs
-        tabs={[
-          ...(owner ? [{ id: 'account', label: 'Account' }] : []),
-          { id: 'connections', label: 'Connections' },
-          { id: 'requests', label: 'Requests' },
-        ]}
-        value={tab}
-        onChange={(id) => onNavigate(() => setTab(id as typeof tab))}
-      >
-        {error && (
-          <Notice error>
-            {error}{' '}
-            <Button
-              variant="ghost"
-              className="text-button"
-              onClick={() => setRefresh((x) => x + 1)}
-            >
-              Try again
-            </Button>
-          </Notice>
-        )}
-        {notice && <Notice>{notice}</Notice>}
-        <LoadingBar active={loading} label="Loading Settings" />
-        {tab === 'account' && owner && <OwnerAccount />}
-        {tab === 'requests' && !loading && (
-          <>
-            {!requests.length && !error && (
-              <div className="ui-empty">
-                <h2>No requests</h2>
-                <p>Changes proposed by your pebbles appear here.</p>
-              </div>
-            )}
+    <TabbedEditor
+      className="settings-panel entity-page"
+      aria-label="Settings"
+      header={<PageHeader title="Settings" onClose={() => onNavigate(onClose)} />}
+      tabs={[
+        { id: 'general', label: 'General' },
+        ...(owner ? [{ id: 'account', label: 'Account' }] : []),
+        { id: 'connections', label: 'Connections' },
+        { id: 'requests', label: 'Requests' },
+      ]}
+      value={tab}
+      onChange={(id) => onNavigate(() => setTab(id as typeof tab))}
+    >
+      {error && (
+        <Notice error>
+          {error}{' '}
+          <Button variant="ghost" className="text-button" onClick={() => setRefresh((x) => x + 1)}>
+            Try again
+          </Button>
+        </Notice>
+      )}
+      {notice && <Notice>{notice}</Notice>}
+      <LoadingBar active={loading} label="Loading Settings" />
+      {tab === 'general' && <GeneralSettings />}
+      {tab === 'account' && owner && <OwnerAccount />}
+      {tab === 'requests' && !loading && (
+        <>
+          {!requests.length && !error && (
+            <div className="ui-empty">
+              <h2>No requests</h2>
+              <p>Changes proposed by your pebbles appear here.</p>
+            </div>
+          )}
+          <div className="request-list">
             {requests.map((r) => (
               <RequestReview
                 key={String(r.id)}
@@ -184,24 +208,24 @@ export function WorkspaceSettings({
                 }}
               />
             ))}
-          </>
-        )}
-        {tab === 'connections' &&
-          (connectionProfile ? (
-            <ConnectionsPanel
-              key={connectionProfile}
-              client={client}
-              bots={connectionBots}
-              profile={connectionProfile}
-              revision={state.revision}
-              onProfile={setProfile}
-              onNavigate={onNavigate}
-              onDirtyChange={onDirtyChange}
-            />
-          ) : (
-            <p className="connections-empty">No pebbles available</p>
-          ))}
-      </Tabs>
-    </section>
+          </div>
+        </>
+      )}
+      {tab === 'connections' &&
+        (connectionProfile ? (
+          <ConnectionsPanel
+            key={connectionProfile}
+            client={client}
+            bots={connectionBots}
+            profile={connectionProfile}
+            revision={state.revision}
+            onProfile={setProfile}
+            onNavigate={onNavigate}
+            onDirtyChange={onDirtyChange}
+          />
+        ) : (
+          <p className="connections-empty">No pebbles available</p>
+        ))}
+    </TabbedEditor>
   );
 }

@@ -1,6 +1,8 @@
+import { Alert, AlertDescription } from '../components/ui/alert';
+import { Typography } from '../components/ui/typography';
 import type { LucideIcon } from 'lucide-react';
 import type { ReactNode } from 'react';
-import { X, MoreHorizontal } from 'lucide-react';
+import { X, MoreHorizontal, Menu as MenuIcon } from 'lucide-react';
 import { IconButton } from '../components/ui/icon-button';
 import { Button } from '../components/ui/button';
 import { Tabs as RootTabs, TabsList, TabsTrigger, TabsContent } from '../components/ui/tabs';
@@ -17,24 +19,35 @@ import {
 
 export function Notice({ children, error = false }: { children: ReactNode; error?: boolean }) {
   return (
-    <div className={`ui-notice ${error ? 'is-error' : ''}`} role={error ? 'alert' : 'status'}>
-      {children}
-    </div>
+    <Alert variant={error ? 'destructive' : 'default'} role={error ? 'alert' : 'status'}>
+      <AlertDescription>{children}</AlertDescription>
+    </Alert>
   );
 }
 export function PageHeader({
   title,
   subtitle,
   onClose,
+  onNavigate,
 }: {
   title: string;
   subtitle?: string;
   onClose: () => void;
+  onNavigate?: () => void;
 }) {
   return (
     <header className="page-header">
-      <div>
-        <h1>{title}</h1>
+      {onNavigate && (
+        <IconButton
+          quiet
+          className="mobile-nav"
+          label="Toggle navigation"
+          icon={MenuIcon}
+          onClick={onNavigate}
+        />
+      )}
+      <div className="min-w-0 flex-1">
+        <Typography as="h1">{title}</Typography>
         {subtitle && <p>{subtitle}</p>}
       </div>
       <IconButton label={`Close ${title}`} icon={X} onClick={onClose} />
@@ -53,7 +66,7 @@ export function FormSection({
   return (
     <section className="form-section">
       <div className="form-section-heading">
-        <h2>{title}</h2>
+        <Typography as="h2">{title}</Typography>
         {description && <p>{description}</p>}
       </div>
       {children}

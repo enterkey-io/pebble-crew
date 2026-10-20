@@ -1,6 +1,6 @@
 import type { BrowserContext, Page } from '@playwright/test';
 import type { OrganizationState } from '../../apps/web/src/ui/organization';
-import type { WorkspaceState } from '../../apps/web/src/workspace';
+import type { WorkspaceSnapshot as WorkspaceState } from '@hermes-client/protocol';
 export const names = [
   'Arlo',
   'Mica',
@@ -20,6 +20,7 @@ export function fixtureState(): WorkspaceState {
     id: 'synthetic-owner',
     revision: 1,
     initialized: true,
+    reporting: { version: 1, management_enabled: true, policy_revision: 0 },
     orchestrator: 'arlo',
     teams: [
       { id: 'operations', name: 'Operations' },
@@ -76,6 +77,9 @@ export async function installFixture(
   context: BrowserContext,
   options: {
     reactions?: boolean;
+    attachments?: boolean;
+    voice?: boolean;
+    projects?: boolean;
     messages?: (Record<string, unknown> & { row_id: number })[];
   } = {},
 ) {
@@ -87,7 +91,7 @@ export async function installFixture(
       headers: {
         ...response.headers(),
         'content-security-policy':
-          "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self' https:;",
+          "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data: blob:; connect-src 'self' https:;",
       },
     });
   });
@@ -219,9 +223,14 @@ export async function installFixture(
           protocol: 'hermes-bot-web.v1',
           connection,
           capabilities: {
+            live_voice: options.voice === true,
+            secrets: options.voice === true,
             workspace: true,
+            reporting: 1,
+            projects: options.projects === true,
             existing_agents: true,
-            attachments: true,
+            attachments: options.attachments !== false,
+            generated_media: true,
             reactions: options.reactions !== false,
           },
         },
@@ -277,6 +286,24 @@ export async function installFixture(
         organization,
         crew_chats: crewChats,
       };
+    }
+    if (operation === 'reporting.describe') result = { workspace: state, changes: [] };
+    if (operation === 'reporting.policy') {
+      if (
+        params.expected_revision !== state.revision ||
+        !state.reporting ||
+        params.policy_revision !== state.reporting.policy_revision
+      ) {
+        await route.fulfill({ status: 400, json: { code: 'STALE_REVISION' } });
+        return;
+      }
+      state.reporting = {
+        version: 1,
+        management_enabled: params.enabled,
+        policy_revision: state.reporting.policy_revision + 1,
+      };
+      state.revision++;
+      result = { state: 'completed' };
     }
     if (operation === 'organization.get') result = organization;
     if (operation === 'organization.save') {
@@ -349,6 +376,7 @@ export async function installFixture(
           { name: 'browser', label: 'Browser', enabled: false },
         ],
       };
+    if (operation === 'agent.attach') result = { state: 'completed', runtime: 'refresh_required' };
     if (operation === 'agents.list')
       result = {
         agents: [...state.bots],
@@ -405,6 +433,10 @@ export async function installFixture(
         { role: params.role, manager: params.manager, team: params.team },
       );
       state.revision++;
+      result = {
+        revision: state.revision,
+        bots: Object.fromEntries(state.bots.map((bot) => [bot.profile, bot])),
+      };
     }
     if (operation === 'bots.appearance.update') {
       state.bots.find((b) => b.profile === params.profile)!.appearance = params.appearance;

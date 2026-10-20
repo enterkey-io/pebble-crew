@@ -58,7 +58,7 @@ const server = createServer(async (request, response) => {
       root,
       '.' +
         decodeURIComponent(
-          url.pathname === '/'
+          url.pathname === '/' || url.pathname === '/system'
             ? '/index.html'
             : url.pathname === '/install'
               ? '/install.html'

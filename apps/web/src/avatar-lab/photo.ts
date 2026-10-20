@@ -44,17 +44,14 @@ export function photoDimensions(bytes: Uint8Array): { width: number; height: num
       offset += length;
     }
   }
-  if (!width || !height)
-    throw new Error(
-      'Choose a JPEG, PNG or WebP photo. SVG, GIF and HEIC are not supported in this demo.',
-    );
+  if (!width || !height) throw new Error('Choose a JPEG, PNG or WebP photo.');
   if (width > MAX_SIDE || height > MAX_SIDE || width * height > MAX_PIXELS)
     throw new Error('Choose a smaller photo: up to 16 megapixels and 8192 pixels on either side.');
   return { width, height };
 }
 
 /** Local preview only. Re-encoding a small raster never retains source EXIF or file name. */
-export async function previewPhoto(file: File): Promise<string> {
+export async function photoCanvas(file: File, size: number): Promise<HTMLCanvasElement> {
   if (file.size > MAX_PHOTO_BYTES) throw new Error('Choose a photo smaller than 5 MB.');
   photoDimensions(new Uint8Array(await file.arrayBuffer()));
   const bitmap = await createImageBitmap(file, { imageOrientation: 'from-image' });
@@ -65,7 +62,7 @@ export async function previewPhoto(file: File): Promise<string> {
     )
       throw new Error('Choose a smaller photo.');
     const canvas = document.createElement('canvas');
-    canvas.width = canvas.height = 512;
+    canvas.width = canvas.height = size;
     const context = canvas.getContext('2d');
     if (!context) throw new Error('Photo preview is unavailable in this browser.');
     const side = Math.min(bitmap.width, bitmap.height);
@@ -77,11 +74,15 @@ export async function previewPhoto(file: File): Promise<string> {
       side,
       0,
       0,
-      512,
-      512,
+      size,
+      size,
     );
-    return canvas.toDataURL('image/png');
+    return canvas;
   } finally {
     bitmap.close();
   }
+}
+
+export async function previewPhoto(file: File): Promise<string> {
+  return (await photoCanvas(file, 512)).toDataURL('image/png');
 }

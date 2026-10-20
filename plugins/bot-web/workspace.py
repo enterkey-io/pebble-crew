@@ -21,6 +21,7 @@ from .native import NativeError
 SHAPES = {'pebble', 'beacon', 'petal', 'kite', 'arch', 'cairn', 'seed', 'dune', 'flint', 'drift'}
 COLORS = {'iris', 'citron', 'clay', 'lagoon', 'rose', 'sky', 'white', 'umber', 'moss', 'ocean', 'heather', 'sienna'}
 ACTIONS = {'agent.enable', 'agent.create', 'agent.update', 'agent.attach', 'agent.hide', 'agent.delete'}
+ROLE_TEXT_LIMITS = {'title': 1000, 'description': 1000, 'responsibilities': 12000, 'boundaries': 1000, 'expectedOutputs': 1000}
 
 
 def workspace_path():
@@ -32,6 +33,7 @@ def workspace_path():
 class WorkspaceStore:
     def __init__(self, path):
         path = Path(path)
+        self.path = path.resolve()
         path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
         self.db = sqlite3.connect(path, timeout=5)
         os.chmod(path, 0o600)
@@ -39,11 +41,14 @@ class WorkspaceStore:
         self.db.executescript('''
             CREATE TABLE IF NOT EXISTS workspace(id INTEGER PRIMARY KEY CHECK(id=1), revision INTEGER NOT NULL, data TEXT NOT NULL);
             CREATE TABLE IF NOT EXISTS requests(id TEXT PRIMARY KEY, actor TEXT NOT NULL, action TEXT NOT NULL, spec TEXT NOT NULL, fingerprint TEXT NOT NULL, state TEXT NOT NULL, result TEXT, created INTEGER NOT NULL, UNIQUE(actor,fingerprint));
+            CREATE TABLE IF NOT EXISTS voice_credential(id INTEGER PRIMARY KEY CHECK(id=1), profile TEXT NOT NULL, fingerprint TEXT NOT NULL);
         ''')
         from .presentation import init_store
         init_store(self.db)
         self.db.execute('INSERT OR IGNORE INTO workspace VALUES(1,0,?)', (json.dumps({'schema': 1, 'id': str(uuid.uuid4()), 'bots': {}, 'teams': [], 'orchestrator': None, 'initialized': False, 'aliases': {}}),))
         self.db.commit()
+        from .reporting import initialize
+        initialize(self, path)
 
     def read(self):
         revision, data = self.db.execute('SELECT revision,data FROM workspace WHERE id=1').fetchone()
@@ -113,7 +118,7 @@ def normalize_photo(data):
 
 
 class WorkspaceService:
-    METHODS = {'bots.profile.update', 'agent.onboard', 'agent.welcome', 'organization.get', 'organization.save', 'organization.chat', 'crews.save', 'workspace.snapshot', 'presentation.read', 'presentation.order', 'agent.pin', 'agent.hide', 'agent.delete', 'agent.propose', 'room.send', 'room.log', 'agent.enable', 'workspace.describe', 'workspace.detect_primary', 'workspace.initialize', 'workspace.welcome', 'workspace.set_orchestrator',
+    METHODS = {'reporting.describe', 'reporting.policy', 'bots.profile.update', 'agent.onboard', 'agent.welcome', 'organization.get', 'organization.save', 'organization.chat', 'crews.save', 'workspace.snapshot', 'presentation.read', 'presentation.order', 'agent.pin', 'agent.hide', 'agent.delete', 'agent.propose', 'room.send', 'room.log', 'agent.enable', 'workspace.describe', 'workspace.detect_primary', 'workspace.initialize', 'workspace.welcome', 'workspace.set_orchestrator',
         'bots.update_handle', 'bots.appearance.get', 'bots.appearance.update', 'roles.update', 'teams.save',
         'models.describe', 'agent.model', 'agent.create', 'agent.update', 'agent.attach', 'requests.reconcile', 'requests.list', 'requests.approve', 'requests.deny',
         'connections.add', 'connections.permissions', 'connections.set_key', 'connections.list', 'connections.test', 'services.catalog', 'agent.capabilities'}
@@ -153,7 +158,7 @@ class WorkspaceService:
                     restored_id = None
                 state['bots'][name] = {'id': restored_id or str(uuid.uuid4()), 'profile': name, 'handle': handle,
                     'role': {'title': '', 'description': '', 'responsibilities': '', 'boundaries': '', 'expectedOutputs': ''},
-                    'enrolled': isinstance(row.get('ui_meta', {}).get('hermes-bots'), dict), 'manager': state['orchestrator'], 'team': None, 'appearance': {'kind': 'shape', 'shape': 'pebble', 'color': 'iris'}}
+                    'enrolled': isinstance(row.get('ui_meta', {}).get('hermes-bots'), dict), 'manager': None, 'manager_id': None, 'team': None, 'appearance': {'kind': 'shape', 'shape': 'pebble', 'color': 'iris'}}
                 # Preserve native avatar data. Workspace shape contract is deliberately versioned.
                 if isinstance(meta.get('workspaceAppearance'), dict):
                     try:
@@ -177,8 +182,9 @@ class WorkspaceService:
                         team['name'] = section_name.strip()
                     state['bots'][name]['team'] = section_id
             native_role = meta.get('workspaceRole')
-            if isinstance(native_role, dict) and set(native_role) == set(state['bots'][name]['role']) and all(isinstance(v, str) and len(v) <= 1000 for v in native_role.values()):
+            if isinstance(native_role, dict) and set(native_role) == set(ROLE_TEXT_LIMITS) and all(isinstance(v, str) and len(v) <= ROLE_TEXT_LIMITS[k] for k, v in native_role.items()):
                 state['bots'][name]['role'] = deepcopy(native_role)
+            state['bots'][name]['name'] = self.ops.summary(row)['name']
             await bind(self, row, state['bots'][name], stamps.get(name))
         if changed or json.dumps(state, sort_keys=True) != before:
             state = self.store.save(state, state['revision'])
@@ -199,21 +205,9 @@ class WorkspaceService:
         if result.get('applied', {}).get('ui_meta') is not True or (description is not None and result.get('applied', {}).get('description') is not True):
             raise InvalidOperation('Native metadata changed; refresh to reconcile')
 
-    @staticmethod
-    def graph(state):
-        root = state['orchestrator']
-        if root not in state['bots'] or not state['bots'][root].get('enrolled') or state['bots'][root]['manager'] is not None:
-            raise InvalidOperation('One enrolled root with no manager is required', 'INVALID_REPORTING')
-        for name, bot in state['bots'].items():
-            if not bot.get('enrolled') or name == root:
-                continue
-            visited = {name}
-            target = bot['manager']
-            while target != root:
-                if target in visited or target not in state['bots'] or not state['bots'][target].get('enrolled'):
-                    raise InvalidOperation('Every reporting path must reach the orchestrator without a cycle', 'INVALID_REPORTING')
-                visited.add(target)
-                target = state['bots'][target]['manager']
+    def graph(self, state):
+        from .reporting import validate
+        validate(state, self.store.read())
 
     @staticmethod
     def handle(state, profiles, profile, value):
@@ -248,6 +242,17 @@ class WorkspaceService:
         self._snapshot = None
         snapshot, profiles = await self.sync(include_model=operation in {'workspace.describe', 'workspace.detect_primary', 'models.describe', 'agent.model', 'agent.create'})
         state = self.store.read()
+        if operation.startswith('reporting.'):
+            from .reporting import receipts
+            if operation == 'reporting.describe':
+                fields(params, [])
+                return {'workspace': snapshot, 'changes': receipts(self.store)}
+            fields(params, ['enabled', 'expected_revision', 'policy_revision'])
+            if type(params['enabled']) is not bool or type(params['expected_revision']) is not int or type(params['policy_revision']) is not int or params['expected_revision'] != state['revision'] or params['policy_revision'] != state['reporting']['policy_revision']:
+                raise InvalidOperation('Organization changed; refresh before saving', 'STALE_REVISION')
+            state['reporting'].update(management_enabled=params['enabled'], policy_revision=state['reporting']['policy_revision'] + 1)
+            self.store.save(state, state['revision'])
+            return {'state': 'completed'}
         if operation in {'bots.profile.update', 'agent.onboard', 'agent.welcome'}:
             from .identity import invoke
             return await invoke(self, operation, params, state, profiles)
@@ -363,10 +368,7 @@ class WorkspaceService:
             title_change = {'title': handle[:1].upper()+handle[1:]} if profile == 'default' and current_title.lower() in {'', 'default', 'hermes'} else {}
             await self.mirror(profile, {'workspaceAppearance': look, 'workspaceHandle': handle, **title_change})
             state['orchestrator'], state['initialized'] = profile, True
-            state['bots'][profile].update(enrolled=True, appearance=look, manager=None)
-            for bot in state['bots'].values():
-                if bot.get('enrolled') and bot['profile'] != profile:
-                    bot['manager'] = profile
+            state['bots'][profile].update(enrolled=True, appearance=look, manager=None, manager_id=None)
             self.store.save(state, state['revision'])
             return (await self.sync())[0]
         if operation == 'workspace.welcome':
@@ -381,7 +383,7 @@ class WorkspaceService:
                 raise InvalidOperation('Explicit native initialization required')
             await self.ops.gateway.call('bot_web.runtime.prepare', {'profile': params['profile']})
             result = await self.ops.enable_existing(params['profile'])
-            state['bots'][params['profile']].update(enrolled=True, manager=None if params['profile'] == state['orchestrator'] else state['orchestrator'])
+            state['bots'][params['profile']]['enrolled'] = True
             self.store.save(state, state['revision'])
             return result
         if operation == 'models.describe':
@@ -405,7 +407,7 @@ class WorkspaceService:
             model = await self.ops.gateway.call('bot_web.models', {'action': 'describe'})
             if not model.get('supported') or model['fingerprint'] != params['model_fingerprint']:
                 raise InvalidOperation('Review the current primary model authorization first', 'MODEL_UNAVAILABLE')
-            if params['manager'] not in state['bots'] or not state['bots'][params['manager']].get('enrolled') or (params['team'] is not None and params['team'] not in {t['id'] for t in state['teams']}):
+            if (params['manager'] is not None and (params['manager'] not in state['bots'] or not state['bots'][params['manager']].get('enrolled'))) or (params['team'] is not None and params['team'] not in {t['id'] for t in state['teams']}):
                 raise InvalidOperation('Choose an enrolled manager and existing team')
             if not isinstance(params['skills'], list) or params['skills'] or not isinstance(params['toolsets'], list) or not params['toolsets'] or any(t not in {'workspace', 'skills'} for t in params['toolsets']):
                 raise InvalidOperation('Fresh bots start with reviewed workspace/skills tools only; attach other installed resources separately')
@@ -428,7 +430,9 @@ class WorkspaceService:
             await self.ops.enable_existing(name)
             await self.sync()
             state = self.store.read()
-            state['bots'][name].update(enrolled=True, manager=params['manager'], team=params['team'], role={'title': '', 'description': role, 'responsibilities': '', 'boundaries': '', 'expectedOutputs': ''})
+            from .reporting import assign
+            assign(state, name, params['manager'])
+            state['bots'][name].update(enrolled=True, team=params['team'], role={'title': '', 'description': role, 'responsibilities': '', 'boundaries': '', 'expectedOutputs': ''})
             self.store.save(state, state['revision'])
             return {'state': 'completed' if granted.get('configured') is True and attached.get('applied', {}).get('toolsets') is True and attached.get('applied', {}).get('skills') is True else 'partial', 'profile': name, 'id': state['bots'][name]['id'], 'created': result.get('ok') is True, 'provider': 'configured' if granted.get('configured') else 'authorization_required', 'runtime': 'unverified', 'canonical': True}
         if operation == 'connections.add':
@@ -538,17 +542,18 @@ class WorkspaceService:
                 raise InvalidOperation('Enable this agent first')
             old = state['orchestrator']
             state['orchestrator'] = profile
-            state['bots'][profile]['manager'] = None
-            if old != profile:
-                state['bots'][old]['manager'] = profile
+            from .reporting import assign
+            assign(state, profile, None)
             self.graph(state)
         elif operation in {'roles.update', 'agent.update'}:
             role = params['role']
             fields(role, ['title', 'description', 'responsibilities', 'boundaries', 'expectedOutputs'])
-            role = {key: bounded(value, 1000) for key, value in role.items()}
+            role = {key: bounded(value, ROLE_TEXT_LIMITS[key]) for key, value in role.items()}
             if params['team'] is not None and params['team'] not in {t['id'] for t in state['teams']}:
                 raise InvalidOperation('Team unavailable')
-            state['bots'][profile].update(role=role, manager=params['manager'], team=params['team'])
+            from .reporting import assign
+            assign(state, profile, params['manager'])
+            state['bots'][profile].update(role=role, team=params['team'])
             self.graph(state)
             team = next((t for t in state['teams'] if t['id'] == params['team']), None)
             await self.mirror(profile, {'workspaceRole': role, 'description': role['description'], 'sectionId': team['id'] if team else None, 'sectionName': team['name'] if team else None}, description=(role['title'] + ': ' + role['description']).strip(': ')[:1000])

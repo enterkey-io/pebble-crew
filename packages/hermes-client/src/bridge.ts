@@ -1,4 +1,11 @@
-import { ClientError, ConnectionLifetime, endpointUrl, safeError } from '@hermes-client/core';
+import {
+  ClientError,
+  ConnectionLifetime,
+  endpointUrl,
+  operationRoute,
+  safeError,
+  voiceErrors,
+} from '@hermes-client/core';
 import type { Endpoint } from '@hermes-client/core';
 import { readBoundedJson, record } from './json';
 
@@ -8,6 +15,7 @@ export interface BridgeEvent {
   readonly seq?: number;
   readonly payload?: Readonly<Record<string, unknown>>;
 }
+export type DownloadedMedia = { blob: Blob; name: string };
 
 /** Direct connection to an optional plugin on the user's Hermes host. */
 export class BotBridgeClient {
@@ -19,12 +27,26 @@ export class BotBridgeClient {
   #connection = '';
   #existingAgents = false;
   #workspace = false;
+  #reporting = false;
+  #projects = false;
   #attachments = false;
+  #generatedMedia = false;
   #computer = false;
+  #liveVoice = false;
+  #secrets = false;
   #reactions = false;
   #rpcActive = 0;
   readonly #rpcWaiting: (() => void)[] = [];
 
+  get supportsLiveVoice(): boolean {
+    return this.#liveVoice;
+  }
+  get supportsProjects(): boolean {
+    return this.#projects;
+  }
+  get supportsSecrets(): boolean {
+    return this.#secrets;
+  }
   get supportsComputer(): boolean {
     return this.#computer;
   }
@@ -41,6 +63,9 @@ export class BotBridgeClient {
   }
   get supportsAttachments(): boolean {
     return this.#attachments;
+  }
+  get supportsGeneratedMedia(): boolean {
+    return this.#generatedMedia;
   }
 
   get supportsWorkspace(): boolean {
@@ -75,25 +100,37 @@ export class BotBridgeClient {
       !!data.capabilities && record(data.capabilities).existing_agents === true;
     this.#connection = data.connection;
     this.#existingAgents = existingAgents;
+    this.#reporting = !!data.capabilities && record(data.capabilities).reporting === 1;
+    this.#projects = !!data.capabilities && record(data.capabilities).projects === true;
     this.#workspace = !!data.capabilities && record(data.capabilities).workspace === true;
     this.#attachments = !!data.capabilities && record(data.capabilities).attachments === true;
+    this.#generatedMedia =
+      !!data.capabilities && record(data.capabilities).generated_media === true;
     this.#computer = !!data.capabilities && record(data.capabilities).computer === true;
+    this.#liveVoice = !!data.capabilities && record(data.capabilities).live_voice === true;
+    this.#secrets = !!data.capabilities && record(data.capabilities).secrets === true;
     this.#reactions = !!data.capabilities && record(data.capabilities).reactions === true;
   }
 
   async invoke(operation: string, params: Readonly<Record<string, unknown>>): Promise<unknown> {
     if (!this.#connection) throw new ClientError('DISCONNECTED');
     const generation = this.#lifetime.capture();
+    const payload =
+      this.#reporting &&
+      [
+        'bots.profile.update',
+        'agent.onboard',
+        'roles.update',
+        'agent.create',
+        'workspace.initialize',
+        'workspace.set_orchestrator',
+      ].includes(operation)
+        ? { ...params, reporting_version: 1 }
+        : params;
     return this.#withSlot(async () => {
       this.#lifetime.assertCurrent(generation);
       return record(
-        await this.#request(
-          ['bots.appearance.update', 'workspace.initialize'].includes(operation)
-            ? 'v1/avatar'
-            : 'v1/rpc',
-          'POST',
-          { operation, params },
-        ),
+        await this.#request(operationRoute(operation), 'POST', { operation, params: payload }),
       ).result;
     });
   }
@@ -169,22 +206,49 @@ export class BotBridgeClient {
     const generation = this.#lifetime.capture();
     return this.#withSlot(() => {
       this.#lifetime.assertCurrent(generation);
-      return this.#downloadFile(sessionId, id);
+      return this.#downloadBinary('files.read', { session_id: sessionId, id }).then(
+        (file) => file.blob,
+      );
     });
   }
-  async #downloadFile(sessionId: string, id: string): Promise<Blob> {
+  async downloadMedia(
+    sessionId: string,
+    rowId: number,
+    reference: string,
+    signal?: AbortSignal,
+  ): Promise<DownloadedMedia> {
+    if (!this.#generatedMedia) throw new ClientError('UNSUPPORTED');
+    const generation = this.#lifetime.capture();
+    return this.#withSlot(() => {
+      this.#lifetime.assertCurrent(generation);
+      signal?.throwIfAborted();
+      return this.#downloadBinary(
+        'media.read',
+        { session_id: sessionId, row_id: rowId, reference },
+        signal,
+      );
+    });
+  }
+  async #downloadBinary(
+    operation: 'files.read' | 'media.read',
+    params: Readonly<Record<string, unknown>>,
+    signal?: AbortSignal,
+  ): Promise<DownloadedMedia> {
     if (!this.#connection) throw new ClientError('DISCONNECTED');
     const generation = this.#lifetime.capture(),
       controller = new AbortController();
     this.#active.add(controller);
+    const abort = () => controller.abort();
+    signal?.addEventListener('abort', abort, { once: true });
+    if (signal?.aborted) controller.abort();
     const timer = setTimeout(() => controller.abort(), 50000);
     try {
       const url = endpointUrl(this.#endpoint, 'v1/files/read');
       const response = await this.#fetch(
         url,
         this.#options(controller, 'POST', {
-          operation: 'files.read',
-          params: { session_id: sessionId, id },
+          operation,
+          params,
         }),
       );
       await this.#check(response, url);
@@ -207,12 +271,36 @@ export class BotBridgeClient {
         reader.releaseLock();
       }
       this.#lifetime.assertCurrent(generation);
-      return new Blob(parts, { type: 'application/octet-stream' });
+      if (
+        Number(response.headers.get('content-length')) > 0 &&
+        Number(response.headers.get('content-length')) !== bytes
+      )
+        throw new ClientError('INVALID_RESPONSE');
+      const mime = response.headers.get('content-type')?.split(';')[0] ?? '';
+      const disposition = response.headers.get('content-disposition') ?? '';
+      const encoded = /filename\*=UTF-8''([^;]+)/i.exec(disposition)?.[1];
+      const name = encoded ? decodeURIComponent(encoded) : 'download';
+      if (
+        !name ||
+        [...name].length > 180 ||
+        /[/\\]/.test(name) ||
+        [...name].some((char) => char.charCodeAt(0) < 32 || char.charCodeAt(0) === 127)
+      )
+        throw new ClientError('INVALID_RESPONSE');
+      return {
+        blob: new Blob(parts, {
+          type: ['image/png', 'image/jpeg', 'image/webp'].includes(mime)
+            ? mime
+            : 'application/octet-stream',
+        }),
+        name,
+      };
     } catch (e) {
       this.#lifetime.assertCurrent(generation);
       throw safeError(e);
     } finally {
       clearTimeout(timer);
+      signal?.removeEventListener('abort', abort);
       this.#active.delete(controller);
     }
   }
@@ -277,6 +365,8 @@ export class BotBridgeClient {
         /* Untrusted diagnostics never enter user-visible errors. */
       }
       const known = [
+        'UPDATE_REQUIRED',
+        'UNSUPPORTED_COMMAND',
         'STALE_REVISION',
         'HANDLE_TAKEN',
         'INVALID_REPORTING',
@@ -287,7 +377,9 @@ export class BotBridgeClient {
         'INVALID_ATTACHMENT',
         'ATTACHMENT_QUOTA',
       ] as const;
-      const match = known.find((item) => item === code);
+      const match =
+        known.find((item) => item === code) ??
+        Object.keys(voiceErrors).find((item): item is keyof typeof voiceErrors => item === code);
       throw new ClientError(match ?? 'RPC_FAILED');
     }
     if (!response.ok || (response.url && response.url !== url.href)) {
@@ -368,10 +460,7 @@ export class BotBridgeClient {
     this.#lifetime.close();
     this.#token = '';
     this.#connection = '';
-    this.#existingAgents = false;
-    this.#attachments = false;
-    this.#computer = false;
-    this.#workspace = false;
+    // Negotiated features describe the server, not the lifetime of this lease.
     for (const controller of this.#active) controller.abort();
     this.#active.clear();
   }

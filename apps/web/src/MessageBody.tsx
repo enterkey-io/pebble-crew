@@ -1,76 +1,212 @@
-import { useRef, useState } from 'react';
-import type { ReactNode } from 'react';
-import Markdown from 'react-markdown';
+import {
+  Table,
+  TableHeader,
+  TableBody,
+  TableRow,
+  TableHead,
+  TableCell,
+} from './components/ui/table';
+import {
+  CodeBlock as CodeSurface,
+  CodeBlockHeader,
+  CodeBlockTitle,
+  CodeBlockContent,
+  CodeBlockActions,
+  CodeBlockCopyButton,
+} from './components/ui/code-block';
+import { memo, useEffect, useMemo, useState } from 'react';
+import Markdown, { defaultUrlTransform } from 'react-markdown';
+import type { Components } from 'react-markdown';
+import type { BotBridgeClient } from '@hermes-client/protocol';
 import remarkGfm from 'remark-gfm';
 import { Copy, Check } from 'lucide-react';
-import { IconButton } from './components/ui/icon-button';
+import { Button } from './components/ui/button';
+import { Typography } from './components/ui/typography';
+import { Tooltip, TooltipContent, TooltipTrigger } from './components/ui/tooltip';
+import {
+  GeneratedFile,
+  GeneratedImage,
+  localReference,
+  MessageMediaContext,
+} from './chat/generated-media';
+import type { MessageMedia } from './chat/generated-media';
+import { remarkMedia } from './chat/media-markdown';
 
-function CodeBlock({ children }: { children?: ReactNode }) {
-  const code = useRef<HTMLPreElement>(null);
-  const [status, setStatus] = useState('Copy code');
+function CodeBlock({ value, language }: { value: string; language: string }) {
   return (
-    <div className="code-block">
-      <div className="code-toolbar">
-        <span>Code</span>
-        <button
-          type="button"
-          onClick={() => {
-            void navigator.clipboard
-              .writeText(code.current?.textContent ?? '')
-              .then(() => setStatus('Copied'))
-              .catch(() => setStatus('Select code to copy'));
-          }}
-        >
-          {status}
-        </button>
-      </div>
-      <pre ref={code}>{children}</pre>
-    </div>
+    <CodeSurface className="code-block">
+      <CodeBlockHeader className="code-toolbar">
+        <CodeBlockTitle>
+          <span>{language || 'Text'}</span>
+        </CodeBlockTitle>
+        <CodeBlockActions>
+          <CodeBlockCopyButton label="Copy code" value={value} />
+        </CodeBlockActions>
+      </CodeBlockHeader>
+      <CodeBlockContent>{value}</CodeBlockContent>
+    </CodeSurface>
   );
 }
 
-/** No raw HTML, remote image loading, embeds or automatic requests from bot output. */
-export function MessageBody({ text }: { text: string }) {
-  return (
-    <div className="message-body">
-      <Markdown
-        skipHtml
-        remarkPlugins={[remarkGfm]}
-        components={{
-          pre: ({ children }) => <CodeBlock>{children}</CodeBlock>,
-          img: ({ alt }) => (
-            <span className="image-placeholder">[Image: {alt || 'not loaded'}]</span>
-          ),
-          a: ({ href, children }) =>
-            href && /^https?:\/\//i.test(href) ? (
-              <a href={href} target="_blank" rel="noopener noreferrer" referrerPolicy="no-referrer">
-                {children}
-              </a>
-            ) : (
-              <span>{children}</span>
-            ),
-        }}
+const components: Components = {
+  p: ({ children }) => <Typography>{children}</Typography>,
+  h1: ({ children }) => <Typography as="h1">{children}</Typography>,
+  h2: ({ children }) => <Typography as="h2">{children}</Typography>,
+  h3: ({ children }) => <Typography as="h3">{children}</Typography>,
+  h4: ({ children }) => <h4 className="text-sm font-medium">{children}</h4>,
+  h5: ({ children }) => <h5 className="text-sm font-medium">{children}</h5>,
+  h6: ({ children }) => <h6 className="text-sm font-medium">{children}</h6>,
+  ul: ({ children, className }) => (
+    <ul
+      className={
+        className === 'contains-task-list' ? 'list-none space-y-2' : 'list-disc space-y-2 pl-6'
+      }
+    >
+      {children}
+    </ul>
+  ),
+  ol: ({ children, start }) => (
+    <ol start={start} className="list-decimal space-y-2 pl-6">
+      {children}
+    </ol>
+  ),
+  li: ({ children, className }) => <li className={className}>{children}</li>,
+  code: ({ children }) => <Typography as="code">{children}</Typography>,
+  blockquote: ({ children }) => <Typography as="blockquote">{children}</Typography>,
+  input: ({ checked, disabled, type }) => (
+    <input
+      className="mr-2 accent-foreground"
+      type={type}
+      checked={checked}
+      disabled={disabled}
+      readOnly
+    />
+  ),
+  table: ({ children }) => <Table>{children}</Table>,
+  thead: ({ children }) => <TableHeader>{children}</TableHeader>,
+  tbody: ({ children }) => <TableBody>{children}</TableBody>,
+  tr: ({ children }) => <TableRow>{children}</TableRow>,
+  th: ({ children, style }) => <TableHead style={style}>{children}</TableHead>,
+  td: ({ children, style }) => <TableCell style={style}>{children}</TableCell>,
+  pre: ({ node }) => {
+    const code = node?.children.find(
+      (child) => child.type === 'element' && child.tagName === 'code',
+    );
+    const classes = code?.type === 'element' ? code.properties.className : [];
+    const language = Array.isArray(classes)
+      ? classes.find((value) => typeof value === 'string' && value.startsWith('language-'))
+      : undefined;
+    const value =
+      code?.type === 'element'
+        ? code.children.flatMap((child) => (child.type === 'text' ? [child.value] : [])).join('')
+        : '';
+    return (
+      <CodeBlock language={typeof language === 'string' ? language.slice(9) : ''} value={value} />
+    );
+  },
+  img: ({ src, alt }) =>
+    src && localReference(src) ? (
+      <GeneratedImage source={src} alt={alt ?? ''} />
+    ) : src && /^https?:\/\//i.test(src) ? (
+      <a href={src} target="_blank" rel="noopener noreferrer" referrerPolicy="no-referrer">
+        {alt || 'Open image'}
+      </a>
+    ) : (
+      <span>Image unavailable</span>
+    ),
+  a: ({ href, children }) =>
+    href && /^https?:\/\//i.test(href) ? (
+      <a
+        className="underline underline-offset-4"
+        href={href}
+        target="_blank"
+        rel="noopener noreferrer"
+        referrerPolicy="no-referrer"
       >
-        {text}
-      </Markdown>
-    </div>
-  );
+        {children}
+      </a>
+    ) : href && localReference(href) ? (
+      <GeneratedFile source={href}>{children}</GeneratedFile>
+    ) : (
+      <span>{children}</span>
+    ),
+};
+const plugins = [remarkGfm, remarkMedia];
+function transformUrl(url: string, key: string) {
+  return key === 'src' || key === 'href'
+    ? localReference(url)
+      ? url
+      : defaultUrlTransform(url)
+    : defaultUrlTransform(url);
 }
+
+/** Images are authenticated canonical-chat reads, never direct requests to bot-supplied URLs. */
+export const MessageBody = memo(function MessageBody({
+  text,
+  client,
+  sessionId,
+  rowId,
+  conversationKey,
+}: {
+  text: string;
+  client?: BotBridgeClient | undefined;
+  sessionId?: string | undefined;
+  rowId?: string | undefined;
+  conversationKey?: string | undefined;
+}) {
+  const media = useMemo<MessageMedia | undefined>(() => {
+    if (!client?.supportsGeneratedMedia || !sessionId) return;
+    return rowId && /^[1-9]\d*$/.test(rowId) && Number.isSafeInteger(Number(rowId))
+      ? {
+          kind: 'saved',
+          identity: `${conversationKey ?? sessionId}:${rowId}`,
+          client,
+          sessionId,
+          rowId: Number(rowId),
+        }
+      : { kind: 'pending', identity: `${conversationKey ?? sessionId}:${rowId ?? ''}` };
+  }, [client, sessionId, rowId, conversationKey]);
+  return (
+    <MessageMediaContext.Provider value={media}>
+      <div className="message-body min-w-0 space-y-4 wrap-break-word [&_li>ul]:mt-2 [&_li>ol]:mt-2">
+        <Markdown
+          skipHtml
+          remarkPlugins={plugins}
+          components={components}
+          urlTransform={transformUrl}
+        >
+          {text}
+        </Markdown>
+      </div>
+    </MessageMediaContext.Provider>
+  );
+});
 
 export function CopyMessage({ text }: { text: string }) {
   const [copied, setCopied] = useState(false);
+  useEffect(() => {
+    if (!copied) return;
+    const timeout = setTimeout(() => setCopied(false), 2000);
+    return () => clearTimeout(timeout);
+  }, [copied]);
   return (
-    <IconButton
-      className="copy-message"
-      label={copied ? 'Copied' : 'Copy message'}
-      icon={copied ? Check : Copy}
-      quiet
-      onClick={() => {
-        void navigator.clipboard
-          .writeText(text)
-          .then(() => setCopied(true))
-          .catch(() => setCopied(false));
-      }}
-    />
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <Button
+          variant="ghost"
+          size="icon-sm"
+          aria-label={copied ? 'Copied' : 'Copy message'}
+          onClick={() => {
+            void navigator.clipboard
+              .writeText(text)
+              .then(() => setCopied(true))
+              .catch(() => setCopied(false));
+          }}
+        >
+          {copied ? <Check /> : <Copy />}
+        </Button>
+      </TooltipTrigger>
+      <TooltipContent>{copied ? 'Copied' : 'Copy message'}</TooltipContent>
+    </Tooltip>
   );
 }

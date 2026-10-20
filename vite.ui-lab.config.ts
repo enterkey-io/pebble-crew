@@ -2,11 +2,15 @@ import { defineConfig } from 'vite';
 import tailwindcss from '@tailwindcss/vite';
 import { resolve } from 'node:path';
 import { copyFile } from 'node:fs/promises';
+import { appearancePlugin } from './scripts/appearance-plugin';
+import { imageViewerStylesPlugin } from './scripts/image-viewer-styles-plugin';
 
 export default defineConfig({
   root: 'apps/web',
   plugins: [
     tailwindcss(),
+    appearancePlugin(),
+    imageViewerStylesPlugin(),
     {
       name: 'reference-index',
       async writeBundle() {

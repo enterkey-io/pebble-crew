@@ -20,6 +20,12 @@ for native acceptance.
 | Connections fixtures conceal impossible service states | Use separate OAuth and API-key services. Browser checks cover sign-in refresh, failed key receipts, preservation of unsaved tool edits, guarded navigation and fixed outer scroll position. |
 | Reconnection closes setup or flashes the chat | Transport restoration preserves navigation, drafts and message elements. Shared desktop/phone checks interrupt a real browser stream during both Add flows, retain all fields and assert no transient red banner. |
 | Reporting and detailed roles disappear from Add/Edit | `ReportingField` and `RoleDetails` are required in all profile flows by `check:ui`; browser/native checks verify persistence, and the bridge rejects reporting cycles before native writes. |
+| Reconnect overwrites profile or connection edits | Feature reducers own baselines, drafts, conflicts and submission generations independently of the transport. `WorkspaceDomain` decodes profile data/receipts; AST guards reject raw migrated calls and comment-only/unused-helper composition. Recovery journeys cover all editors. |
+| New messages move the conversation in one frame | `TranscriptFollow` owns live viewport interpolation and cancels on manual scroll. Stable receipt keys animate each new row once. Real-frame desktop/phone checks cover sending, first reply, reduced motion and scrolled-up readers. |
+| Disk updates are mistaken for loaded native code | Owner-local runtime status distinguishes absent, verified and unknown disk copies; loaded state stays unknown. Exact-package CI covers provisioning, partial sync, changed tool definitions and historical Python rollback without install/update model turns. |
+
+Use the project [verification skill](.agents/skills/verify/SKILL.md) for the
+maintained app-driving recipe and feature map.
 
 For UI changes, run `npm run check`, the relevant production browser flows, and
 inspect settled desktop/phone screenshots. Use the native owner check when a

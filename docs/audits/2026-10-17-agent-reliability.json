@@ -1,0 +1,128 @@
+{
+  "baseline": "c5a9268e8e8a4dc3e19f2208a6ab5bf728010568",
+  "date": "2026-10-17",
+  "productionChanges": false,
+  "baselineCheck": {
+    "command": "npm run check",
+    "passed": true,
+    "unitTests": 95
+  },
+  "guards": {
+    "baseline": "c5a9268e8e8a4dc3e19f2208a6ab5bf728010568",
+    "checks": [
+      {
+        "name": "current UI contract",
+        "expected": true,
+        "observed": true,
+        "matches": true,
+        "detail": "Baseline checker completes."
+      },
+      {
+        "name": "historical UI contract ac4a881",
+        "expected": false,
+        "observed": false,
+        "matches": true,
+        "detail": "UI contract: The installed app must load ui/theme.css.\nUI contract: The review entry must reuse the installed app entry; do not build a second set of review screens.\nUI contract: The shared theme must include foundation.css.\nUI contract: The shared theme must include layout.css.\nUI contract: The shared theme must include product.css.\nUI contract: Global focus rules belong in the base layer in foundation.css; product.css must not override primitive focus styles.\nUI contract: Composer focus must use the neutral --ring token, not the old hard-coded lavender.\nUI contract: Drag whole rows; do not reintroduce exposed handles, empty-section instructions, or reorder menu clutter.\nUI contract: NewPebble.tsx must use shared profile fields so name, avatar, title and description cannot diverge.\nUI contract: NewPebble.tsx must expose shared reporting and detailed role controls.\nUI contract: ExistingPebbleSetup.tsx must use shared profile fields so name, avatar, title and description cannot diverge.\nUI contract: ExistingPebbleSetup.tsx must expose shared reporting and detailed role controls.\nUI contract: PebbleEditor.tsx must use shared profile fields so name, avatar, title and description cannot diverge.\nUI contract: PebbleEditor.tsx must expose shared reporting and detailed role controls."
+      },
+      {
+        "name": "historical UI contract 47e50a3",
+        "expected": false,
+        "observed": false,
+        "matches": true,
+        "detail": "UI contract: NewPebble.tsx must expose shared reporting and detailed role controls.\nUI contract: ExistingPebbleSetup.tsx must expose shared reporting and detailed role controls.\nUI contract: PebbleEditor.tsx must expose shared reporting and detailed role controls."
+      },
+      {
+        "name": "synthetic missing reporting control with a comment marker",
+        "expected": true,
+        "observed": true,
+        "matches": true,
+        "detail": "Demonstrates the text guard limit. This does not run or challenge the browser persistence test."
+      },
+      {
+        "name": "malformed workspace accepted",
+        "expected": true,
+        "observed": true,
+        "matches": true,
+        "detail": "Observed boundary gap. No claim that Hermes emitted this payload."
+      },
+      {
+        "name": "historical reference used a separate root",
+        "expected": true,
+        "observed": true,
+        "matches": true,
+        "detail": "apps/web/src/ui-lab/main.tsx"
+      }
+    ],
+    "verdict": "OBSERVATIONS_REPRODUCED"
+  },
+  "connections": {
+    "draftRetained": false,
+    "saveEnabled": false,
+    "observedLeaseRenewal": true,
+    "scope": "production web build with mocked external bridge boundary"
+  },
+  "photoRouting": {
+    "scope": "real client and owner proxy with synthetic loopback upstream, no Hermes or model",
+    "pngBytes": 787252,
+    "outcomes": [
+      {
+        "operation": "agent.onboard",
+        "completed": false,
+        "code": "RPC_FAILED"
+      },
+      {
+        "operation": "bots.profile.update",
+        "completed": false,
+        "code": "RPC_FAILED"
+      },
+      {
+        "operation": "bots.appearance.update",
+        "completed": true
+      }
+    ],
+    "requests": [
+      {
+        "route": "/v1/connect",
+        "status": 200,
+        "bodyBytes": 0
+      },
+      {
+        "route": "/v1/rpc",
+        "status": 413,
+        "bodyBytes": 1049767
+      },
+      {
+        "route": "/v1/rpc",
+        "status": 413,
+        "bodyBytes": 1049773
+      },
+      {
+        "route": "/v1/avatar",
+        "status": 200,
+        "bodyBytes": 1049776
+      }
+    ],
+    "upstreamCalls": ["/v1/connect", "/v1/avatar"],
+    "observedMismatch": true
+  },
+  "verificationRecipe": {
+    "desktop": {
+      "passed": 1
+    },
+    "iphoneWebkit": {
+      "passed": 1
+    },
+    "androidChromium": {
+      "passed": 1
+    },
+    "screenshotsInspected": true,
+    "evidenceSurvivedCleanup": true
+  },
+  "limits": [
+    "External Hermes boundary was simulated in the Connections and recipe journeys.",
+    "Photo routing used the real client/proxy with a synthetic upstream, not native persistence.",
+    "Malformed input acceptance does not establish malformed native output.",
+    "No owner data, models, personas or services were changed.",
+    "Diagnostic success reproduces a baseline defect and is not repair acceptance."
+  ]
+}

@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="dark" />
+    <title>Pebble Crew · Progress</title>
+    <link rel="stylesheet" href="/style.css" />
+    <script src="/client.js" defer></script>
+  </head>
+  <body>
+    <main>
+      <header>
+        <div>
+          <p class="brand">Pebble Crew</p>
+          <h1>Build progress</h1>
+        </div>
+        <span id="transport" role="status"><i></i><span>Connecting</span></span>
+      </header>
+      <aside id="waiting" role="status" hidden>
+        <span class="attention">Waiting on you</span>
+        <p id="question"></p>
+        <small>Reply in our chat.</small>
+      </aside>
+      <div class="summary"><span id="count">Loading progress</span><time id="updated"></time></div>
+      <progress id="progress" max="1" value="0" aria-label="Completed tasks"></progress>
+      <nav id="phases" aria-label="Implementation phases"></nav>
+      <section aria-labelledby="phase-title">
+        <div class="phase-heading">
+          <h2 id="phase-title">Tasks</h2>
+          <span id="phase-count"></span>
+        </div>
+        <ol id="tasks"></ol>
+      </section>
+      <p id="announcement" class="sr-only" role="status" aria-live="polite"></p>
+    </main>
+  </body>
+</html>

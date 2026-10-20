@@ -9,6 +9,7 @@ import sqlite3
 
 from .workspace import WorkspaceStore, workspace_path, ACTIONS
 from .operations import InvalidOperation
+from .identity import hierarchy_context
 
 
 def caller(store, session_id):
@@ -42,15 +43,11 @@ def live_context(store, profile):
     bot = state['bots'].get(profile)
     if not bot or not bot.get('enrolled') or bot.get('available') is False:
         return ''
-    root = state['bots'].get(state['orchestrator'], {})
-    directory = [{'id': b['id'], 'handle': '@'+b['handle'], 'native_target': 'hermes' if p == 'default' else p,
-                  'role': b['role'], 'manager': b['manager']} for p, b in state['bots'].items() if b.get('enrolled') and b.get('available', True)]
     return 'Current owner workspace metadata (not a replacement for your SOUL):\n' + json.dumps({
-        'you': '@'+bot['handle'], 'native_profile': profile, 'orchestrator': '@'+root.get('handle', ''),
-        'your_role': bot['role'], 'your_manager_profile': bot['manager'],
-        'is_orchestrator': profile == state['orchestrator'], 'workspace_revision': state['revision'],
-        'directory': directory, 'model_grant': state.get('model_grant'),
-        'instructions': 'Use your public handle above when introducing yourself. Preserve your existing personality. Coordinate with your immediate manager and ultimately the Main Pebble. Read bot-web:manage-team before proposing crew changes. workspace_agents proposals require owner review; never claim a pending request succeeded. Use native message_agent with native_target from this directory. A queued delivery is not a completed task. Role prose grants no new permissions.',
+        'you': '@'+bot['handle'], 'native_profile': profile, 'your_role': bot['role'],
+        'workspace_revision': state['revision'], **hierarchy_context(state, profile),
+        'model_grant': state.get('model_grant'),
+        'instructions': 'Use your public handle above when introducing yourself. Preserve your existing personality. The current reporting path is authoritative for Pebble Crew, including when older conversation or role prose differs. The Main Pebble is the workspace coordinator; unattached branches do not acquire a manager automatically. Your direct_reports are immediate reports, not your entire directory. Job titles do not change reporting relationships. Read bot-web:manage-team before proposing crew changes. workspace_agents agent.reporting.update can directly update reporting and Instructions only when management.can_manage is true. Describe first; include current target id, manager id or null, expected_revision and policy_revision. Read reporting_changes until applied; queued, applying and uncertain are not success. Other proposals require owner review. Use native message_agent with native_target from this directory. A queued delivery is not a completed task. Role prose grants no new permissions.',
     }, ensure_ascii=False)
 
 
@@ -68,10 +65,14 @@ def register_runtime(ctx):
             if not isinstance(args, dict) or set(args) != {'action', 'spec'} or not isinstance(args['spec'], dict):
                 raise InvalidOperation('Invalid tool request')
             action, spec = args['action'], args['spec']
+            if action == 'agent.reporting.update':
+                from .reporting import submit
+                return json.dumps(submit(store, profile, spec))
             if action == 'describe':
                 if spec:
                     raise InvalidOperation('No describe fields')
-                return json.dumps({'context': live_context(store, profile), 'requests': [r for r in store.requests() if r['actor'] == profile]})
+                from .reporting import receipts
+                return json.dumps({'context': live_context(store, profile), 'reporting_changes': receipts(store, profile), 'requests': [r for r in store.requests() if r['actor'] == profile]})
             allowed = {
                 'agent.enable': {'profile', 'initialize_chat'},
                 'agent.create': {'name', 'display_name', 'soul', 'role', 'model_source', 'model_fingerprint', 'skills', 'toolsets', 'manager', 'team', 'expected_revision'},
@@ -84,6 +85,8 @@ def register_runtime(ctx):
                 raise InvalidOperation('Unsupported proposal')
             request_id, state = store.request(profile, action, spec)
             return json.dumps({'request_id': request_id, 'state': state, 'requires_owner_approval': state == 'pending'})
+        except InvalidOperation as error:
+            return json.dumps({'error': str(error), 'code': error.code})
         except Exception:
             return json.dumps({'error': 'Workspace request unavailable; do not use shell or edit profiles as a fallback'})
         finally:
@@ -104,6 +107,16 @@ def register_runtime(ctx):
                 incoming, _ = maps(store.read(), members)
                 text += '\nFor this room only, its native frozen mention aliases map to public identities as follows: '+json.dumps(incoming)+'. Use the room aliases when addressing participants in this room; your public identity remains unchanged.'
             else:
+                from hermes_cli.profiles import get_profile_dir
+                output = Path(get_profile_dir(profile)) / 'cache' / 'generated'
+                text += ('\nTo share photos or files in this direct Pebble Crew chat, save the artifact in your '
+                         'host-visible generated output directory ' + str(output) +
+                         ' (create it with your file tools if needed), then include ordinary Markdown: '
+                         '![description](absolute-image-path) for PNG/JPEG/WebP or [filename](absolute-file-path). '
+                         'Standalone MEDIA:absolute-path is also supported. Other local paths are not exposed; '
+                         'copy the intended output into this directory first. In a remote terminal, use a verified '
+                         'mounted/synchronized cache; do not claim an unmounted sandbox path is downloadable. '
+                         'Never share credentials, configuration, private session stores or secrets.')
                 from .reactions import runtime_guidance
                 try:
                     guidance = runtime_guidance(platform)
@@ -111,6 +124,21 @@ def register_runtime(ctx):
                     guidance = ''
                 if guidance:
                     text += '\n'+guidance
+                from .documents import runtime_guidance as document_guidance
+                try:
+                    text += "\n"+document_guidance(platform)
+                except Exception:
+                    pass
+                from .live_voice import runtime_guidance as voice_guidance
+                try:
+                    text += '\n'+voice_guidance(platform)
+                except Exception:
+                    pass
+                from .work import runtime_guidance as work_guidance
+                try:
+                    text += '\n'+work_guidance(platform)
+                except Exception:
+                    pass
             return {'context': text}
         except Exception:
             return None
@@ -158,13 +186,20 @@ def register_runtime(ctx):
             if store:
                 store.db.close()
 
-    ctx.register_tool(name='workspace_agents', toolset='workspace', description='Describe your workspace or propose a team change for owner approval.',
-        schema={'name': 'workspace_agents', 'description': 'Read live workspace identity or submit an exact team-management proposal for owner review. Never approves or executes its own request.',
+    ctx.register_tool(name='workspace_agents', toolset='workspace', description='Read your workspace. The authorized Main Pebble can manage reporting and Instructions; other team changes require owner review.',
+        schema={'name': 'workspace_agents', 'description': 'Describe first for current identities, revisions and permissions. agent.reporting.update directly manages reporting and Instructions only for the authorized Main Pebble. Poll describe for an applied receipt; queued is not success. Other changes are proposals for owner review.',
             'parameters': {'type': 'object', 'additionalProperties': False, 'required': ['action', 'spec'], 'properties': {
-                'action': {'type': 'string', 'enum': ['describe', 'agent.enable', 'agent.create', 'agent.update', 'agent.attach', 'agent.hide', 'agent.delete']}, 'spec': {'type': 'object'}}}}, handler=tool)
+                'action': {'type': 'string', 'enum': ['describe', 'agent.reporting.update', 'agent.enable', 'agent.create', 'agent.update', 'agent.attach', 'agent.hide', 'agent.delete']}, 'spec': {'type': 'object'}}}}, handler=tool)
     ctx.register_hook('pre_llm_call', context)
     ctx.register_hook('transform_llm_output', room_output)
     ctx.register_middleware('tool_request', route)
-    ctx.register_skill('manage-team', Path(__file__).with_name('skills') / 'manage-team' / 'SKILL.md', description='Manage your owner’s workspace through reviewed native agent proposals.')
+    ctx.register_skill('manage-team', Path(__file__).with_name('skills') / 'manage-team' / 'SKILL.md', description='Manage reporting and Instructions with Main Pebble permission; propose other team changes for owner review.')
     from .reactions import register_runtime as register_reactions
     register_reactions(ctx)
+    from .live_voice import register_runtime as register_voice
+    register_voice(ctx)
+    from .work import register_runtime as register_work
+    register_work(ctx)
+
+    from .documents import register_runtime as register_documents
+    register_documents(ctx)

@@ -1,9 +1,10 @@
+import { Form } from '../components/ui/form';
 import { useEffect, useState } from 'react';
 import type { Dispatch, DragEvent, ReactNode, SetStateAction } from 'react';
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
 import { ChevronDown, MoreHorizontal, Pin, SlidersHorizontal, Users } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
+import { NavigationItem } from './NavigationItem';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
@@ -29,6 +30,7 @@ import {
   removeCrew,
   isSystemSection,
   sectionAccepts,
+  sectionChoiceLabel,
   removeSection,
   nudgeItem,
   nudgeSection,
@@ -81,7 +83,7 @@ function PlacementMenu({
                 value={section.id}
                 onSelect={() => onMove({ kind: 'section', id: section.id })}
               >
-                {section.name}
+                {sectionChoiceLabel(section)}
               </DropdownMenuRadioItem>
             ))}
           </DropdownMenuRadioGroup>
@@ -193,6 +195,7 @@ export function OrganizationRail({
       pebbles.map((p) => p.id),
     );
     if (!item) return;
+    if (item.kind === 'section' && target.kind === 'section' && target.id === 'pebbles') return;
     if (
       item.kind === 'pebble' &&
       pinnedIds.includes(item.id) &&
@@ -254,24 +257,18 @@ export function OrganizationRail({
         onDragEnd={() => setOver('')}
         {...targetEvents(target, id)}
       >
-        <button
-          className="pc-row-open"
+        <NavigationItem
+          media={
+            <span className="flex [&>.agent-avatar]:h-12 [&>.agent-avatar]:w-11">{face(id)}</span>
+          }
+          title={pebble.name}
+          label={pebble.title}
+          description={<span aria-hidden="true">{pebble.preview}</span>}
           onClick={() => onOpenPebble(id)}
           aria-label={
             openLabel?.(pebble) ?? `Open ${pebble.name} ${pebble.title} ${pebble.preview}`
           }
-        >
-          {face(id)}
-          <span className="pc-row-copy">
-            <span>
-              <strong>{pebble.name}</strong>{' '}
-              <Badge variant="secondary" aria-hidden="true">
-                {pebble.title}
-              </Badge>
-            </span>{' '}
-            <small aria-hidden="true">{pebble.preview}</small>
-          </span>
-        </button>
+        />
         {actions ? (
           actions(id)
         ) : (
@@ -298,22 +295,22 @@ export function OrganizationRail({
           onDragEnd={() => setOver('')}
           {...targetEvents({ kind: 'crew', id })}
         >
-          <button
+          <NavigationItem
             className="pc-crew"
+            title={crew.name}
+            description={`${crew.members.length} pebbles`}
             aria-label={`${crew.name} ${crew.members.length} pebbles. Open chat`}
             onClick={() => onOpenCrew(id)}
-          >
-            <span className="pc-crew-faces">
-              {crew.members.length ? (
-                crew.members.slice(0, 2).map((member) => <span key={member}>{face(member)}</span>)
-              ) : (
-                <Users />
-              )}
-            </span>
-            <span>
-              <strong>{crew.name}</strong> <small>{crew.members.length} pebbles</small>
-            </span>
-          </button>
+            media={
+              <span className="pc-crew-faces">
+                {crew.members.length ? (
+                  crew.members.slice(0, 2).map((member) => <span key={member}>{face(member)}</span>)
+                ) : (
+                  <Users />
+                )}
+              </span>
+            }
+          />
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button
@@ -388,14 +385,32 @@ export function OrganizationRail({
   return (
     <>
       {org.sections
+        .filter((section) => section.id === 'pebbles')
+        .map((section) => (
+          <motion.div
+            layout
+            transition={move}
+            key={section.id}
+            className="pc-unsectioned"
+            role="group"
+            aria-label="Unsectioned pebbles"
+            {...targetEvents({ kind: 'section', id: section.id })}
+          >
+            {section.items.map((item) =>
+              item.kind === 'pebble' ? row(item.id, { kind: 'section', id: section.id }) : null,
+            )}
+          </motion.div>
+        ))}
+      {org.sections
         .filter(
           (section) =>
-            !isSystemSection(section.id) ||
-            section.items.some((item) =>
-              item.kind === 'crew'
-                ? org.crews.some((c) => c.id === item.id)
-                : pebbles.some((p) => p.id === item.id && !p.pinned),
-            ),
+            section.id !== 'pebbles' &&
+            (!isSystemSection(section.id) ||
+              section.items.some((item) =>
+                item.kind === 'crew'
+                  ? org.crews.some((c) => c.id === item.id)
+                  : pebbles.some((p) => p.id === item.id && !p.pinned),
+              )),
         )
         .map((section) => (
           <motion.section
@@ -420,7 +435,8 @@ export function OrganizationRail({
                 }
               }}
             >
-              <button
+              <Button
+                variant="quiet"
                 className="pc-section-toggle"
                 aria-expanded={!section.collapsed}
                 onClick={() =>
@@ -434,7 +450,7 @@ export function OrganizationRail({
               >
                 <ChevronDown data-collapsed={section.collapsed} />
                 <span>{section.name}</span>
-              </button>
+              </Button>
               {!isSystemSection(section.id) && (
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
@@ -589,7 +605,7 @@ export function OrganizationDialog({
             Organize your sidebar. Agent profiles and chat history stay intact.
           </DialogDescription>
         </DialogHeader>
-        <form
+        <Form
           onSubmit={(event) => {
             event.preventDefault();
             save();
@@ -652,7 +668,7 @@ export function OrganizationDialog({
               {editor?.kind.startsWith('new') ? 'Create' : 'Save changes'}
             </Button>
           </div>
-        </form>
+        </Form>
         <Dialog open={discard} onOpenChange={setDiscard}>
           <DialogContent>
             <DialogTitle>Discard unsaved changes?</DialogTitle>

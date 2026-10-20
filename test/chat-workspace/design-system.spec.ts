@@ -44,10 +44,11 @@ test('shared design system: account settings, connections, requests, editor and 
   await expect(page.getByLabel('Actions for Arlo')).toBeFocused();
   await settings(page);
   await expect(page.getByRole('heading', { name: 'Settings', exact: true })).toBeVisible();
-  await expect(page.getByRole('tab', { name: 'Account', exact: true })).toHaveAttribute(
+  await expect(page.getByRole('tab', { name: 'General', exact: true })).toHaveAttribute(
     'aria-selected',
     'true',
   );
+  await page.getByRole('tab', { name: 'Account', exact: true }).click();
   await expect(page.getByRole('tab', { name: 'Teams', exact: true })).toHaveCount(0);
   await accessible(page);
   await page.screenshot({ animations: 'disabled', path: 'test-results/settings-account.png' });
@@ -63,7 +64,7 @@ test('shared design system: account settings, connections, requests, editor and 
   await accessible(page);
   await page.screenshot({ animations: 'disabled', path: 'test-results/edit-pebble-profile.png' });
   await page.getByRole('tab', { name: 'Role', exact: true }).click();
-  await page.getByLabel('Title', { exact: true }).fill('Executive coordinator');
+  await page.getByLabel('Instructions', { exact: true }).fill('Coordinate the team.');
   await page.getByRole('button', { name: 'Save role', exact: true }).click();
   await expect(page.getByText('Role saved.', { exact: true })).toBeVisible();
   await accessible(page);
@@ -83,7 +84,7 @@ test('editor preserves drafts across events and unrelated saves, resolves confli
   await page.getByRole('menuitem', { name: 'Edit pebble', exact: true }).click();
   await page.getByLabel('Handle', { exact: true }).fill('my-mica');
   await page.getByRole('tab', { name: 'Role', exact: true }).click();
-  await page.getByLabel('Title', { exact: true }).fill('My unsaved title');
+  await page.getByLabel('Instructions', { exact: true }).fill('My saved role instructions');
   await page.getByRole('button', { name: 'Save role', exact: true }).click();
   await expect(page.getByText('Role saved.', { exact: true })).toBeVisible();
   await page.getByRole('tab', { name: 'Profile', exact: true }).click();
@@ -182,7 +183,10 @@ test('attachments are conversation bound, can be removed, send without text, and
   await page.getByRole('tab', { name: 'Files', exact: true }).click();
   await expect(page.locator('.file-list')).toContainText('notes.txt');
   const download = page.waitForEvent('download');
-  await page.getByRole('button', { name: 'Download notes.txt', exact: true }).click();
+  await page
+    .getByRole('tabpanel', { name: 'Files', exact: true })
+    .getByRole('button', { name: 'Download notes.txt', exact: true })
+    .click();
   expect((await download).suggestedFilename()).toBe('notes.txt');
   await accessible(page);
   await picker.setInputFiles({
@@ -223,7 +227,7 @@ test('tool calls are grouped, empty reasoning rows are omitted, final sidecars a
   await ready(page);
   const log = page.getByRole('log');
   await expect(log.locator('.activity-group')).toHaveCount(1);
-  await expect(log.locator('.message')).toHaveCount(1);
+  await expect(log.locator('[data-slot="message"]')).toHaveCount(1);
   await expect(log).toContainText('The final answer.');
   await expect(log).not.toContainText('PRIVATE_REASONING');
   await log.getByText('2 tool calls', { exact: true }).click();
@@ -468,20 +472,23 @@ test('chat proportions, restrained header hover, new avatar choices and minimal 
   const base = await header.evaluate((n) => getComputedStyle(n).backgroundColor);
   await header.hover();
   await expect(header).toHaveCSS('background-color', base);
-  const user = page.locator('.pc-message.user').first();
-  expect(await user.evaluate((n) => getComputedStyle(n).maxWidth)).toBe('50%');
-  await expect(page.locator('.pc-message.assistant .pc-bubble').first()).toHaveCSS(
-    'background-color',
-    'rgb(32, 32, 34)',
-  );
+  const user = page.locator('[data-message-role="user"] [data-slot="bubble"]').first();
+  expect(await user.evaluate((n) => getComputedStyle(n).maxWidth)).toBe('80%');
+  await expect(
+    page.locator('[data-message-role="assistant"] [data-slot="message-response"]').first(),
+  ).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
   await emit(page, 'message.start');
   const activity = page.locator('.pc-activity');
   await expect(activity).toHaveText('Thinking');
-  expect(await activity.evaluate((n) => getComputedStyle(n).animationName)).toContain('shimmer');
+  expect(
+    await activity
+      .locator('[data-slot=trace-title]')
+      .evaluate((n) => getComputedStyle(n).animationName),
+  ).toContain('shimmer');
   await emit(page, 'tool.start', { name: 'terminal' });
   await expect(activity).toHaveText('Running a command');
   await page.emulateMedia({ reducedMotion: 'reduce' });
-  await expect(activity).toHaveCSS('animation-name', 'none');
+  await expect(activity.locator('[data-slot=trace-title]')).toHaveCSS('animation-name', 'none');
   await emit(page, 'message.complete', { status: 'done' });
   await page.getByLabel('Actions for Mica').click();
   await page.getByRole('menuitem', { name: 'Edit pebble' }).click();

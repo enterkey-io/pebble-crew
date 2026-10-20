@@ -163,7 +163,7 @@ class NativeFailureTests(unittest.IsolatedAsyncioTestCase):
                 "bot_web.native.check_native_adapter", return_value={"server_requests":False}), patch(
                 "bot_web.native.asyncio.create_subprocess_exec", launch), patch.object(
                 gateway, "_read", AsyncMock()), patch.object(
-                gateway, "call", AsyncMock(side_effect=[{}, {"driver": True}])):
+                gateway, "call", AsyncMock(side_effect=[{}, {"driver": True}, {"supported": True}])):
             await gateway.start()
             await gateway.reader
         env = launch.call_args.kwargs["env"]

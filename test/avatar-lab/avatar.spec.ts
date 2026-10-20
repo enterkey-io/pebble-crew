@@ -26,12 +26,12 @@ test('appearance and activity controls work without contacting Hermes or externa
     '#8dcec6',
   );
   await page.getByRole('button', { name: 'Working', exact: true }).click();
-  await page.getByRole('button', { name: 'White', exact: true }).click();
+  await page.getByRole('button', { name: 'Snow', exact: true }).click();
   await expect(page.locator('#hero svg [data-avatar-part="body"] > path')).toHaveAttribute(
     'fill',
     '#f4f3ef',
   );
-  await expect(page.locator('#color-name')).toHaveText('White');
+  await expect(page.locator('#color-name')).toHaveText('Snow');
   const before = await page.locator(pose).getAttribute('transform');
   await expect.poll(() => page.locator(pose).getAttribute('transform')).not.toBe(before);
   await page.getByRole('button', { name: 'Pause motion' }).click();

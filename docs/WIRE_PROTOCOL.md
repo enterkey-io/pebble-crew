@@ -178,3 +178,50 @@ browser presentation rule.
 
 Event framing remains one JSON object per LF-terminated line. This release does
 not change the stream framing or heartbeat interval.
+
+## Live voice and private prompts (0.7.8-preview.4)
+
+The existing RPC route adds `voice.status`, `voice.preferences`,
+`voice.credential`, `voice.session` and `voice.submit`, plus `secrets.pending` and
+`secrets.respond`. All require a session opened by the same authenticated
+connection. Native profile identity is rechecked; clients never choose profile
+paths or provider URLs. `live_voice` and `secrets` capabilities are advertised
+separately. The older pinned Hermes build has no native live mode.
+
+`voice.credential` accepts only a voice key for the opened Pebble. It uses native
+credential storage, returns a nonsecret save receipt, and does not validate paid
+provider access. `voice.session` accepts an SDP offer and a boolean `preview`. It
+returns only the negotiated session/SDP answer. Audio travels over the native
+WebRTC protocol directly to the provider, outside RPC and the events stream.
+
+`voice.submit` carries bounded text/context to normal native `prompt.submit`
+with `surface=voice-live` and `queued=true`; it never sets `voice_turn` or invokes
+whole-session interruption. A saved `user_row_id` must match a completion before
+a final result is read aloud. Unattributed queued results stay in chat.
+
+`secret.changed` announces that native private prompts changed; its event has no
+secret value. `secrets.pending` returns only request ID, prompt and field label
+for the authorized session. `secrets.respond` answers an existing native request
+once, with the value confined to the response path. The native callback owns
+the save verdict; `submitted=true` alone is not proof of storage or provider
+validation. Requests expire and are removed on native cancellation/disconnection.
+`voice.setup` asks the current chat to open its private voice setup controls.
+Neither event is persisted as a chat message.
+
+## Live document presentation
+
+`document.open` is an additive live event in v0.7.8-preview.16. It is delivered
+only to browsers that opened the emitting native direct Bot Chat. Its payload
+contains `request_id` (UUID), `expires_at` (epoch milliseconds), `name`, `format`
+(`markdown` or `text`) and UTF-8 `text` (at most 256 KiB). It contains no server
+path or credential. Clients ignore expired, repeated and other-conversation
+requests. Historical message replay does not open documents. An ordinary saved
+Markdown file link remains the way to reopen a closed document.
+
+The enabled `pebble_open_document` native tool explicitly shares an output file
+from the caller’s generated output directory. Dispatch identity, live UI session,
+canonical Bot Chat lineage and profile home must agree. Private paths, remote
+URLs, symlinks, hard links, binary data and oversized documents are refused.
+Viewer rendering uses the shared Markdown components with raw HTML disabled and
+remote images represented as links. It neither executes content nor fetches
+remote images. This is a read-only preview; the file remains on Hermes.

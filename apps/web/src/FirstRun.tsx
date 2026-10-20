@@ -1,3 +1,6 @@
+import { Label } from './components/ui/label';
+import { Form } from './components/ui/form';
+import { Disclosure } from './components/ui/disclosure';
 import { Input } from './components/ui/input';
 import { Button } from './components/ui/button';
 import { useEffect, useRef, useState } from 'react';
@@ -146,14 +149,16 @@ export function FirstRun({
                 Use the Hermes connection address your agent gave you. This web app stays here; your
                 browser talks directly to Hermes. You do not need to paste an API key.
               </p>
-              <form
+              <Form
                 onSubmit={(event) => {
                   event.preventDefault();
                   void pair();
                 }}
               >
                 <>
-                  <label htmlFor="workspace-url">Hermes connection address</label>
+                  <Label layout="stacked" htmlFor="workspace-url">
+                    Hermes connection address
+                  </Label>
                   <Input
                     id="workspace-url"
                     type="url"
@@ -169,7 +174,7 @@ export function FirstRun({
                 <Button variant="default" className="primary" disabled={busy}>
                   {busy ? 'Contacting your Hermes…' : 'Request browser access'}
                 </Button>
-              </form>
+              </Form>
             </>
           )}
           {code && (
@@ -191,14 +196,13 @@ export function FirstRun({
               <p className="pair-wait" role="status">
                 Waiting for your Hermes agent to approve…
               </p>
-              <details>
-                <summary>What will my agent do?</summary>
+              <Disclosure title="What will my agent do?">
                 <p>On your Hermes host, it runs:</p>
                 <code>
                   hermes bot-web approve {code} --app-origin {location.origin}
                 </code>
                 <p>Only approve a code that you see in your own browser.</p>
-              </details>
+              </Disclosure>
               <Button variant="secondary" onClick={cancel}>
                 Cancel request
               </Button>

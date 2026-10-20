@@ -36,6 +36,10 @@ test('phone connections have focused, scrollable service and credential flows', 
   await expect(page.getByRole('checkbox')).toHaveCount(16);
   await expect(page.getByRole('checkbox', { name: 'search_documents', exact: true })).toBeChecked();
   await page.getByRole('checkbox', { name: 'document_action_15', exact: true }).check();
+  await expect(page.getByRole('button', { name: 'Save changes', exact: true })).toBeInViewport();
+  await page
+    .getByRole('checkbox', { name: 'document_action_8', exact: true })
+    .scrollIntoViewIfNeeded();
   await expect(page.getByRole('heading', { name: 'Archive', exact: true })).toBeInViewport();
   await expect(page.getByRole('button', { name: 'Save changes', exact: true })).toBeInViewport();
   await page.screenshot({

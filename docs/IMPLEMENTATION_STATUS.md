@@ -1,5 +1,75 @@
 # Installed-owner implementation status
 
+**0.7.8-preview.15 candidate:** voice uses one persistent owner-wide reference to
+Hermes's saved credential, with a separate voice choice for each pebble. Existing
+explicit approvals are reused. Completed key-replacement requests do not replay
+when switching editor tabs. Keys remain in native Hermes storage.
+
+Role editing uses one optional Instructions field for the job, steps and limits.
+Existing role text carries over. Title and Description stay in Profile, and
+Hermes personality and memory files remain intact. Chat photos open in a
+borderless viewer with wheel, keyboard, pinch and drag controls.
+
+Source, desktop, phone and isolated native checks passed. The release gate tests
+the final archive before publication. Publishing does not upgrade an owner's
+Hermes installation.
+
+**0.7.8-preview.14 candidate:** voice selection groups
+native choices under Female, Male and Other (unclassified/custom voices). The
+unreliable speed control is removed from preview and live settings. Explicit
+settings saves remove the app's old delivery hint while preserving owner
+instructions; session creation ignores that hint without rewriting configuration.
+Source, desktop/phone and isolated native checks passed locally. Release-package
+verification and publication are separate from upgrading the owner's installation.
+
+**0.7.8-preview.5 candidate:** the shared shadcn React foundation now covers the
+complete general catalog and all 21 AI patterns. Settings, Add/Edit, connections,
+navigation, transcript, composer, Markdown, approvals, private prompts and voice
+use that graph. Native profile reducers, receipt identities and the existing
+scroll controller remain the state owners. Optional native features without
+verified contracts stay inactive. See [execution decisions and verification](SHADCN_EXECUTION.md).
+
+**17 October 0.7.8-preview.4 candidate:** owner bubbles follow the selected
+Pebble's palette; Snow retains neutral gray and existing `white` identities.
+Native hierarchy context and introductions identify the same Main Pebble by
+handle and full reporting path. The voice integration reuses Hermes's pinned
+GPT-Live session builder, credentials, WebRTC protocol and native prompt surface.
+It adds private inline setup, saved voice/requested speed, output-only preview, call controls
+and receipt-matched final results. Native 0.21.0 keeps text chat and reports voice
+unsupported; Grok live is not offered under the native-support requirement.
+
+Keys stay in the owner's native credential storage and out of the transcript.
+Live audio and bounded recent chat context go to the explicitly selected OpenAI
+provider. Install/update checks never use provider calls or owner models. Local
+acceptance uses disposable native homes, a deterministic model and a local WebRTC
+peer. Physical-phone/provider access and owner-host deployment are separate checks.
+
+**17 October 0.7.8-preview.3:** unsectioned pebbles are a flat list below pins,
+without a default heading or collapse control. Custom sections are optional;
+None returns a pebble to the plain list. Owner account photos can be uploaded,
+changed or removed through the account menu and Account settings. The photo-only
+control uses an account icon when empty and saves a bounded PNG in the owner's
+existing Node/SQLite or Worker/D1 login store, separate from Hermes profiles.
+No new owner setup or database migration is required.
+
+**17 October 0.7.8-preview.2:** pinned tiles center the avatar in their upper third,
+with the name and a two-line role label below. The corner action menu no longer
+pushes the avatar downward. Incremental fixes use preview suffixes within 0.7.8.
+The same update adds authenticated native agent images/file downloads in direct
+Bot Chats, Markdown/code/table formatting and selected-conversation restoration
+on reload. [Media limits](AGENT_MEDIA.md) and
+[voice feasibility](VOICE_FEASIBILITY.md) describe the supported boundary and
+proposed next work. Voice capture and Crew/room generated attachments remain open.
+
+**17 October 0.7.8 candidate:** initial opening uses one quiet progress view until
+the native conversation is restored. Reconnection keeps the existing app mounted.
+Actual activity labels settle in their reserved lane, send/stop glyphs crossfade
+inside one action target, and the existing Radix tooltips share cold/warm timing.
+Long owner messages use more of the phone width. See the
+[implementation plan](INTERACTION_POLISH_PLAN.md) and
+[React Bits assessment](REACT_BITS_REVIEW.md); no React Bits source or dependency
+is included. Crew semantics and agent-exchange overlays remain separate work.
+
 **16 October 0.7.0 update:** the actual app now uses the independently reviewed
 shadcn/Radix foundation across chat, Settings, Add/Edit pebble, account, requests
 and connections. The update includes integrated details motion, persistent custom

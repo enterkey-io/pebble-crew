@@ -1,11 +1,36 @@
+import { toolGroupIcon } from '../components/ai-elements/activity-icons';
+import { Activity as ActivityIcon } from 'lucide-react';
+import { documentFormat } from '@hermes-client/protocol';
+import { useDocumentActions } from '../documents/DocumentReader';
+import { IconButton } from '../components/ui/icon-button';
+import { Eye } from 'lucide-react';
+import {
+  Attachment,
+  AttachmentMedia,
+  AttachmentContent,
+  AttachmentTitle,
+  AttachmentDescription,
+  AttachmentTrigger,
+} from '../components/ui/attachment';
+import { FileText } from 'lucide-react';
+import { fileSize } from './FilesPanel';
+import { Message } from '../components/ai-elements/message';
+import { ChainOfThought } from '../components/ai-elements/chain-of-thought';
+import { Tool } from '../components/ai-elements/tool';
+import { useLayoutEffect, useState } from 'react';
 import type { ReactNode } from 'react';
+import type { BotBridgeClient } from '@hermes-client/protocol';
 import { motion, useReducedMotion } from 'motion/react';
 import { MessageBody, CopyMessage } from '../MessageBody';
-import { messageDate, projectTimeline } from '../conversation';
+import { messageDate } from '../conversation';
+import { projectTimeline } from './presentation';
 import type { ChatMessage } from '../conversation';
 import { MessageReactions, ReactionPicker } from './MessageReactions';
 import type { ReactionAction } from './MessageReactions';
+import { ActivityLine } from './ActivityLine';
+import { ownerBubbleStyle } from './bubble-color';
 export function Transcript({
+  conversationKey,
   messages,
   title,
   crew,
@@ -17,7 +42,12 @@ export function Transcript({
   authorName,
   onDownloadFile,
   onReact,
+  client,
+  sessionId,
+  ownerColor,
+  footer,
 }: {
+  conversationKey: string;
   messages: ChatMessage[];
   title: string;
   crew: boolean;
@@ -29,36 +59,68 @@ export function Transcript({
   authorName: (name: string) => string;
   onDownloadFile: (file: { id: string; name: string }) => void;
   onReact?: ReactionAction | undefined;
+  client?: BotBridgeClient | undefined;
+  sessionId?: string | undefined;
+  ownerColor?: string | undefined;
+  footer?: ReactNode;
 }) {
   const reduced = useReducedMotion();
-  const displayed = stream
+  const openDocument = useDocumentActions();
+  const displayed: ChatMessage[] = stream
     ? [...messages, { ...reply, id: reply.renderKey, role: 'assistant', text: stream }]
     : messages;
+  const timeline = projectTimeline(displayed);
+  const keys = timeline.map((item, i) =>
+    item.kind === 'activity'
+      ? item.id
+      : (item.message.renderKey ?? item.message.id ?? `pending-${i}`),
+  );
+  const signature = JSON.stringify(keys);
+  const [seen, setSeen] = useState(() => ({ conversationKey, keys: new Set(keys) }));
+  useLayoutEffect(() => {
+    setSeen({ conversationKey, keys: new Set<string>(JSON.parse(signature)) });
+  }, [conversationKey, signature]);
   let previous = '';
   return (
     <div className="pc-messages">
       {children}
-      {projectTimeline(displayed).map((item, i) => {
+      {timeline.map((item, i) => {
         if (item.kind === 'activity')
           return (
-            <details className="activity-group" key={item.id}>
-              <summary>
-                {item.messages.some((m) => m.role === 'tool')
-                  ? `${item.messages.length} tool ${item.messages.length === 1 ? 'call' : 'calls'}`
-                  : 'Activity'}
-              </summary>
-              <ol>
-                {item.messages.map((m, index) => (
-                  <li key={m.id ?? index}>
-                    <strong>{m.toolName ?? 'Update'}</strong>
-                    {m.context && <p>{m.context}</p>}
-                    {m.text.trim() && <MessageBody text={m.text} />}
-                  </li>
-                ))}
-              </ol>
-            </details>
+            <div className="activity-group" key={item.id}>
+              <ChainOfThought
+                icon={
+                  item.messages.some((m) => m.role === 'tool')
+                    ? toolGroupIcon(item.messages.map((m) => m.toolName ?? ''))
+                    : ActivityIcon
+                }
+                state="unknown"
+                title={
+                  item.messages.some((m) => m.role === 'tool')
+                    ? `${item.messages.length} tool ${item.messages.length === 1 ? 'call' : 'calls'}`
+                    : 'Activity'
+                }
+              >
+                <div className="grid gap-3">
+                  {item.messages.map((m, index) => (
+                    <Tool
+                      key={m.id ?? index}
+                      id={m.id ?? String(index)}
+                      icon={m.role === 'tool' ? undefined : ActivityIcon}
+                      name={m.toolName ?? 'Update'}
+                      state="unknown"
+                      defaultOpen
+                      input={m.context}
+                      output={m.text.trim() ? m.text : undefined}
+                    />
+                  ))}
+                </div>
+              </ChainOfThought>
+            </div>
           );
         const m = item.message;
+        const key = m.renderKey ?? m.id ?? `pending-${i}`;
+        const entering = seen.conversationKey === conversationKey && !seen.keys.has(key);
         const live = m.id === reply.renderKey;
         const react = !crew && m.id && /^[1-9]\d*$/.test(m.id) ? onReact : undefined;
         const date = messageDate(m.timestamp);
@@ -72,71 +134,112 @@ export function Transcript({
         previous = group;
         return (
           <motion.div
-            className={`pc-message message-group ${m.role}${live ? ' streaming' : ''}`}
-            initial={m.id?.startsWith('pending-') && !reduced ? { opacity: 0, y: 6 } : false}
+            className="message-group"
+            initial={entering && !reduced ? { opacity: 0, y: 10 } : false}
             animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.16 }}
+            transition={{ duration: 0.22, ease: [0.22, 1, 0.36, 1] }}
             data-message-id={m.id ?? `pending-${i}`}
-            key={m.renderKey ?? m.id ?? `pending-${i}`}
+            data-message-role={m.role}
+            data-message-phase={live ? 'live' : 'committed'}
+            key={key}
           >
-            {label && <p className="pc-date date-divider">{group}</p>}
-            <div className="pc-bubble-wrap">
-              <article className={`pc-bubble message ${m.role}`}>
-                {crew && m.role === 'assistant' && (
-                  <strong className="message-author">
-                    {m.author ? authorName(m.author) : live ? title : 'Crew member'}
-                  </strong>
-                )}
-                {m.role === 'tool' && <small className="message-author">Tool</small>}
-                {m.text.trim() &&
-                  (m.role === 'user' ? <p>{m.text}</p> : <MessageBody text={m.text} />)}
-                {m.files?.map((file) => (
-                  <button
-                    className="message-file"
-                    key={file.id}
-                    onClick={() => onDownloadFile(file)}
-                  >
-                    {file.name} ↓
-                  </button>
-                ))}
-                <div className="pc-message-meta message-meta">
-                  {date && (
-                    <time dateTime={date.toISOString()}>
-                      {date.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' })}
-                    </time>
-                  )}
-                </div>
-              </article>
-              <MessageReactions
-                id={m.id ?? ''}
-                reactions={m.reactions ?? []}
-                agentName={title}
-                onReact={react}
-              />
-            </div>
-            {(m.text.trim() || m.files?.length) && (
-              <div className="pc-message-actions">
-                {!crew && onReact && m.id && (
-                  <ReactionPicker
-                    id={m.id}
+            {label && <p className="mb-4 text-center text-xs text-muted-foreground">{group}</p>}
+            <Message
+              id={m.id ?? `pending-${i}`}
+              role={m.role === 'user' ? 'user' : crew ? 'member' : 'agent'}
+              state={live ? 'live' : 'committed'}
+              author={
+                crew && m.role === 'assistant'
+                  ? m.author
+                    ? authorName(m.author)
+                    : live
+                      ? title
+                      : 'Crew member'
+                  : undefined
+              }
+              style={m.role === 'user' ? ownerBubbleStyle(ownerColor) : undefined}
+              metadata={
+                date && (
+                  <time dateTime={date.toISOString()}>
+                    {date.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' })}
+                  </time>
+                )
+              }
+              reactions={
+                m.reactions?.length ? (
+                  <MessageReactions
+                    id={m.id ?? ''}
                     reactions={m.reactions ?? []}
-                    onReact={onReact}
-                    disabled={!react}
+                    agentName={title}
+                    onReact={react}
                   />
-                )}
-                {m.text.trim() && <CopyMessage text={m.text} />}
-              </div>
-            )}
+                ) : undefined
+              }
+              actions={
+                (m.text.trim() || m.files?.length) && (
+                  <>
+                    {!crew && onReact && m.id && (
+                      <ReactionPicker
+                        id={m.id}
+                        reactions={m.reactions ?? []}
+                        onReact={onReact}
+                        disabled={!react}
+                      />
+                    )}
+                    {m.text.trim() && <CopyMessage text={m.text} />}
+                  </>
+                )
+              }
+            >
+              {m.text.trim() &&
+                (m.role === 'user' ? (
+                  <p className="whitespace-pre-wrap">{m.text}</p>
+                ) : (
+                  <MessageBody
+                    text={m.text}
+                    client={client}
+                    sessionId={sessionId}
+                    rowId={m.id}
+                    conversationKey={conversationKey}
+                  />
+                ))}
+              {m.files?.map((file) => (
+                <Attachment key={file.id} className="message-file my-1" size="sm" state="done">
+                  <AttachmentMedia>
+                    <FileText />
+                  </AttachmentMedia>
+                  <AttachmentContent>
+                    <AttachmentTitle>{file.name}</AttachmentTitle>
+                    <AttachmentDescription>{fileSize(file.size)}</AttachmentDescription>
+                  </AttachmentContent>
+                  {documentFormat(file.name) && openDocument && client && sessionId && (
+                    <IconButton
+                      label={`View ${file.name}`}
+                      icon={Eye}
+                      onClick={() =>
+                        openDocument({
+                          name: file.name,
+                          load: () => client.downloadFile(sessionId, file.id),
+                        })
+                      }
+                    />
+                  )}
+                  <AttachmentTrigger
+                    aria-label={`Download ${file.name}`}
+                    onClick={() => onDownloadFile(file)}
+                  />
+                </Attachment>
+              ))}
+            </Message>
           </motion.div>
         );
       })}
-      <div className="pc-activity-lane">
-        {running && (
-          <p className="pc-activity" role="status">
-            {activity === 'Stop requested' ? 'Stopping' : activity}
-          </p>
-        )}
-      </div>
+      {footer}
+      <ActivityLine
+        key={conversationKey}
+        active={!!conversationKey && running && !!activity}
+        label={activity === 'Stop requested' ? 'Stopping' : activity}
+      />
     </div>
   );
 }

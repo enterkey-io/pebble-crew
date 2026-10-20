@@ -1,18 +1,43 @@
+import { VoiceSettingsEditor } from './voice/VoiceSettingsEditor';
+import type { VoiceSettingsRequest } from './voice/decode';
+import { Label } from './components/ui/label';
+import { Checkbox } from './components/ui/checkbox';
+import { Form } from './components/ui/form';
+import { Disclosure } from './components/ui/disclosure';
+import { TabbedEditor } from './ui/EditorSurface';
 import { LoadingBar } from './components/ui/loading-bar';
 import { Button } from './components/ui/button';
-import { useEffect, useRef, useState } from 'react';
-import type { BotBridgeClient } from '@hermes-client/protocol';
-import type { WorkspaceState, WorkspaceBot, Appearance, Role } from './workspace';
+import { useEffect, useReducer, useRef, useState } from 'react';
+import type {
+  WorkspaceAgentCapabilities,
+  BotBridgeClient,
+  WriteOutcome,
+} from '@hermes-client/protocol';
+import { WorkspaceDomain } from '@hermes-client/protocol';
+import {
+  profileValues,
+  profileSession,
+  profileReducer,
+  profileDirty,
+  profileSection,
+} from './profiles/edit-session';
+import { ProfileConflicts } from './profiles/ProfileConflicts';
+import { profileWriteError } from './profiles/save-outcome';
+import { emptyTools, toolReducer, toolsDirty } from './profiles/tool-session';
+import type {
+  WorkspaceSnapshot as WorkspaceState,
+  WorkspaceBot,
+  Role,
+} from '@hermes-client/protocol';
 import {
   PebbleProfileFields,
   RoleBasics,
   RoleDetails,
   ReportingField,
 } from './ui/pebble-profile-fields';
-import { PageHeader, FormSection, Notice, Tabs } from './ui/primitives';
+import { PageHeader, FormSection, Notice } from './ui/primitives';
 import { Drawer } from './chat/Drawer';
 import { safeError } from '@hermes-client/core';
-type Row = Record<string, unknown>;
 export function PebbleEditor({
   client,
   bot,
@@ -20,7 +45,12 @@ export function PebbleEditor({
   onChange,
   onClose,
   onDirtyChange,
+  closeOnSave = false,
   retired = false,
+  initialTab = 'identity',
+  callActive = false,
+  voiceRequest,
+  onVoiceReady,
 }: {
   client: BotBridgeClient;
   bot: WorkspaceBot;
@@ -28,69 +58,61 @@ export function PebbleEditor({
   onChange: (state: WorkspaceState) => void;
   onClose: () => void;
   onDirtyChange: (dirty: boolean) => void;
+  closeOnSave?: boolean;
   retired?: boolean;
+  initialTab?: 'identity' | 'voice';
+  callActive?: boolean;
+  voiceRequest?: VoiceSettingsRequest | undefined;
+  onVoiceReady?: (() => void) | undefined;
 }) {
-  const [tab, setTab] = useState('identity');
-  const [name, setName] = useState(bot.name);
-  const [handle, setHandle] = useState(bot.handle),
-    [look, setLook] = useState<Appearance>(bot.appearance);
-  const [role, setRole] = useState<Role>(bot.role),
-    [manager, setManager] = useState(bot.manager ?? ''),
-    [team, setTeam] = useState(bot.team ?? '');
-  const [photo, setPhoto] = useState(''),
-    [photoBusy, setPhotoBusy] = useState(false);
+  const [tab, setTab] = useState<string>(initialTab);
+  const [resolvedVoiceRequest, setResolvedVoiceRequest] = useState<VoiceSettingsRequest>();
+  useEffect(() => {
+    setTab(voiceRequest ? 'voice' : initialTab);
+  }, [voiceRequest, initialTab]);
+  const [edit, dispatch] = useReducer(profileReducer, undefined, () =>
+    profileSession(profileValues(bot), bot.id, state.revision),
+  );
+  const { name, handle, appearance: look, role, manager, team, photo } = edit.draft;
+  const setRole = (change: (role: Role) => Role) =>
+    dispatch({ type: 'change', patch: { role: change(role) } });
+  const setManager = (manager: string) => dispatch({ type: 'change', patch: { manager } });
+  const [photoBusy, setPhotoBusy] = useState(false);
+  const [uncertain, setUncertain] = useState(false);
   const [pending, setBusy] = useState(''),
     [error, setError] = useState(''),
     [notice, setNotice] = useState(''),
     [discard, setDiscard] = useState(false);
-  const [capabilities, setCapabilities] = useState<{ skills: Row[]; toolsets: Row[] }>();
-  const [skills, setSkills] = useState<string[]>([]),
-    [toolsets, setToolsets] = useState<string[]>([]);
-  const busy = retired ? 'retired' : pending;
+  const [capabilities, setCapabilities] = useState<WorkspaceAgentCapabilities>();
+  const [toolEdit, dispatchTools] = useReducer(toolReducer, emptyTools);
+  const { skills, toolsets } = toolEdit.draft;
+  const setSkills = (skills: string[]) => dispatchTools({ type: 'change', patch: { skills } });
+  const setToolsets = (toolsets: string[]) =>
+    dispatchTools({ type: 'change', patch: { toolsets } });
+  const busy = retired || edit.retired ? 'retired' : pending;
   const [toolsLoading, setToolsLoading] = useState(true);
-  const originalTools = useRef('');
-  const [conflicts, setConflicts] = useState<Record<string, boolean>>({});
-  const baseline = useRef(bot);
+  const conflicts = Object.fromEntries(
+    edit.conflicts.map((field) => [profileSection(field), true]),
+  );
   useEffect(() => {
-    const old = baseline.current;
-    const changed: Record<string, boolean> = {};
-    if (old.name !== bot.name && name !== old.name && name !== bot.name) changed.profile = true;
-    if (old.handle !== bot.handle && handle !== old.handle && handle !== bot.handle)
-      changed.handle = true;
-    if (
-      JSON.stringify(old.appearance) !== JSON.stringify(bot.appearance) &&
-      JSON.stringify(look) !== JSON.stringify(old.appearance) &&
-      JSON.stringify(look) !== JSON.stringify(bot.appearance)
-    )
-      changed.appearance = true;
-    const before = JSON.stringify([old.role, old.manager ?? '', old.team ?? '']),
-      current = JSON.stringify([role, manager, team]),
-      incoming = JSON.stringify([bot.role, bot.manager ?? '', bot.team ?? '']);
-    if (before !== incoming && current !== before && current !== incoming) changed.role = true;
-    if (Object.keys(changed).length) setConflicts((value) => ({ ...value, ...changed }));
-    setName((v) => (v === old.name ? bot.name : v));
-    setHandle((v) => (v === old.handle ? bot.handle : v));
-    setLook((v) => (JSON.stringify(v) === JSON.stringify(old.appearance) ? bot.appearance : v));
-    setRole((v) => (JSON.stringify(v) === JSON.stringify(old.role) ? bot.role : v));
-    setManager((v) => (v === (old.manager ?? '') ? (bot.manager ?? '') : v));
-    setTeam((v) => (v === (old.team ?? '') ? (bot.team ?? '') : v));
-    baseline.current = bot;
-  }, [bot]);
+    dispatch({
+      type: 'receive',
+      values: profileValues(bot),
+      identity: bot.id,
+      revision: state.revision,
+    });
+  }, [bot, state.revision]);
   useEffect(() => {
     let live = true;
     setToolsLoading(true);
-    void client
-      .invoke('agent.capabilities', { profile: bot.profile })
-      .then((v) => {
+    void new WorkspaceDomain(client)
+      .describeAgentCapabilities(bot.profile)
+      .then((value) => {
         if (!live) return;
-        const value = v as { skills: Row[]; toolsets: Row[] };
-        if (!Array.isArray(value.skills) || !Array.isArray(value.toolsets)) throw new Error();
         setCapabilities(value);
         const s = value.skills.filter((x) => x.enabled).map((x) => String(x.name)),
           t = value.toolsets.filter((x) => x.enabled).map((x) => String(x.name));
-        setSkills(s);
-        setToolsets(t);
-        originalTools.current = JSON.stringify([s, t]);
+        dispatchTools({ type: 'receive', value: { skills: s, toolsets: t } });
       })
       .catch(() => {
         if (live) setCapabilities(undefined);
@@ -102,46 +124,84 @@ export function PebbleEditor({
       live = false;
     };
   }, [client, bot.profile]);
-  const dirty =
-    name !== bot.name ||
-    handle !== bot.handle ||
-    JSON.stringify(look) !== JSON.stringify(bot.appearance) ||
-    !!photo ||
-    JSON.stringify(role) !== JSON.stringify(bot.role) ||
-    manager !== (bot.manager ?? '') ||
-    team !== (bot.team ?? '') ||
-    (!!capabilities && JSON.stringify([skills, toolsets]) !== originalTools.current);
+  const dirty = profileDirty(edit) || toolsDirty(toolEdit);
+  const saved = useRef(false);
   useEffect(() => {
     onDirtyChange(dirty);
     return () => onDirtyChange(false);
   }, [dirty, onDirtyChange]);
-  async function save(operation: string, params: Row, section: string) {
-    if (busy || conflicts[section]) return;
+  useEffect(() => {
+    if (busy || !saved.current) return;
+    saved.current = false;
+    if (closeOnSave && !dirty) {
+      onDirtyChange(false);
+      onClose();
+    }
+  }, [busy, closeOnSave, dirty, onClose, onDirtyChange]);
+  async function save(section: 'profile' | 'role' | 'tools' | 'lead') {
+    if (
+      busy ||
+      uncertain ||
+      (section === 'profile' ? edit.conflicts.length : conflicts[section]) ||
+      (section === 'tools' && toolEdit.conflict)
+    )
+      return;
     setBusy(section);
     setError('');
     setNotice('');
+    const submitted = edit.draft,
+      submittedTools = toolEdit.draft;
+    const domain = new WorkspaceDomain(client);
+    let confirmed = false;
     try {
-      const result = (await client.invoke(operation, {
-        profile: bot.profile,
-        ...params,
-        expected_revision: state.revision,
-      })) as Row;
-      const next = (await client.invoke('workspace.describe', {})) as WorkspaceState;
-      onChange(next);
-      if (['uncertain', 'partial', 'denied', 'failed'].includes(String(result.state))) {
-        setError(
-          'The change was not fully confirmed. Review the current state before trying again.',
-        );
+      let outcome: WriteOutcome<unknown>;
+      if (section === 'profile')
+        outcome = await domain.updateProfile({
+          target: { id: bot.id, profile: bot.profile },
+          expectedRevision: state.revision,
+          name,
+          handle,
+          appearance: look,
+          role,
+          manager: bot.profile === state.orchestrator ? null : manager || null,
+          photo: photo ? { kind: 'replace', data: photo } : { kind: 'preserve' },
+        });
+      else if (section === 'role')
+        outcome = await domain.updateRoleAssignment({
+          profile: bot.profile,
+          expectedRevision: state.revision,
+          role,
+          manager: bot.profile === state.orchestrator ? null : manager || null,
+          team: team || null,
+        });
+      else if (section === 'tools')
+        outcome = await domain.attachTools({
+          profile: bot.profile,
+          expectedRevision: state.revision,
+          ...submittedTools,
+        });
+      else outcome = await domain.selectMainPebble(bot.profile, state.revision);
+      if (outcome.kind !== 'confirmed') {
+        setUncertain(outcome.kind === 'uncertain');
+        setError(profileWriteError(outcome));
         return;
       }
-      if (section === 'appearance' || section === 'profile') setPhoto('');
-      setConflicts((old) => ({ ...old, [section]: false }));
-      if (section === 'tools') originalTools.current = JSON.stringify([skills, toolsets]);
+      confirmed = true;
+      if (section === 'profile' || section === 'role')
+        dispatch({ type: 'saved', submitted, section });
+      if (section === 'tools') dispatchTools({ type: 'saved', submitted: submittedTools });
+      onChange(await domain.describeWorkspace());
       setNotice(
-        `${section === 'tools' ? 'Tools and skills' : section === 'role' ? 'Role' : section === 'handle' ? 'Handle' : section === 'lead' ? 'Main Pebble' : section === 'model' ? 'Model' : section === 'profile' ? 'Profile' : 'Avatar'} saved.`,
+        `${section === 'tools' ? 'Tools and skills' : section === 'role' ? 'Role' : section === 'lead' ? 'Main Pebble' : 'Profile'} saved.`,
       );
+      saved.current = true;
     } catch (e) {
-      setError(safeError(e).message);
+      if (!confirmed) {
+        setUncertain(true);
+        setError(
+          'The save could not be confirmed. Reopen this profile to review it before saving again.',
+        );
+      } else setError(safeError(e).message);
     } finally {
       setBusy('');
     }
@@ -151,20 +211,18 @@ export function PebbleEditor({
     else onClose();
   };
   return (
-    <section className="entity-page" aria-label={`Edit ${bot.name}`}>
-      <PageHeader title={`Edit ${bot.name}`} subtitle={`@${bot.handle}`} onClose={close} />
-      {retired && (
-        <Notice error>
-          This pebble was removed or replaced. Your unsaved fields remain here to copy; changes
-          cannot be saved to a different pebble.
-        </Notice>
-      )}
-      <Tabs
+    <>
+      <TabbedEditor
+        className="entity-page"
+        aria-label={`Edit ${bot.name}`}
+        header={
+          <PageHeader title={`Edit ${bot.name}`} subtitle={`@${bot.handle}`} onClose={close} />
+        }
         tabs={[
           { id: 'identity', label: 'Profile' },
           { id: 'role', label: 'Role' },
           { id: 'tools', label: 'Tools & skills' },
-          { id: 'model', label: 'Model' },
+          ...(client.supportsLiveVoice ? [{ id: 'voice', label: 'Voice' }] : []),
         ]}
         value={tab}
         onChange={(id) => {
@@ -173,78 +231,27 @@ export function PebbleEditor({
           setNotice('');
         }}
       >
+        {retired && (
+          <Notice error>
+            This pebble was removed or replaced. Your unsaved fields remain here to copy; changes
+            cannot be saved to a different pebble.
+          </Notice>
+        )}
         {error && <Notice error>{error}</Notice>}
         {notice && <Notice>{notice}</Notice>}
-        {Object.entries(conflicts)
-          .filter(([, conflict]) => conflict)
-          .map(([section]) => (
-            <Notice key={section}>
-              The saved {section === 'appearance' ? 'avatar' : section} changed while you were
-              editing.
-              <div className="form-actions">
-                <Button
-                  variant="secondary"
-                  onClick={() => {
-                    if (section === 'profile') {
-                      setName(bot.name);
-                      setHandle(bot.handle);
-                      setLook(bot.appearance);
-                      setPhoto('');
-                    }
-                    if (section === 'handle') setHandle(bot.handle);
-                    if (section === 'appearance') {
-                      setLook(bot.appearance);
-                      setPhoto('');
-                    }
-                    if (section === 'role') {
-                      setRole(bot.role);
-                      setManager(bot.manager ?? '');
-                      setTeam(bot.team ?? '');
-                    }
-                    setConflicts((old) => ({ ...old, [section]: false }));
-                  }}
-                >
-                  Use saved version
-                </Button>
-                <Button
-                  variant="secondary"
-                  onClick={() => setConflicts((old) => ({ ...old, [section]: false }))}
-                >
-                  Keep my edits
-                </Button>
-              </div>
-            </Notice>
-          ))}
+        <ProfileConflicts edit={edit} dispatch={dispatch} />
         {tab === 'identity' && (
-          <form
+          <Form
             className="profile-form"
             onSubmit={(event) => {
               event.preventDefault();
-              void save(
-                'bots.profile.update',
-                {
-                  id: bot.id,
-                  name,
-                  handle,
-                  appearance: look,
-                  role,
-                  manager:
-                    bot.profile === state.orchestrator ? null : manager || state.orchestrator,
-                  photo: look.kind === 'photo' ? photo || null : null,
-                },
-                'profile',
-              );
+              void save('profile');
             }}
           >
             <div className="profile-content">
               <PebbleProfileFields
                 value={{ name, handle, appearance: look, photo }}
-                onChange={(patch) => {
-                  if (patch.name !== undefined) setName(patch.name);
-                  if (patch.handle !== undefined) setHandle(patch.handle);
-                  if (patch.appearance) setLook(patch.appearance);
-                  if (patch.photo !== undefined) setPhoto(patch.photo);
-                }}
+                onChange={(patch) => dispatch({ type: 'change', patch })}
                 client={client}
                 profile={bot.profile}
                 onAvatarBusy={setPhotoBusy}
@@ -255,22 +262,13 @@ export function PebbleEditor({
                   description={role.description}
                   onChange={(change) => setRole((old) => ({ ...old, ...change }))}
                 />
-                <ReportingField
-                  state={state}
-                  profile={bot.profile}
-                  manager={manager}
-                  onChange={setManager}
-                />
-                <RoleDetails
-                  role={role}
-                  onChange={(patch) => setRole((old) => ({ ...old, ...patch }))}
-                />
               </PebbleProfileFields>
             </div>
             <footer className="profile-footer">
               <Button
                 disabled={
                   !!busy ||
+                  uncertain ||
                   !!conflicts.profile ||
                   !!conflicts.appearance ||
                   !!conflicts.handle ||
@@ -281,30 +279,16 @@ export function PebbleEditor({
                 Save profile
               </Button>
             </footer>
-          </form>
+          </Form>
         )}
         {tab === 'role' && (
           <FormSection title="Role & reporting">
-            <form
+            <Form
               onSubmit={(e) => {
                 e.preventDefault();
-                void save(
-                  'roles.update',
-                  {
-                    role,
-                    manager:
-                      bot.profile === state.orchestrator ? null : manager || state.orchestrator,
-                    team: team || null,
-                  },
-                  'role',
-                );
+                void save('role');
               }}
             >
-              <RoleBasics
-                title={role.title}
-                description={role.description}
-                onChange={(patch) => setRole((old) => ({ ...old, ...patch }))}
-              />
               <ReportingField
                 state={state}
                 profile={bot.profile}
@@ -316,31 +300,51 @@ export function PebbleEditor({
                 onChange={(patch) => setRole((old) => ({ ...old, ...patch }))}
               />
               <div className="form-actions">
-                <Button variant="secondary" disabled={!!busy || !!conflicts.role}>
+                <Button variant="secondary" disabled={!!busy || uncertain || !!conflicts.role}>
                   Save role
                 </Button>
               </div>
-            </form>
+            </Form>
             {bot.enrolled && bot.profile !== state.orchestrator && (
-              <details className="form-disclosure">
-                <summary>Make Main Pebble</summary>
+              <Disclosure title="Make Main Pebble" className="mt-6">
                 <p>
-                  {bot.name} will coordinate your pebbles. The current Main Pebble will report to
-                  them.
+                  {bot.name} will coordinate your pebbles. Existing reporting relationships stay in
+                  place; the selected pebble becomes managerless.
                 </p>
                 <Button
                   variant="secondary"
-                  disabled={!!busy}
-                  onClick={() => void save('workspace.set_orchestrator', {}, 'lead')}
+                  disabled={!!busy || uncertain}
+                  onClick={() => void save('lead')}
                 >
                   Make {bot.name} Main Pebble
                 </Button>
-              </details>
+              </Disclosure>
             )}
           </FormSection>
         )}
         {tab === 'tools' && (
           <FormSection title="Tools & skills">
+            {toolEdit.conflict && (
+              <Notice>
+                Tools changed while you were editing.
+                <div className="form-actions">
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    onClick={() => dispatchTools({ type: 'resolve', useSaved: true })}
+                  >
+                    Use saved tools
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    onClick={() => dispatchTools({ type: 'resolve', useSaved: false })}
+                  >
+                    Keep my tool edits
+                  </Button>
+                </div>
+              </Notice>
+            )}
             {!capabilities ? (
               toolsLoading ? (
                 <LoadingBar active label="Loading tools and skills" />
@@ -348,23 +352,22 @@ export function PebbleEditor({
                 <Notice error>Tools could not be loaded. Reopen this editor to try again.</Notice>
               )
             ) : (
-              <form
+              <Form
                 onSubmit={(e) => {
                   e.preventDefault();
-                  void save('agent.attach', { skills, toolsets }, 'tools');
+                  void save('tools');
                 }}
               >
                 <fieldset>
                   <legend>Tools</legend>
                   {capabilities.toolsets.map((t) => (
-                    <label className="selection-row" key={String(t.name)}>
-                      <input
-                        type="checkbox"
+                    <Label className="selection-row" key={String(t.name)}>
+                      <Checkbox
                         checked={toolsets.includes(String(t.name))}
-                        onChange={(e) =>
+                        onCheckedChange={(checked) =>
                           setToolsets(
-                            e.target.checked
-                              ? [...toolsets, String(t.name)]
+                            checked === true
+                              ? [...toolsets, t.name]
                               : toolsets.filter((x) => x !== t.name),
                           )
                         }
@@ -373,20 +376,19 @@ export function PebbleEditor({
                         <strong>{String(t.label || t.name)}</strong>
                         <small>{String(t.description || '')}</small>
                       </span>
-                    </label>
+                    </Label>
                   ))}
                 </fieldset>
                 <fieldset>
                   <legend>Skills</legend>
                   {capabilities.skills.map((t) => (
-                    <label className="selection-row" key={String(t.name)}>
-                      <input
-                        type="checkbox"
+                    <Label className="selection-row" key={String(t.name)}>
+                      <Checkbox
                         checked={t.required === true || skills.includes(String(t.name))}
                         disabled={t.required === true}
-                        onChange={(e) =>
+                        onCheckedChange={(checked) =>
                           setSkills(
-                            e.target.checked
+                            checked === true
                               ? [...skills, String(t.name)]
                               : skills.filter((x) => x !== t.name),
                           )
@@ -396,59 +398,37 @@ export function PebbleEditor({
                         {String(t.name)}
                         {t.required === true && <small>Required by Hermes</small>}
                       </span>
-                    </label>
+                    </Label>
                   ))}
                 </fieldset>
                 <p className="field-hint">
                   Saved access takes effect when Hermes refreshes this pebble’s runtime.
                 </p>
                 <div className="form-actions">
-                  <Button variant="secondary" disabled={!!busy || !toolsets.length}>
+                  <Button
+                    variant="secondary"
+                    disabled={!!busy || uncertain || toolEdit.conflict || !toolsets.length}
+                  >
                     Save tools & skills
                   </Button>
                 </div>
-              </form>
+              </Form>
             )}
           </FormSection>
         )}
-        {tab === 'model' && (
-          <FormSection title="Model">
-            {state.model_grant ? (
-              <>
-                <p>
-                  {state.model_grant.provider} · {state.model_grant.model}
-                </p>
-                {bot.profile !== 'default' &&
-                  (state.model_grant.supported ? (
-                    <>
-                      <p className="field-hint">
-                        Use the primary profile’s selected model authorization. Other service
-                        credentials are not copied.
-                      </p>
-                      <Button
-                        variant="secondary"
-                        disabled={!!busy}
-                        onClick={() =>
-                          void save(
-                            'agent.model',
-                            { source: 'default', expected: state.model_grant!.fingerprint },
-                            'model',
-                          )
-                        }
-                      >
-                        Use this model
-                      </Button>
-                    </>
-                  ) : (
-                    <Notice>This model needs authorization in Hermes.</Notice>
-                  ))}
-              </>
-            ) : (
-              <Notice>Model information is unavailable.</Notice>
-            )}
-          </FormSection>
+        {tab === 'voice' && !retired && (
+          <VoiceSettingsEditor
+            client={client}
+            profile={bot.profile}
+            callActive={callActive}
+            request={voiceRequest}
+            requestResolved={!!voiceRequest && resolvedVoiceRequest === voiceRequest}
+            onCredentialConfirmed={() => setResolvedVoiceRequest(voiceRequest)}
+            onReady={onVoiceReady}
+            onClose={close}
+          />
         )}
-      </Tabs>
+      </TabbedEditor>
       {busy && (
         <span className="sr-only" role="status">
           Saving…
@@ -474,6 +454,6 @@ export function PebbleEditor({
           </div>
         </Drawer>
       )}
-    </section>
+    </>
   );
 }

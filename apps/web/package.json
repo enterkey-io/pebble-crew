@@ -6,8 +6,18 @@
   "dependencies": {
     "@hermes-client/core": "0.0.1",
     "@hermes-client/protocol": "0.0.1",
+    "@shadcn/react": "0.3.1",
     "cmdk": "1.1.1",
     "cn": "0.5.0",
-    "radix-ui": "1.8.1"
+    "date-fns": "4.4.0",
+    "embla-carousel-react": "8.6.0",
+    "input-otp": "1.5.0",
+    "radix-ui": "1.8.1",
+    "react-day-picker": "10.0.2",
+    "react-resizable-panels": "4.14.5",
+    "recharts": "3.8.0",
+    "shiki": "4.5.0",
+    "sonner": "2.0.8",
+    "vaul": "1.1.2"
   }
 }

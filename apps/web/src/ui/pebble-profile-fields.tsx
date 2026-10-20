@@ -1,9 +1,21 @@
+import { Label } from '../components/ui/label';
+import { useId } from 'react';
 import type { ReactNode } from 'react';
 import type { BotBridgeClient } from '@hermes-client/protocol';
-import type { Appearance, Role, WorkspaceState } from '../workspace';
+import {
+  roleInstructions,
+  withRoleInstructions,
+  ROLE_INSTRUCTIONS_LIMIT,
+} from '@hermes-client/protocol';
+import type {
+  Appearance,
+  Role,
+  WorkspaceSnapshot as WorkspaceState,
+} from '@hermes-client/protocol';
 import { AvatarChooser } from '../AgentAvatar';
 import { Input } from '../components/ui/input';
 import { Textarea } from '../components/ui/textarea';
+import { Field, FieldLabel, FieldDescription } from '../components/ui/field';
 import {
   Select,
   SelectContent,
@@ -33,7 +45,7 @@ export function PebbleProfileFields({
   return (
     <div className="pebble-profile-fields">
       <div className="profile-identity-fields">
-        <label>
+        <Label layout="stacked">
           Name
           <Input
             required
@@ -42,8 +54,8 @@ export function PebbleProfileFields({
             value={value.name}
             onChange={(e) => onChange({ name: e.target.value })}
           />
-        </label>
-        <label>
+        </Label>
+        <Label layout="stacked">
           Handle
           <span className="handle-input">
             <span aria-hidden="true">@</span>
@@ -59,7 +71,7 @@ export function PebbleProfileFields({
               onChange={(e) => onChange({ handle: e.target.value })}
             />
           </span>
-        </label>
+        </Label>
         {children}
       </div>
       <AvatarChooser
@@ -86,7 +98,7 @@ export function RoleBasics({
 }) {
   return (
     <>
-      <label>
+      <Label layout="stacked">
         Title
         <Input
           maxLength={1000}
@@ -94,8 +106,8 @@ export function RoleBasics({
           onChange={(e) => onChange({ title: e.target.value })}
           placeholder="e.g. Researcher"
         />
-      </label>
-      <label>
+      </Label>
+      <Label layout="stacked">
         Description
         <Textarea
           aria-label="Description"
@@ -104,7 +116,7 @@ export function RoleBasics({
           value={description}
           onChange={(e) => onChange({ description: e.target.value })}
         />
-      </label>
+      </Label>
     </>
   );
 }
@@ -133,13 +145,17 @@ export function ReportingField({
     return true;
   });
   return (
-    <label className="reporting-field">
+    <Label layout="stacked" className="reporting-field">
       Reports to
-      <Select value={manager || state.orchestrator || ''} onValueChange={onChange}>
+      <Select
+        value={manager || '__none__'}
+        onValueChange={(value) => onChange(value === '__none__' ? '' : value)}
+      >
         <SelectTrigger aria-label="Reports to">
           <SelectValue placeholder="Choose a pebble" />
         </SelectTrigger>
         <SelectContent>
+          <SelectItem value="__none__">No manager</SelectItem>
           {choices.map((bot) => (
             <SelectItem key={bot.id} value={bot.profile}>
               {bot.name}
@@ -148,39 +164,39 @@ export function ReportingField({
           ))}
         </SelectContent>
       </Select>
-    </label>
+    </Label>
   );
 }
 
 export function RoleDetails({
   role,
   onChange,
+  context = 'existing',
 }: {
   role: Role;
   onChange: (patch: Partial<Role>) => void;
+  context?: 'existing' | 'new';
 }) {
+  const id = useId();
   return (
-    <details className="form-disclosure">
-      <summary>Responsibilities & boundaries</summary>
-      {(['responsibilities', 'boundaries', 'expectedOutputs'] as const).map((key) => {
-        const label = {
-          responsibilities: 'Responsibilities',
-          boundaries: 'Boundaries',
-          expectedOutputs: 'Expected outputs',
-        }[key];
-        return (
-          <label key={key}>
-            {label}
-            <Textarea
-              aria-label={label}
-              rows={3}
-              maxLength={1000}
-              value={role[key]}
-              onChange={(event) => onChange({ [key]: event.target.value })}
-            />
-          </label>
-        );
-      })}
-    </details>
+    <Field>
+      <FieldLabel htmlFor={id}>
+        Instructions <span className="font-normal text-muted-foreground">(optional)</span>
+      </FieldLabel>
+      <FieldDescription id={`${id}-help`}>
+        {context === 'new'
+          ? 'Describe their job, steps to follow and limits.'
+          : 'Adds to this agent’s Hermes instructions. Their personality and memory stay in place.'}
+      </FieldDescription>
+      <Textarea
+        id={id}
+        aria-label="Instructions"
+        aria-describedby={`${id}-help`}
+        rows={8}
+        maxLength={ROLE_INSTRUCTIONS_LIMIT}
+        value={roleInstructions(role)}
+        onChange={(event) => onChange(withRoleInstructions(role, event.target.value))}
+      />
+    </Field>
   );
 }

@@ -5,7 +5,7 @@ installable plugin. It includes the web app, local administrator login and nativ
 integration, served through one owner-controlled address. All state stays on the
 owner's infrastructure; no vendor account, content store or relay is required.
 
-The combined-plugin candidate is **0.7.6-preview.1** (integration 0.7.6). This is a
+The combined-plugin candidate is **0.7.8-preview.1** (integration 0.7.8). This is a
 development preview, not production certification. A version in source does not
 mean its release is published or an owner's host was upgraded. See
 [implementation status](docs/IMPLEMENTATION_STATUS.md).
@@ -47,7 +47,7 @@ OAuth/PKCE and individual tool selection. Configuration and successful discovery
 are distinct from activation in an already-running agent.
 
 The shared avatar renderer uses original vector shapes and one visibility-aware
-scheduler. Ten original shapes, twelve colors (including White) and user photos are supported. Photos are normalized locally and
+scheduler. Ten original shapes, twelve colors (including Snow) and user photos are supported. Photos are normalized locally and
 independently validated/re-encoded before native Hermes asset storage. The isolated
 `/avatar-lab.html` remains available for motion/performance experiments without any
 Hermes or model requests. See the [avatar plan](docs/AVATAR_SYSTEM_PLAN.md).
@@ -104,3 +104,10 @@ handler is patched or replaced.
 Source: [enterkey-io/pebble-crew](https://github.com/enterkey-io/pebble-crew).
 Native Mac/Windows/iOS clients are later applications using the same owner-side
 contracts; their frameworks have not been selected. Project website: [pebblecrew.com](https://pebblecrew.com).
+
+Live voice uses Hermes’s native OpenAI GPT-Live mode on the supported 0.21.7
+build. The owner can enter a key privately in chat and choose a voice per pebble,
+preview without a microphone, then start a continuous call. Keys remain in native
+Hermes storage; audio and bounded chat context go to OpenAI. Native agent tools,
+reasoning models, approvals and canonical Bot Chat remain authoritative. See
+[voice setup and verification limits](docs/VOICE_IMPLEMENTATION_PLAN.md).

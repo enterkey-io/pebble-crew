@@ -1,0 +1,133 @@
+[
+  {
+    "id": "dashboard",
+    "title": "Dashboard",
+    "tasks": [
+      ["dashboard.build", "Build the live progress board"],
+      ["dashboard.verify", "Check live updates and mobile layout"],
+      ["dashboard.tailnet", "Make the board available on the tailnet"]
+    ]
+  },
+  {
+    "id": "u0",
+    "title": "Baseline",
+    "tasks": [
+      ["u0.inventory", "Record the app and component baseline"],
+      ["u0.contracts", "Verify native capabilities and preserved behavior"],
+      ["u0.checks", "Run baseline checks"],
+      ["u0.captures", "Capture current desktop and phone screens"]
+    ]
+  },
+  {
+    "id": "u1",
+    "title": "Foundation",
+    "tasks": [
+      ["u1.catalog", "Create the shared component catalog"],
+      ["u1.controls", "Complete form and selection controls"],
+      ["u1.surfaces", "Complete menus, overlays and navigation primitives"],
+      ["u1.content", "Complete content, data and feedback primitives"],
+      ["u1.theme", "Unify theme, layout, accessibility and motion"],
+      ["u1.editors", "Build shared editor and detail surfaces"],
+      ["u1.workbench", "Add the in-app component workbench"],
+      ["u1.verify", "Verify the foundation on desktop and phone"]
+    ]
+  },
+  {
+    "id": "u2",
+    "title": "AI elements",
+    "tasks": [
+      ["u2.chain", "Chain of Thought"],
+      ["u2.chat", "Chat"],
+      ["u2.checkpoint", "Checkpoint"],
+      ["u2.confirmation", "Confirmation"],
+      ["u2.context", "Context"],
+      ["u2.files", "File Tree"],
+      ["u2.citation", "Inline Citation"],
+      ["u2.message", "Message"],
+      ["u2.model", "Model Selector"],
+      ["u2.plan", "Plan"],
+      ["u2.prompt", "Prompt Input"],
+      ["u2.queue", "Queue"],
+      ["u2.reasoning", "Reasoning"],
+      ["u2.sources", "Sources"],
+      ["u2.stack", "Stack Trace"],
+      ["u2.subagent", "Subagent"],
+      ["u2.suggestion", "Suggestion"],
+      ["u2.task", "Task"],
+      ["u2.terminal", "Terminal"],
+      ["u2.tests", "Test Results"],
+      ["u2.tool", "Tool"],
+      ["u2.supplemental", "Prepare questions, media and private-request patterns"],
+      ["u2.verify", "Exercise every pattern and state on desktop and phone"]
+    ]
+  },
+  {
+    "id": "u3",
+    "title": "Hermes",
+    "tasks": [
+      ["u3.scroll", "Resolve the single chat scroll controller"],
+      ["u3.domain", "Add the typed conversation boundary"],
+      ["u3.capabilities", "Derive verified capability availability"],
+      ["u3.adapters", "Connect supported native interaction records"],
+      ["u3.verify", "Verify identities, approvals and recovery"]
+    ]
+  },
+  {
+    "id": "u4",
+    "title": "Settings",
+    "tasks": [
+      ["u4.entry", "Migrate login, loading and onboarding"],
+      ["u4.profiles", "Migrate Add, Import and Edit Pebble"],
+      ["u4.account", "Migrate account settings and owner photo"],
+      ["u4.connections", "Migrate connections and credential setup"],
+      ["u4.requests", "Migrate requests and destructive confirmations"],
+      ["u4.verify", "Verify editor persistence and native profiles"]
+    ]
+  },
+  {
+    "id": "u5",
+    "title": "Navigation",
+    "tasks": [
+      ["u5.sidebar", "Migrate the sidebar, pins and account menu"],
+      ["u5.organization", "Migrate crews, sections and group membership"],
+      ["u5.search", "Migrate global search"],
+      ["u5.details", "Migrate desktop details and phone sheets"],
+      ["u5.resources", "Migrate routines, files and computer"],
+      ["u5.verify", "Verify navigation, organization and resource flows"]
+    ]
+  },
+  {
+    "id": "u6",
+    "title": "Chat",
+    "tasks": [
+      ["u6.transcript", "Migrate messages, activity and live replies"],
+      ["u6.composer", "Migrate the composer and attachments"],
+      ["u6.content", "Migrate Markdown, code and media"],
+      ["u6.approvals", "Migrate native approvals and reactions"],
+      ["u6.motion", "Verify message motion and reading position"],
+      ["u6.verify", "Verify complete desktop and phone conversations"]
+    ]
+  },
+  {
+    "id": "u7",
+    "title": "Voice",
+    "tasks": [
+      ["u7.secrets", "Migrate private secret cards"],
+      ["u7.voice", "Migrate live voice controls and setup"],
+      ["u7.delegation", "Migrate delegation links and receipts"],
+      ["u7.verify", "Verify private prompts and voice lifecycles"]
+    ]
+  },
+  {
+    "id": "u8",
+    "title": "Verification",
+    "tasks": [
+      ["u8.cleanup", "Remove competing UI and styling paths"],
+      ["u8.guards", "Enforce catalog and production-component coverage"],
+      ["u8.browser", "Run full desktop and phone journeys"],
+      ["u8.native", "Run isolated native Hermes acceptance"],
+      ["u8.package", "Verify exact-package install, update and rollback"],
+      ["u8.review", "Review final screens, motion and remaining limits"]
+    ]
+  }
+]

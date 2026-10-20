@@ -5,6 +5,7 @@ from contextlib import asynccontextmanager, suppress
 import hmac
 import json
 import os
+from pathlib import Path
 import re
 import secrets
 import time
@@ -15,11 +16,14 @@ from fastapi.responses import JSONResponse, Response, StreamingResponse, Redirec
 
 from .native import NativeError, NativeGateway
 from .operations import BotOperations, InvalidOperation
+from .live_voice import VOICE_ERROR_CODES
 from .compatibility import check_native_adapter
 from .pairing import BrowserPairing
 from .version import VERSION
 
-MAX_BODY = 65536
+PROTOCOL_CATALOG = json.loads(Path(__file__).with_name('protocol-catalog.json').read_text())
+ROUTES = {value['path']: value for value in PROTOCOL_CATALOG['routes'].values()}
+MAX_BODY = ROUTES['/v1/rpc']['maxBytes']
 LEASE_SECONDS = 1800
 HEARTBEAT_SECONDS = 15
 
@@ -50,6 +54,10 @@ def configuration():
 def create_app(token, origins, hosts, gateway=None, trust=None, workspace=None, public_callback=None):
     native = gateway or NativeGateway()
     ops = BotOperations(native)
+    from .live_voice import LiveVoice, supported as live_voice_supported
+    voice = LiveVoice(ops)
+    from .attachments import GeneratedMedia
+    media = GeneratedMedia(ops)
     if workspace is None and gateway is None:
         from .workspace import WorkspaceService, WorkspaceStore, workspace_path
         from .setup import installed_primary
@@ -70,13 +78,24 @@ def create_app(token, origins, hosts, gateway=None, trust=None, workspace=None, 
     async def lifespan(app):
         check_native_adapter()
         await native.start()
+        if workspace:
+            from .reporting import recover
+            recover(workspace.store)
         async def watch_roster():
             revision = None
+            next_snapshot = 0
             while True:
-                await asyncio.sleep(4)
-                if not workspace or not any(c.get('streaming') for c in clients.values()):
+                await asyncio.sleep(1)
+                if workspace:
+                    from .reporting import drain
+                    try:
+                        await drain(workspace)
+                    except Exception:
+                        pass  # Pending receipts remain durable for the next tick.
+                if not workspace or time.monotonic() < next_snapshot or not any(c.get('streaming') for c in clients.values()):
                     continue
                 try:
+                    next_snapshot = time.monotonic() + 4
                     snapshot = await workspace.invoke('workspace.snapshot', {})
                     if snapshot['revision'] != revision:
                         revision = snapshot['revision']
@@ -119,6 +138,7 @@ def create_app(token, origins, hosts, gateway=None, trust=None, workspace=None, 
                 origin = next((item for item in origins if urlsplit(item).netloc == host), "")
             if origin in origins:
                 common["Access-Control-Allow-Origin"] = origin
+                common["Access-Control-Expose-Headers"] = "Content-Disposition"
             async def reject(status):
                 await JSONResponse({"error": "Request denied"}, status, headers=common)(scope, receive, send)
             # Duplicated boundary headers are ambiguous and always rejected.
@@ -156,8 +176,7 @@ def create_app(token, origins, hosts, gateway=None, trust=None, workspace=None, 
                 return await reject(403)
             scope["bot.principal"] = principal
             scope["bot.origin"] = origin
-            from .attachments import MAX_UPLOAD_BODY
-            body_limit = MAX_UPLOAD_BODY if scope["path"] == "/v1/files/upload" else 3_000_000 if scope["path"] == "/v1/avatar" else MAX_BODY
+            body_limit = ROUTES.get(scope["path"], {}).get("maxBytes", MAX_BODY)
             try:
                 if int(headers.get(b"content-length", b"0")) > body_limit:
                     return await reject(413)
@@ -194,7 +213,7 @@ def create_app(token, origins, hosts, gateway=None, trust=None, workspace=None, 
 
     @app.exception_handler(InvalidOperation)
     async def invalid(request, error):
-        return JSONResponse({"error": "Operation unavailable or invalid. Refresh and check the connection.", "code": error.code if error.code in {"STALE_REVISION", "HANDLE_TAKEN", "INVALID_REPORTING", "MODEL_UNAVAILABLE", "REQUIRES_SETUP", "INVALID_PHOTO", "INVALID_PARAMETERS", "INVALID_ATTACHMENT", "ATTACHMENT_QUOTA"} else "INVALID_PARAMETERS"}, 409 if error.code == "STALE_REVISION" else 400)
+        return JSONResponse({"error": "Operation unavailable or invalid. Refresh and check the connection.", "code": error.code if error.code in VOICE_ERROR_CODES | {"UPDATE_REQUIRED", "UNSUPPORTED_COMMAND", "STALE_REVISION", "HANDLE_TAKEN", "INVALID_REPORTING", "MODEL_UNAVAILABLE", "REQUIRES_SETUP", "INVALID_PHOTO", "INVALID_PARAMETERS", "INVALID_ATTACHMENT", "ATTACHMENT_QUOTA"} else "INVALID_PARAMETERS"}, 409 if error.code == "STALE_REVISION" else 400)
 
     @app.exception_handler(NativeError)
     async def native_error(request, error):
@@ -218,7 +237,7 @@ def create_app(token, origins, hosts, gateway=None, trust=None, workspace=None, 
                                "expires": request.scope.get("bot.ticket_expires"), "ended": None}
         build = getattr(native, "build", None) or {}
         return {"connection": connection, "protocol": "hermes-bot-web.v1", "bridge_version": VERSION,
-                "capabilities": {"existing_agents": True, "owner_login": owner_trust is not None, "workspace": bool(workspace), "attachments": bool(files), "reactions": True, "computer": computer.supported},
+                "capabilities": {"existing_agents": True, "owner_login": owner_trust is not None, "workspace": bool(workspace), "reporting": 1 if workspace else None, "projects": bool(workspace and getattr(native, 'work_supported', False)), "attachments": bool(files), "generated_media": True, "reactions": True, "live_voice": live_voice_supported(), "secrets": bool(getattr(native, "build", None) and native.build.get("server_requests")), "computer": computer.supported},
                 "hermes_version": build.get("version"), "hermes_revision": build.get("revision")}
 
     @app.post("/v1/renew")
@@ -255,19 +274,28 @@ def create_app(token, origins, hosts, gateway=None, trust=None, workspace=None, 
             operation, params = data["operation"], data["params"]
             if not isinstance(operation, str) or not isinstance(params, dict):
                 raise InvalidOperation("Invalid operation")
-            if request.url.path == '/v1/files/upload' and operation != 'files.upload':
-                raise InvalidOperation('Upload operation required')
-            if request.url.path == '/v1/files/read' and operation != 'files.read':
-                raise InvalidOperation('Download operation required')
-            if operation == 'files.upload' and request.url.path != '/v1/files/upload':
-                raise InvalidOperation('Dedicated upload route required')
-            if operation == 'files.read' and request.url.path != '/v1/files/read':
-                raise InvalidOperation('Dedicated download route required')
-            if request.url.path == "/v1/avatar" and operation not in {"bots.appearance.update", "workspace.initialize"}:
-                raise InvalidOperation("Avatar operation required")
-            if (operation.startswith("chat.") or operation.startswith("files.")) and params.get("session_id") not in client["sessions"]:
+            definition = PROTOCOL_CATALOG['operations'].get(operation)
+            if not definition or not any(PROTOCOL_CATALOG['routes'][name]['path'] == request.url.path
+                                         for name in definition['accepted']):
+                raise InvalidOperation('Operation unavailable on this route')
+            if operation.startswith(("chat.", "files.", "media.", "voice.", "secrets.")) and params.get("session_id") not in client["sessions"]:
                 raise InvalidOperation("Session belongs to another connection")
-            if operation.startswith('computer.'):
+            if operation in {'voice.status', 'voice.preferences', 'voice.credential', 'voice.session', 'voice.submit', 'voice.end'}:
+                result = await voice.invoke(operation, params)
+            elif operation in {'chat.commands', 'chat.command'}:
+                from .commands import invoke as command
+                result = await command(ops, operation, params)
+            elif operation in {'secrets.pending', 'secrets.respond'}:
+                sid = params.get('session_id')
+                profile = ops.sessions.get(sid)
+                if not profile or await ops.stamp(profile) != ops.session_incarnations.get(sid):
+                    raise InvalidOperation('Reopen this Pebble before answering')
+                result = await native.secret_prompt(operation, params)
+            elif operation == 'media.read':
+                blob, name, mime = await media.read(params)
+                from urllib.parse import quote
+                return Response(blob, media_type=mime, headers={'Content-Disposition': "attachment; filename*=UTF-8''" + quote(name, safe='')})
+            elif operation.startswith('computer.'):
                 result = await computer.invoke(operation, params, client, request.headers['x-bot-connection'])
             elif operation.startswith('files.'):
                 if not files:
@@ -304,7 +332,18 @@ def create_app(token, origins, hosts, gateway=None, trust=None, workspace=None, 
                     raise InvalidOperation("Invalid authorization request")
                 action = {"connections.auth_start": "start", "connections.auth_status": "status", "connections.auth_cancel": "cancel"}[operation]
                 result = await native.call("bot_web.connections.oauth", {**params, "action": action, **({"callback": public_callback} if action == "start" else {})})
+            elif operation.startswith('work.'):
+                value = await native.call('bot_web.work', {'operation': operation, 'params': params})
+                if not isinstance(value, dict) or value.get('ok') is not True:
+                    code = value.get('code') if isinstance(value, dict) else None
+                    if isinstance(code, str) and code in {'INVALID_PARAMETERS', 'STALE_REVISION', 'REQUIRES_SETUP', 'UPDATE_REQUIRED'}:
+                        raise InvalidOperation('The work operation was refused', code)
+                    raise NativeError('The work result could not be confirmed')
+                result = value['value']
             else:
+                if operation in {'bots.profile.update', 'agent.onboard', 'roles.update', 'agent.create', 'workspace.initialize', 'workspace.set_orchestrator'}:
+                    if params.pop('reporting_version', None) != 1:
+                        raise InvalidOperation('Refresh Pebble Crew before editing reporting relationships', 'UPDATE_REQUIRED')
                 result = await (workspace.invoke(operation, params) if workspace and workspace.handles(operation) else ops.invoke(operation, params))
             if operation == "bot.open":
                 client["sessions"].add(result["session_id"])

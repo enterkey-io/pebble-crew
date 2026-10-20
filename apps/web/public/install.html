@@ -1,4 +1,4 @@
-<!doctype html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="referrer" content="no-referrer"><title>Install Pebble Crew</title><link rel="stylesheet" href="/install.css"></head><body><header><a href="/">← Back to app</a></header><main><section class="owner-note"><p class="eyebrow">FOR THE OWNER</p><h1>Give this page to your Hermes agent.</h1><p>Your agent installs the plugin on your Hermes host, sets up reliable startup and a private web address, then gives you one private setup link. Open it to create your administrator login and bring in your existing primary agent.</p><p>The plugin includes the web app. Your conversations, memory, service credentials and login stay on your infrastructure. No pairing conversation is needed.</p><a href="/install.md">Read or copy the plain-text instructions ↗</a></section><nav aria-label="Installer downloads"><a href="https://github.com/enterkey-io/pebble-crew/releases/download/v0.7.6-preview.1/workspace-manifest.json">Package manifest</a><a href="https://github.com/enterkey-io/pebble-crew/releases/download/v0.7.6-preview.1/workspace-plugin-preview.zip">Complete plugin</a><a href="https://github.com/enterkey-io/pebble-crew/releases/download/v0.7.6-preview.1/workspace-source-preview.zip">Source code</a></nav><article><h1>Install Pebble Crew</h1>
+<!doctype html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="referrer" content="no-referrer"><title>Install Pebble Crew</title><link rel="stylesheet" href="/install.css"></head><body><header><a href="/">← Back to app</a></header><main><section class="owner-note"><p class="eyebrow">FOR THE OWNER</p><h1>Give this page to your Hermes agent.</h1><p>Your agent installs the plugin on your Hermes host, sets up reliable startup and a private web address, then gives you one private setup link. Open it to create your administrator login and bring in your existing primary agent.</p><p>The plugin includes the web app. Your conversations, memory, service credentials and login stay on your infrastructure. No pairing conversation is needed.</p><a href="/install.md">Read or copy the plain-text instructions ↗</a></section><nav aria-label="Installer downloads"><a href="https://github.com/enterkey-io/pebble-crew/releases/download/v0.7.8-preview.18/workspace-manifest.json">Package manifest</a><a href="https://github.com/enterkey-io/pebble-crew/releases/download/v0.7.8-preview.18/workspace-plugin-preview.zip">Complete plugin</a><a href="https://github.com/enterkey-io/pebble-crew/releases/download/v0.7.8-preview.18/workspace-source-preview.zip">Source code</a></nav><article><h1>Install Pebble Crew</h1>
 <p>For the owner&#x27;s Hermes installation agent: install the <strong>combined plugin</strong> on the</p>
 <p>owner&#x27;s Hermes host. It includes the web app, owner login and native Bot Mode</p>
 <p>integration. Finish supervision and HTTPS verification, then give the owner **one</p>
@@ -58,12 +58,12 @@
 <p>requirement before promising a URL. A terminal or <code>nohup</code> process is not a finished</p>
 <p>installation.</p>
 <h2>3. Obtain the immutable combined release</h2>
-<p>Candidate: <code>v0.7.6-preview.1</code>. If these assets are not published, stop and report</p>
+<p>Candidate: <code>v0.7.8-preview.18</code>. If these assets are not published, stop and report</p>
 <p>that the candidate is unavailable. Do not substitute main or an API-only package.</p>
-<p class="bullet">• <a href="https://github.com/enterkey-io/pebble-crew/releases/download/v0.7.6-preview.1/workspace-manifest.json" rel="noreferrer">Manifest</a></p>
-<p class="bullet">• <a href="https://github.com/enterkey-io/pebble-crew/releases/download/v0.7.6-preview.1/SHA256SUMS" rel="noreferrer">SHA256SUMS</a></p>
-<p class="bullet">• <a href="https://github.com/enterkey-io/pebble-crew/releases/download/v0.7.6-preview.1/workspace-plugin-preview.zip" rel="noreferrer">Complete plugin</a></p>
-<p class="bullet">• <a href="https://github.com/enterkey-io/pebble-crew/releases/download/v0.7.6-preview.1/workspace-source-preview.zip" rel="noreferrer">Source</a></p>
+<p class="bullet">• <a href="https://github.com/enterkey-io/pebble-crew/releases/download/v0.7.8-preview.18/workspace-manifest.json" rel="noreferrer">Manifest</a></p>
+<p class="bullet">• <a href="https://github.com/enterkey-io/pebble-crew/releases/download/v0.7.8-preview.18/SHA256SUMS" rel="noreferrer">SHA256SUMS</a></p>
+<p class="bullet">• <a href="https://github.com/enterkey-io/pebble-crew/releases/download/v0.7.8-preview.18/workspace-plugin-preview.zip" rel="noreferrer">Complete plugin</a></p>
+<p class="bullet">• <a href="https://github.com/enterkey-io/pebble-crew/releases/download/v0.7.8-preview.18/workspace-source-preview.zip" rel="noreferrer">Source</a></p>
 <p>Verify size and SHA-256 against both manifest and checksum file. Reject absolute</p>
 <p>archive paths, traversal, symlinks and entries escaping private staging. The</p>
 <p>installable directory is <code>bot-web/</code>, including <code>web-runtime/</code>. The repository root</p>
@@ -137,10 +137,12 @@ hermes bot-web verify --public</code></pre>
 <p>their authorization.</p>
 <h2>Updates and rollback</h2>
 <p>For an existing combined-plugin installation, obtain and verify the new combined ZIP as in step 3, back up</p>
-<p>and replace only the installed plugin code (preserving all state). While native</p>
-<p>work is idle, run <code>hermes bot-web sync-runtime</code> before <code>hermes bot-web update</code>.</p>
-<p>The new release&#x27;s native process must start after the enrolled copies are</p>
-<p>updated; copying files into a running process does not reload its tools.</p>
+<p>and replace only the installed plugin code (preserving all state). Wait for native</p>
+<p>work to finish and stop independent profile processes for maintenance. Activate</p>
+<p>the verified host with <code>hermes bot-web update</code> first, then copy runtime code from</p>
+<p>that active release with <code>hermes bot-web sync-runtime --native-idle</code>.</p>
+<p>Restart the existing supervised Pebble Crew service and stopped profile processes</p>
+<p>after synchronization; copying files does not reload imported tools.</p>
 <p>Keep the existing origin, ports, owner login, agent</p>
 <p>bindings and supervisor. Run <code>hermes bot-web verify --public</code> through the existing</p>
 <p>HTTPS route; no new setup link, login creation or pairing is required. If the</p>
@@ -154,29 +156,53 @@ hermes bot-web verify --public</code></pre>
 <p><code>setup-link</code> returns <code>expires</code> (Unix epoch milliseconds) and <code>expires_in</code> (whole</p>
 <p>remaining seconds). Its output contains the private file path, never the secret.</p>
 <p>Event parsing and legacy access controls are specified in</p>
-<p><a href="https://github.com/enterkey-io/pebble-crew/blob/v0.7.6-preview.1/docs/WIRE_PROTOCOL.md" rel="noreferrer">the wire protocol</a>.</p>
+<p><a href="https://github.com/enterkey-io/pebble-crew/blob/v0.7.8-preview.18/docs/WIRE_PROTOCOL.md" rel="noreferrer">the wire protocol</a>.</p>
 <p>Never use global revocation for diagnostic cleanup: use DELETE <code>/v1/connect</code></p>
 <p>with the probe&#x27;s own lease. Global revocation now requires `hermes bot-web revoke</p>
 <p>--all<code> or the operator-only HTTP body </code>{&quot;all&quot;:true}`.</p>
 <p>Verify the next combined release, back up and replace only installed plugin code,</p>
 <p>and enable it natively. Running services keep using their immutable snapshot until</p>
 <p>activation; preserve private state and native stores.</p>
-<pre><code>hermes bot-web sync-runtime
+<pre><code>hermes bot-web runtime-status
 hermes bot-web update
+hermes bot-web sync-runtime --native-idle
+# Restart through the existing supervisor, then:
 hermes bot-web verify --public</code></pre>
 <p>The updater stages dependencies and compatibility checks before switching the</p>
 <p>release. The manager adopts it without replacing keys or data. Failed readiness</p>
-<p>restores the previous release. Explicit rollback is:</p>
+<p>restores the previous release.</p>
+<p>When upgrading preview.15 or earlier to this release, host-first ordering is required. The new <code>v2</code> host</p>
+<p>accepts existing <code>v1</code> runtimes; the old <code>v1</code> host cannot accept the new <code>v2</code> runtime.</p>
+<p>Do not run <code>sync-runtime --source-package</code> before activation for this transition,</p>
+<p>edit contract declarations, or bypass compatibility checks. A previous sync-first</p>
+<p>refusal changes no runtime copies; continue with the verified host update above.</p>
+<p>Explicit rollback to a compatible release is:</p>
 <pre><code>hermes bot-web rollback
 hermes bot-web verify --public</code></pre>
+<p>This release includes reporting controls, the document viewer and native project</p>
+<p>boards under Chat | Tasks. Each project board links one Hermes Project to its own</p>
+<p>native Kanban board. New tasks enter Triage; saving does not start workers or</p>
+<p>models. Routines stay in agent chats, separate from project boards.</p>
+<p>Preserve <code>$HERMES_HOME/bot-web/</code> in full, including the new <code>work.sqlite</code> catalog</p>
+<p>bindings and recovery receipts. Native projects and tasks remain in Hermes. After</p>
+<p>host activation, synchronize enrolled runtime copies and restart their processes</p>
+<p>so agents can discover <code>workspace_work</code> and <code>bot-web:manage-work</code>. Confirm Tasks</p>
+<p>appears after login; do not create owner projects or tasks as upgrade probes.</p>
+<p>Both pinned Hermes builds support reading, project/task creation and comments.</p>
+<p>Task-detail editing requires 0.21.7; the older build shows those fields read-only.</p>
+<p>The reporting migration saves a private backup before updating metadata. Preserve</p>
+<p>that backup and the previous release. Historical integrations that cannot read the</p>
+<p>new reporting contract are refused before activation; do not force a tree-only</p>
+<p>downgrade or restore native conversations/personas to bypass this check.</p>
 <p>This preview supports code updates with unchanged owner/workspace data schemas;</p>
 <p>unsupported data migrations are refused. Keep previous snapshots and code backups</p>
 <p>until verification passes. Do not restore native history/personality stores as</p>
-<p>plugin rollback. Run <code>hermes bot-web sync-runtime</code> before update activation to</p>
-<p>update enrolled agents&#x27; runtime-only plugin copies; they receive no web bundle.</p>
-<p>If copies were synchronized after activation, restart through the installation&#x27;s</p>
-<p>existing supervisor while native work is idle, then verify the public route</p>
-<p>again. Do not leave already imported tool code running and call the update done.</p>
+<p>plugin rollback. Activate the host first, then run</p>
+<p><code>hermes bot-web sync-runtime --native-idle</code> to update enrolled agents&#x27; runtime-only</p>
+<p>plugin copies from that verified active release; they receive no web bundle.</p>
+<p>Restart through the installation&#x27;s existing supervisor while native work is idle,</p>
+<p>then verify the public route again. Do not leave already imported tool code</p>
+<p>running and call the update done.</p>
 <p>If initial setup expires before account creation, run `hermes bot-web setup-link</p>
 <p>--renew-setup` and privately deliver the new link. It refuses to replace a claimed</p>
 <p>owner account. Never delete a claimed account or regenerate keys to repair an update.</p>
@@ -248,4 +274,14 @@ hermes bot-web verify --public</code></pre>
 <p>Ten shape options and twelve colors are now supported, along with owner photos.</p>
 <p>Existing saved appearances are retained. Do not reset appearance or onboarding to</p>
 <p>expose the new choices. Give the owner their same plain URL after public verification;</p>
-<p>reloading once loads the new assets, with no pairing or new administrator setup.</p></article></main><footer>This page contains installation instructions and public software packages. No owner credentials are requested here.</footer></body></html>
+<p>reloading once loads the new assets, with no pairing or new administrator setup.</p>
+<h2>Live voice</h2>
+<p>The supported 0.21.7 build includes native OpenAI live conversation. The older</p>
+<p>0.21.0 build does not. Do not configure or test a paid provider during installation</p>
+<p>or upgrade. After login, the owner selects Voice in a Pebble&#x27;s composer. Setup opens the same Voice tab used by Edit Pebble. Missing or rejected</p>
+<p>credentials open a private field there; keys must never be pasted as messages.</p>
+<p>The first opening asks for a key (or explicit reuse of a saved key), then a voice. The saved-key choice is remembered across entry points. Preview stays in that tab and speaks one named sample without microphone access or an interactive call. It sends locally generated silence to keep the Live timeline running, shows a thin waiting indicator until audio plays, and reports an error if no audio arrives. A rejected key immediately reopens private entry; no refresh is needed. Rate limits, credits, spending limits and quota have separate safe messages when identified by the provider. Saved keys are never returned to the browser. Voice selection saves in that Pebble&#x27;s native profile. The picker groups documented voice presentations under Female and Male; unclassified or custom voices remain under Other. Pebble Crew offers no speed control because this native Live integration has no reliable rate setting. Later openings start a compact call bar at the top of chat. Its settings button opens the Pebble&#x27;s Voice tab. A stopped call with a transcript requests one text follow-up; previews never do. Calls and previews</p>
+<p>start only on the owner&#x27;s action. No Grok live provider is offered: this Hermes</p>
+<p>build&#x27;s separate xAI transcription/speech output is not a live conversation mode.</p>
+<h2>Native chat commands</h2>
+<p>Typing <code>/</code> offers session-scoped Hermes completions for browser-supported commands. <code>/model &lt;name&gt;</code> executes Hermes&#x27;s native command worker; it is never sent as a model prompt. Terminal-only, destructive lifecycle and unsupported command responses stay in Hermes. The removed Model editor tab only copied the primary model authorization; it was not a model picker.</p></article></main><footer>This page contains installation instructions and public software packages. No owner credentials are requested here.</footer></body></html>

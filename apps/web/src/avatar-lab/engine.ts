@@ -1,17 +1,7 @@
 /** Original procedural study. No vendor artwork or animation runtime. */
-export const SHAPES = [
-  'pebble',
-  'beacon',
-  'petal',
-  'kite',
-  'arch',
-  'cairn',
-  'seed',
-  'dune',
-  'flint',
-  'drift',
-] as const;
-export type Shape = (typeof SHAPES)[number];
+import type { Shape } from '@hermes-client/core';
+export { SHAPES } from '@hermes-client/core';
+export type { Shape } from '@hermes-client/core';
 export const STATES = ['ready', 'thinking', 'working', 'waiting', 'attention', 'done'] as const;
 export type Activity = (typeof STATES)[number];
 export const COLORS = [
@@ -21,7 +11,7 @@ export const COLORS = [
   { id: 'lagoon', label: 'Lagoon', hex: '#8dcec6' },
   { id: 'rose', label: 'Rose', hex: '#e7a5ba' },
   { id: 'sky', label: 'Sky', hex: '#9bbfe8' },
-  { id: 'white', label: 'White', hex: '#f4f3ef' },
+  { id: 'white', label: 'Snow', hex: '#f4f3ef' },
   { id: 'umber', label: 'Umber', hex: '#9c7658' },
   { id: 'moss', label: 'Moss', hex: '#789463' },
   { id: 'ocean', label: 'Ocean', hex: '#5e8fb5' },

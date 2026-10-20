@@ -11,7 +11,7 @@ test('connection recovery retains the visible conversation without a red interru
   const input = page.getByLabel('Message', { exact: true });
   await expect(input).toBeEnabled();
   await input.fill('An unsent message');
-  const bubble = (await page.locator('.pc-bubble').first().elementHandle())!;
+  const bubble = (await page.locator('[data-slot="message-response"]').first().elementHandle())!;
   let reconnecting = false;
   let resume = () => {};
   const waiting = new Promise<void>((resolve) => {
@@ -72,8 +72,7 @@ for (const flow of ['existing', 'new'] as const) {
     expect(reporting.width).toBeGreaterThanOrEqual(name.width - 1);
     await dialog.getByRole('combobox', { name: 'Reports to', exact: true }).click();
     await page.getByRole('option', { name: 'Mica', exact: true }).click();
-    await dialog.getByText('Responsibilities & boundaries', { exact: true }).click();
-    await dialog.getByLabel('Responsibilities', { exact: true }).fill('An unsaved responsibility');
+    await dialog.getByLabel('Instructions', { exact: true }).fill('An unsaved responsibility');
     const initial = leases;
     await page.evaluate(() => {
       Object.defineProperty(document, 'visibilityState', { configurable: true, value: 'hidden' });
@@ -95,7 +94,7 @@ for (const flow of ['existing', 'new'] as const) {
     await expect(dialog.getByRole('combobox', { name: 'Reports to', exact: true })).toContainText(
       'Mica',
     );
-    await expect(dialog.getByLabel('Responsibilities', { exact: true })).toHaveValue(
+    await expect(dialog.getByLabel('Instructions', { exact: true })).toHaveValue(
       'An unsaved responsibility',
     );
     await expect(page.locator('.banner[role="alert"]')).toHaveCount(0);
