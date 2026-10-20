@@ -4,6 +4,17 @@ Track owner reports here through implementation, verification and release. A
 published fix is separate from updating and verifying the owner's installation.
 New reports receive a stable ID; later work updates the existing entry.
 
+## 0.7.8-preview.19 candidate
+
+| ID     | Report                                                                     | Change                                                                                                                                                                                                                                                                          |
+| ------ | -------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| PC-086 | Task controls, creation results, card movement and mentions are incomplete | Clear Chat/Tasks toggle, shared content-sized editors, correct save/close behavior, untouched Cancel, board Description and task Details, native status/menu/drag moves, @ completion and native Bot Chat notifications. Delayed move responses cannot appear on another board. |
+| PC-087 | Old CSS and copied controls override the shared UI system                  | Removed legacy control styles; shared components own sizing, destructive states and confirmations. CI rejects historical override patterns. Desktop and phone browser checks cover the installed app components.                                                                |
+| PC-088 | App wordmark differs from the website                                      | Locally bundled Caprasimo Regular for the upper-left wordmark. Desktop minimum-width and iPhone/Android header checks pass. Font and license accompany the source, web and plugin packages.                                                                                     |
+
+Source and isolated browser/native checks passed. Final release-package and CI
+checks run before publication. The owner’s installed URL is verified separately.
+
 ## Unreleased org chart phase one
 
 | ID     | Report                                                              | Change                                                                                                                                                                                                                                                                                                             |

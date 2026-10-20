@@ -1,5 +1,14 @@
 # Installed-owner implementation status
 
+**0.7.8-preview.19 candidate:** shared components own dialog sizing, destructive
+states, toggles and disclosure controls. Product styles load below the kit’s
+utilities; the old overrides and copied discard dialogs are removed. Tasks use
+content-sized editors, clear creation results, status controls and card movement.
+Assigned To do tasks enter the native Hermes dispatcher, and @ comments notify
+the enrolled agent’s existing Bot Chat. The app wordmark uses the locally bundled
+Caprasimo font from the website. Native profile data and credentials stay on the
+owner’s host. Publication and installed-owner verification are separate steps.
+
 **0.7.8-preview.15 candidate:** voice uses one persistent owner-wide reference to
 Hermes's saved credential, with a separate voice choice for each pebble. Existing
 explicit approvals are reused. Completed key-replacement requests do not replay
