@@ -37,7 +37,7 @@ test('ordinary Send redirects working chat while Stop stays available and every 
   await emit(page, 'message.start');
   await emit(page, 'message.delta', { text: 'Here is the current work. ' });
   await expect(page.getByRole('log')).toContainText('Here is the current work.');
-  await input.fill('Use the revised direction');
+  await input.fill('Change direction');
   await expect(page.getByRole('button', { name: 'Send message', exact: true })).toBeEnabled();
   await expect(page.getByRole('button', { name: 'Stop', exact: true })).toBeEnabled();
   await page.screenshot({ path: info.outputPath('send-and-stop.png'), animations: 'disabled' });
@@ -50,6 +50,11 @@ test('ordinary Send redirects working chat while Stop stays available and every 
     return Math.abs(a.y + a.height / 2 - b.y - b.height / 2);
   });
   expect(centers).toBeLessThan(2);
+  await input.fill('Use the revised direction');
+  const fieldBox = (await input.boundingBox())!,
+    actionBox = (await send.boundingBox())!;
+  if (fieldBox.height > actionBox.height)
+    expect(Math.abs(fieldBox.y + fieldBox.height - actionBox.y - actionBox.height)).toBeLessThan(2);
   await send.click();
   await expect.poll(() => sends).toBe(2);
   try {

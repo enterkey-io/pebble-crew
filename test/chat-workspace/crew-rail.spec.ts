@@ -260,7 +260,9 @@ for (const theme of ['dark', 'light'] as const)
     await page.goto('/');
     await expect(page.getByLabel('Message', { exact: true })).toBeEnabled();
     await showRail(page);
-    const rail = page.locator('.pc-rail').filter({ visible: true });
+    const rail = info.project.use.isMobile
+      ? page.getByRole('dialog', { name: 'navigation', exact: true })
+      : page.getByRole('complementary', { name: 'Pebbles and crews', exact: true });
     await expect(rail).toHaveCSS(
       'background-color',
       theme === 'dark' ? 'rgb(11, 11, 13)' : 'rgb(242, 240, 236)',
