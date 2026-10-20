@@ -1,5 +1,23 @@
 # Installed-owner implementation status
 
+**0.7.8-preview.20 candidate:** Main Pebble reporting/Instructions management has
+no blocking switch. Per-turn guidance requires asking before unsolicited changes;
+a clear owner request already authorizes its change. The org view is a connected,
+fixed-card chart with pan/zoom, keyboard navigation and separate unattached trees.
+
+Task creation and editing put Title first and expose Status. Cards use grab
+cursors and an inset drop target. Native text edits and normal queue promotion do
+not cause false movement conflicts. Activity exposes native events, timestamps,
+authors, comments and worker summaries. Native worker outcomes are delivered once
+to the existing Bot Chat, with durable uncertainty handling. Worker guidance
+requires progress and verified-result comments. Owner pauses of idle tasks cannot
+briefly put them in the execution queue.
+
+Primary actions and unread/review indicators share a terracotta accent with
+separate accessible light/dark foregrounds. Surfaces, row selection and focus
+remain neutral. Publication, package acceptance and owner installation are tracked
+separately; this source entry does not claim the owner's host has been updated.
+
 **0.7.8-preview.19 candidate:** shared components own dialog sizing, destructive
 states, toggles and disclosure controls. Product styles load below the kit’s
 utilities; the old overrides and copied discard dialogs are removed. Tasks use

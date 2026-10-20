@@ -5,7 +5,7 @@ installable plugin. It includes the web app, local administrator login and nativ
 integration, served through one owner-controlled address. All state stays on the
 owner's infrastructure; no vendor account, content store or relay is required.
 
-The combined-plugin candidate is **0.7.8-preview.19** (integration 0.7.8). This is a
+The combined-plugin candidate is **0.7.8-preview.20** (integration 0.7.8). This is a
 development preview, not production certification. A version in source does not
 mean its release is published or an owner's host was upgraded. See
 [implementation status](docs/IMPLEMENTATION_STATUS.md).
@@ -37,7 +37,9 @@ Existing-agent discovery/enrollment, native canonical chats, streaming, approval
 Stop, existing crews and bot-owned routine controls. A sectioned rail with pins, native previews and read state, crew participants, per-conversation drafts and scroll positions, and integrated details panels and responsive navigation. Native Hide/Unhide and owner-reviewed Delete update the roster automatically, including changes made outside the app. Crews and editable roles/reporting,
 one starred Main Pebble, public-handle routing and saved appearances. A real
 `workspace_agents` plugin tool and bundled skill submit exact management proposals
-for owner review; models cannot self-approve or grant privileges.
+for owner review. The current Main Pebble can manage reporting and Instructions
+directly: it asks before unsolicited changes, while an owner request already
+authorizes its requested change. Models cannot self-approve unrelated privileges.
 
 New agent creation uses a fresh native profile/persona and an explicit selected
 primary API-key/custom-provider grant, with minimal reviewed toolsets. Unsupported
