@@ -258,6 +258,15 @@ delivery receipts notify the current Main once about another agent's pending
 management or native tool approval. Unknown delivery outcomes are not replayed.
 Private request specifications and credentials are excluded from the notification.
 
+### Request chronology (0.7.8-preview.22)
+
+`requests.list` additionally returns `created`, the request’s original Unix time
+in seconds. New records retain subsecond precision; existing integer timestamps
+remain valid. Decisions do not change this time. Results are newest first, with
+insertion order breaking timestamp ties. Older servers may omit `created`; clients
+then anchor a newly observed card between the current native messages. Resolved
+management requests remain available as expandable transcript records.
+
 ## Busy Bot Chat sends (0.7.8-preview.21)
 
 `chat.send` continues to invoke native `prompt.submit` without a `queued` override.

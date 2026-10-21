@@ -80,7 +80,7 @@ class WorkspaceStore:
         fingerprint = hashlib.sha256((action + raw).encode()).hexdigest()
         with self.db:
             ident = str(uuid.uuid4())
-            inserted = self.db.execute('INSERT OR IGNORE INTO requests VALUES(?,?,?,?,?,?,NULL,?)', (ident, actor, action, raw, fingerprint, 'pending', int(time.time()))).rowcount
+            inserted = self.db.execute('INSERT OR IGNORE INTO requests VALUES(?,?,?,?,?,?,NULL,?)', (ident, actor, action, raw, fingerprint, 'pending', time.time())).rowcount
             state = self.read()
             bot = state['bots'].get(actor)
             if inserted and bot and actor != state.get('orchestrator'):
@@ -88,8 +88,8 @@ class WorkspaceStore:
         return self.db.execute('SELECT id,state FROM requests WHERE actor=? AND fingerprint=?', (actor, fingerprint)).fetchone()
 
     def requests(self):
-        return [{'id': row[0], 'actor': row[1], 'action': row[2], 'spec': json.loads(row[3]), 'fingerprint': row[4], 'state': row[5], 'result': json.loads(row[6]) if row[6] else None}
-                for row in self.db.execute('SELECT id,actor,action,spec,fingerprint,state,result FROM requests ORDER BY created DESC LIMIT 100')]
+        return [{'id': row[0], 'actor': row[1], 'action': row[2], 'spec': json.loads(row[3]), 'fingerprint': row[4], 'state': row[5], 'result': json.loads(row[6]) if row[6] else None, 'created': row[7]}
+                for row in self.db.execute('SELECT id,actor,action,spec,fingerprint,state,result,created FROM requests ORDER BY created DESC, rowid DESC LIMIT 100')]
 
 
 def bounded(value, length=1000, blank=True):

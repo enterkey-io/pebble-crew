@@ -1,6 +1,7 @@
-import { projectTimeline } from './chat/presentation';
+import { CardPositions, projectTimeline } from './chat/presentation';
 import { describe, it, expect } from 'vitest';
 import { nativeMessages, roomMessages, messageDate, withSharedFiles } from './conversation';
+import type { ChatMessage } from './conversation';
 describe('native conversation projection', () => {
   it('retains durable identities and native timestamps without fabricating them', () => {
     const messages = nativeMessages([
@@ -33,6 +34,45 @@ describe('native conversation projection', () => {
 });
 
 describe('lossless native timeline presentation', () => {
+  it('keeps cards between existing messages as a new owner turn and agent reply arrive', () => {
+    const positions = new CardPositions();
+    const before: ChatMessage[] = [{ id: '1', role: 'assistant', text: 'Please approve.' }];
+    const cards = [{ id: 'request', content: 'Pending' }];
+    expect(positions.place(before, cards)[0]?.index).toBe(1);
+    const after: ChatMessage[] = [
+      ...before,
+      { id: 'pending', renderKey: 'owner-turn', role: 'user', text: 'Approved, continue.' },
+      { id: 'reply', role: 'assistant', text: 'Continuing.' },
+    ];
+    expect(positions.place(after, [{ ...cards[0]!, content: 'Approved' }])[0]?.index).toBe(1);
+    const timeline = projectTimeline(after, positions.place(after, cards));
+    expect(
+      timeline.map((row) =>
+        row.kind === 'card' ? row.card.id : row.kind === 'message' ? row.message.id : row.id,
+      ),
+    ).toEqual(['1', 'request', 'pending', 'reply']);
+  });
+  it('uses persisted creation time on restoration without reordering native messages', () => {
+    const messages: ChatMessage[] = [
+      { id: '1', role: 'assistant', text: 'Before', timestamp: 1700000000 },
+      { id: '2', role: 'user', text: 'After', timestamp: 1700000002 },
+      { id: '3', role: 'assistant', text: 'Reply', timestamp: 1700000003 },
+    ];
+    const cards = [
+      { id: 'second', createdAt: 1700000001500, content: 'Approved' },
+      { id: 'first', createdAt: 1700000001000, content: 'Approved' },
+    ];
+    expect(
+      new CardPositions().place(messages, cards).map(({ index, card }) => [index, card.id]),
+    ).toEqual([
+      [1, 'first'],
+      [1, 'second'],
+    ]);
+    const positions = new CardPositions();
+    const empty = [{ id: 'empty-chat-request', content: 'Pending' }];
+    positions.place([], empty);
+    expect(positions.place(messages, empty)[0]?.index).toBe(0);
+  });
   it('retains native identities but excludes source records, empty/hidden reasoning and groups tools around meaningful final replies', () => {
     const source = [
       { row_id: 1, role: 'assistant', text: '', reasoning: 'private' },

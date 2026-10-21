@@ -17,13 +17,14 @@ import { fileSize } from './FilesPanel';
 import { Message } from '../components/ai-elements/message';
 import { ChainOfThought } from '../components/ai-elements/chain-of-thought';
 import { Tool } from '../components/ai-elements/tool';
-import { useLayoutEffect, useState } from 'react';
+import { useLayoutEffect, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 import type { BotBridgeClient } from '@hermes-client/protocol';
 import { motion, useReducedMotion } from 'motion/react';
 import { MessageBody, CopyMessage } from '../MessageBody';
 import { messageDate } from '../conversation';
-import { projectTimeline } from './presentation';
+import { CardPositions, projectTimeline } from './presentation';
+import type { TranscriptCard } from './presentation';
 import type { ChatMessage } from '../conversation';
 import { MessageReactions, ReactionPicker } from './MessageReactions';
 import type { ReactionAction } from './MessageReactions';
@@ -46,6 +47,7 @@ export function Transcript({
   sessionId,
   ownerColor,
   footer,
+  cards = [],
 }: {
   conversationKey: string;
   messages: ChatMessage[];
@@ -63,14 +65,20 @@ export function Transcript({
   sessionId?: string | undefined;
   ownerColor?: string | undefined;
   footer?: ReactNode;
+  cards?: readonly TranscriptCard[];
 }) {
   const reduced = useReducedMotion();
   const openDocument = useDocumentActions();
-  const timeline = projectTimeline(messages);
+  const positions = useRef({ conversationKey, value: new CardPositions() });
+  if (positions.current.conversationKey !== conversationKey)
+    positions.current = { conversationKey, value: new CardPositions() };
+  const timeline = projectTimeline(messages, positions.current.value.place(messages, cards));
   const keys = timeline.map((item, i) =>
-    item.kind === 'activity'
-      ? item.id
-      : (item.message.renderKey ?? item.message.id ?? `pending-${i}`),
+    item.kind === 'card'
+      ? item.card.id
+      : item.kind === 'activity'
+        ? item.id
+        : (item.message.renderKey ?? item.message.id ?? `pending-${i}`),
   );
   const signature = JSON.stringify(keys);
   const [seen, setSeen] = useState(() => ({ conversationKey, keys: new Set(keys) }));
@@ -115,6 +123,29 @@ export function Transcript({
               </ChainOfThought>
             </div>
           );
+        const date =
+          item.kind === 'card'
+            ? item.card.createdAt === undefined
+              ? undefined
+              : new Date(item.card.createdAt)
+            : messageDate(item.message.timestamp);
+        const group =
+          date?.toLocaleDateString(undefined, {
+            month: 'short',
+            day: 'numeric',
+            year: 'numeric',
+          }) ?? '';
+        const label = group && group !== previous && (
+          <p className="mb-4 text-center text-xs text-muted-foreground">{group}</p>
+        );
+        if (group) previous = group;
+        if (item.kind === 'card')
+          return (
+            <div key={item.card.id} data-timeline-card={item.card.id}>
+              {label}
+              {item.card.content}
+            </div>
+          );
         const m = item.message;
         const key = m.renderKey ?? m.id ?? `pending-${i}`;
         const entering = seen.conversationKey === conversationKey && !seen.keys.has(key);
@@ -123,15 +154,6 @@ export function Transcript({
           m.id && !m.id.startsWith('pending-') && (crew || /^[1-9]\d*$/.test(m.id))
             ? onReact
             : undefined;
-        const date = messageDate(m.timestamp);
-        const group =
-          date?.toLocaleDateString(undefined, {
-            month: 'short',
-            day: 'numeric',
-            year: 'numeric',
-          }) ?? '';
-        const label = group && group !== previous;
-        previous = group;
         return (
           <motion.div
             className="message-group"
@@ -143,7 +165,7 @@ export function Transcript({
             data-message-phase={live ? 'live' : 'committed'}
             key={key}
           >
-            {label && <p className="mb-4 text-center text-xs text-muted-foreground">{group}</p>}
+            {label}
             <Message
               id={m.id ?? `pending-${i}`}
               role={m.role === 'user' ? 'user' : crew ? 'member' : 'agent'}

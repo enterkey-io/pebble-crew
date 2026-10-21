@@ -2,6 +2,25 @@ import { describe, it, expect, vi } from 'vitest';
 import { RequestDomain } from './request-domain';
 
 describe('conversation request boundary', () => {
+  it('retains the stored request creation time separately from decision state', async () => {
+    const request = {
+      id: 'r',
+      actor: 'arlo',
+      action: 'agent.attach',
+      state: 'completed',
+      spec: {},
+      created: 1700000000.125,
+    };
+    const invoke = vi
+      .fn()
+      .mockResolvedValueOnce({ requests: [request] })
+      .mockResolvedValueOnce({ requests: [{ ...request, state: 'pending', created: undefined }] })
+      .mockResolvedValueOnce({ requests: [{ ...request, created: 'yesterday' }] });
+    const domain = new RequestDomain({ invoke });
+    expect((await domain.list())[0]?.createdAt).toBe(1700000000125);
+    expect((await domain.list())[0]?.createdAt).toBeUndefined();
+    await expect(domain.list()).rejects.toThrow();
+  });
   it('decides only the exact request fingerprint and retains deletion confirmation', async () => {
     const invoke = vi
       .fn()

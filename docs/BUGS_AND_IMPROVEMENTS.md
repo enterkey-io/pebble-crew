@@ -4,6 +4,13 @@ Track owner reports here through implementation, verification and release. A
 published fix is separate from updating and verifying the owner's installation.
 New reports receive a stable ID; later work updates the existing entry.
 
+## 0.7.8-preview.22 corrections
+
+| ID     | Report                                                      | Change                                                                                                                                                             |
+| ------ | ----------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| PC-119 | New owner and agent messages appear above earlier approvals | Put request cards in the conversation timeline using persisted creation times and stable native message anchors; retain order after reload and stream restoration. |
+| PC-120 | Completed approval cards waste chat space                   | Collapse confirmed terminal requests to compact expandable action, agent and outcome records; keep pending and uncertain requests fully reviewable.                |
+
 ## 0.7.8-preview.21 corrections
 
 | ID     | Report                                                                | Change                                                                                                                                                                                                           |

@@ -12,6 +12,28 @@ from bot_web.workspace import WorkspaceStore
 from bot_web.request_delivery import deliver, deliver_native, recover
 
 
+class RequestChronologyTests(unittest.TestCase):
+    def test_creation_time_survives_decision_and_reopening_with_deterministic_same_time_order(self):
+        from unittest.mock import patch
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / 'workspace.sqlite'
+            store = WorkspaceStore(path)
+            with patch('bot_web.workspace.time.time', return_value=1700000000.125):
+                first, _ = store.request('owner', 'agent.attach', {'profile': 'one'})
+                second, _ = store.request('owner', 'agent.attach', {'profile': 'two'})
+            with store.db:
+                store.db.execute("UPDATE requests SET state='completed' WHERE id=?", (first,))
+            store.db.close()
+            reopened = WorkspaceStore(path)
+            try:
+                rows = reopened.requests()
+                self.assertEqual([row['id'] for row in rows], [second, first])
+                self.assertEqual(rows[1]['state'], 'completed')
+                self.assertEqual(rows[1]['created'], 1700000000.125)
+            finally:
+                reopened.db.close()
+
+
 class NativeQuestionTests(unittest.IsolatedAsyncioTestCase):
     async def test_native_question_is_session_bound_and_only_calls_the_typed_lock_method(self):
         native = NativeGateway()

@@ -1,5 +1,13 @@
 # Installed-owner implementation status
 
+**0.7.8-preview.22 candidate:** Approval and question cards share the native
+conversation timeline. Persistent management requests use their original creation
+time, and observed cards keep their message anchors through sends, reloads and
+reconnections. Resolved management approvals collapse to expandable records;
+pending and uncertain outcomes retain their review controls. Desktop, iPhone,
+Android and isolated native checks passed; final package acceptance and owner
+installation are separate gates.
+
 **0.7.8-preview.21 candidate:** Whole-Crew sidebar dragging, independent collapse chevrons, right-click/press-and-hold action menus and contextual Crew/section creation; darker dark-mode rail and matching main/details surfaces. Send during active native turns with separate Stop; native-anchored live restoration with a positioned snapshot/event handoff; inline MP4 playback and a zoomable video viewer; locally filtered slash commands with in-conversation results; neutral circular composer actions; blue unread
 indicators at the row edge and pinned badge position; centered photo zoom; full
 org-card interactions and shared handle inputs. Task lanes have padded drop
