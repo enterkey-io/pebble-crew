@@ -271,6 +271,21 @@ test('the owner can change a Crew manager and purpose without changing reporting
   await dialog.getByRole('combobox', { name: 'Crew manager', exact: true }).click();
   await page.getByRole('option', { name: 'Mica', exact: true }).click();
   await dialog.getByLabel('Purpose', { exact: true }).fill('Prepare a careful launch');
+  const frame = await dialog.evaluate((element) => {
+    const rect = element.getBoundingClientRect();
+    return { left: rect.left, right: rect.right, bottom: rect.bottom };
+  });
+  for (const name of ['Remove crew', 'Cancel', 'Save changes']) {
+    const button = dialog.getByRole('button', { name, exact: true });
+    await expect(button).toBeInViewport();
+    const bounds = await button.evaluate((element) => {
+      const rect = element.getBoundingClientRect();
+      return { left: rect.left, right: rect.right, bottom: rect.bottom };
+    });
+    expect(bounds.left).toBeGreaterThanOrEqual(frame.left + 8);
+    expect(bounds.right).toBeLessThanOrEqual(frame.right - 8);
+    expect(bounds.bottom).toBeLessThanOrEqual(frame.bottom - 8);
+  }
   await page.screenshot({
     path: info.outputPath('crew-manager-editor.png'),
     animations: 'disabled',

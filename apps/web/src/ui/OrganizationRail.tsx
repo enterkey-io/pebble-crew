@@ -31,6 +31,7 @@ import {
   Dialog,
   DialogContent,
   DialogHeader,
+  DialogFooter,
   DialogTitle,
   DialogDescription,
 } from '@/components/ui/dialog';
@@ -946,12 +947,12 @@ export function OrganizationDialog({
               {error}
             </p>
           )}
-          <div className="pc-form-footer shrink-0">
+          <DialogFooter className="shrink-0">
             {editor?.kind === 'edit-crew' && (
               <Button
                 type="button"
                 variant="destructive-ghost"
-                className="mr-auto"
+                className="sm:mr-auto"
                 onClick={() => {
                   onChange((current) => removeCrew(current, editor.id));
                   onClose();
@@ -966,7 +967,7 @@ export function OrganizationDialog({
                 <Button
                   type="button"
                   variant="destructive-ghost"
-                  className="mr-auto"
+                  className="sm:mr-auto"
                   onClick={() => {
                     onChange((current) => removeSection(current, editor.id));
                     onClose();
@@ -988,7 +989,7 @@ export function OrganizationDialog({
             >
               {editor?.kind.startsWith('new') ? 'Create' : 'Save changes'}
             </Button>
-          </div>
+          </DialogFooter>
         </Form>
         <DiscardChanges
           open={discard}

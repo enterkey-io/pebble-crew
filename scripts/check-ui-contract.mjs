@@ -97,6 +97,13 @@ for (const path of frontendFiles.filter((path) => /\.tsx?$/.test(path))) {
 }
 const rail = read('apps/web/src/ui/OrganizationRail.tsx') + read('apps/web/src/chat/Rail.tsx');
 requireRule(
+  sourceContract(read('apps/web/src/ui/OrganizationRail.tsx')).renders(
+    'DialogFooter',
+    '@/components/ui/dialog',
+  ) && !read('apps/web/src/ui/layout.css').includes('.pc-form-footer'),
+  'Organization dialogs must use the shared responsive DialogFooter; fixed custom action rows clip controls on phones.',
+);
+requireRule(
   !read('apps/web/src/ui/layout.css').includes('#8e859d'),
   'Composer focus must use the neutral --ring token, not the old hard-coded lavender.',
 );
