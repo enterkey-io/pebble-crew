@@ -179,9 +179,13 @@ async def verify(home, model_port):
         if not requests:
             print(json.dumps({'history': await ops.invoke('chat.history', {'session_id': opened['session_id']}), 'fixture_tool_names': [[t.get('function',{}).get('name') for t in r.get('tools',[])] for r in WorkspaceModel.requests], 'fixture_tool_results': [m for r in WorkspaceModel.requests for m in r.get('messages', []) if m.get('role') == 'tool']}))
         assert len(requests) == 1 and requests[0]['actor'] == 'default' and requests[0]['state'] == 'pending', requests
+        created = requests[0]['created']
+        assert isinstance(created, (int, float)) and created > 0, 'Native request omitted its persisted creation time'
         assert not any(r['name'] == 'engineer' for r in await ops.roster()), 'Model proposal executed before owner approval'
         approved = await workspace.invoke('requests.approve', {'id': requests[0]['id'], 'fingerprint': requests[0]['fingerprint']})
         assert approved['state'] == 'completed', approved
+        persisted_request = next(row for row in store.requests() if row['id'] == requests[0]['id'])
+        assert persisted_request['created'] == created, 'Approving a request moved its creation time'
         assert any(r['name'] == 'engineer' for r in await ops.roster())
         # An actual deferred native tool controls an existing agent without an owner
         # approval or browser. Only the deterministic loopback model receives this.

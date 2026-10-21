@@ -4,22 +4,29 @@ import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
 import { Disclosure } from '../components/ui/disclosure';
 import { useState } from 'react';
+import { Check, X, AlertCircle, ChevronRight } from 'lucide-react';
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '../components/ui/collapsible';
 import type { Row } from '../conversation';
 export function RequestReview({
   request: r,
   busy,
   onDecision,
   onInspect,
+  compactResolved = false,
+  targetName,
 }: {
   request: Row;
   busy: boolean;
   onDecision: (approve: boolean, confirmation?: string) => void;
   onInspect: () => void;
+  compactResolved?: boolean;
+  targetName?: string | undefined;
 }) {
   const [confirmation, setConfirmation] = useState('');
   const spec = (r.spec ?? {}) as Row,
     result = (r.result ?? {}) as Row;
   const deleting = r.action === 'agent.delete';
+  const target = targetName ?? String(spec.display_name ?? spec.profile ?? spec.name ?? 'Agent');
   const titles: Record<string, string> = {
     'agent.delete': 'Delete pebble',
     'agent.hide': spec.hidden ? 'Hide pebble' : 'Unhide pebble',
@@ -28,14 +35,13 @@ export function RequestReview({
     'agent.update': 'Update role',
     'agent.attach': 'Change tools and skills',
   };
-  return (
+  const details = (
     <ApprovalSurface
       className={`request-card ${deleting ? 'destructive-request' : ''}`}
       title={titles[String(r.action)] ?? String(r.action)}
       description={
         <>
-          <strong>{String(spec.profile ?? spec.display_name ?? spec.name ?? 'Agent')}</strong> ·{' '}
-          {String(r.state)}
+          <strong>{target}</strong> · {String(r.state)}
         </>
       }
     >
@@ -151,4 +157,29 @@ export function RequestReview({
       )}
     </ApprovalSurface>
   );
+  if (compactResolved && ['completed', 'denied', 'failed'].includes(String(r.state))) {
+    const state = r.state === 'completed' ? 'Approved' : r.state === 'denied' ? 'Denied' : 'Failed';
+    const Icon = r.state === 'completed' ? Check : r.state === 'denied' ? X : AlertCircle;
+    return (
+      <Collapsible data-slot="approval-receipt" className="group/receipt min-w-0">
+        <CollapsibleTrigger asChild>
+          <Button
+            variant="link"
+            className="h-auto min-h-9 max-w-full justify-start gap-2 px-0 text-left text-xs text-muted-foreground whitespace-normal"
+          >
+            <Icon className="size-3.5 shrink-0" aria-hidden="true" />
+            <span>
+              {titles[String(r.action)] ?? 'Request'} · {target} · {state}
+            </span>
+            <ChevronRight
+              className="size-3 shrink-0 transition-transform group-data-[state=open]/receipt:rotate-90 motion-reduce:transition-none"
+              aria-hidden="true"
+            />
+          </Button>
+        </CollapsibleTrigger>
+        <CollapsibleContent className="pt-2">{details}</CollapsibleContent>
+      </Collapsible>
+    );
+  }
+  return details;
 }

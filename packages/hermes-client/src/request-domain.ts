@@ -12,6 +12,11 @@ function list<T>(value: unknown, decode: (value: unknown) => T): T[] {
 }
 function decodeRequest(value: unknown) {
   const row = record(value);
+  if (
+    row.created != null &&
+    (typeof row.created !== 'number' || !Number.isFinite(row.created) || row.created < 0)
+  )
+    throw new ClientError('INVALID_RESPONSE');
   return {
     id: text(row.id, 128),
     actor: row.actor == null ? null : text(row.actor, 128),
@@ -20,6 +25,7 @@ function decodeRequest(value: unknown) {
     fingerprint: row.fingerprint == null ? '' : text(row.fingerprint, 128),
     spec: record(row.spec),
     result: row.result == null ? null : record(row.result),
+    createdAt: typeof row.created === 'number' ? row.created * 1000 : undefined,
   };
 }
 export type WorkspaceRequest = ReturnType<typeof decodeRequest>;

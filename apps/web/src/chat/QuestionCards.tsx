@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import type { TranscriptCard } from './presentation';
 import { CircleHelp } from 'lucide-react';
 import type { BotBridgeClient } from '@hermes-client/protocol';
 import { RequestDomain, type QuestionRequest } from '@hermes-client/protocol';
@@ -95,24 +96,27 @@ function Question({
   );
 }
 
-export function QuestionCards({
+export function useQuestionCards({
   client,
   sessionId,
   version,
 }: {
-  client: BotBridgeClient;
-  sessionId: string;
+  client: BotBridgeClient | undefined;
+  sessionId: string | undefined;
   version: number;
-}) {
-  const [requests, setRequests] = useState<QuestionRequest[]>([]);
+}): TranscriptCard[] {
+  const [batch, setBatch] = useState<{ sessionId: string; requests: QuestionRequest[] }>();
   const [refresh, setRefresh] = useState(0);
   useEffect(() => {
+    if (!client || !sessionId) return;
+    const connection = client,
+      session = sessionId;
     let active = true;
     let timer: ReturnType<typeof setTimeout>;
     async function load() {
       try {
-        const data = await new RequestDomain(client).questions(sessionId);
-        if (active) setRequests(data);
+        const data = await new RequestDomain(connection).questions(session);
+        if (active) setBatch({ sessionId: session, requests: data });
       } catch {
         /* Pending cards remain usable across stream restoration. */
       } finally {
@@ -125,22 +129,23 @@ export function QuestionCards({
       clearTimeout(timer);
     };
   }, [client, sessionId, version, refresh]);
-  return (
-    <>
-      {requests.flatMap((request) =>
-        request.questions
-          .filter((question) => !question.answered)
-          .map((question) => (
-            <Question
-              key={request.id + ':' + question.id}
-              client={client}
-              sessionId={sessionId}
-              request={request}
-              question={question}
-              onAnswer={() => setRefresh((n) => n + 1)}
-            />
-          )),
-      )}
-    </>
+  if (!client || !sessionId) return [];
+  const requests = batch?.sessionId === sessionId ? batch.requests : [];
+  return requests.flatMap((request) =>
+    request.questions
+      .filter((question) => !question.answered)
+      .map((question) => ({
+        id: 'question:' + request.id + ':' + question.id,
+        content: (
+          <Question
+            key={request.id + ':' + question.id}
+            client={client}
+            sessionId={sessionId}
+            request={request}
+            question={question}
+            onAnswer={() => setRefresh((n) => n + 1)}
+          />
+        ),
+      })),
   );
 }

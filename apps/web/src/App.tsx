@@ -78,8 +78,8 @@ import { WorkspaceSetup } from './WorkspaceSetup';
 import { StartupScreen } from './StartupScreen';
 import { OrgChart } from './OrgChart';
 import { RequestDomain } from '@hermes-client/protocol';
-import { ConversationRequests } from './chat/ConversationRequests';
-import { QuestionCards } from './chat/QuestionCards';
+import { useConversationRequests } from './chat/ConversationRequests';
+import { useQuestionCards } from './chat/QuestionCards';
 import { useWorkCatalog } from './work/use-work';
 import { WorkArea } from './work/WorkArea';
 import { WorkDialog } from './work/WorkDialogs';
@@ -324,6 +324,25 @@ export function App({ owner }: { owner?: OwnerConnection }) {
   const [requestCount, setRequestCount] = useState(0);
   const [cardsVersion, setCardsVersion] = useState(0);
   const [requestFocus, setRequestFocus] = useState<string>();
+  const requestCards = useConversationRequests({
+    client,
+    profile: selection?.kind === 'bot' ? selection.bot.profile : undefined,
+    workspace,
+    version: cardsVersion,
+    focusId: requestFocus,
+    onOpen(profile, requestId) {
+      const bot = bots.find((bot) => bot.profile === profile);
+      if (bot) {
+        setRequestFocus(requestId);
+        void open(bot);
+      }
+    },
+  });
+  const questionCards = useQuestionCards({
+    client: client?.supportsQuestions ? client : undefined,
+    sessionId: selection?.kind === 'bot' ? selection.sessionId : undefined,
+    version: cardsVersion,
+  });
   const [removedDraft, setRemovedDraft] = useState('');
   const rosterLoader = useRef(new RosterLoader());
   const workspaceRef = useRef(workspace);
@@ -2206,6 +2225,28 @@ export function App({ owner }: { owner?: OwnerConnection }) {
                     }}
                   >
                     <Transcript
+                      cards={[
+                        ...questionCards,
+                        ...approvals.map((approval) => ({
+                          id: 'native-approval:' + approvalKey(approval.target),
+                          content: (
+                            <Confirmation
+                              title="Approval needed"
+                              description={approval.description}
+                              value={
+                                approvalSubmitting[approvalKey(approval.target)]
+                                  ? { kind: 'submitting', message: 'Sending decision' }
+                                  : {
+                                      kind: 'pending',
+                                      disabled: blocked,
+                                      onDecision: (choice) => void approve(approval, choice),
+                                    }
+                              }
+                            />
+                          ),
+                        })),
+                        ...requestCards,
+                      ]}
                       footer={
                         <>
                           {commandResult &&
@@ -2226,47 +2267,6 @@ export function App({ owner }: { owner?: OwnerConnection }) {
                                 />
                               </div>
                             )}
-                          {selection?.kind === 'bot' && client.supportsQuestions && (
-                            <QuestionCards
-                              key={selection.sessionId}
-                              client={client}
-                              sessionId={selection.sessionId}
-                              version={cardsVersion}
-                            />
-                          )}
-                          {approvals.map((approval) => (
-                            <Confirmation
-                              key={approvalKey(approval.target)}
-                              title="Approval needed"
-                              description={approval.description}
-                              value={
-                                approvalSubmitting[approvalKey(approval.target)]
-                                  ? { kind: 'submitting', message: 'Sending decision' }
-                                  : {
-                                      kind: 'pending',
-                                      disabled: blocked,
-                                      onDecision: (choice) => void approve(approval, choice),
-                                    }
-                              }
-                            />
-                          ))}
-                          {selection?.kind === 'bot' && workspace && (
-                            <ConversationRequests
-                              key={selection.bot.profile}
-                              client={client}
-                              profile={selection.bot.profile}
-                              workspace={workspace}
-                              version={cardsVersion}
-                              focusId={requestFocus}
-                              onOpen={(profile, requestId) => {
-                                const bot = bots.find((bot) => bot.profile === profile);
-                                if (bot) {
-                                  setRequestFocus(requestId);
-                                  void open(bot);
-                                }
-                              }}
-                            />
-                          )}
                           {selection?.kind === 'bot' &&
                           (capabilities.voice || capabilities.secrets) ? (
                             <VoiceChat
