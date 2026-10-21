@@ -268,7 +268,7 @@ test('whole rows drag between sections, pins and crews without exposed handles',
     await dialog.getByRole('button', { name: 'Create', exact: true }).click();
     await expect(dialog).toHaveCount(0);
   }
-  const crews = page.locator('.pc-list[aria-label="Crews"]');
+  const crews = page.getByRole('group', { name: 'Unsectioned pebbles', exact: true });
   const first = crews
     .locator('.pc-crew-row')
     .filter({ has: page.getByRole('button', { name: /^First crew / }) });
