@@ -2,13 +2,12 @@ import { motion } from 'motion/react';
 import { useTaskMovement } from './use-task-movement';
 import { workMoveStatuses } from '@hermes-client/protocol';
 import { Menu } from '../ui/primitives';
-import { useEffect, useRef, useState } from 'react';
-import { Flag, PanelLeftOpen, MoreHorizontal } from 'lucide-react';
+import { useCallback, useRef, useState } from 'react';
+import { Flag, MoreHorizontal } from 'lucide-react';
 import { WorkDomain } from '@hermes-client/protocol';
 import type {
   BotBridgeClient,
   WorkspaceSnapshot,
-  WorkBoardView,
   WorkCatalog,
   WorkStatus,
 } from '@hermes-client/protocol';
@@ -18,6 +17,9 @@ import { Badge } from '../components/ui/badge';
 import { IconButton } from '../components/ui/icon-button';
 import { LoadingBar } from '../components/ui/loading-bar';
 import { Notice } from '../ui/primitives';
+import { useWorkRead } from './use-work-read';
+import { WorkReadError } from './WorkReadError';
+import { WorkHeader } from './WorkHeader';
 
 export const statusNames: Record<WorkStatus, string> = {
   triage: 'Triage',
@@ -41,6 +43,8 @@ export function WorkArea({
   onEditProject,
   onNavigate,
   refresh,
+  connected,
+  onReconnect,
 }: {
   client: BotBridgeClient;
   workspace: WorkspaceSnapshot;
@@ -51,10 +55,14 @@ export function WorkArea({
   onEditProject: () => void;
   onNavigate: () => void;
   refresh: number;
+  connected: boolean;
+  onReconnect: () => void;
 }) {
-  const [view, setView] = useState<WorkBoardView>();
-  const [error, setError] = useState('');
-  const [retry, setRetry] = useState(0);
+  const read = useCallback(
+    () => new WorkDomain(client).board({ workspaceId: catalog.workspaceId, board }),
+    [client, catalog.workspaceId, board, refresh],
+  );
+  const resource = useWorkRead({ scope: catalog.workspaceId + '/' + board, read, connected });
   const dragged = useRef<string | undefined>(undefined);
   const [over, setOver] = useState<{ status: WorkStatus; beforeId: string | null }>();
   const movement = useTaskMovement({
@@ -62,68 +70,29 @@ export function WorkArea({
     workspaceId: catalog.workspaceId,
     board,
     onChanged: (task, beforeId) => {
-      setView((current) =>
-        current
-          ? {
-              ...current,
-              columns: current.columns.map((column) => {
-                const tasks = column.tasks.filter((row) => row.id !== task.id);
-                if (column.status === task.status) {
-                  const position = beforeId ? tasks.findIndex((row) => row.id === beforeId) : -1;
-                  tasks.splice(position < 0 ? tasks.length : position, 0, task);
-                }
-                return { ...column, tasks };
-              }),
-            }
-          : current,
-      );
-      setRetry((n) => n + 1);
+      resource.updateValue((current) => ({
+        ...current,
+        columns: current.columns.map((column) => {
+          const tasks = column.tasks.filter((row) => row.id !== task.id);
+          if (column.status === task.status) {
+            const position = beforeId ? tasks.findIndex((row) => row.id === beforeId) : -1;
+            tasks.splice(position < 0 ? tasks.length : position, 0, task);
+          }
+          return { ...column, tasks };
+        }),
+      }));
+      resource.reload();
     },
   });
-  useEffect(() => {
-    let live = true;
-    let timer: ReturnType<typeof setTimeout>;
-    const load = async () => {
-      try {
-        const value = await new WorkDomain(client).board({
-          workspaceId: catalog.workspaceId,
-          board,
-        });
-        if (live) {
-          setView(value);
-          setError('');
-        }
-      } catch {
-        if (live) setError('This board could not be loaded.');
-      } finally {
-        if (live) timer = setTimeout(() => void load(), 5000);
-      }
-    };
-    void load();
-    return () => {
-      live = false;
-      clearTimeout(timer);
-    };
-  }, [client, catalog.workspaceId, board, retry, refresh]);
-  const current =
-    view?.board.slug === board && view.workspaceId === catalog.workspaceId ? view : undefined;
+  const current = resource.state.value;
   const summary = catalog.boards.find((b) => b.slug === board);
   return (
     <section className="pc-work-area" aria-label="Tasks">
-      <header className="pc-work-header">
-        <IconButton
-          quiet
-          className="md:hidden"
-          label="Toggle navigation"
-          icon={PanelLeftOpen}
-          onClick={onNavigate}
-        />
-        <div className="min-w-0 flex-1">
-          <h1 className="truncate text-lg font-semibold">{summary?.name ?? 'Tasks'}</h1>
-          {summary?.description && (
-            <p className="line-clamp-2 text-sm text-muted-foreground">{summary.description}</p>
-          )}
-        </div>
+      <WorkHeader
+        title={summary?.name ?? 'Tasks'}
+        description={summary?.description}
+        onNavigate={onNavigate}
+      >
         {summary?.mapping === 'linked' && (
           <IconButton
             quiet
@@ -139,15 +108,16 @@ export function WorkArea({
         >
           New task
         </Button>
-      </header>
-      <LoadingBar active={!current && !error} label="Loading project board" />
-      {!current && error && (
-        <Notice error>
-          {error}{' '}
-          <Button variant="quiet" onClick={() => setRetry((n) => n + 1)}>
-            Try again
-          </Button>
-        </Notice>
+      </WorkHeader>
+      <LoadingBar active={resource.state.kind === 'pending'} label="Loading project board" />
+      {resource.state.kind === 'failed' && (
+        <WorkReadError
+          error={resource.state.error}
+          subject="this board"
+          retained={!!current}
+          onRetry={resource.reload}
+          onReconnect={onReconnect}
+        />
       )}
       {movement.error && <Notice error>{movement.error}</Notice>}
       {movement.uncertain && (

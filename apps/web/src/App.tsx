@@ -83,6 +83,8 @@ import { RequestDomain } from '@hermes-client/protocol';
 import { useConversationRequests } from './chat/ConversationRequests';
 import { useQuestionCards } from './chat/QuestionCards';
 import { useWorkCatalog } from './work/use-work';
+import { WorkReadError } from './work/WorkReadError';
+import { WorkHeader } from './work/WorkHeader';
 import { WorkArea } from './work/WorkArea';
 import { WorkDialog } from './work/WorkDialogs';
 import type { WorkDialogTarget } from './work/WorkDialogs';
@@ -144,7 +146,6 @@ export function App({ owner }: { owner?: OwnerConnection }) {
   const welcomeProfile = useRef('');
   const disposed = useRef(false);
   const [client, setClient] = useState<BotBridgeClient>();
-  const work = useWorkCatalog(client, workspace?.initialized ? workspace.id : undefined);
   const current = useRef<BotBridgeClient | undefined>(undefined);
   const selected = useRef<Selection | undefined>(undefined);
   const selectionConnection = useRef<BotBridgeClient | undefined>(undefined);
@@ -182,6 +183,11 @@ export function App({ owner }: { owner?: OwnerConnection }) {
   const [switching, setSwitching] = useState(false);
   const [blocked, setBlocked] = useState(false);
   const [streamState, setStreamState] = useState<'opening' | 'live' | 'lost'>('opening');
+  const work = useWorkCatalog(
+    client,
+    workspace?.initialized ? workspace.id : undefined,
+    streamState === 'live',
+  );
   const [error, setError] = useState('');
   const [nav, setNav] = useState(false);
   const phone = useMedia('(max-width: 767px)');
@@ -2084,6 +2090,8 @@ export function App({ owner }: { owner?: OwnerConnection }) {
                   catalog={work.catalog}
                   board={workBoard}
                   refresh={workRevision}
+                  connected={streamState === 'live'}
+                  onReconnect={owner ? scheduleReconnect : disconnect}
                   onNavigate={() => setNav(true)}
                   onTask={(id) => setWorkDialog({ kind: 'task', board: workBoard, id })}
                   onCreate={() => setWorkDialog({ kind: 'new-task', board: workBoard })}
@@ -2091,12 +2099,18 @@ export function App({ owner }: { owner?: OwnerConnection }) {
                 />
               ) : (
                 <section className="pc-work-area" aria-label="Tasks">
-                  <LoadingBar active={!work.error} label="Loading project boards" />
-                  {work.error && (
-                    <Alert>
-                      <AlertDescription>{work.error}</AlertDescription>
-                      <Button onClick={work.reload}>Try again</Button>
-                    </Alert>
+                  <WorkHeader title="Tasks" onNavigate={() => setNav(true)} />
+                  <LoadingBar
+                    active={work.state.kind === 'pending'}
+                    label="Loading project boards"
+                  />
+                  {work.state.kind === 'failed' && (
+                    <WorkReadError
+                      error={work.state.error}
+                      subject="project boards"
+                      onRetry={work.reload}
+                      onReconnect={owner ? scheduleReconnect : disconnect}
+                    />
                   )}
                 </section>
               ))}

@@ -204,9 +204,12 @@ export class WorkDomain {
     return decodeWorkCatalog(await this.bridge.invoke('work.describe', {}));
   }
   async board(ref: WorkReference) {
-    return decodeBoardView(
+    const value = decodeBoardView(
       await this.bridge.invoke('work.board', { workspace_id: ref.workspaceId, board: ref.board }),
     );
+    if (value.workspaceId !== ref.workspaceId || value.board.slug !== ref.board)
+      throw new ClientError('INVALID_RESPONSE');
+    return value;
   }
   async task(ref: WorkReference & { id: string }) {
     return decodeTaskView(
