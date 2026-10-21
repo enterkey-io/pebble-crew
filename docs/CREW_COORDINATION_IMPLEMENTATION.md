@@ -22,7 +22,7 @@ The implementation uses one hidden native session per participant per initiating
 
 An owner-local exchanges.sqlite stores verified stable identities, native incarnations/session bindings, delivery intents, visible messages and references. workspace.sqlite remains presentation/coordination metadata. Tool-execution middleware authenticates native session/turn/tool-call provenance and returns only an ID/status receipt to the owner session. pebble_exchange supports deliberate follow-ups from an already bound exchange. Owner-only management, approvals, secrets, reactions, documents and voice tools refuse private-session callers, including verified compression continuations. Current hierarchy and Crew context are composed without owner capabilities.
 
-A request can yield a peer final reply and one sender receipt turn. Receipt replies do not automatically wake the other participant. The exchange has an eight-turn budget; admission is bounded across the owner host. Ambiguous launch/restart states become uncertain and are reconciled only from native final reports, never automatically submitted again. A lock prevents two bridge workers from admitting the same work.
+A request can yield a peer final reply and one sender receipt turn. A verified peer reply queues that wakeup exactly once; neither agent polls for it. Receipt replies do not automatically wake the other participant. Request admission reserves space for its receipt inside the eight-turn budget; admission is bounded across the owner host. Ambiguous launch/restart states become uncertain and are reconciled only from native final reports, never automatically submitted again. A lock prevents two bridge workers from admitting the same work.
 
 ## Runtime activation
 
@@ -66,3 +66,19 @@ These are synthetic homes and emulated phones, not an owner visual acceptance or
 an all-device performance claim. The owner installation and public releases are
 unchanged. Preview.23 gives this implementation a new release identity. The final committed
 archive must be verified unchanged before publication.
+
+## Live progress and owner-chat awareness
+
+An independent observer detects commits to the same owner-local exchange ledger
+and publishes content-free `exchanges.changed` events on authenticated streams.
+It remains responsive while a model turn runs. Current clients refresh the
+existing history reference and open viewer on those signals, and reconcile after
+reconnection. Their reference IDs and creation times remain fixed. Older bridge
+versions retain their browser polling fallback; no model turn polls for progress.
+
+The direct-chat context includes up to three recent conversations with peer
+identity, message count, delivery state, reply notification state and a bounded
+peer-message excerpt. This keeps the agent aware across its separate private and
+owner conversations without inserting a peer's messages as owner chat messages.
+Peer context never grants owner permissions. The full ledger stays on the owner
+host and survives app/browser restarts.

@@ -146,11 +146,29 @@ def create_app(token, origins, hosts, gateway=None, trust=None, workspace=None, 
                     await asyncio.sleep(0.5)
             finally:
                 ledger.close()
+        async def watch_exchange_updates():
+            if not workspace:
+                return
+            from .exchanges import Exchanges
+            observer = Exchanges(workspace.store)
+            try:
+                async for _ in observer.changes():
+                    for queue in tuple(native.listeners):
+                        try:
+                            queue.put_nowait({'type': 'exchanges.changed'})
+                        except asyncio.QueueFull:
+                            pass  # Reconnection re-reads the durable exchange ledger.
+            finally:
+                observer.close()
+        exchange_updates = asyncio.create_task(watch_exchange_updates())
         exchanges = asyncio.create_task(watch_exchanges())
         watcher = asyncio.create_task(watch_roster())
         try:
             yield
         finally:
+            exchange_updates.cancel()
+            with suppress(asyncio.CancelledError):
+                await exchange_updates
             exchanges.cancel()
             with suppress(asyncio.CancelledError):
                 await exchanges
@@ -281,7 +299,7 @@ def create_app(token, origins, hosts, gateway=None, trust=None, workspace=None, 
                                "expires": request.scope.get("bot.ticket_expires"), "ended": None}
         build = getattr(native, "build", None) or {}
         return {"connection": connection, "protocol": "hermes-bot-web.v1", "bridge_version": VERSION,
-                "capabilities": {"exchanges": bool(workspace), "existing_agents": True, "owner_login": owner_trust is not None, "workspace": bool(workspace), "reporting": 1 if workspace else None, "projects": bool(workspace and getattr(native, 'work_supported', False)), "attachments": bool(files), "generated_media": True, "reactions": True, "room_reactions": bool(workspace), "live_voice": live_voice_supported(), "secrets": bool(getattr(native, "build", None) and native.build.get("server_requests")), "questions": bool(getattr(native, "build", None)), "computer": computer.supported},
+                "capabilities": {"exchanges": bool(workspace), "exchange_events": bool(workspace), "existing_agents": True, "owner_login": owner_trust is not None, "workspace": bool(workspace), "reporting": 1 if workspace else None, "projects": bool(workspace and getattr(native, 'work_supported', False)), "attachments": bool(files), "generated_media": True, "reactions": True, "room_reactions": bool(workspace), "live_voice": live_voice_supported(), "secrets": bool(getattr(native, "build", None) and native.build.get("server_requests")), "questions": bool(getattr(native, "build", None)), "computer": computer.supported},
                 "hermes_version": build.get("version"), "hermes_revision": build.get("revision")}
 
     @app.post("/v1/renew")
@@ -466,7 +484,7 @@ def create_app(token, origins, hosts, gateway=None, trust=None, workspace=None, 
                     if event.get("type") == "bridge.resync":
                         yield json.dumps(event) + "\n\n"
                         break
-                    if event.get('type') in {'workspace.changed', 'requests.changed'}:
+                    if event.get('type') in {'workspace.changed', 'requests.changed', 'exchanges.changed'}:
                         yield json.dumps({'type': event['type']}) + '\n\n'
                         continue
                     if event.get("session_id") in client["sessions"]:

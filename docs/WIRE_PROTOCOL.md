@@ -303,8 +303,13 @@ takes the returned exchange `id`. Neither accepts author names, native session
 IDs, credentials or delivery commands. References include the same exchange ID,
 peer identity, visible message count, state and creation time in both direct
 chats. The viewer includes authenticated participant IDs and visible messages,
-not internal model traces. Clients poll references and the open viewer; the
-existing event stream and its framing do not change.
+not internal model traces. The optional `exchange_events` capability enables
+`exchanges.changed` notifications on the existing authenticated event stream.
+They carry only the type, never private messages or native session IDs. Clients
+re-read references and the open viewer on this signal and after reconnection;
+older bridges retain the polling fallback. Updating a reference preserves its ID
+and creation time, so its message count changes in place in history. Wire framing
+is unchanged.
 
 Current Hermes supports native bot authorship and separate profile sessions.
 Legacy Hermes without that primitive returns unsupported rather than delivering

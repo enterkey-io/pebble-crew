@@ -170,6 +170,42 @@ test('private first use, native onboarding, idle keepalive and reconnection', as
   ownerCookies = await context.cookies();
 });
 
+test('native private replies update durable owner history through the real live stream', async ({
+  page,
+  context,
+}, info) => {
+  await context.addCookies(ownerCookies);
+  const errors: string[] = [];
+  page.on('pageerror', (error) => errors.push(error.message));
+  await page.goto('/');
+  const field = page.getByLabel('Message', { exact: true });
+  await expect(field).toBeEnabled();
+  await page.getByRole('button', { name: /^Aurora .*Bot Chat$/ }).click();
+  await expect(field).toBeEnabled();
+  await field.fill('nativehandoff: send the private test request to Beta');
+  await page.getByRole('button', { name: 'Send message', exact: true }).click();
+  await expect(page.getByRole('log')).toContainText(
+    'nativehandoff: send the private test request to Beta',
+  );
+  const link = page.getByRole('button', { name: '3 messages with Beta', exact: true });
+  await expect(link).toBeVisible({ timeout: 60000 });
+  await expect(page.getByRole('log')).not.toContainText('Teammate delivery proof');
+  await link.click();
+  const viewer = page.getByRole('dialog', { name: /^(Aurora and Beta|Beta and Aurora)$/ });
+  await expect(viewer.locator('[data-exchange-message]')).toHaveCount(3);
+  await expect(viewer).toContainText('Teammate delivery proof');
+  await page.screenshot({
+    path: info.outputPath('native-live-exchange.png'),
+    animations: 'disabled',
+  });
+  await viewer.getByRole('button', { name: 'Close', exact: true }).click();
+  await page.reload();
+  await expect(field).toBeEnabled();
+  await expect(link).toBeVisible();
+  await expect(page.getByRole('log')).not.toContainText('Teammate delivery proof');
+  expect(errors).toEqual([]);
+});
+
 test('native Crews, group chats, avatar switching and role persistence', async ({
   page,
   context,
@@ -213,7 +249,7 @@ test('native Crews, group chats, avatar switching and role persistence', async (
     path: 'test-results/native-crew-conversation.png',
   });
   await page.getByRole('button', { name: 'New', exact: true }).click();
-  await page.getByRole('menuitem', { name: 'Group chat', exact: true }).click();
+  await page.getByRole('menuitem', { name: 'New group chat', exact: true }).click();
   const groupDialog = page.getByRole('dialog', { name: 'New group chat', exact: true });
   await groupDialog.getByLabel('Name', { exact: true }).fill('Quick discussion');
   for (const name of ['Alpha', 'Beta'])

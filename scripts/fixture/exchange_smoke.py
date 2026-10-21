@@ -27,6 +27,7 @@ class Model(BaseHTTPRequestHandler):
             self.send_response(200); self.end_headers(); self.wfile.write(b'{}'); return
         Model.requests.append(data)
         user=str(next((m.get('content') for m in reversed(data.get('messages',[])) if m.get('role')=='user'),''))
+        user=user.split('\n\n',1)[0]  # Hermes appends ephemeral context after the original query.
         name=args=None
         text='Owner direct reply'
         if 'START_FOLLOWUP_EXCHANGE' in user and not Model.followup_started:
@@ -124,10 +125,24 @@ async def verify(home):
                 print(json.dumps({'native_exchange':'safely-unsupported','revision':native.build['revision'],'models':'synthetic-loopback-only'})); return
             assert len(deliveries)==1, {'count':len(deliveries),'requests':Model.requests[-1]}
             ident=deliveries[0]['exchange']
+            assert ledger.references(store.read()['bots']['default']['id'])['exchanges'][0]['count']==1
             await ledger.run_pending(native)
+            assert ledger.references(store.read()['bots']['default']['id'])['exchanges'][0]['count']==2
             await ledger.run_pending(native)
             data=ledger.read(ident)
             assert [m['text'].split(':')[0] for m in data['messages']]==['PEER_INPUT_NONCE','PEER_REPLY_NONCE','PEER_RECEIPT_NONCE'],data
+            reopened=Exchanges(store)
+            try:
+                for profile in ['default','chloe']:
+                    ref=reopened.references(store.read()['bots'][profile]['id'])['exchanges'][0]
+                    assert ref['id']==ident and ref['count']==3,ref
+                activity=reopened.activity(store.read()['bots']['default']['id'])[0]
+                assert activity['reply_notification']=='completed',activity
+                from bot_web.runtime import live_context
+                context=json.loads(live_context(store,'default',compact=True,include_private=True).split('\n',1)[1])
+                assert context['private_conversations'][0]['message_count']==3,context
+                assert 'PEER_REPLY_NONCE' in context['private_conversations'][0]['latest_peer_message'],context
+            finally:reopened.close()
             turns=len(Model.requests)
             await ledger.run_pending(native); await asyncio.sleep(.3)
             assert len(Model.requests)==turns, 'Exchange automatically ping-ponged'

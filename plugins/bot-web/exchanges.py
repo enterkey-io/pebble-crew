@@ -178,7 +178,9 @@ class Exchanges:
                 self.db.execute('INSERT INTO exchanges VALUES(?,?)',(exchange,now))
                 for bot in (sender,recipient):
                     self.db.execute('INSERT INTO participants VALUES(?,?,?,?,NULL)',(exchange,bot['id'],bot['profile'],bot['native_incarnation']))
-            if self.db.execute('SELECT count(*) FROM deliveries WHERE exchange=?',(exchange,)).fetchone()[0] >= BUDGET:
+            admitted = self.db.execute('SELECT count(*) FROM deliveries WHERE exchange=?', (exchange,)).fetchone()[0]
+            awaiting_replies = self.db.execute("SELECT count(*) FROM deliveries WHERE exchange=? AND kind='request' AND state IN ('queued','submitting','running','uncertain')", (exchange,)).fetchone()[0]
+            if admitted + awaiting_replies + 2 > BUDGET:
                 raise InvalidOperation('This exchange reached its turn limit; ask the owner before starting more work')
             ident=str(uuid.uuid4())
             self.db.execute('INSERT INTO origins VALUES(?,?,?,?,?)',(source,exchange,sender['id'],session,call))
@@ -230,6 +232,43 @@ class Exchanges:
         result.sort(key=lambda ref: (ref['created_at'],ref['id']))
         return {'exchanges':result,'supported':supported()}
 
+    async def changes(self):
+        revision = self.db.execute('PRAGMA data_version').fetchone()[0]
+        while True:
+            await asyncio.sleep(0.5)
+            current = self.db.execute('PRAGMA data_version').fetchone()[0]
+            if current != revision:
+                revision = current
+                yield current
+
+    def activity(self, identity, *, compact=False):
+        try:
+            bot = self.actor(identity)
+        except InvalidOperation:
+            return []
+        rows = self.db.execute("""SELECT e.id, count(m.seq) AS count, max(m.seq) AS latest
+          FROM exchanges e JOIN participants p ON p.exchange=e.id
+          JOIN messages m ON m.exchange=e.id
+          WHERE p.identity=? AND p.incarnation=?
+          GROUP BY e.id ORDER BY latest DESC LIMIT 3""", (identity, bot['native_incarnation'])).fetchall()
+        result = []
+        for row in rows:
+            peer = self.db.execute('SELECT identity FROM participants WHERE exchange=? AND identity<>?', (row['id'], identity)).fetchone()
+            try:
+                self.participant(row['id'], peer['identity'])
+                other = self.actor(peer['identity'])
+            except InvalidOperation:
+                continue
+            incoming = self.db.execute('SELECT text FROM messages WHERE exchange=? AND identity=? ORDER BY seq DESC LIMIT 1', (row['id'], other['id'])).fetchone()
+            delivery = self.db.execute('SELECT state FROM deliveries WHERE exchange=? ORDER BY created DESC,id DESC LIMIT 1', (row['id'],)).fetchone()
+            notification = self.db.execute("SELECT state FROM deliveries WHERE exchange=? AND recipient=? AND kind='receipt' ORDER BY created DESC,id DESC LIMIT 1", (row['id'], identity)).fetchone()
+            limit = 160 if compact else 2000
+            result.append({'exchange_id': row['id'], 'peer': '@'+other['handle'], 'message_count': row['count'],
+                'state': delivery['state'], 'reply_notification': notification['state'] if notification else None,
+                'latest_peer_message': incoming['text'][:limit] if incoming else None,
+                'message_truncated': bool(incoming and len(incoming['text']) > limit)})
+        return result
+
     def read(self, ident):
         participants=self.db.execute('SELECT * FROM participants WHERE exchange=?',(ident,)).fetchall()
         if len(participants)!=2:
@@ -277,7 +316,7 @@ class Exchanges:
             self.db.execute('UPDATE deliveries SET state=? WHERE id=?',('completed' if ok else 'failed',row['id']))
             if ok and text.strip():
                 self.db.execute('INSERT OR IGNORE INTO messages(exchange,identity,text,created,key) VALUES(?,?,?,?,?)',(row['exchange'],row['recipient'],text,time.time(),'reply:'+row['id']))
-                if row['kind']=='request' and self.db.execute('SELECT count(*) FROM deliveries WHERE exchange=?',(row['exchange'],)).fetchone()[0] < BUDGET:
+                if row['kind']=='request':
                     self.db.execute('INSERT OR IGNORE INTO deliveries VALUES(?,?,?,?,?,?,?,NULL,NULL,?,?,?)',(str(uuid.uuid4()),row['exchange'],row['recipient'],row['sender'],text,'receipt','queued',time.time(),'receipt:'+row['id'],'receipt:'+row['id']))
         return True
 

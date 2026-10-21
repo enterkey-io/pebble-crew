@@ -80,6 +80,7 @@ export async function installFixture(
     attachments?: boolean;
     voice?: boolean;
     exchanges?: boolean;
+    exchangeEvents?: boolean;
     projects?: boolean;
     organization?: OrganizationState;
     messages?: (Record<string, unknown> & { row_id: number })[];
@@ -238,6 +239,7 @@ export async function installFixture(
           connection,
           capabilities: {
             exchanges: options.exchanges === true,
+            exchange_events: options.exchangeEvents === true,
             live_voice: options.voice === true,
             secrets: options.voice === true,
             questions: options.voice === true,

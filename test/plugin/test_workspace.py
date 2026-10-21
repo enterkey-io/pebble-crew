@@ -50,6 +50,31 @@ class WorkspaceTests(unittest.IsolatedAsyncioTestCase):
         self.store.db.close()
         self.directory.cleanup()
 
+    async def test_private_activity_is_only_in_explicit_own_conversation_context(self):
+        from unittest.mock import patch
+        from bot_web.exchanges import Exchanges
+        state=self.store.read()
+        for bot in state['bots'].values():
+            bot['native_incarnation']='f'*64
+        self.store.save(state,state['revision'])
+        first, second=state['bots']['default'], state['bots']['amy']
+        ledger=Exchanges(self.store)
+        try:
+            with ledger.db:
+                ledger.db.execute('INSERT INTO exchanges VALUES(?,?)',('private-test',1))
+                for bot in (first,second):
+                    ledger.db.execute('INSERT INTO participants VALUES(?,?,?,?,NULL)',('private-test',bot['id'],bot['profile'],bot['native_incarnation']))
+                ledger.db.execute('INSERT INTO messages(exchange,identity,text,created,key) VALUES(?,?,?,?,?)',('private-test',second['id'],'Private peer result',2,'reply-test'))
+                ledger.db.execute('INSERT INTO deliveries VALUES(?,?,?,?,?,?,?,NULL,NULL,?,?,?)',('delivery-test','private-test',first['id'],second['id'],'Request','request','completed',1,'source','fingerprint'))
+            by_id={bot['id']:bot for bot in state['bots'].values()}
+            with patch('bot_web.exchanges.Exchanges.actor',side_effect=lambda ident:by_id[ident]):
+                own=json.loads(live_context(self.store,'default',include_private=True).split('\n',1)[1])
+                self.assertEqual(own['private_conversations'][0]['latest_peer_message'],'Private peer result')
+                other=json.loads(live_context(self.store,'amy').split('\n',1)[1])
+                self.assertNotIn('private_conversations',other)
+        finally:
+            ledger.close()
+
     async def test_turn_context_is_bounded_for_a_large_roster_with_long_instructions(self):
         from copy import deepcopy
         state=self.store.read()

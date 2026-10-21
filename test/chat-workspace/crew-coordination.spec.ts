@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { installFixture } from './fixtures';
+import { installFixture, emit } from './fixtures';
 import type { OrganizationState } from '../../apps/web/src/ui/organization';
 
 test.use({ serviceWorkers: 'block' });
@@ -193,6 +193,114 @@ test('both direct chats open the same live exchange without losing draft or scro
   await other.click();
   await expect(dialog.locator('[data-exchange-message]')).toHaveCount(3);
   expect(fixture.state.bots[0]!.profile).toBe('arlo');
+});
+
+test('private replies push into the existing history link and open viewer without polling', async ({
+  page,
+  context,
+}, info) => {
+  await installFixture(context, { exchanges: true, exchangeEvents: true });
+  await page.clock.install();
+  let count = 1;
+  const actors = [
+    { id: 'identity-0', profile: 'arlo', name: 'Arlo' },
+    { id: 'identity-1', profile: 'mica', name: 'Mica' },
+  ];
+  const texts = ['Please check the plan.', 'The plan is ready.', 'Thanks, keep that plan.'];
+  await page.route('**/v1/rpc', async (route) => {
+    const { operation, params } = route.request().postDataJSON();
+    if (operation === 'exchange.references') {
+      await route.fulfill({
+        json: {
+          result: {
+            exchanges: [
+              {
+                id: 'live-exchange',
+                created_at: 1700000100000,
+                count,
+                peer: actors.find((actor) => actor.id !== params.identity),
+                state: 'completed',
+              },
+            ],
+          },
+        },
+      });
+      return;
+    }
+    if (operation === 'exchange.read') {
+      await route.fulfill({
+        json: {
+          result: {
+            id: 'live-exchange',
+            participants: actors,
+            state: 'completed',
+            messages: texts.slice(0, count).map((text, index) => ({
+              id: String(index + 1),
+              author: actors[index % 2]!.id,
+              text,
+              created_at: 1700000100000 + index * 1000,
+            })),
+          },
+        },
+      });
+      return;
+    }
+    await route.fallback();
+  });
+  await page.goto('/');
+  const field = page.getByLabel('Message', { exact: true });
+  await expect(field).toBeEnabled();
+  await expect(
+    page.getByRole('button', { name: '1 message with Mica', exact: true }),
+  ).toBeVisible();
+  await page.clock.pauseAt(new Date(await page.evaluate(() => Date.now() + 100)));
+  const reference = page.locator('[data-exchange-reference=live-exchange]');
+  await reference.evaluate((element) => element.setAttribute('data-original-reference', 'true'));
+  await field.fill('Keep this draft');
+  count = 2;
+  await emit(page, 'exchanges.changed');
+  await expect(
+    page.getByRole('button', { name: '2 messages with Mica', exact: true }),
+  ).toBeVisible();
+  await page.clock.resume();
+  await expect(reference).toHaveAttribute('data-original-reference', 'true');
+  await page.getByRole('button', { name: '2 messages with Mica', exact: true }).click();
+  const dialog = page.getByRole('dialog', { name: 'Arlo and Mica', exact: true });
+  await expect(dialog.locator('[data-exchange-message]')).toHaveCount(2);
+  count = 3;
+  await emit(page, 'exchanges.changed');
+  await expect(dialog.locator('[data-exchange-message]')).toHaveCount(3);
+  await dialog.getByRole('button', { name: 'Close', exact: true }).click();
+  await expect(field).toHaveValue('Keep this draft');
+  await expect(
+    page.getByRole('button', { name: '3 messages with Mica', exact: true }),
+  ).toBeVisible();
+  await expect(reference).toHaveAttribute('data-original-reference', 'true');
+  await field.fill('A later owner message');
+  await field.press('Enter');
+  await expect(page.getByText('A later owner message', { exact: true })).toBeVisible();
+  await expect(reference).toHaveCount(1);
+  await page.reload();
+  await expect(field).toBeEnabled();
+  await expect(
+    page.getByRole('button', { name: '3 messages with Mica', exact: true }),
+  ).toBeVisible();
+  await expect(page.getByRole('log')).not.toContainText('The plan is ready.');
+  await reference.scrollIntoViewIfNeeded();
+  await expect(reference).toBeInViewport();
+  await page.screenshot({
+    path: info.outputPath('live-exchange-history.png'),
+    animations: 'disabled',
+  });
+  await showRail(page);
+  await page
+    .locator('.pc-pins')
+    .filter({ visible: true })
+    .getByRole('button', { name: /Mica/ })
+    .click();
+  await expect(
+    page.getByRole('button', { name: '3 messages with Arlo', exact: true }),
+  ).toBeVisible();
 });
 
 test('a confirmed peer call becomes a thin link while a failed reused call stays visible', async ({

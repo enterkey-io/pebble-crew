@@ -84,6 +84,13 @@ class StreamTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(dict(response["headers"])[b"access-control-allow-origin"].decode(), ORIGIN)
         return frames, task
 
+    async def test_exchange_changes_reach_an_idle_authenticated_stream_without_peer_content(self):
+        frames, _ = await self.stream()
+        for queue in tuple(self.native.listeners):
+            queue.put_nowait({'type': 'exchanges.changed', 'session_id': 'private-session',
+                'payload': {'text': 'Private reply must not travel in a global event'}})
+        self.assertEqual(await asyncio.wait_for(frames.get(), 1), {'type': 'exchanges.changed'})
+
     async def test_filtered_native_traffic_does_not_starve_heartbeats(self):
         with patch("bot_web.server.HEARTBEAT_SECONDS", 0.04, create=True):
             frames, _ = await self.stream()

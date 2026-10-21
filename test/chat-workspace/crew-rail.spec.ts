@@ -59,6 +59,36 @@ test('crew chevrons collapse only members, persist and leave chat opening on the
   await showRail(page);
   const crew = page.locator('[data-crew-id=north]').filter({ visible: true });
   await expect(crew.getByRole('button', { name: /^Mica .*Bot Chat$/ })).toBeVisible();
+  await expect
+    .poll(async () => (await crew.locator('.pc-crew-row').boundingBox())!.x)
+    .toBeGreaterThanOrEqual(0);
+  const { header, toggle, groupFace, memberFace, avatars } = await crew.evaluate((element) => {
+    const bounds = (selector: string) => {
+      const rect = element.querySelector(selector)!.getBoundingClientRect();
+      return { x: rect.x, width: rect.width, height: rect.height };
+    };
+    return {
+      header: bounds('.pc-crew-row'),
+      toggle: bounds('.pc-crew-toggle'),
+      groupFace: bounds('.pc-crew-faces'),
+      memberFace: bounds('.pc-member-face'),
+      avatars: [...element.querySelectorAll('.pc-crew-faces .agent-avatar')].map((avatar) => {
+        const rect = avatar.getBoundingClientRect();
+        return { width: rect.width, height: rect.height };
+      }),
+    };
+  });
+  expect(toggle.x).toBeGreaterThanOrEqual(header.x);
+  if (info.project.use.isMobile) expect(toggle.width).toBeGreaterThanOrEqual(44);
+  expect(toggle.x + toggle.width).toBeLessThanOrEqual(groupFace.x + 0.5);
+  expect(groupFace.x - (toggle.x + toggle.width)).toBeLessThanOrEqual(12);
+  expect(groupFace.width).toBeCloseTo(36, 1);
+  expect(groupFace.height).toBeCloseTo(36, 1);
+  expect(memberFace.x - groupFace.x).toBeGreaterThanOrEqual(12);
+  for (const avatar of avatars) {
+    expect(avatar.width).toBeCloseTo(24, 1);
+    expect(avatar.height).toBeCloseTo(26, 1);
+  }
   await crew.getByRole('button', { name: 'Collapse North pebbles', exact: true }).click();
   await expect(
     crew.getByRole('button', { name: 'Expand North pebbles', exact: true }),
@@ -71,6 +101,13 @@ test('crew chevrons collapse only members, persist and leave chat opening on the
   await expect(crew.locator('.pc-crew-members')).toHaveCount(0);
   await crew.getByRole('button', { name: 'Expand North pebbles', exact: true }).click();
   await expect(crew.getByRole('button', { name: /^Mica .*Bot Chat$/ })).toBeVisible();
+  await expect
+    .poll(async () => {
+      const list = (await crew.locator('.pc-crew-members').boundingBox())!;
+      const last = (await crew.locator('.pc-crew-member').last().boundingBox())!;
+      return list.y + list.height - (last.y + last.height);
+    })
+    .toBeGreaterThanOrEqual(-0.5);
   await page.screenshot({ path: info.outputPath('crew-disclosures.png'), animations: 'disabled' });
   await crew.getByRole('button', { name: 'North 2 pebbles. Open chat', exact: true }).click();
   await expect.poll(() => opened).toBe(1);

@@ -49,13 +49,13 @@ test('replacing a chosen mention before the next paint preserves the replacement
   await expect.poll(() => sends).toEqual(['@aurora please review this']);
 });
 
-async function newConversation(page: Page, kind: 'New crew' | 'Group chat') {
+async function newConversation(page: Page, kind: 'New crew' | 'New group chat') {
   if (page.viewportSize()!.width < 768)
     await page.getByRole('button', { name: 'Toggle navigation', exact: true }).click();
   await page.getByRole('button', { name: 'New', exact: true }).click();
   await page.getByRole('menuitem', { name: kind, exact: true }).click();
   return page.getByRole('dialog', {
-    name: kind === 'New crew' ? kind : 'New group chat',
+    name: kind,
     exact: true,
   });
 }
@@ -177,7 +177,7 @@ test('ad hoc group creation leaves crew membership and sidebar placement unchang
   });
   await page.goto('/');
   await expect(page.getByLabel('Message', { exact: true })).toBeEnabled();
-  const dialog = await newConversation(page, 'Group chat');
+  const dialog = await newConversation(page, 'New group chat');
   await dialog.getByLabel('Name', { exact: true }).fill('Planning discussion');
   for (const name of ['Arlo', 'Mica'])
     await dialog.getByRole('checkbox', { name, exact: true }).check();

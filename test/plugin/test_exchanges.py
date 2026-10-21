@@ -59,6 +59,79 @@ class ExchangeTests(unittest.TestCase):
         self.ledger.complete(receipt,{'pid':43,'exit_code':0,'reply':'received'})
         self.assertEqual(self.ledger.db.execute('SELECT count(*) FROM deliveries').fetchone()[0],2)
         self.assertEqual(len(self.ledger.read(ident)['messages']),3)
+    def test_admission_reserves_each_reply_wakeup_inside_the_turn_budget(self):
+        ident = self.send()['exchange_id']
+        self.ledger.db.execute("UPDATE participants SET session='private-a' WHERE identity='a'"); self.ledger.db.commit()
+        for index in range(3):
+            self.send(session='private-a', call='followup-'+str(index), exchange=ident)
+        with self.assertRaises(InvalidOperation):
+            self.send(session='private-a', call='one-too-many', exchange=ident)
+        for index, row in enumerate(self.ledger.db.execute("SELECT * FROM deliveries WHERE kind='request'").fetchall()):
+            pid = index+40
+            self.ledger.db.execute("UPDATE deliveries SET pid=?,state='running' WHERE id=?", (pid,row['id'])); self.ledger.db.commit()
+            current = self.ledger.db.execute('SELECT * FROM deliveries WHERE id=?',(row['id'],)).fetchone()
+            self.ledger.complete(current, {'pid':pid,'exit_code':0,'reply':'A real peer reply'})
+        self.assertEqual(self.ledger.db.execute("SELECT count(*) FROM deliveries WHERE kind='receipt'").fetchone()[0],4)
+        self.assertEqual(self.ledger.db.execute('SELECT count(*) FROM deliveries').fetchone()[0],8)
+
+    def test_reply_awareness_and_history_survive_ledger_reopen(self):
+        ident = self.send()['exchange_id']
+        row = self.ledger.db.execute('SELECT * FROM deliveries').fetchone()
+        self.ledger.db.execute("UPDATE deliveries SET pid=42,state='running' WHERE id=?", (row['id'],)); self.ledger.db.commit()
+        row = self.ledger.db.execute('SELECT * FROM deliveries').fetchone()
+        self.ledger.complete(row, {'pid': 42, 'exit_code': 0, 'reply': 'Peer result. '*100})
+        activity = self.ledger.activity('a', compact=True)[0]
+        self.assertEqual(activity['exchange_id'], ident)
+        self.assertEqual(activity['message_count'], 2)
+        self.assertEqual(activity['reply_notification'], 'queued')
+        self.assertEqual(activity['peer'], '@b')
+        self.assertEqual(len(activity['latest_peer_message']), 160)
+        self.assertTrue(activity['message_truncated'])
+        receipt = self.ledger.db.execute("SELECT * FROM deliveries WHERE kind='receipt'").fetchone()
+        self.ledger.db.execute("UPDATE deliveries SET pid=43,state='running' WHERE id=?", (receipt['id'],)); self.ledger.db.commit()
+        receipt = self.ledger.db.execute('SELECT * FROM deliveries WHERE id=?', (receipt['id'],)).fetchone()
+        self.ledger.complete(receipt, {'pid': 43, 'exit_code': 0, 'reply': 'I received the reply.'})
+        reopened = Exchanges(self.store)
+        try:
+            for identity in ['a', 'b']:
+                with patch.object(reopened, 'actor', side_effect=lambda i: self.bots[i]):
+                    ref = reopened.references(identity)['exchanges'][0]
+                    self.assertEqual((ref['id'], ref['count']), (ident, 3))
+                    self.assertEqual(reopened.activity('a')[0]['reply_notification'], 'completed')
+        finally:
+            reopened.close()
+
+    def test_cross_connection_commits_push_changes_and_reads_do_not(self):
+        import asyncio
+        async def verify():
+            observer = Exchanges(self.store)
+            changes = observer.changes()
+            pending = None
+            try:
+                pending = asyncio.create_task(anext(changes))
+                await asyncio.sleep(0)
+                self.send()
+                await asyncio.wait_for(pending, 2)
+                pending = asyncio.create_task(anext(changes))
+                await asyncio.sleep(0)
+                self.ledger.read(self.ledger.references('a')['exchanges'][0]['id'])
+                reader = Exchanges(self.store)
+                try:
+                    with patch.object(reader, 'actor', side_effect=lambda i: self.bots[i]):
+                        reader.references('a')
+                finally:
+                    reader.close()
+                await asyncio.sleep(0.55)
+                self.assertFalse(pending.done(), 'A read must not create an update loop')
+            finally:
+                if pending and not pending.done():
+                    pending.cancel()
+                    try: await pending
+                    except asyncio.CancelledError: pass
+                await changes.aclose()
+                observer.close()
+        asyncio.run(verify())
+
     def test_retired_incarnation_and_compression_branch_boundaries(self):
         ident=self.send()['exchange_id'];self.ledger.db.execute("UPDATE participants SET session='owner' WHERE identity='a'");self.ledger.db.commit()
         db=sqlite3.connect(self.root/'state.db');db.executescript("UPDATE sessions SET end_reason='compression' WHERE id='owner'; INSERT INTO sessions VALUES('tip','continued','owner','{}','cli',NULL); INSERT INTO sessions VALUES('branch','branch','owner','{\"_branched_from\":\"owner\"}','cli',NULL);");db.close()
