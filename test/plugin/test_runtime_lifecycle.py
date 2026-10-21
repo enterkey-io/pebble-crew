@@ -102,6 +102,29 @@ class RuntimeLifecycleTests(unittest.TestCase):
         self.assertIsNone(row['backup'])
         self.assertEqual(host.runtime_evidence(self.paths['beta'])['sha256'], result['source']['sha256'])
 
+    def test_active_sync_updates_default_distribution_code_and_only_verified_web_assets(self):
+        active = self.install(self.source)
+        default = self.root / 'plugins' / 'bot-web'
+        payload.copy_payload(self.source, default)
+        (default / 'runtime.py').write_text((default / 'runtime.py').read_text() + '\n# staged distribution\n')
+        web = active / 'web-runtime'
+        web.mkdir()
+        (web / 'payload.json').write_text('{}')
+        (web / 'index.html').write_text('active web assets')
+        (web / 'not-in-manifest.txt').write_text('must not copy')
+        self.paths['default'] = default
+        with patch.object(setup, '__file__', str(default / 'setup.py')), \
+             patch.object(host, 'payload_files', return_value=({}, [web / 'index.html'])), \
+             contextlib.redirect_stdout(io.StringIO()):
+            result = setup.sync_runtime(native_idle=True)
+        self.assertTrue(result['complete'])
+        self.assertEqual(host.runtime_evidence(default)['sha256'], host.runtime_evidence(active)['sha256'])
+        self.assertEqual((default / 'web-runtime/index.html').read_text(), 'active web assets')
+        self.assertFalse((default / 'web-runtime/not-in-manifest.txt').exists())
+        row = next(row for row in result['profiles'] if row['profile'] == 'default')
+        self.assertEqual(row['status'], 'copied')
+        self.assertIn('staged distribution', (Path(row['backup']) / 'runtime.py').read_text())
+
     def test_partial_sync_receipt_backup_retry_and_active_source(self):
         target = self.install(self.source)
         tool = target / 'runtime.py'
@@ -221,8 +244,24 @@ class RuntimeLifecycleTests(unittest.TestCase):
             result = setup.sync_runtime(native_idle=True)
         self.assertTrue(result['complete'])
         self.assertEqual(result['source_kind'], 'active-release')
-        self.assertTrue(all(host.runtime_evidence(path)['contract'] == 'workspace-runtime-v2'
+        self.assertTrue(all(host.runtime_evidence(path)['contract'] == 'workspace-runtime-v3'
                             for path in self.paths.values()))
+
+    def test_v2_host_requires_activation_before_v3_peer_runtime_sync(self):
+        active=self.install(self.source)
+        old=json.dumps({'schema':1,'contract':'workspace-runtime-v2','accepts':['workspace-runtime-v2','workspace-runtime-v1','legacy-b642cce']})
+        for destination in (active,*self.paths.values()):
+            (destination/'runtime-contract.json').write_text(old)
+        before={name:host.runtime_evidence(path)['sha256'] for name,path in self.paths.items()}
+        with patch.object(setup,'__file__',str(self.source/'setup.py')):
+            with self.assertRaisesRegex(ValueError,'update first'):
+                setup.sync_runtime(native_idle=True,source_package=True)
+        self.assertEqual(before,{name:host.runtime_evidence(path)['sha256'] for name,path in self.paths.items()})
+        host.preflight_runtimes(self.source)
+        (active/'runtime-contract.json').write_bytes((self.source/'runtime-contract.json').read_bytes())
+        with contextlib.redirect_stdout(io.StringIO()):result=setup.sync_runtime(native_idle=True)
+        self.assertTrue(result['complete'])
+        self.assertTrue(all(host.runtime_evidence(path)['contract']=='workspace-runtime-v3' for path in self.paths.values()))
 
     def test_historical_tree_only_rollback_refuses_new_reporting_runtimes(self):
         active = self.install(self.source)
@@ -292,6 +331,16 @@ class RuntimeLifecycleTests(unittest.TestCase):
             self.paths['alpha'].parent.symlink_to(self.source, target_is_directory=True)
             with self.assertRaisesRegex(ValueError, 'plugin directory is linked'):
                 host.enrolled_runtime_paths()
+
+
+    def test_data_downgrade_cannot_erase_crew_shortcuts(self):
+        db=sqlite3.connect(self.workspace)
+        db.execute('CREATE TABLE presentation(key TEXT PRIMARY KEY,value TEXT NOT NULL)')
+        db.execute("INSERT INTO presentation VALUES('organization',?)",(json.dumps({'schema':2}),))
+        db.commit();db.close()
+        legacy=self.root/'old-code';legacy.mkdir();(legacy/'organization.py').write_text('def old_writer(): pass')
+        with self.assertRaisesRegex(ValueError,'cannot preserve Crew shortcuts'):host.preflight_organization(legacy)
+        host.preflight_organization(self.source)
 
 
 if __name__ == '__main__':

@@ -17,8 +17,10 @@ export function NavigationItem({
   description,
   action,
   className,
+  density = 'normal',
   ...props
 }: Omit<ComponentProps<'button'>, 'title'> & {
+  density?: 'normal' | 'compact';
   media?: ReactNode;
   title: string;
   label?: string;
@@ -30,7 +32,8 @@ export function NavigationItem({
       asChild
       size="xs"
       className={cn(
-        'min-h-16 min-w-0 flex-nowrap gap-2.5 rounded-lg text-left hover:bg-muted/50 disabled:pointer-events-none disabled:opacity-50',
+        'min-w-0 flex-nowrap gap-2.5 rounded-lg text-left hover:bg-muted/50 disabled:pointer-events-none disabled:opacity-50',
+        density === 'compact' ? 'min-h-11 py-1' : 'min-h-16',
         className,
       )}
     >

@@ -455,6 +455,14 @@
     "room.react": {
       "preferred": "rpc",
       "accepted": ["rpc"]
+    },
+    "exchange.references": {
+      "preferred": "rpc",
+      "accepted": ["rpc"]
+    },
+    "exchange.read": {
+      "preferred": "rpc",
+      "accepted": ["rpc"]
     }
   }
 }

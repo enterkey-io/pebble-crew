@@ -9,6 +9,7 @@ python_dependencies:
   - websockets==15.0.1
   - markdown-it-py==4.2.0
 provides_tools:
+  - pebble_exchange
   - workspace_agents
   - pebble_react
   - workspace_work

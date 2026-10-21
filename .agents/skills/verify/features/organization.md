@@ -42,3 +42,16 @@ Main Pebble management and observe an applied receipt without a browser approval
 Unit reporting checks cover always-available Main authority, transfer fencing, legacy-disabled metadata, stale edits, cycles, identity
 replacement, migration backup and interrupted-application receipts. Install/update
 checks remain model-free; native acceptance is separate and synthetic.
+
+Crew coordination adds `crew-coordination.spec.ts` on desktop and both phone
+projects. Check existing Pins, a duplicate normal Shortcut, smaller manager-first
+Crew members, removal without membership loss and no mandatory Crews heading.
+`exchange_smoke.py` exercises real native profile sessions and deferred peer tools
+on current Hermes, and safe refusal on legacy. Never replace this with a fixture
+that still expects peer messages in canonical Bot Chat.
+
+`page-titles.spec.ts` checks selected conversation, Settings tabs, Pebble editor,
+org chart and task creation titles, including restoration on close. The project
+creation/rename journey in `work.spec.ts` checks the board name in the document
+title. Run both on desktop and phones. Native owner acceptance checks initial
+admin setup, Account settings and the ordinary Sign in page titles.

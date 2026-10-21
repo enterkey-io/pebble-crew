@@ -79,7 +79,7 @@ test('crew creation includes description and members; chat mentions only its mem
   await expect(field).toBeEnabled();
   const dialog = await newConversation(page, 'New crew');
   await dialog.getByLabel('Name', { exact: true }).fill('Research desk');
-  await dialog.getByLabel('Description', { exact: true }).fill('Review research together.');
+  await dialog.getByLabel('Purpose', { exact: true }).fill('Review research together.');
   await expect(dialog.getByRole('button', { name: 'Create', exact: true })).toBeDisabled();
   for (const name of ['Arlo', 'Mica'])
     await dialog.getByRole('checkbox', { name, exact: true }).check();
@@ -92,7 +92,7 @@ test('crew creation includes description and members; chat mentions only its mem
   await dialog.getByRole('checkbox', { name: 'Wren', exact: true }).uncheck();
   await expect(dialog.getByRole('heading', { name: 'New crew', exact: true })).toBeInViewport();
   await expect(dialog.getByLabel('Name', { exact: true })).toBeInViewport();
-  await expect(dialog.getByLabel('Description', { exact: true })).toBeInViewport();
+  await expect(dialog.getByLabel('Purpose', { exact: true })).toBeInViewport();
   await dialog.getByLabel('Crew members', { exact: true }).evaluate((node) => {
     node.scrollTop = 0;
   });
@@ -113,7 +113,7 @@ test('crew creation includes description and members; chat mentions only its mem
   await openSidebarMenu(page, 'Research desk');
   await page.getByRole('menuitem', { name: 'Crew settings', exact: true }).click();
   const edit = page.getByRole('dialog', { name: 'Crew settings', exact: true });
-  await expect(edit.getByLabel('Description', { exact: true })).toHaveValue(
+  await expect(edit.getByLabel('Purpose', { exact: true })).toHaveValue(
     'Review research together.',
   );
   for (const name of ['Arlo', 'Mica'])

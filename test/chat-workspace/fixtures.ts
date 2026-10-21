@@ -79,6 +79,7 @@ export async function installFixture(
     reactions?: boolean;
     attachments?: boolean;
     voice?: boolean;
+    exchanges?: boolean;
     projects?: boolean;
     organization?: OrganizationState;
     messages?: (Record<string, unknown> & { row_id: number })[];
@@ -236,6 +237,7 @@ export async function installFixture(
           protocol: 'hermes-bot-web.v1',
           connection,
           capabilities: {
+            exchanges: options.exchanges === true,
             live_voice: options.voice === true,
             secrets: options.voice === true,
             questions: options.voice === true,

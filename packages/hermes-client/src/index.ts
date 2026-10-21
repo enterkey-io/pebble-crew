@@ -17,3 +17,5 @@ export * from './documents';
 export * from './work-domain';
 export { RequestDomain } from './request-domain';
 export type { WorkspaceRequest, QuestionRequest } from './request-domain';
+
+export * from './exchanges';

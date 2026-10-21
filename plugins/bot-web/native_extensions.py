@@ -58,6 +58,39 @@ def register(source):
 
     server.method('bot_web.runtime.prepare')(prepare)
 
+    def verify_runtime(rid,params):
+        """Read-only disk contract, never a claim about already imported processes."""
+        try:
+            if not isinstance(params,dict) or set(params)!={'profile'}:
+                raise ValueError()
+            from hermes_cli.profiles import get_profile_dir,list_profiles
+            profile=params['profile']
+            if profile not in {p.name for p in list_profiles()}:
+                raise ValueError()
+            home=Path(get_profile_dir(profile)).resolve()
+            destination=home/'plugins'/'bot-web'
+            if not destination.exists():
+                return server._ok(rid,{'verified':False,'state':'absent','loaded':'unknown'})
+            if destination.is_symlink() or (home/'plugins').is_symlink():
+                raise ValueError()
+            from payload import payload_paths
+            for path in payload_paths(source):
+                target=destination/path.relative_to(source)
+                if not target.is_file() or target.is_symlink() or hashlib.sha256(path.read_bytes()).digest()!=hashlib.sha256(target.read_bytes()).digest():
+                    raise ValueError()
+            with server._session_profile_runtime_scope({'profile_home':str(home)}):
+                from hermes_cli.config import load_config_readonly
+                config=load_config_readonly()
+            plugins=config.get('plugins') or {}
+            if 'bot-web' not in (plugins.get('enabled') or []) or 'bot-web' in (plugins.get('disabled') or []):
+                return server._ok(rid,{'verified':False,'state':'disabled','loaded':'unknown'})
+            return server._ok(rid,{'verified':True,'state':'verified','loaded':'unknown'})
+        except Exception:
+            return server._ok(rid,{'verified':False,'state':'changed','loaded':'unknown'})
+
+    server.method('bot_web.runtime.verify')(verify_runtime)
+
+
     def live_snapshot(rid, params):
         """Native display snapshot with a proven current-turn row anchor."""
         if not isinstance(params, dict) or set(params) != {'session_id'}:

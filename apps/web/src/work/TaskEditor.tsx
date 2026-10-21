@@ -1,3 +1,4 @@
+import { usePageTitle } from '../ui/page-title';
 import { Skeleton } from '../components/ui/skeleton';
 import { TaskComment } from './TaskComment';
 import { TaskActivity } from './TaskActivity';
@@ -23,6 +24,7 @@ import { LoadingBar } from '../components/ui/loading-bar';
 
 export function TaskEditor(props: SharedProps & { board: string; id: string }) {
   const [view, setView] = useState<WorkTaskView>();
+  usePageTitle(view?.task.title ?? 'Task');
   const [error, setError] = useState('');
   const [refresh, setRefresh] = useState(0);
   useEffect(() => {

@@ -5,6 +5,7 @@ export type Crew = {
   id: string;
   name: string;
   purpose: string;
+  managerId: string | null;
   collapsed: boolean;
   members: string[];
 };
@@ -23,15 +24,15 @@ export type OrganizationEditor =
   | { kind: 'new-group-chat' }
   | { kind: 'edit-crew'; id: string };
 
-export const SYSTEM_SECTIONS = { pebbles: 'Pebbles', crews: 'Crews' } as const;
+export const SYSTEM_SECTIONS = { pebbles: 'Pebbles' } as const;
 export function sectionChoiceLabel(section: Pick<Section, 'id' | 'name'>) {
   return section.id === 'pebbles' ? 'None' : section.name;
 }
 export function isSystemSection(id: string) {
-  return id === 'pebbles' || id === 'crews';
+  return id === 'pebbles';
 }
 export function sectionAccepts(id: string, kind: RailItem['kind']) {
-  return id === 'crews' ? kind === 'crew' : id === 'pebbles' ? kind === 'pebble' : true;
+  return !!id && (kind === 'crew' || kind === 'pebble');
 }
 
 function insertBefore<T>(items: T[], item: T, before: (value: T) => boolean) {
@@ -41,39 +42,94 @@ function insertBefore<T>(items: T[], item: T, before: (value: T) => boolean) {
   return next;
 }
 
+/** Standalone references and Crew membership are independent. */
 export function placePebble(
   org: Organization,
   id: string,
   target: Placement,
   beforeId?: string,
 ): Organization {
-  const exists =
-    target.kind === 'section'
-      ? org.sections.some((s) => s.id === target.id && sectionAccepts(s.id, 'pebble'))
-      : org.crews.some((c) => c.id === target.id);
-  if (!exists || beforeId === id) return org;
+  if (beforeId === id) return org;
+  if (target.kind === 'crew') {
+    const crew = org.crews.find((c) => c.id === target.id);
+    if (!crew) return org;
+    return {
+      ...org,
+      crews: org.crews.map((c) =>
+        c.id === crew.id
+          ? {
+              ...c,
+              members: insertBefore(
+                c.members.filter((m) => m !== id),
+                id,
+                (m) => m === beforeId,
+              ),
+            }
+          : {
+              ...c,
+              members: c.members.filter((m) => m !== id),
+              managerId: c.managerId === id ? null : c.managerId,
+            },
+      ),
+      sections: org.sections.map((section) => ({
+        ...section,
+        items: org.crews.some((c) => c.members.includes(id))
+          ? section.items
+          : section.items.filter((i) => i.kind !== 'pebble' || i.id !== id),
+      })),
+    };
+  }
+  if (!org.sections.some((s) => s.id === target.id)) return org;
+  if (!hasShortcut(org, id))
+    org = {
+      ...org,
+      crews: org.crews.map((c) => ({
+        ...c,
+        members: c.members.filter((m) => m !== id),
+        managerId: c.managerId === id ? null : c.managerId,
+      })),
+    };
   return {
+    ...org,
     sections: org.sections.map((s) => {
       const items = s.items.filter((item) => item.kind !== 'pebble' || item.id !== id);
       return {
         ...s,
         items:
-          target.kind === 'section' && s.id === target.id
+          s.id === target.id
             ? insertBefore(items, { kind: 'pebble', id }, (item) => item.id === beforeId)
             : items,
       };
     }),
-    crews: org.crews.map((c) => {
-      const members = c.members.filter((member) => member !== id);
-      return {
-        ...c,
-        members:
-          target.kind === 'crew' && c.id === target.id
-            ? insertBefore(members, id, (member) => member === beforeId)
-            : members,
-      };
-    }),
   };
+}
+
+export function hasShortcut(org: Organization, id: string) {
+  return org.sections.some((s) => s.items.some((i) => i.kind === 'pebble' && i.id === id));
+}
+export function addShortcut(org: Organization, id: string): Organization {
+  if (hasShortcut(org, id)) return org;
+  return {
+    ...org,
+    sections: org.sections.map((s) =>
+      s.id === 'pebbles' ? { ...s, items: [{ kind: 'pebble', id }, ...s.items] } : s,
+    ),
+  };
+}
+export function removeShortcut(org: Organization, id: string): Organization {
+  if (!org.crews.some((c) => c.members.includes(id))) return org;
+  return {
+    ...org,
+    sections: org.sections.map((s) => ({
+      ...s,
+      items: s.items.filter((i) => i.kind !== 'pebble' || i.id !== id),
+    })),
+  };
+}
+export function crewMembers(crew: Crew): string[] {
+  return crew.managerId
+    ? [crew.managerId, ...crew.members.filter((id) => id !== crew.managerId)]
+    : crew.members;
 }
 
 export function placeCrew(
@@ -140,15 +196,39 @@ export function railDropTarget(
   };
 }
 
-/** Update membership and sidebar placement together, preserving each identity once. */
+/** Membership edits preserve independent shortcuts and keep every agent reachable. */
 export function setCrewMembers(org: Organization, id: string, members: string[]): Organization {
   const crew = org.crews.find((c) => c.id === id);
   if (!crew) return org;
-  let next = org;
-  for (const previous of crew.members)
-    if (!members.includes(previous))
-      next = placePebble(next, previous, { kind: 'section', id: 'pebbles' });
-  for (const member of members) next = placePebble(next, member, { kind: 'crew', id });
+  const newlyJoined = members.filter((m) => !crew.members.includes(m));
+  let next = {
+    ...org,
+    crews: org.crews.map((c) =>
+      c.id === id
+        ? {
+            ...c,
+            members,
+            managerId: c.managerId && members.includes(c.managerId) ? c.managerId : null,
+          }
+        : {
+            ...c,
+            members: c.members.filter((m) => !members.includes(m)),
+            managerId: c.managerId && members.includes(c.managerId) ? null : c.managerId,
+          },
+    ),
+    sections: org.sections.map((s) => ({
+      ...s,
+      items: s.items.filter((i) => i.kind !== 'pebble' || !newlyJoined.includes(i.id)),
+    })),
+  };
+  for (const previous of crew.members) {
+    if (
+      !members.includes(previous) &&
+      !next.crews.some((c) => c.members.includes(previous)) &&
+      !hasShortcut(next, previous)
+    )
+      next = addShortcut(next, previous);
+  }
   return next;
 }
 
@@ -196,14 +276,23 @@ function neighbor(
   item: RailItem,
   direction: -1 | 1,
   pinnedIds: readonly string[],
+  placement?: Placement,
 ) {
   const crew =
-    item.kind === 'pebble' ? org.crews.find((c) => c.members.includes(item.id)) : undefined;
+    item.kind === 'pebble' && placement?.kind === 'crew'
+      ? org.crews.find((c) => c.id === placement.id)
+      : undefined;
   const items: RailItem[] = crew
     ? crew.members.map((id) => ({ kind: 'pebble', id }))
     : (org.sections.find((s) => s.items.some((i) => i.kind === item.kind && i.id === item.id))
         ?.items ?? []);
-  const visible = items.filter((i) => i.kind !== 'pebble' || !pinnedIds.includes(i.id));
+  const visible = items.filter((i) =>
+    crew
+      ? i.id !== crew.managerId
+      : i.kind !== 'pebble' ||
+        !pinnedIds.includes(i.id) ||
+        org.crews.some((c) => c.members.includes(i.id)),
+  );
   const index = visible.findIndex((i) => i.kind === item.kind && i.id === item.id);
   return index >= 0 ? visible[index + direction] : undefined;
 }
@@ -212,11 +301,14 @@ export function nudgeItem(
   item: RailItem,
   direction: -1 | 1,
   pinnedIds: readonly string[] = [],
+  placement?: Placement,
 ): Organization {
-  const next = neighbor(org, item, direction, pinnedIds);
+  const next = neighbor(org, item, direction, pinnedIds, placement);
   if (!next) return org;
   const crew =
-    item.kind === 'pebble' ? org.crews.find((c) => c.members.includes(item.id)) : undefined;
+    item.kind === 'pebble' && placement?.kind === 'crew'
+      ? org.crews.find((c) => c.id === placement.id)
+      : undefined;
   if (crew) {
     const members = [...crew.members],
       a = members.indexOf(item.id),
@@ -245,7 +337,7 @@ export function canNudgeItem(
   return neighbor(org, item, direction, pinnedIds) !== undefined;
 }
 
-export type RailDrag = RailItem | { kind: 'section'; id: string };
+export type RailDrag = (RailItem & { placement?: Placement }) | { kind: 'section'; id: string };
 export function readRailDrag(
   value: string,
   org: Organization,
@@ -266,7 +358,33 @@ export function readRailDrag(
   )
     return undefined;
   const { id, kind } = data;
-  if (kind === 'pebble' && pebbleIds.includes(id)) return { kind, id };
+  if (kind === 'pebble' && pebbleIds.includes(id)) {
+    if ('placement' in data) {
+      const placement = data.placement;
+      if (
+        !placement ||
+        typeof placement !== 'object' ||
+        !('kind' in placement) ||
+        !('id' in placement) ||
+        typeof placement.id !== 'string'
+      )
+        return undefined;
+      if (
+        placement.kind === 'crew' &&
+        org.crews.some((c) => c.id === placement.id && c.members.includes(id))
+      )
+        return { kind, id, placement: { kind: 'crew', id: placement.id } };
+      if (
+        placement.kind === 'section' &&
+        org.sections.some(
+          (s) => s.id === placement.id && s.items.some((i) => i.kind === 'pebble' && i.id === id),
+        )
+      )
+        return { kind, id, placement: { kind: 'section', id: placement.id } };
+      return undefined;
+    }
+    return { kind, id };
+  }
   if (kind === 'crew' && org.crews.some((c) => c.id === id)) return { kind, id };
   if (kind === 'section' && org.sections.some((s) => s.id === id)) return { kind, id };
   return undefined;
@@ -331,28 +449,41 @@ export function organizationState(value: unknown): OrganizationState {
       name: c.name,
       collapsed: c.collapsed,
       purpose: c.purpose,
+      managerId:
+        'managerId' in c && typeof c.managerId === 'string' && c.members.includes(c.managerId)
+          ? c.managerId
+          : null,
       members: c.members,
     };
   });
-  return { revision: Number(value.revision), sections, crews };
+  // Older response fixtures/clients migrate into one unnamed root. New saves carry schema 2.
+  const roots = sections.filter((s) => isSystemSection(s.id) || s.id === 'crews');
+  const rootItems = roots.flatMap((s) => s.items);
+  const root = { id: 'pebbles', name: 'Pebbles', collapsed: false, items: rootItems };
+  return {
+    revision: Number(value.revision),
+    sections: [root, ...sections.filter((s) => !roots.includes(s))],
+    crews,
+  };
 }
 
 export function removeCrew(org: Organization, id: string): Organization {
   const crew = org.crews.find((c) => c.id === id);
   if (!crew) return org;
-  return {
+  let next = {
+    ...org,
     crews: org.crews.filter((c) => c.id !== id),
     sections: org.sections.map((s) => ({
       ...s,
-      items: [
-        ...s.items.filter((item) => item.kind !== 'crew' || item.id !== id),
-        ...(s.id === org.sections.find((target) => sectionAccepts(target.id, 'pebble'))?.id
-          ? crew.members.map((member) => ({ kind: 'pebble' as const, id: member }))
-          : []),
-      ],
+      items: s.items.filter((i) => i.kind !== 'crew' || i.id !== id),
     })),
   };
+  for (const member of crew.members)
+    if (!next.crews.some((c) => c.members.includes(member)) && !hasShortcut(next, member))
+      next = addShortcut(next, member);
+  return next;
 }
+
 export function removeSection(org: Organization, id: string): Organization {
   if (isSystemSection(id) || org.sections.length < 2) return org;
   const section = org.sections.find((s) => s.id === id);

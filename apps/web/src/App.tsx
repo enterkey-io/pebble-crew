@@ -1,3 +1,4 @@
+import { usePageTitle } from './ui/page-title';
 import { DiscardChanges } from './ui/DiscardChanges';
 import { useComposerSize } from './chat/use-composer-size';
 import { CommandSuggestions } from './chat/CommandSuggestions';
@@ -43,6 +44,7 @@ import type { SharedFile } from './chat/FilesPanel';
 import { fileSize } from './chat/FilesPanel';
 import { Rail, PebbleAvatar, CrewAvatar } from './chat/Rail';
 import type { ChatBot as Bot } from './chat/Rail';
+import { useAgentExchanges } from './chat/AgentExchanges';
 import { Transcript } from './chat/Transcript';
 import { Chat, ChatViewport } from './components/ai-elements/chat';
 import { ComposerAction } from './chat/ComposerAction';
@@ -229,7 +231,7 @@ export function App({ owner }: { owner?: OwnerConnection }) {
         const next = change(base);
         const result = organizationState(
           await connection.invoke('organization.save', {
-            organization: { sections: next.sections, crews: next.crews },
+            organization: { schema: 2, sections: next.sections, crews: next.crews },
             expected_revision: base.revision,
           }),
         );
@@ -305,6 +307,18 @@ export function App({ owner }: { owner?: OwnerConnection }) {
       fail(e);
     }
   }
+  const agentExchanges = useAgentExchanges(
+    client,
+    selection?.kind === 'bot'
+      ? workspace?.bots.find((b) => b.profile === selection.bot.profile)?.id
+      : undefined,
+    (profile) => {
+      const bot = bots.find((b) => b.profile === profile);
+      return bot && client ? (
+        <PebbleAvatar bot={bot} workspace={workspace} client={client} mainBadge={false} />
+      ) : null;
+    },
+  );
   const [pinIntents, setPinIntents] = useState<Record<string, boolean>>({});
   const pendingPinIds = useRef(new Set<string>());
   const mutationQueue = useRef(Promise.resolve());
@@ -878,6 +892,7 @@ export function App({ owner }: { owner?: OwnerConnection }) {
       setActivity('Ready');
       return;
     }
+    if (event.type === 'message.complete') agentExchanges.refresh();
     const profile = sessionProfiles.current.get(event.session_id ?? '');
     if (profile) {
       const state: Activity | undefined =
@@ -1740,6 +1755,32 @@ export function App({ owner }: { owner?: OwnerConnection }) {
     />
   );
 
+  const title =
+    selection?.kind === 'bot'
+      ? (bots.find((b) => b.id === selection.bot.id && b.profile === selection.bot.profile)?.name ??
+        selection.bot.name)
+      : selection?.kind === 'room'
+        ? text(
+            rooms.find((room) => room.room_id === selection.room.room_id)?.name ??
+              selection.room.name,
+          )
+        : 'Chats';
+  usePageTitle(
+    settings || pickingAgents || workDialog
+      ? undefined
+      : !client
+        ? owner
+          ? ''
+          : 'Connect Hermes'
+        : workspace && !workspace.initialized
+          ? 'Set up Main Pebble'
+          : orgOpen
+            ? 'Org chart'
+            : area === 'tasks'
+              ? (work.catalog?.boards.find((board) => board.slug === workBoard)?.name ?? 'Tasks')
+              : title,
+  );
+
   if (!client)
     return owner ? (
       <StartupScreen
@@ -1780,13 +1821,6 @@ export function App({ owner }: { owner?: OwnerConnection }) {
       </main>
     );
 
-  const title =
-    selection?.kind === 'bot'
-      ? (bots.find((b) => b.id === selection.bot.id && b.profile === selection.bot.profile)?.name ??
-        selection.bot.name)
-      : selection?.kind === 'room'
-        ? text(selection.room.name)
-        : 'Chats';
   if (starting && client.supportsWorkspace)
     return (
       <StartupScreen
@@ -2225,7 +2259,9 @@ export function App({ owner }: { owner?: OwnerConnection }) {
                     }}
                   >
                     <Transcript
+                      suppressedTools={agentExchanges.suppressedTools}
                       cards={[
+                        ...agentExchanges.cards,
                         ...questionCards,
                         ...approvals.map((approval) => ({
                           id: 'native-approval:' + approvalKey(approval.target),
@@ -2398,6 +2434,7 @@ export function App({ owner }: { owner?: OwnerConnection }) {
                         </section>
                       )}
                     </Transcript>
+                    {agentExchanges.viewer}
                   </ChatViewport>
                   {!pickingAgents && (
                     <>

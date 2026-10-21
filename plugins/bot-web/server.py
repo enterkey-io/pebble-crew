@@ -132,10 +132,28 @@ def create_app(token, origins, hosts, gateway=None, trust=None, workspace=None, 
                                 pass  # Each visible browser also reconciles periodically.
                 except Exception:
                     pass  # Do not replace the last valid roster with an empty one.
+        async def watch_exchanges():
+            if not workspace:
+                return
+            from .exchanges import Exchanges
+            ledger=Exchanges(workspace.store)
+            try:
+                while True:
+                    try:
+                        await ledger.run_pending(native)
+                    except Exception:
+                        pass  # Durable uncertain receipts cannot authorize a second model admission.
+                    await asyncio.sleep(0.5)
+            finally:
+                ledger.close()
+        exchanges = asyncio.create_task(watch_exchanges())
         watcher = asyncio.create_task(watch_roster())
         try:
             yield
         finally:
+            exchanges.cancel()
+            with suppress(asyncio.CancelledError):
+                await exchanges
             watcher.cancel()
             with suppress(asyncio.CancelledError):
                 await watcher
@@ -263,7 +281,7 @@ def create_app(token, origins, hosts, gateway=None, trust=None, workspace=None, 
                                "expires": request.scope.get("bot.ticket_expires"), "ended": None}
         build = getattr(native, "build", None) or {}
         return {"connection": connection, "protocol": "hermes-bot-web.v1", "bridge_version": VERSION,
-                "capabilities": {"existing_agents": True, "owner_login": owner_trust is not None, "workspace": bool(workspace), "reporting": 1 if workspace else None, "projects": bool(workspace and getattr(native, 'work_supported', False)), "attachments": bool(files), "generated_media": True, "reactions": True, "room_reactions": bool(workspace), "live_voice": live_voice_supported(), "secrets": bool(getattr(native, "build", None) and native.build.get("server_requests")), "questions": bool(getattr(native, "build", None)), "computer": computer.supported},
+                "capabilities": {"exchanges": bool(workspace), "existing_agents": True, "owner_login": owner_trust is not None, "workspace": bool(workspace), "reporting": 1 if workspace else None, "projects": bool(workspace and getattr(native, 'work_supported', False)), "attachments": bool(files), "generated_media": True, "reactions": True, "room_reactions": bool(workspace), "live_voice": live_voice_supported(), "secrets": bool(getattr(native, "build", None) and native.build.get("server_requests")), "questions": bool(getattr(native, "build", None)), "computer": computer.supported},
                 "hermes_version": build.get("version"), "hermes_revision": build.get("revision")}
 
     @app.post("/v1/renew")
@@ -306,6 +324,19 @@ def create_app(token, origins, hosts, gateway=None, trust=None, workspace=None, 
                 raise InvalidOperation('Operation unavailable on this route')
             if operation.startswith(("chat.", "files.", "media.", "voice.", "secrets.", "questions.")) and params.get("session_id") not in client["sessions"]:
                 raise InvalidOperation("Session belongs to another connection")
+            if workspace and operation in {'bot.open','chat.send'}:
+                if operation == 'bot.open':
+                    from .operations import fields
+                    fields(params, ['profile'])
+                    await ops.bot(params['profile'])
+                profile=params.get('profile') if operation=='bot.open' else ops.sessions.get(params.get('session_id'))
+                if profile:
+                    runtime=await native.call('bot_web.runtime.verify',{'profile':profile})
+                    if operation=='bot.open' and isinstance(runtime,dict) and runtime.get('state')=='absent':
+                        await native.call('bot_web.runtime.prepare',{'profile':profile})
+                        runtime=await native.call('bot_web.runtime.verify',{'profile':profile})
+                    if not isinstance(runtime,dict) or runtime.get('verified') is not True:
+                        raise InvalidOperation('The Hermes plugin update is incomplete. Finish runtime synchronization and restart the stopped services before chatting.','UPDATE_REQUIRED')
             if operation in {'voice.status', 'voice.preferences', 'voice.credential', 'voice.session', 'voice.submit', 'voice.end'}:
                 result = await voice.invoke(operation, params)
             elif operation in {'chat.commands', 'chat.command'}:

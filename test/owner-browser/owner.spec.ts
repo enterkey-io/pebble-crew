@@ -78,6 +78,7 @@ test('private first use, native onboarding, idle keepalive and reconnection', as
     expect(asset.headers()['content-type']).toContain(type!);
   }
   await expect(page.getByRole('heading', { name: 'Create your login' })).toBeVisible();
+  await expect(page).toHaveTitle('Create admin login — Pebble Crew');
   await page.getByLabel('Private setup code').fill(proof);
   await page.getByLabel('Username', { exact: true }).fill('owner');
   await page.getByLabel('Password', { exact: true }).fill('synthetic-owner-password-123');
@@ -317,6 +318,7 @@ test('owner photo, account settings, tools layout and ordinary login persist', a
   await page.getByRole('button', { name: 'Your account' }).click();
   await page.getByRole('menuitem', { name: 'Settings', exact: true }).click();
   await page.getByRole('tab', { name: 'Account', exact: true }).click();
+  await expect(page).toHaveTitle('Account settings — Pebble Crew');
   const accountPhoto = page.getByLabel('Your photo', { exact: true });
   await accountPhoto.setInputFiles({
     name: 'synthetic-owner.png',
@@ -377,6 +379,7 @@ test('owner photo, account settings, tools layout and ordinary login persist', a
   await page.getByRole('button', { name: 'Your account' }).click();
   await page.getByRole('menuitem', { name: 'Sign out', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'Sign in' })).toBeVisible();
+  await expect(page).toHaveTitle('Sign in — Pebble Crew');
   await page.getByLabel('Username', { exact: true }).fill('owner');
   await page.getByLabel('Password', { exact: true }).fill('synthetic-owner-password-456');
   await page.getByRole('button', { name: 'Sign in', exact: true }).click();

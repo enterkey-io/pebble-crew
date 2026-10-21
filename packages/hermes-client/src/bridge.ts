@@ -38,8 +38,13 @@ export class BotBridgeClient {
   #questions = false;
   #reactions = false;
   #roomReactions = false;
+  #exchanges = false;
   #rpcActive = 0;
   readonly #rpcWaiting: (() => void)[] = [];
+
+  get supportsExchanges(): boolean {
+    return this.#exchanges;
+  }
 
   get supportsLiveVoice(): boolean {
     return this.#liveVoice;
@@ -108,6 +113,7 @@ export class BotBridgeClient {
     const existingAgents =
       !!data.capabilities && record(data.capabilities).existing_agents === true;
     this.#connection = data.connection;
+    this.#exchanges = !!data.capabilities && record(data.capabilities).exchanges === true;
     this.#existingAgents = existingAgents;
     this.#reporting = !!data.capabilities && record(data.capabilities).reporting === 1;
     this.#projects = !!data.capabilities && record(data.capabilities).projects === true;

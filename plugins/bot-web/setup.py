@@ -167,7 +167,7 @@ def sync_runtime(*, native_idle=False, source_package=False):
                        'before_sha256': host.runtime_evidence(destination)['sha256'] if destination.exists() else None, 'backup': None,
                        'status': 'pending', 'loaded': 'unknown'}
                 report['profiles'].append(row)
-                if destination.resolve() in {source.resolve(), package}:
+                if destination.resolve() == source.resolve():
                     row['status'] = 'source-package-preserved'
                     continue
                 if destination.is_symlink() or (destination.exists() and not destination.is_dir()):
@@ -191,6 +191,15 @@ def sync_runtime(*, native_idle=False, source_package=False):
                         copy_payload(source, temporary, legacy_runtime=True)
                     else:
                         copy_payload(source, temporary)
+                    if destination.resolve() == package and (source / 'web-runtime').is_dir():
+                        # The default profile also owns the combined distribution.
+                        # Keep its next CLI invocation coherent with the active host,
+                        # copying only manifest-verified assets, never node_modules.
+                        _, web_files = host.payload_files(source / 'web-runtime')
+                        for asset in [*web_files, source / 'web-runtime/payload.json']:
+                            target = temporary / 'web-runtime' / asset.relative_to(source / 'web-runtime')
+                            target.parent.mkdir(parents=True, exist_ok=True)
+                            shutil.copyfile(asset, target)
                     if host.runtime_evidence(temporary)['sha256'] != report['source']['sha256']:
                         raise ValueError('Staged runtime differs from its source')
                     if destination.exists():

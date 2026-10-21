@@ -20,6 +20,7 @@ export type ConversationMessage = {
   timestamp?: string | number | undefined;
   files?: { id: string; name: string; size: number }[];
   toolName?: string;
+  toolCallId?: string | undefined;
   context?: string;
   commentary?: string[];
   reactions?: MessageReaction[];
@@ -183,6 +184,7 @@ export function decodeNativeMessages(value: unknown): ConversationMessage[] {
       ...(data.role === 'tool'
         ? {
             toolName: boundedText(data.name ?? data.tool_name, 512) || 'Tool',
+            toolCallId: identity(data.tool_call_id),
             context: typeof data.context === 'string' ? data.context.slice(0, 1000) : '',
           }
         : {}),

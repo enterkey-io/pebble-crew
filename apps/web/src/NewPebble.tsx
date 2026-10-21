@@ -1,3 +1,4 @@
+import { usePageTitle } from './ui/page-title';
 import { Label } from './components/ui/label';
 import { Checkbox } from './components/ui/checkbox';
 import { Form } from './components/ui/form';
@@ -243,6 +244,7 @@ export function NewPebble({
         : step.kind === 'configure'
           ? 'Add your agent'
           : 'Create a pebble';
+  usePageTitle(title);
   return (
     <EditorSurface
       className="entity-page new-pebble"

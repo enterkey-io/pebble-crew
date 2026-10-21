@@ -51,7 +51,7 @@ export type ErrorCode =
   | 'RPC_FAILED';
 
 const messages: Record<ErrorCode, string> = {
-  UPDATE_REQUIRED: 'Refresh Pebble Crew before editing reporting relationships.',
+  UPDATE_REQUIRED: 'Update Pebble Crew and its Hermes plugin, then reopen the app.',
   ...voiceErrors,
   UNSUPPORTED_COMMAND:
     'This command is not supported in Pebble Crew. Use a command from the suggestions or run it in Hermes.',

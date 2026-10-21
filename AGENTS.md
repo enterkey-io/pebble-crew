@@ -10,7 +10,7 @@ for native acceptance.
 | A polished mockup differs from the installed screens     | `ui-lab/main.tsx` imports the actual app entry. `npm run check:ui` rejects a separate review app or theme graph. Review the installed routes.                                                                                                                                                                                      |
 | Global CSS silently overrides shadcn/Radix states        | One `ui/theme.css` entry, layered foundation focus rules, primitive-owned states. `check:ui` rejects the historical global product focus override.                                                                                                                                                                                 |
 | Add/Edit lose name, avatar or role controls              | Use `PebbleProfileFields` in all profile flows. `check:ui` enforces reuse; browser/native tests verify persistence, including photo → shape → saved photo.                                                                                                                                                                         |
-| Sections mix crews with pebbles or empty headings appear | Built-in section IDs have fixed names and allowed item kinds in both organization domains. Empty built-ins are omitted; custom sections remain drop targets. Domain and browser checks cover these rules.                                                                                                                          |
+| Sections mix crews with pebbles or empty headings appear | The unnamed root supports standalone references and Crew blocks; there is no mandatory Crews section. Crew membership is independent of shortcuts. Manager-first member order never changes reporting. Domain/native/browser checks cover migration, reachability and shared identity.                                                                                                                          |
 | Handles and reorder menu clutter return                  | Whole rows/tiles/section headers drag; keyboard reordering uses Alt+Arrow. `check:ui` rejects exposed grip controls and reorder menu items.                                                                                                                                                                                        |
 | UI tests pass while real agent setup fails               | The `native-owner` CI job runs the actual owner app and bridge against pinned Hermes in a disposable home. Do not substitute mock-only checks for this gate.                                                                                                                                                                       |
 | Mobile fixes pass checks but text is still misaligned    | Phone browser checks compare the composer field and send-control centers, not just viewport containment. Inspect the settled iPhone and Android screenshots.                                                                                                                                                                       |
@@ -47,3 +47,12 @@ behavior, not owner visual acceptance or every platform's performance.
 
 Keep copy short. UI selection/focus uses the neutral theme; avatar colors are
 independent. No external design/source upload without the owner's authorization.
+
+Peer exchanges execute in separate hidden native profile sessions. Native middleware
+must consume message_agent/pebble_exchange without throwing: Hermes falls back to
+canonical delivery after middleware exceptions. Never register exchange sessions as
+owner sessions or inject owner-action guidance into them. Hermes 0.21.7 uses its
+supported CLI bot-author environment and target-profile secret environment; legacy
+builds refuse this lane. Native acceptance checks raw canonical stores, real
+profile SOUL and bot authors reaching a synthetic memory provider. A delivery with
+an ambiguous process/report outcome stays uncertain and never automatically reruns.

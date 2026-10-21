@@ -48,6 +48,7 @@ export function Transcript({
   ownerColor,
   footer,
   cards = [],
+  suppressedTools,
 }: {
   conversationKey: string;
   messages: ChatMessage[];
@@ -66,13 +67,22 @@ export function Transcript({
   ownerColor?: string | undefined;
   footer?: ReactNode;
   cards?: readonly TranscriptCard[];
+  suppressedTools?: ReadonlySet<string>;
 }) {
   const reduced = useReducedMotion();
   const openDocument = useDocumentActions();
   const positions = useRef({ conversationKey, value: new CardPositions() });
   if (positions.current.conversationKey !== conversationKey)
     positions.current = { conversationKey, value: new CardPositions() };
-  const timeline = projectTimeline(messages, positions.current.value.place(messages, cards));
+  const visible = suppressedTools?.size
+    ? messages.filter(
+        (m) =>
+          m.role !== 'tool' ||
+          !m.toolCallId ||
+          !suppressedTools.has(JSON.stringify([m.toolCallId, m.timestamp])),
+      )
+    : messages;
+  const timeline = projectTimeline(visible, positions.current.value.place(visible, cards));
   const keys = timeline.map((item, i) =>
     item.kind === 'card'
       ? item.card.id

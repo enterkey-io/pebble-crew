@@ -19,6 +19,10 @@ function read(path) {
 function requireRule(condition, message) {
   if (!condition) errors.push(message);
 }
+requireRule(
+  !read('apps/web/src/chat/Rail.tsx').includes('<LayoutGroup id="native-rail">'),
+  'Each mounted rail needs a unique useId LayoutGroup; desktop/mobile rails must not share animation identities.',
+);
 const main = read('apps/web/src/main.tsx');
 const review = read('apps/web/src/ui-lab/main.tsx');
 const theme = read('apps/web/src/ui/theme.css');

@@ -9,6 +9,6 @@ export async function openSidebarMenu(page: Page, name: string) {
   const item = sidebarItem(page, name);
   if (!(await item.isVisible()))
     await page.getByRole('button', { name: 'Toggle navigation', exact: true }).click();
-  const button = item.getByRole('button').first();
+  const button = item.locator('button').first();
   await ((await button.count()) ? button : item).click({ button: 'right' });
 }

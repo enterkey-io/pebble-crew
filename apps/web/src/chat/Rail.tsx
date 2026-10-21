@@ -1,3 +1,4 @@
+import { useId } from 'react';
 import { PebbleTile } from '../ui/PebbleTile';
 import { Button } from '../components/ui/button';
 import { useState } from 'react';
@@ -212,6 +213,7 @@ export function Rail({
       return (ai < 0 ? 999 : ai) - (bi < 0 ? 999 : bi);
     });
   const byId = (id: string) => all.find((b) => identity(b)?.id === id);
+  const railId = useId();
   const face = (id: string, large = false) => {
     const bot = byId(id);
     return bot ? (
@@ -318,7 +320,7 @@ export function Rail({
             ))}
           </nav>
         ) : (
-          <LayoutGroup id="native-rail">
+          <LayoutGroup id={railId}>
             <nav aria-label="Pebbles">
               {!!pins.length && (
                 <div className="pc-pins pinned-pebbles">

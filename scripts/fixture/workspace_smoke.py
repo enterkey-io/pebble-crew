@@ -360,13 +360,22 @@ async def verify(home, model_port):
                         break
         finally:
             native.listeners.discard(handoff_events)
-        async with asyncio.timeout(60):
-            while True:
-                await asyncio.sleep(0.2)
-                current_chat = await ops.invoke('bot.open', {'profile': 'new-researcher'})
-                history = await ops.invoke('chat.history', {'session_id': current_chat['session_id']})
-                if 'Public handle routing proof' in json.dumps(history):
-                    break
+        from bot_web.exchanges import Exchanges, supported as exchanges_supported
+        ledger=Exchanges(store)
+        try:
+            if exchanges_supported():
+                await ledger.run_pending(native)
+                await ledger.run_pending(native)
+                rows=ledger.db.execute('SELECT id FROM exchanges').fetchall()
+                assert len(rows)==1
+                exchange=ledger.read(rows[0]['id'])
+                assert 'Public handle routing proof' in json.dumps(exchange), exchange
+            else:
+                assert ledger.db.execute('SELECT count(*) FROM exchanges').fetchone()[0]==0
+            current_chat=await ops.invoke('bot.open',{'profile':'new-researcher'})
+            assert 'Public handle routing proof' not in json.dumps(await ops.invoke('chat.history',{'session_id':current_chat['session_id']}))
+        finally:
+            ledger.close()
         assert WorkspaceModel.handed, 'Model never called native message_agent with the public alias'
         await native.call('groups.create', {'room_id': 'public-handles-room', 'name': 'Public handles', 'members': [
             {'member_id': 'root', 'profile': 'default', 'handle': 'hermes', 'display_name': 'Aurora'},
@@ -399,7 +408,7 @@ async def verify(home, model_port):
         persisted = WorkspaceStore(home / 'bot-web' / 'workspace.sqlite')
         assert persisted.read()['bots']['default']['id'] == root['id']
         persisted.db.close()
-        print(json.dumps({'workspace': 'pass', 'revision': native.build['revision'], 'native_primary': 'pass', 'same_soul': 'pass', 'real_model_management_proposal': 'pass', 'real_main_pebble_reporting_and_applied_receipt': 'pass', 'caller_binding': 'pass', 'owner_approval': 'pass', 'live_public_handle_context': 'pass', 'new_agent_distinct_persona_and_real_model_turn': 'pass', 'single_provider_grant': 'pass', 'named_profile_management_context': 'pass', 'public_handle_native_dm': 'pass', 'public_handle_native_room_handoff': 'pass', 'metadata_merge': 'pass', 'stale_write_rejected': 'pass', 'native_live_profile_secret_settings_and_receipts': 'pass' if supports_live() else 'unsupported-on-legacy', 'model': 'synthetic-loopback-only'}))
+        print(json.dumps({'workspace': 'pass', 'revision': native.build['revision'], 'native_primary': 'pass', 'same_soul': 'pass', 'real_model_management_proposal': 'pass', 'real_main_pebble_reporting_and_applied_receipt': 'pass', 'caller_binding': 'pass', 'owner_approval': 'pass', 'live_public_handle_context': 'pass', 'new_agent_distinct_persona_and_real_model_turn': 'pass', 'single_provider_grant': 'pass', 'named_profile_management_context': 'pass', 'public_handle_native_dm': 'isolated-exchange-pass' if exchanges_supported() else 'safely-unsupported-on-legacy', 'public_handle_native_room_handoff': 'pass', 'metadata_merge': 'pass', 'stale_write_rejected': 'pass', 'native_live_profile_secret_settings_and_receipts': 'pass' if supports_live() else 'unsupported-on-legacy', 'model': 'synthetic-loopback-only'}))
     finally:
         store.db.close()
         await native.stop()

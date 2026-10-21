@@ -294,3 +294,29 @@ optional actual `row_id`, so restoration preserves them without a queue UI.
 box. The authenticated canonical-row and reference checks, chunk verification,
 and 10 MiB limit remain unchanged. Unknown content stays download-only. Browser
 codec support determines playback; MP4 is a container, not a codec guarantee.
+
+## Crew presentation and private agent exchanges
+
+The optional `exchanges` capability advertises authenticated owner-local reads:
+`exchange.references` takes a stable enrolled agent `identity`; `exchange.read`
+takes the returned exchange `id`. Neither accepts author names, native session
+IDs, credentials or delivery commands. References include the same exchange ID,
+peer identity, visible message count, state and creation time in both direct
+chats. The viewer includes authenticated participant IDs and visible messages,
+not internal model traces. Clients poll references and the open viewer; the
+existing event stream and its framing do not change.
+
+Current Hermes supports native bot authorship and separate profile sessions.
+Legacy Hermes without that primitive returns unsupported rather than delivering
+peer content into a canonical owner chat. Native tool middleware authenticates
+the initiating session, turn and call. The tool result in the owner's transcript
+contains only an ID and state. Historical prose is never reclassified as a peer
+message. Only structurally confirmed tool receipts collapse into exchange links.
+
+Presentation schema 2 separates a standalone sidebar reference (a shortcut) from
+Crew membership. Crews and standalone rows can share the unnamed root or custom
+sections. Pin metadata still selects large avatar tiles. `managerId` must be a
+Crew member or null; its derived display position is first. A Crew manager never
+implicitly changes native reporting. The original schema-1 presentation is
+retained for recovery; older saves and unsafe downgrades refuse rather than
+silently removing shortcuts.

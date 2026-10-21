@@ -1,6 +1,9 @@
 import { initialOrganization } from './organization-fixture';
 import { describe, it, expect } from 'vitest';
 import {
+  addShortcut,
+  removeShortcut,
+  crewMembers,
   nudgeItem,
   nudgeSection,
   placeCrew,
@@ -37,9 +40,9 @@ describe('reference organization', () => {
     expect(sectionChoiceLabel(root)).toBe('None');
     expect(nudgeSection(org, 'pebbles', 1)).toBe(org);
     expect(reorderSection(org, 'pebbles', 'personal')).toBe(org);
-    expect(nudgeSection(org, 'crews', -1).sections.map((s) => s.id)).toEqual([
+    expect(nudgeSection(org, 'studio-section', -1).sections.map((s) => s.id)).toEqual([
       'pebbles',
-      'crews',
+      'studio-section',
       'personal',
     ]);
   });
@@ -71,10 +74,13 @@ describe('reference organization', () => {
   it('reorders sections, members and crew placement with bounded no-op edges', () => {
     expect(nudgeSection(initialOrganization, 'personal', -1)).toBe(initialOrganization);
     expect(
-      reorderSection(initialOrganization, 'crews', 'personal').sections.map((s) => s.id),
-    ).toEqual(['crews', 'personal']);
+      reorderSection(initialOrganization, 'studio-section', 'personal').sections.map((s) => s.id),
+    ).toEqual(['studio-section', 'personal']);
     expect(
-      nudgeItem(initialOrganization, { kind: 'pebble', id: 'sample-5' }, -1).crews[0]!.members,
+      nudgeItem(initialOrganization, { kind: 'pebble', id: 'sample-5' }, -1, [], {
+        kind: 'crew',
+        id: 'studio',
+      }).crews[0]!.members,
     ).toEqual(['sample-5', 'sample-4']);
     const moved = placeCrew(initialOrganization, 'studio', 'personal', 'sample-2');
     expect(moved.sections[1]!.items).toEqual([]);
@@ -92,10 +98,10 @@ describe('reference organization', () => {
     const crew = {
       kind: 'item',
       item: { kind: 'crew', id: 'studio' },
-      placement: { kind: 'section', id: 'crews' },
+      placement: { kind: 'section', id: 'studio-section' },
     } as const;
     expect(railDropTarget(initialOrganization, 'crew', crew, true)).toEqual({
-      target: { kind: 'section', id: 'crews' },
+      target: { kind: 'section', id: 'studio-section' },
       beforeId: undefined,
       edge: 'after',
     });
@@ -105,7 +111,7 @@ describe('reference organization', () => {
     });
     expect(
       railDropTarget(initialOrganization, 'crew', { kind: 'section', id: 'pebbles' }, false),
-    ).toBeUndefined();
+    ).toEqual({ target: { kind: 'section', id: 'pebbles' }, edge: 'inside' });
     expect(railDropTarget(initialOrganization, 'pebble', nested, true)).toEqual({
       target: { kind: 'crew', id: 'studio' },
       beforeId: 'sample-5',
@@ -116,12 +122,12 @@ describe('reference organization', () => {
     const destination = railDropTarget(
       initialOrganization,
       'section',
-      { kind: 'section', id: 'crews' },
+      { kind: 'section', id: 'studio-section' },
       true,
     )!;
     expect(destination.edge).toBe('after');
     const moved = reorderSection(initialOrganization, 'personal', destination.beforeId);
-    expect(moved.sections.map((section) => section.id)).toEqual(['crews', 'personal']);
+    expect(moved.sections.map((section) => section.id)).toEqual(['studio-section', 'personal']);
     expect(moved.crews).toEqual(initialOrganization.crews);
     expect(moved.sections[1]!.items).toEqual(initialOrganization.sections[0]!.items);
   });
@@ -137,4 +143,23 @@ describe('reference organization', () => {
       readRailDrag('{"kind":"pebble","id":"sample-0"}', initialOrganization, ['sample-0']),
     ).toEqual({ kind: 'pebble', id: 'sample-0' });
   });
+});
+
+it('shortcuts share an identity while Crew membership and manager-first order survive row removal', () => {
+  const org = {
+    ...initialOrganization,
+    sections: [
+      { id: 'pebbles', name: 'Pebbles', collapsed: false, items: [] },
+      ...initialOrganization.sections,
+    ],
+  };
+  const member = org.crews[0]!;
+  const led = { ...org, crews: [{ ...member, managerId: 'sample-5' }] };
+  const shortcut = addShortcut(led, 'sample-5');
+  expect(shortcut.sections[0]!.items[0]).toEqual({ kind: 'pebble', id: 'sample-5' });
+  expect(addShortcut(shortcut, 'sample-5')).toBe(shortcut);
+  expect(crewMembers(shortcut.crews[0]!)).toEqual(['sample-5', 'sample-4']);
+  expect(removeShortcut(shortcut, 'sample-5').crews).toEqual(led.crews);
+  expect(removeShortcut(shortcut, 'sample-5').sections[0]!.items).toEqual([]);
+  expect(setCrewMembers(shortcut, 'studio', ['sample-4']).crews[0]!.managerId).toBeNull();
 });

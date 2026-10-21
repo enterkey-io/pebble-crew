@@ -1,3 +1,4 @@
+import { usePageTitle } from '../ui/page-title';
 import { useEffect, useState } from 'react';
 import {
   workMoveStatuses,
@@ -41,6 +42,13 @@ export function WorkCreator({
 }: SharedProps & { target: Exclude<WorkDialogTarget, { kind: 'task' }> }) {
   const project =
     target.kind === 'project' ? catalog.boards.find((b) => b.slug === target.board) : undefined;
+  usePageTitle(
+    target.kind === 'new-task'
+      ? 'New task'
+      : target.kind === 'new-project'
+        ? 'New project board'
+        : `Board settings · ${project?.name ?? 'Project board'}`,
+  );
   const [projectDraft, setProjectDraft] = useState({
     name: project?.name ?? '',
     description: project?.description ?? '',
