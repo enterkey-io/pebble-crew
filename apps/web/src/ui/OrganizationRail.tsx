@@ -952,7 +952,7 @@ export function OrganizationDialog({
               <Button
                 type="button"
                 variant="destructive-ghost"
-                className="sm:mr-auto"
+                className="self-start sm:mr-auto"
                 onClick={() => {
                   onChange((current) => removeCrew(current, editor.id));
                   onClose();
@@ -967,7 +967,7 @@ export function OrganizationDialog({
                 <Button
                   type="button"
                   variant="destructive-ghost"
-                  className="sm:mr-auto"
+                  className="self-start sm:mr-auto"
                   onClick={() => {
                     onChange((current) => removeSection(current, editor.id));
                     onClose();
@@ -976,19 +976,21 @@ export function OrganizationDialog({
                   Remove section
                 </Button>
               )}
-            <Button type="button" variant="ghost" onClick={onClose} disabled={pending}>
-              Cancel
-            </Button>
-            <Button
-              disabled={
-                pending ||
-                !name.trim() ||
-                ((isCrew || isGroup) && (members.length < 2 || members.length > 6))
-              }
-              type="submit"
-            >
-              {editor?.kind.startsWith('new') ? 'Create' : 'Save changes'}
-            </Button>
+            <div className="flex justify-end gap-2">
+              <Button type="button" variant="ghost" onClick={onClose} disabled={pending}>
+                Cancel
+              </Button>
+              <Button
+                disabled={
+                  pending ||
+                  !name.trim() ||
+                  ((isCrew || isGroup) && (members.length < 2 || members.length > 6))
+                }
+                type="submit"
+              >
+                {editor?.kind.startsWith('new') ? 'Create' : 'Save changes'}
+              </Button>
+            </div>
           </DialogFooter>
         </Form>
         <DiscardChanges
