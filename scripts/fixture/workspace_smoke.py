@@ -329,6 +329,7 @@ async def verify(home, model_port):
         capabilities = await native.call('profiles.describe', {'name': 'new-researcher'})
         from agent.skill_utils import ESSENTIAL_SKILLS
         assert {s['name'] for s in capabilities['skills'] if s['enabled']} <= ESSENTIAL_SKILLS, 'Fresh bot inherited optional skills'
+        named_start = len(WorkspaceModel.requests)
         new_chat = await ops.invoke('bot.open', {'profile': 'new-researcher'})
         await ops.invoke('chat.send', {'session_id': new_chat['session_id'], 'text': 'Synthetic new-agent model verification'})
         async with asyncio.timeout(60):
@@ -344,7 +345,15 @@ async def verify(home, model_port):
         assert 'Native fixture reply' in json.dumps(await ops.invoke('chat.history', {'session_id': new_chat['session_id']}))
         assert 'SYNTHETIC_NEW_RESEARCHER_PERSONALITY' in json.dumps(WorkspaceModel.requests)
         assert (home / 'SOUL.md').read_bytes() == soul
-        assert 'native_profile\\\": \\\"new-researcher' in json.dumps(WorkspaceModel.requests) or any('new-researcher' in str(m.get('content')) for r in WorkspaceModel.requests for m in r.get('messages', []) if m.get('role') == 'tool'), 'Named caller did not receive its own context'
+        marker = 'Current owner workspace metadata (not a replacement for your SOUL):\n'
+        contexts = []
+        for request in WorkspaceModel.requests[named_start:]:
+            for message in request.get('messages', []):
+                content = message.get('content')
+                if isinstance(content, str) and marker in content:
+                    contexts.append(json.JSONDecoder().raw_decode(content.rsplit(marker, 1)[1])[0])
+        assert any(c.get('native_profile') == 'new-researcher' and c.get('you') == '@new-researcher'
+                   and c.get('main_pebble', {}).get('handle') == '@aurora' for c in contexts), 'Named caller did not receive its own current context'
         current = await workspace.invoke('workspace.describe', {})
         await workspace.invoke('bots.update_handle', {'profile': 'new-researcher', 'handle': 'maker', 'expected_revision': current['revision']})
         root_chat = await ops.invoke('bot.open', {'profile': 'default'})

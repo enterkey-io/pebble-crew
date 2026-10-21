@@ -88,7 +88,8 @@ class HostInstallTests(unittest.TestCase):
         owner = self.root / 'owner'
         owner.mkdir()
         (owner / 'settings.json').write_text('do not rotate')
-        with patch("bot_web.host_install.enrolled_runtime_paths", return_value={}):
+        with patch("bot_web.host_install.enrolled_runtime_paths", return_value={}), patch(
+                "bot_web.workspace.workspace_path", return_value=self.root / "workspace.sqlite"):
             rollback(self.root)
         result = load_install(self.root)
         self.assertEqual(result['active_release'], value['previous_release'])
