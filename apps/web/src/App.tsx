@@ -873,6 +873,10 @@ export function App({ owner }: { owner?: OwnerConnection }) {
   async function receive(connection: BotBridgeClient, event: BridgeEvent) {
     if (current.current !== connection) return;
     voicePanel.current?.event(event);
+    if (event.type === 'exchanges.changed') {
+      agentExchanges.refresh();
+      return;
+    }
     if (event.type === 'questions.changed') {
       setCardsVersion((version) => version + 1);
       return;
@@ -887,6 +891,7 @@ export function App({ owner }: { owner?: OwnerConnection }) {
         if (current.current === connection) fail(error);
       });
     if (event.type === 'bridge.ready') {
+      agentExchanges.refresh();
       setStreamState('live');
       setBlocked(selected.current?.kind === 'bot' && selectionConnection.current !== connection);
       setActivity('Ready');

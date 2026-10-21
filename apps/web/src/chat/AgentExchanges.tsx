@@ -27,7 +27,7 @@ export function useAgentExchanges(
   useEffect(() => {
     if (!client || !identity || !client.supportsExchanges) return;
     let active = true;
-    let timer: ReturnType<typeof setTimeout>;
+    let timer: ReturnType<typeof setTimeout> | undefined;
     const load = async () => {
       try {
         const references = await new ExchangeDomain(client).references(identity);
@@ -35,7 +35,7 @@ export function useAgentExchanges(
       } catch {
         /* Keep verified references mounted through transport recovery. */
       }
-      if (active) timer = setTimeout(() => void load(), 3000);
+      if (active && !client.supportsExchangeEvents) timer = setTimeout(() => void load(), 3000);
     };
     void load();
     return () => {
@@ -77,6 +77,7 @@ export function useAgentExchanges(
       <ExchangeViewer
         client={client}
         id={opened}
+        revision={revision}
         onClose={() => setOpened(undefined)}
         face={face}
       />
@@ -86,11 +87,13 @@ export function useAgentExchanges(
 function ExchangeViewer({
   client,
   id,
+  revision,
   onClose,
   face,
 }: {
   client: BotBridgeClient;
   id: string | undefined;
+  revision: number;
   onClose: () => void;
   face: (profile: string) => ReactNode;
 }) {
@@ -100,7 +103,7 @@ function ExchangeViewer({
   useEffect(() => {
     if (!id) return;
     let active = true;
-    let timer: ReturnType<typeof setTimeout>;
+    let timer: ReturnType<typeof setTimeout> | undefined;
     setError('');
     const load = async () => {
       try {
@@ -112,14 +115,14 @@ function ExchangeViewer({
       } catch (error) {
         if (active) setError(safeError(error).message);
       }
-      if (active) timer = setTimeout(() => void load(), 2000);
+      if (active && !client.supportsExchangeEvents) timer = setTimeout(() => void load(), 2000);
     };
     void load();
     return () => {
       active = false;
       clearTimeout(timer);
     };
-  }, [client, id]);
+  }, [client, id, revision]);
   const value = snapshot?.id === id ? snapshot : undefined;
   return (
     <Dialog

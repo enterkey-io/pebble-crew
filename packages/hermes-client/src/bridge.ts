@@ -39,8 +39,13 @@ export class BotBridgeClient {
   #reactions = false;
   #roomReactions = false;
   #exchanges = false;
+  #exchangeEvents = false;
   #rpcActive = 0;
   readonly #rpcWaiting: (() => void)[] = [];
+
+  get supportsExchangeEvents(): boolean {
+    return this.#exchangeEvents;
+  }
 
   get supportsExchanges(): boolean {
     return this.#exchanges;
@@ -114,6 +119,8 @@ export class BotBridgeClient {
       !!data.capabilities && record(data.capabilities).existing_agents === true;
     this.#connection = data.connection;
     this.#exchanges = !!data.capabilities && record(data.capabilities).exchanges === true;
+    this.#exchangeEvents =
+      !!data.capabilities && record(data.capabilities).exchange_events === true;
     this.#existingAgents = existingAgents;
     this.#reporting = !!data.capabilities && record(data.capabilities).reporting === 1;
     this.#projects = !!data.capabilities && record(data.capabilities).projects === true;

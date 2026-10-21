@@ -13,6 +13,16 @@ async function navigation(page: Page, info: TestInfo) {
 async function newItem(page: Page, info: TestInfo, name: string) {
   await navigation(page, info);
   await page.getByRole('button', { name: 'New', exact: true }).click();
+  await expect(page.getByRole('menu').getByRole('menuitem')).toHaveText([
+    'New pebble',
+    'New crew',
+    'New group chat',
+    'New section',
+    'New task',
+    'New project board',
+  ]);
+  if (name === 'New project board')
+    await page.screenshot({ path: info.outputPath('new-menu.png'), animations: 'disabled' });
   await page.getByRole('menuitem', { name, exact: true }).click();
 }
 

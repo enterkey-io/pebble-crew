@@ -266,14 +266,14 @@ export function Rail({
           items={[
             { label: 'New pebble', action: onAdd },
             { label: 'New crew', action: () => setEditor({ kind: 'new-crew' }) },
-            { label: 'Group chat', action: () => setEditor({ kind: 'new-group-chat' }) },
+            { label: 'New group chat', action: () => setEditor({ kind: 'new-group-chat' }) },
+            { label: 'New section', action: () => setEditor({ kind: 'new-section' }) },
             ...(client.supportsProjects
               ? [
-                  { label: 'New project board', action: onNewProject, disabled: !catalog },
                   { label: 'New task', action: onNewTask, disabled: !catalog },
+                  { label: 'New project board', action: onNewProject, disabled: !catalog },
                 ]
               : []),
-            { label: 'New section', action: () => setEditor({ kind: 'new-section' }) },
           ]}
         >
           <Plus />
