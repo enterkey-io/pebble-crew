@@ -6,7 +6,7 @@ test('installable app metadata and original icons are served; offline cache cont
   browserName,
 }, info) => {
   await page.goto('/');
-  await expect(page).toHaveTitle('Pebble Crew');
+  await expect(page).toHaveTitle('Connect Hermes — Pebble Crew');
   await page.evaluate(() => navigator.serviceWorker.ready);
   await page.waitForFunction(() => Boolean(navigator.serviceWorker.controller));
   const manifest = await page.request.get('/manifest.webmanifest');
@@ -56,6 +56,6 @@ test('installable app metadata and original icons are served; offline cache cont
   await page.screenshot({ animations: 'disabled', path: info.outputPath('offline.png') });
   await context.setOffline(false);
   await page.getByRole('link', { name: 'Try again' }).tap();
-  await expect(page).toHaveTitle('Pebble Crew');
+  await expect(page).toHaveTitle('Connect Hermes — Pebble Crew');
   await expect(page.getByRole('heading', { name: 'You’re offline' })).toHaveCount(0);
 });
