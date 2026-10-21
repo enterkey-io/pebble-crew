@@ -19,6 +19,10 @@ function read(path) {
 function requireRule(condition, message) {
   if (!condition) errors.push(message);
 }
+requireRule(
+  !read('apps/web/src/chat/Rail.tsx').includes('<LayoutGroup id="native-rail">'),
+  'Each mounted rail needs a unique useId LayoutGroup; desktop/mobile rails must not share animation identities.',
+);
 const main = read('apps/web/src/main.tsx');
 const review = read('apps/web/src/ui-lab/main.tsx');
 const theme = read('apps/web/src/ui/theme.css');
@@ -92,6 +96,13 @@ for (const path of frontendFiles.filter((path) => /\.tsx?$/.test(path))) {
   );
 }
 const rail = read('apps/web/src/ui/OrganizationRail.tsx') + read('apps/web/src/chat/Rail.tsx');
+requireRule(
+  sourceContract(read('apps/web/src/ui/OrganizationRail.tsx')).renders(
+    'DialogFooter',
+    '@/components/ui/dialog',
+  ) && !read('apps/web/src/ui/layout.css').includes('.pc-form-footer'),
+  'Organization dialogs must use the shared responsive DialogFooter; fixed custom action rows clip controls on phones.',
+);
 requireRule(
   !read('apps/web/src/ui/layout.css').includes('#8e859d'),
   'Composer focus must use the neutral --ring token, not the old hard-coded lavender.',

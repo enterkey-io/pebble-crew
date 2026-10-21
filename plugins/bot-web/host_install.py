@@ -345,7 +345,26 @@ def runtime_status(directory=None, *, source=None):
     return result
 
 
+def preflight_organization(source):
+    """An older writer globally deduplicates shortcuts; refuse that data downgrade."""
+    from .workspace import workspace_path
+    path=workspace_path()
+    if not path.is_file():
+        return
+    with closing(sqlite3.connect(path.resolve().as_uri()+'?mode=ro',uri=True)) as db:
+        row=db.execute("SELECT value FROM presentation WHERE key='organization'").fetchone()
+    if not row or json.loads(row[0]).get('schema',1)<2:
+        return
+    import ast
+    source=Path(source)/'organization.py'
+    schema=next((ast.literal_eval(node.value) for node in ast.parse(source.read_text()).body
+        if isinstance(node,ast.Assign) and any(isinstance(t,ast.Name) and t.id=='SCHEMA' for t in node.targets)),1) if source.is_file() else 1
+    if schema<2:
+        raise ValueError('This release cannot preserve Crew shortcuts. Use a compatible release; the original sidebar backup is retained for an explicit data restore.')
+
+
 def preflight_runtimes(source):
+    preflight_organization(source)
     host = runtime_evidence(source)
     for profile, path in enrolled_runtime_paths().items():
         # A native managed bot may never have opened through this integration.

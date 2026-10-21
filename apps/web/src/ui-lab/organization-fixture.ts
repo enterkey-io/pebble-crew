@@ -8,12 +8,18 @@ export const initialOrganization: Organization = {
       collapsed: false,
       items: ['sample-0', 'sample-1', 'sample-2', 'sample-3'].map((id) => ({ kind: 'pebble', id })),
     },
-    { id: 'crews', name: 'Crews', collapsed: false, items: [{ kind: 'crew', id: 'studio' }] },
+    {
+      id: 'studio-section',
+      name: 'Studio teams',
+      collapsed: false,
+      items: [{ kind: 'crew', id: 'studio' }],
+    },
   ],
   crews: [
     {
       id: 'studio',
       name: 'Studio',
+      managerId: null,
       purpose: 'Design and writing',
       collapsed: false,
       members: ['sample-4', 'sample-5'],

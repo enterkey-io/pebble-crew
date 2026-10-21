@@ -1,3 +1,4 @@
+import { usePageTitle } from './ui/page-title';
 import { TabbedEditor } from './ui/EditorSurface';
 import { LoadingBar } from './components/ui/loading-bar';
 import { Button } from './components/ui/button';
@@ -53,6 +54,16 @@ export function WorkspaceSettings({
       : !owner && initialTab === 'account'
         ? 'connections'
         : initialTab,
+  );
+  usePageTitle(
+    tab === 'agents'
+      ? undefined
+      : {
+          general: 'General settings',
+          account: 'Account settings',
+          connections: 'Connections',
+          requests: 'Requests',
+        }[tab],
   );
   const [profile, setProfile] = useState(
     initialProfile ?? state.orchestrator ?? state.bots[0]?.profile ?? '',

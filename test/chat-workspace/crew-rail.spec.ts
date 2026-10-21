@@ -19,6 +19,7 @@ const organization = (): OrganizationState => ({
   crews: ['North', 'South', 'West'].map((name, i) => ({
     id: name.toLowerCase(),
     name,
+    managerId: null,
     purpose: `${name} crew`,
     collapsed: false,
     members: [`identity-${i * 2}`, `identity-${i * 2 + 1}`],
@@ -113,7 +114,7 @@ test('dragging a Crew reorders the whole block, ignores member targets and prese
     .poll(() =>
       saved
         .at(-1)
-        ?.sections.find((s) => s.id === 'crews')
+        ?.sections.find((s) => s.id === 'pebbles')
         ?.items.map((i) => i.id),
     )
     .toEqual(['west', 'north', 'south']);
@@ -136,7 +137,7 @@ test('dragging a Crew reorders the whole block, ignores member targets and prese
     .poll(() =>
       saved
         .at(-1)
-        ?.sections.find((s) => s.id === 'crews')
+        ?.sections.find((s) => s.id === 'pebbles')
         ?.items.map((i) => i.id),
     )
     .toEqual(['west', 'south', 'north']);
@@ -154,6 +155,8 @@ test('sections can move below the final section as complete blocks', async ({
     { id: 'first', name: 'First', collapsed: false, items: [{ kind: 'crew', id: 'north' }] },
     {
       ...org.sections[1]!,
+      id: 'custom',
+      name: 'Custom',
       items: [
         { kind: 'crew', id: 'south' },
         { kind: 'crew', id: 'west' },
@@ -178,13 +181,13 @@ test('sections can move below the final section as complete blocks', async ({
   await page.goto('/');
   await expect(page.getByLabel('Message', { exact: true })).toBeEnabled();
   const first = page.getByRole('region', { name: 'First', exact: true });
-  const last = page.getByRole('region', { name: 'Crews', exact: true });
+  const last = page.getByRole('region', { name: 'Custom', exact: true });
   await first
     .locator('.pc-section-header')
     .dragTo(last, { targetPosition: { x: 100, y: (await last.boundingBox())!.height - 4 } });
   await expect
     .poll(() => latest.sections.map((section) => section.id))
-    .toEqual(['pebbles', 'crews', 'first']);
+    .toEqual(['pebbles', 'custom', 'first']);
   expect(latest.crews).toEqual(org.crews);
 });
 

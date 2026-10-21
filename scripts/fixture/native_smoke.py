@@ -95,6 +95,10 @@ class Model(BaseHTTPRequestHandler):
             import re
             context = '\n'.join(str(message.get('content')) for message in data.get('messages', []))
             target = re.search(r'host-visible generated output directory (.+?) \(create it', context)
+            if not target:
+                evidence=Path(__file__).resolve().parents[2]/'test-results/owner/native-context-failure.json'
+                evidence.parent.mkdir(parents=True,exist_ok=True)
+                evidence.write_text(json.dumps(data,indent=2))
             assert target, 'Native model was not given its real media-sharing capability'
             output = Path(target[1])
             assert output.is_relative_to(Path(os.environ['HERMES_HOME']))

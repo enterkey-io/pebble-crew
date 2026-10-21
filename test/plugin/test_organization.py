@@ -10,7 +10,7 @@ class OrganizationTests(PresentationTests):
     async def test_layout_reorder_and_collapse_persist_without_rewriting_native_roles_or_pin_order(self):
         original = deepcopy(self.store.read())
         org = await self.service.invoke('organization.get', {})
-        changed = {'sections': list(reversed(org['sections'])), 'crews': org['crews']}
+        changed = {'schema': 2, 'sections': list(reversed(org['sections'])), 'crews': org['crews']}
         changed['sections'][0]['collapsed'] = True
         before = len(self.native.calls)
         saved = await self.service.invoke('organization.save', {'organization': changed, 'expected_revision': org['revision']})
@@ -27,7 +27,7 @@ class OrganizationTests(PresentationTests):
     async def test_duplicate_foreign_and_missing_identity_placements_are_rejected(self):
         org = await self.service.invoke('organization.get', {})
         for mode in ['duplicate', 'foreign', 'missing']:
-            changed = deepcopy({'sections': org['sections'], 'crews': org['crews']})
+            changed = deepcopy({'schema': 2, 'sections': org['sections'], 'crews': org['crews']})
             items = changed['sections'][0]['items']
             if mode == 'duplicate':
                 items.append(deepcopy(items[0]))
@@ -41,8 +41,8 @@ class OrganizationTests(PresentationTests):
     async def test_native_crew_chat_is_reused_and_never_mutates_existing_members(self):
         org = await self.service.invoke('organization.get', {})
         ids = [b['id'] for b in self.store.read()['bots'].values()]
-        changed = {'sections': [{**s, 'items': [{'kind': 'crew', 'id': 'crew-a'}] if s['id'] == 'crews' else []} for s in org['sections']],
-                   'crews': [{'id': 'crew-a', 'name': 'Research', 'purpose': '', 'collapsed': False, 'members': ids}]}
+        changed = {'schema': 2, 'sections': [{**s, 'items': [{'kind': 'crew', 'id': 'crew-a'}] if s['id'] == 'pebbles' else []} for s in org['sections']],
+                   'crews': [{'id': 'crew-a', 'name': 'Research', 'purpose': '', 'managerId': None, 'collapsed': False, 'members': ids}]}
         saved = await self.service.invoke('organization.save', {'organization': changed, 'expected_revision': 0})
         rooms, creates = {}, []
         previous = self.native.call
@@ -65,26 +65,57 @@ class OrganizationTests(PresentationTests):
         self.assertEqual(len(first['room']['members']), 2)
         self.assertFalse(any(m == 'prompt.submit' for m, _ in self.native.calls))
 
-    async def test_builtin_sections_reject_wrong_item_types_renames_and_removal(self):
+    async def test_root_is_unnamed_and_shortcut_can_coexist_with_crew_membership(self):
         org = await self.service.invoke('organization.get', {})
-        for action in ['wrong-kind', 'rename', 'remove']:
-            changed = deepcopy({'sections': org['sections'], 'crews': org['crews']})
-            pebbles = next(s for s in changed['sections'] if s['id'] == 'pebbles')
-            crews = next(s for s in changed['sections'] if s['id'] == 'crews')
-            if action == 'wrong-kind': crews['items'].append(pebbles['items'].pop())
-            elif action == 'rename': crews['name'] = 'Random'
-            else: changed['sections'].remove(crews)
+        ids = [b['id'] for b in self.store.read()['bots'].values()]
+        original = deepcopy(self.store.read())
+        changed = {'schema':2, 'sections':[{'id':'pebbles','name':'Pebbles','collapsed':False,'items':[{'kind':'crew','id':'studio'},{'kind':'pebble','id':ids[0]}]}],
+            'crews':[{'id':'studio','name':'Studio','purpose':'Build carefully','collapsed':False,'members':ids,'managerId':ids[1]}]}
+        saved = await self.service.invoke('organization.save', {'organization':changed,'expected_revision':org['revision']})
+        self.assertEqual(saved['crews'][0]['managerId'],ids[1])
+        self.assertEqual(self.store.read()['bots'],original['bots'])
+        from bot_web.organization import leadership
+        context=leadership(self.store,self.store.read(),'default')
+        self.assertEqual(context['crews'][0]['manager']['id'],ids[1])
+        self.assertEqual(context['crews'][0]['purpose'],'Build carefully')
+        self.assertFalse(context['crews'][0]['you_are_manager'])
+        for mutation in ['manager','old-client','duplicate-crew']:
+            invalid=deepcopy(changed)
+            if mutation=='manager': invalid['crews'][0]['managerId']='foreign'
+            elif mutation=='old-client': invalid.pop('schema')
+            else:
+                invalid['crews'].append({**invalid['crews'][0],'id':'second'})
+                invalid['sections'][0]['items'].append({'kind':'crew','id':'second'})
             with self.assertRaises(InvalidOperation):
-                await self.service.invoke('organization.save', {'organization': changed, 'expected_revision': org['revision']})
+                await self.service.invoke('organization.save', {'organization':invalid,'expected_revision':saved['revision']})
 
-    async def test_legacy_misplaced_items_and_builtin_labels_are_repaired_without_losing_ids(self):
-        org = await self.service.invoke('organization.get', {})
-        original = deepcopy(org)
-        org['sections'][1]['name'] = 'Previously renamed'
-        org['sections'][1]['items'].append(org['sections'][0]['items'].pop())
+    async def test_legacy_migration_merges_crews_preserves_ids_pins_and_keeps_rollback_snapshot(self):
         import json
-        self.store.db.execute("INSERT OR REPLACE INTO presentation VALUES('organization',?)", (json.dumps(org),))
-        repaired = await self.service.invoke('organization.get', {})
-        self.assertEqual(repaired['sections'][1]['name'], 'Crews')
-        self.assertEqual({i['id'] for i in repaired['sections'][0]['items']}, {i['id'] for i in original['sections'][0]['items']})
-        self.assertEqual(repaired['sections'][1]['items'], [])
+        org=await self.service.invoke('organization.get',{})
+        original=deepcopy(self.store.read())
+        old={'revision':7,'sections':org['sections']+[{'id':'crews','name':'Crews','collapsed':False,'items':[]}, {'id':'custom','name':'Custom','collapsed':True,'items':[]}], 'crews':[]}
+        self.store.db.execute("INSERT OR REPLACE INTO presentation VALUES('organization',?)",(json.dumps(old),))
+        self.store.db.commit()
+        repaired=await self.service.invoke('organization.get',{})
+        self.assertEqual(repaired['revision'],8)
+        self.assertEqual(repaired['schema'],2)
+        self.assertEqual([s['id'] for s in repaired['sections']],['pebbles','custom'])
+        self.assertTrue(repaired['sections'][1]['collapsed'])
+        self.assertEqual(self.store.read()['bots'],original['bots'])
+        self.assertEqual(json.loads(self.store.db.execute("SELECT value FROM presentation WHERE key='organization-v1-backup'").fetchone()[0]),old)
+        self.assertEqual(await self.service.invoke('organization.get',{}),repaired)
+
+    async def test_main_manages_crew_purpose_manager_and_members_without_reporting_writes(self):
+        from bot_web.organization import update_crew
+        org=await self.service.invoke('organization.get',{})
+        state=self.store.read();ids=[b['id'] for b in state['bots'].values()]
+        value={'schema':2,'sections':[{'id':'pebbles','name':'Pebbles','collapsed':False,'items':[{'kind':'crew','id':'studio'}]}],
+            'crews':[{'id':'studio','name':'Studio','purpose':'Original','managerId':None,'collapsed':False,'members':ids}]}
+        saved=await self.service.invoke('organization.save',{'organization':value,'expected_revision':org['revision']})
+        spec={'id':'studio','name':'Studio','purpose':'Ship the product','manager_id':ids[1],'members':ids,'expected_revision':saved['revision']}
+        with self.assertRaises(InvalidOperation):update_crew(self.store,'amy',spec)
+        result=update_crew(self.store,'default',spec)
+        self.assertEqual(result['state'],'completed')
+        with self.assertRaises(InvalidOperation):update_crew(self.store,'default',spec)
+        self.assertEqual(self.store.read()['bots'],state['bots'])
+        self.assertEqual((await self.service.invoke('organization.get',{}))['crews'][0]['managerId'],ids[1])

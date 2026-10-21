@@ -1,3 +1,4 @@
+import { usePageTitle } from './ui/page-title';
 import { VoiceSettingsEditor } from './voice/VoiceSettingsEditor';
 import type { VoiceSettingsRequest } from './voice/decode';
 import { Label } from './components/ui/label';
@@ -66,6 +67,9 @@ export function PebbleEditor({
   onVoiceReady?: (() => void) | undefined;
 }) {
   const [tab, setTab] = useState<string>(initialTab);
+  usePageTitle(
+    `${({ identity: 'Profile', role: 'Role', tools: 'Tools & skills', voice: 'Voice' } as Record<string, string>)[tab] ?? 'Profile'} · ${bot.name}`,
+  );
   const [resolvedVoiceRequest, setResolvedVoiceRequest] = useState<VoiceSettingsRequest>();
   useEffect(() => {
     setTab(voiceRequest ? 'voice' : initialTab);

@@ -50,6 +50,22 @@ class WorkspaceTests(unittest.IsolatedAsyncioTestCase):
         self.store.db.close()
         self.directory.cleanup()
 
+    async def test_turn_context_is_bounded_for_a_large_roster_with_long_instructions(self):
+        from copy import deepcopy
+        state=self.store.read()
+        template=state['bots']['amy']
+        for index in range(40):
+            bot=deepcopy(template);bot.update(id=str(index),profile='agent-'+str(index),handle='agent-'+str(index))
+            bot['role']['responsibilities']='Long current Instructions. '*400
+            state['bots'][bot['profile']]=bot
+        self.store.save(state,state['revision'])
+        context=live_context(self.store,'default',compact=True)
+        self.assertLess(len(context),5200)
+        value=json.loads(context.split('\n',1)[1])
+        self.assertEqual(value['main_pebble']['profile'],'default')
+        self.assertTrue(value['directory_more'])
+        self.assertIn('A clear owner request already authorizes that change',value['instructions'])
+
     async def test_onboarding_saves_full_role_and_reporting_before_welcome(self):
         from unittest.mock import AsyncMock
         self.native.profiles.append({'name': 'beth', 'is_default': False,

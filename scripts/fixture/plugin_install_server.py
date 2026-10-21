@@ -259,15 +259,15 @@ def main():
                     plugin.rename(directory / 'previous-plugin-backup')
                     shutil.copytree(unpack / 'bot-web', plugin)
                     refused = cli('sync-runtime', '--source-package', '--native-idle', expect_failure=True)
-                    checks['v1_host_refuses_v2_sync_without_touching_runtime'] = (
+                    checks['v1_host_refuses_new_runtime_sync_without_touching_runtime'] = (
                         'update first' in refused.stderr and tool_marker(named) == old_runtime
                         and json.loads((state / 'install.json').read_text())['active_release'] == active)
-                    assert checks['v1_host_refuses_v2_sync_without_touching_runtime'], refused.stderr
+                    assert checks['v1_host_refuses_new_runtime_sync_without_touching_runtime'], refused.stderr
                     cli('update')
                     current = json.loads((state / 'install.json').read_text())['active_release']
                     transition = cli('runtime-status')
-                    checks['actual_preview15_host_activates_v2_with_v1_copies'] = (
-                        current != active and transition['active_host']['runtime']['contract'] == 'workspace-runtime-v2'
+                    checks['actual_preview15_host_activates_candidate_with_v1_copies'] = (
+                        current != active and transition['active_host']['runtime']['contract'] == json.loads((plugin/'runtime-contract.json').read_text())['contract']
                         and tool_marker(named) == old_runtime)
                     synced = cli('sync-runtime', '--native-idle')
                     evidence = cli('runtime-status')
@@ -380,7 +380,7 @@ def main():
                     restored = cli('sync-runtime', '--native-idle')
                     assert restored['complete']
                     checks['rollback_copies_compatible_reporting_runtime'] = all(
-                        json.loads((path / 'runtime-contract.json').read_text())['contract'] == 'workspace-runtime-v2'
+                        json.loads((path / 'runtime-contract.json').read_text())['contract'] == json.loads((plugin/'runtime-contract.json').read_text())['contract']
                         for path in runtime_paths.values())
                     checks['rollback_restores_actual_runtime_tool_marker'] = all(
                         tool_marker(path) == runtime_previous[name] for name, path in runtime_paths.items())

@@ -30,6 +30,8 @@ class Native:
 
     async def call(self, method, params):
         self.calls.append((method, params))
+        if method == "bot_web.runtime.verify":
+            return getattr(self, "runtime", {"verified":True,"loaded":"unknown"})
         if method == "bot_web.lifecycle":
             return {"incarnation": getattr(self, "incarnation", "a"*64)}
         if method == "profiles.list":
@@ -207,3 +209,63 @@ class SessionIncarnationTests(unittest.IsolatedAsyncioTestCase):
         with self.assertRaises(InvalidOperation):
             await ops.invoke('chat.send', {'session_id': 'live-alpha', 'text': 'must not dispatch'})
         self.assertFalse(any(method == 'prompt.submit' for method, _ in native.calls[before:]))
+
+
+class RuntimeAdmissionTests(unittest.IsolatedAsyncioTestCase):
+    async def asyncSetUp(self):
+        import tempfile
+        from types import SimpleNamespace
+        from bot_web.workspace import WorkspaceStore
+        self.directory = tempfile.TemporaryDirectory()
+        self.store = WorkspaceStore(Path(self.directory.name) / 'workspace.sqlite')
+        self.native = Native()
+        self.app = create_app(TOKEN, {ORIGIN}, {HOST}, self.native,
+                              workspace=SimpleNamespace(store=self.store, handles=lambda operation: False))
+        self.http = httpx.AsyncClient(transport=httpx.ASGITransport(app=self.app), base_url=f"https://{HOST}")
+        self.headers = {"Origin": ORIGIN, "Authorization": "Bearer " + TOKEN}
+        response = await self.http.post('/v1/connect', headers=self.headers)
+        self.headers['X-Bot-Connection'] = response.json()['connection']
+
+    async def asyncTearDown(self):
+        await self.http.aclose()
+        self.store.db.close()
+        self.directory.cleanup()
+
+    async def invoke(self, operation, params):
+        return await self.http.post('/v1/rpc', json={'operation':operation,'params':params},headers=self.headers)
+
+    async def test_changed_or_disabled_runtime_cannot_open_or_submit_with_or_without_attachments(self):
+        opened = await self.invoke('bot.open', {'profile':'alpha'})
+        self.assertEqual(opened.status_code, 200, opened.text)
+        for state in ('changed', 'disabled'):
+            self.native.runtime = {'verified':False,'state':state,'loaded':'unknown'}
+            for operation, params in (
+                ('bot.open', {'profile':'alpha'}),
+                ('chat.send', {'session_id':'live-alpha','text':'must not submit'}),
+                ('chat.send', {'session_id':'live-alpha','text':'must not submit','attachments':[]}),
+            ):
+                self.native.calls.clear()
+                response=await self.invoke(operation,params)
+                self.assertEqual(response.status_code,400,response.text)
+                self.assertEqual(response.json()['code'],'UPDATE_REQUIRED')
+                self.assertFalse(any(method in {'prompt.submit','session.resume','bot_web.runtime.prepare'} for method,_ in self.native.calls))
+
+    async def test_opening_an_ordinary_profile_does_not_install_or_enable_a_runtime(self):
+        self.native.runtime={'verified':False,'state':'absent','loaded':'unknown'}
+        response=await self.invoke('bot.open',{'profile':'ordinary'})
+        self.assertEqual(response.status_code,400,response.text)
+        self.assertFalse(any(method in {'prompt.submit','bot_web.runtime.prepare'} for method,_ in self.native.calls))
+
+    async def test_only_absent_runtime_is_provisioned_before_first_open_without_a_model(self):
+        self.native.runtime={'verified':False,'state':'absent','loaded':'unknown'}
+        original=self.native.call
+        async def call(method,params):
+            if method=='bot_web.runtime.prepare':
+                self.native.runtime={'verified':True,'state':'verified','loaded':'unknown'}
+            return await original(method,params)
+        self.native.call=call
+        response=await self.invoke('bot.open',{'profile':'alpha'})
+        self.assertEqual(response.status_code,200,response.text)
+        methods=[method for method,_ in self.native.calls]
+        self.assertEqual(methods.count('bot_web.runtime.prepare'),1)
+        self.assertNotIn('prompt.submit',methods)

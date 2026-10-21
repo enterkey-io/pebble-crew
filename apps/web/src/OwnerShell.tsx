@@ -1,3 +1,4 @@
+import { usePageTitle } from './ui/page-title';
 import { Label } from './components/ui/label';
 import { Form } from './components/ui/form';
 import { Input } from './components/ui/input';
@@ -20,6 +21,15 @@ export function OwnerShell({ setupProof = '' }: { setupProof?: string } = {}) {
   const [mode, setMode] = useState<
     'loading' | 'preview' | 'setup' | 'login' | 'ready' | 'unavailable'
   >('loading');
+  usePageTitle(
+    mode === 'ready' || mode === 'preview'
+      ? undefined
+      : mode === 'setup'
+        ? 'Create admin login'
+        : mode === 'login'
+          ? 'Sign in'
+          : '',
+  );
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [confirmation, setConfirmation] = useState('');

@@ -329,6 +329,7 @@ async def verify(home, model_port):
         capabilities = await native.call('profiles.describe', {'name': 'new-researcher'})
         from agent.skill_utils import ESSENTIAL_SKILLS
         assert {s['name'] for s in capabilities['skills'] if s['enabled']} <= ESSENTIAL_SKILLS, 'Fresh bot inherited optional skills'
+        named_start = len(WorkspaceModel.requests)
         new_chat = await ops.invoke('bot.open', {'profile': 'new-researcher'})
         await ops.invoke('chat.send', {'session_id': new_chat['session_id'], 'text': 'Synthetic new-agent model verification'})
         async with asyncio.timeout(60):
@@ -344,7 +345,15 @@ async def verify(home, model_port):
         assert 'Native fixture reply' in json.dumps(await ops.invoke('chat.history', {'session_id': new_chat['session_id']}))
         assert 'SYNTHETIC_NEW_RESEARCHER_PERSONALITY' in json.dumps(WorkspaceModel.requests)
         assert (home / 'SOUL.md').read_bytes() == soul
-        assert 'native_profile\\\": \\\"new-researcher' in json.dumps(WorkspaceModel.requests) or any('new-researcher' in str(m.get('content')) for r in WorkspaceModel.requests for m in r.get('messages', []) if m.get('role') == 'tool'), 'Named caller did not receive its own context'
+        marker = 'Current owner workspace metadata (not a replacement for your SOUL):\n'
+        contexts = []
+        for request in WorkspaceModel.requests[named_start:]:
+            for message in request.get('messages', []):
+                content = message.get('content')
+                if isinstance(content, str) and marker in content:
+                    contexts.append(json.JSONDecoder().raw_decode(content.rsplit(marker, 1)[1])[0])
+        assert any(c.get('native_profile') == 'new-researcher' and c.get('you') == '@new-researcher'
+                   and c.get('main_pebble', {}).get('handle') == '@aurora' for c in contexts), 'Named caller did not receive its own current context'
         current = await workspace.invoke('workspace.describe', {})
         await workspace.invoke('bots.update_handle', {'profile': 'new-researcher', 'handle': 'maker', 'expected_revision': current['revision']})
         root_chat = await ops.invoke('bot.open', {'profile': 'default'})
@@ -360,13 +369,22 @@ async def verify(home, model_port):
                         break
         finally:
             native.listeners.discard(handoff_events)
-        async with asyncio.timeout(60):
-            while True:
-                await asyncio.sleep(0.2)
-                current_chat = await ops.invoke('bot.open', {'profile': 'new-researcher'})
-                history = await ops.invoke('chat.history', {'session_id': current_chat['session_id']})
-                if 'Public handle routing proof' in json.dumps(history):
-                    break
+        from bot_web.exchanges import Exchanges, supported as exchanges_supported
+        ledger=Exchanges(store)
+        try:
+            if exchanges_supported():
+                await ledger.run_pending(native)
+                await ledger.run_pending(native)
+                rows=ledger.db.execute('SELECT id FROM exchanges').fetchall()
+                assert len(rows)==1
+                exchange=ledger.read(rows[0]['id'])
+                assert 'Public handle routing proof' in json.dumps(exchange), exchange
+            else:
+                assert ledger.db.execute('SELECT count(*) FROM exchanges').fetchone()[0]==0
+            current_chat=await ops.invoke('bot.open',{'profile':'new-researcher'})
+            assert 'Public handle routing proof' not in json.dumps(await ops.invoke('chat.history',{'session_id':current_chat['session_id']}))
+        finally:
+            ledger.close()
         assert WorkspaceModel.handed, 'Model never called native message_agent with the public alias'
         await native.call('groups.create', {'room_id': 'public-handles-room', 'name': 'Public handles', 'members': [
             {'member_id': 'root', 'profile': 'default', 'handle': 'hermes', 'display_name': 'Aurora'},
@@ -399,7 +417,7 @@ async def verify(home, model_port):
         persisted = WorkspaceStore(home / 'bot-web' / 'workspace.sqlite')
         assert persisted.read()['bots']['default']['id'] == root['id']
         persisted.db.close()
-        print(json.dumps({'workspace': 'pass', 'revision': native.build['revision'], 'native_primary': 'pass', 'same_soul': 'pass', 'real_model_management_proposal': 'pass', 'real_main_pebble_reporting_and_applied_receipt': 'pass', 'caller_binding': 'pass', 'owner_approval': 'pass', 'live_public_handle_context': 'pass', 'new_agent_distinct_persona_and_real_model_turn': 'pass', 'single_provider_grant': 'pass', 'named_profile_management_context': 'pass', 'public_handle_native_dm': 'pass', 'public_handle_native_room_handoff': 'pass', 'metadata_merge': 'pass', 'stale_write_rejected': 'pass', 'native_live_profile_secret_settings_and_receipts': 'pass' if supports_live() else 'unsupported-on-legacy', 'model': 'synthetic-loopback-only'}))
+        print(json.dumps({'workspace': 'pass', 'revision': native.build['revision'], 'native_primary': 'pass', 'same_soul': 'pass', 'real_model_management_proposal': 'pass', 'real_main_pebble_reporting_and_applied_receipt': 'pass', 'caller_binding': 'pass', 'owner_approval': 'pass', 'live_public_handle_context': 'pass', 'new_agent_distinct_persona_and_real_model_turn': 'pass', 'single_provider_grant': 'pass', 'named_profile_management_context': 'pass', 'public_handle_native_dm': 'isolated-exchange-pass' if exchanges_supported() else 'safely-unsupported-on-legacy', 'public_handle_native_room_handoff': 'pass', 'metadata_merge': 'pass', 'stale_write_rejected': 'pass', 'native_live_profile_secret_settings_and_receipts': 'pass' if supports_live() else 'unsupported-on-legacy', 'model': 'synthetic-loopback-only'}))
     finally:
         store.db.close()
         await native.stop()
