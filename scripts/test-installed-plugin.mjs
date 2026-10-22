@@ -195,10 +195,16 @@ try {
     errors = [];
   let connects = 0,
     eventStreams = 0;
+  const traffic = [];
   page.on('response', (response) => {
-    if (response.status() === 200 && new URL(response.url()).pathname === '/v1/connect') connects++;
-    if (response.status() === 200 && new URL(response.url()).pathname === '/v1/events')
-      eventStreams++;
+    const path = new URL(response.url()).pathname;
+    const method = response.request().method();
+    if (path.startsWith('/v1/')) {
+      traffic.push({ path, method, status: response.status() });
+      if (traffic.length > 128) traffic.shift();
+    }
+    if (response.status() === 200 && path === '/v1/connect' && method === 'POST') connects++;
+    if (response.status() === 200 && path === '/v1/events') eventStreams++;
   });
   page.on('request', (r) => origins.add(new URL(r.url()).origin));
   page.on('pageerror', (e) => errors.push(e.message));
@@ -302,38 +308,55 @@ try {
   checks.secure_httponly_strict_owner_session =
     !!cookie?.secure && !!cookie?.httpOnly && cookie?.sameSite === 'Strict';
   const record = () => readFile(join(state, 'service.json'), 'utf8').then(JSON.parse);
-  for (const kind of ['owner', 'native', 'bridge', 'manager']) {
-    const before = await record();
-    const beforeConnects = connects;
-    const beforeStreams = eventStreams;
-    await message.fill(`Unsent draft through ${kind} restart`);
-    await control('fault/' + kind);
-    await until(
-      record,
-      (next) => {
-        const role = kind === 'native' ? 'bridge' : kind;
-        return kind === 'manager'
-          ? next.pid !== before.pid
-          : typeof next.children[role] === 'number' &&
-              next.children[role] !== before.children[role];
-      },
-      'Supervisor did not replace the failed ' + kind,
-    );
-    if (kind === 'owner') {
-      await expect.poll(() => eventStreams).toBeGreaterThan(beforeStreams);
-      expect(connects).toBe(beforeConnects);
-    } else await expect.poll(() => connects).toBeGreaterThan(beforeConnects);
-    await expect(message).toBeEnabled();
-    await expect(message).toHaveValue(`Unsent draft through ${kind} restart`);
-    await expect(page.getByRole('button', { name: 'Connect my Hermes', exact: true })).toHaveCount(
-      0,
-    );
-    checks[kind + '_crash_recovers_without_pairing_and_keeps_draft'] = true;
-    console.log('Crash recovery passed:', kind);
+  async function exerciseRestarts(candidate) {
+    for (const kind of ['owner', 'native', 'bridge', 'manager']) {
+      const before = await record();
+      const beforeConnects = connects;
+      const beforeStreams = eventStreams;
+      await message.fill(`Unsent draft through ${kind} restart`);
+      await control('fault/' + kind);
+      await until(
+        record,
+        (next) => {
+          const role = kind === 'native' ? 'bridge' : kind;
+          return kind === 'manager'
+            ? next.pid !== before.pid
+            : typeof next.children[role] === 'number' &&
+                next.children[role] !== before.children[role];
+        },
+        'Supervisor did not replace the failed ' + kind,
+      );
+      if (candidate && kind === 'owner') {
+        const after = await record();
+        expect(after.children.bridge).toBe(before.children.bridge);
+        await expect.poll(() => eventStreams).toBeGreaterThan(beforeStreams);
+        expect(connects, JSON.stringify(traffic)).toBe(beforeConnects);
+      } else await expect.poll(() => connects).toBeGreaterThan(beforeConnects);
+      await expect(message).toBeEnabled();
+      await expect(message).toHaveValue(`Unsent draft through ${kind} restart`);
+      await expect(
+        page.getByRole('button', { name: 'Connect my Hermes', exact: true }),
+      ).toHaveCount(0);
+      checks[
+        (candidate ? '' : 'baseline_') + kind + '_crash_recovers_without_pairing_and_keeps_draft'
+      ] = true;
+      console.log(
+        candidate ? 'Candidate crash recovery passed:' : 'Baseline crash recovery passed:',
+        kind,
+      );
+    }
   }
+  await exerciseRestarts(!process.env.WORKSPACE_PREVIOUS_ARCHIVE);
   if (process.env.WORKSPACE_PREVIOUS_ARCHIVE) {
     await control('contract-upgrade');
+    const handshake = page.waitForResponse(
+      (response) =>
+        new URL(response.url()).pathname === '/v1/connect' &&
+        response.request().method() === 'POST' &&
+        response.status() === 200,
+    );
     await page.reload();
+    expect((await (await handshake).json()).capabilities.connection_recovery).toBe(1);
     await expect(message).toBeEnabled();
     await expect(page.getByText('Native fixture reply', { exact: true }).last()).toBeVisible();
     const metadata = await page.request.get(origin + '/version.json');
@@ -348,6 +371,7 @@ try {
     );
     checks.actual_preview15_upgrade_preserves_account_photo = true;
     console.log('Actual preview.15 to candidate host-first upgrade passed.');
+    await exerciseRestarts(true);
   }
   await message.fill('Unsent native owner draft\nkept after refreshing');
   await page.reload();
