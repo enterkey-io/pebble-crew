@@ -193,9 +193,12 @@ try {
   page = await context.newPage();
   const origins = new Set(),
     errors = [];
-  let connects = 0;
+  let connects = 0,
+    eventStreams = 0;
   page.on('response', (response) => {
     if (response.status() === 200 && new URL(response.url()).pathname === '/v1/connect') connects++;
+    if (response.status() === 200 && new URL(response.url()).pathname === '/v1/events')
+      eventStreams++;
   });
   page.on('request', (r) => origins.add(new URL(r.url()).origin));
   page.on('pageerror', (e) => errors.push(e.message));
@@ -302,6 +305,7 @@ try {
   for (const kind of ['owner', 'native', 'bridge', 'manager']) {
     const before = await record();
     const beforeConnects = connects;
+    const beforeStreams = eventStreams;
     await message.fill(`Unsent draft through ${kind} restart`);
     await control('fault/' + kind);
     await until(
@@ -315,7 +319,10 @@ try {
       },
       'Supervisor did not replace the failed ' + kind,
     );
-    await expect.poll(() => connects).toBeGreaterThan(beforeConnects);
+    if (kind === 'owner') {
+      await expect.poll(() => eventStreams).toBeGreaterThan(beforeStreams);
+      expect(connects).toBe(beforeConnects);
+    } else await expect.poll(() => connects).toBeGreaterThan(beforeConnects);
     await expect(message).toBeEnabled();
     await expect(message).toHaveValue(`Unsent draft through ${kind} restart`);
     await expect(page.getByRole('button', { name: 'Connect my Hermes', exact: true })).toHaveCount(

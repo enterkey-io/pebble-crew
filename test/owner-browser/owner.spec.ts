@@ -10,14 +10,29 @@ let ownerCookies: Awaited<ReturnType<BrowserContext['cookies']>> = [];
 let syntheticPhoto = '';
 function observeOwner(page: Page) {
   const errors: string[] = [];
-  const signals = { tickets: 0, sends: 0, errors };
+  const signals = { tickets: 0, events: 0, sends: 0, errors };
   page.on('request', (request) => {
     if (new URL(request.url()).pathname === '/api/hermes/ticket') signals.tickets++;
+    if (new URL(request.url()).pathname === '/v1/events') signals.events++;
     if (request.url().endsWith('/v1/rpc') && request.postDataJSON()?.operation === 'chat.send')
       signals.sends++;
   });
   page.on('pageerror', (error) => signals.errors.push(error.message));
   return signals;
+}
+async function installNativeStreamControl(page: Page) {
+  await page.addInitScript(() => {
+    const original = window.fetch;
+    window.fetch = (input, init) => {
+      if (!String(input).endsWith('/v1/events')) return original(input, init);
+      const controller = new AbortController();
+      Reflect.set(window, '__interruptNativeEvents', () => controller.abort());
+      return original(input, {
+        ...init,
+        signal: AbortSignal.any([controller.signal, ...(init?.signal ? [init.signal] : [])]),
+      });
+    };
+  });
 }
 function expectNoChatSends(signals: ReturnType<typeof observeOwner>) {
   expect(signals.errors).toEqual([]);
@@ -29,6 +44,7 @@ test('private first use, native onboarding, idle keepalive and reconnection', as
   context,
 }) => {
   await page.clock.install();
+  await installNativeStreamControl(page);
   const signals = observeOwner(page);
   const proof = (
     await readFile(resolve(process.env.WORKSPACE_TEST_STATE!, 'setup-code.txt'), 'utf8')
@@ -148,8 +164,8 @@ test('private first use, native onboarding, idle keepalive and reconnection', as
   await expect.poll(() => signals.tickets).toBeGreaterThanOrEqual(2);
   await page.getByLabel('Message', { exact: true }).fill('Synthetic unsent draft stays here');
   await context.setOffline(true);
-  // Break the browser stream explicitly: offline alone can retain an existing loopback socket.
-  await page.evaluate(() => window.dispatchEvent(new Event('offline')));
+  // Interrupt the actual fetch; browser network notifications alone are only scheduling hints.
+  await page.evaluate(() => Reflect.get(window, '__interruptNativeEvents')());
   await page.waitForTimeout(1500);
   await context.setOffline(false);
   await page.evaluate(() => window.dispatchEvent(new Event('online')));
@@ -433,6 +449,7 @@ test('native existing-agent onboarding survives recovery and preserves reporting
   context,
 }) => {
   await context.addCookies(ownerCookies);
+  await installNativeStreamControl(page);
   const signals = observeOwner(page);
   await page.goto('/');
   await expect(page.getByLabel('Message', { exact: true })).toBeEnabled();
@@ -458,9 +475,11 @@ test('native existing-agent onboarding survives recovery and preserves reporting
     'Keep sources attributable. '.repeat(60) +
     '\nAsk before publishing. Return a research brief.';
   await page.getByLabel('Instructions', { exact: true }).fill(instructions);
-  const beforeSetupRecovery = signals.tickets;
-  await page.evaluate(() => window.dispatchEvent(new Event('offline')));
-  await expect.poll(() => signals.tickets).toBeGreaterThan(beforeSetupRecovery);
+  const beforeSetupRecovery = signals.events;
+  const beforeTickets = signals.tickets;
+  await page.evaluate(() => Reflect.get(window, '__interruptNativeEvents')());
+  await expect.poll(() => signals.events).toBeGreaterThan(beforeSetupRecovery);
+  expect(signals.tickets).toBe(beforeTickets);
   await expect(page.getByRole('button', { name: 'Add pebble', exact: true })).toBeEnabled();
   await expect(page.getByLabel('Name', { exact: true })).toHaveValue('Hazel');
   await expect(page.getByRole('combobox', { name: 'Reports to', exact: true })).toContainText(
