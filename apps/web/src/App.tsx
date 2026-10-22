@@ -1148,7 +1148,7 @@ export function App({ owner }: { owner?: OwnerConnection }) {
     conversationFeed.current = feed;
     owned.registerResource(async (leaseChanged, revision) => {
       if (current.current !== connection || disposed.current) return true;
-      if (leaseChanged) setChatBound(false);
+      if (leaseChanged && selectionEpoch.current !== owned.bindingEpoch) setChatBound(false);
       await loadRoster(connection, true);
       const settled = await feed.recover(leaseChanged, revision);
       const target = selected.current;

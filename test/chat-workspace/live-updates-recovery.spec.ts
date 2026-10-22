@@ -271,3 +271,69 @@ test('a new lease cannot send on the old binding while a retired snapshot is sti
   await expect(field).toHaveValue('Keep this until the new lease is bound');
   expect(leases).toBe(2);
 });
+
+test('same-epoch startup recovery keeps the bound composer and slash menu usable', async ({
+  page,
+  context,
+}) => {
+  await installFixture(context, { messages: [] });
+  let releaseFirst = () => {};
+  const firstRead = new Promise<void>((resolve) => (releaseFirst = resolve));
+  let releaseNext = () => {};
+  const nextRead = new Promise<void>((resolve) => (releaseNext = resolve));
+  let requestReads = 0;
+  let holdNext = false;
+  let nextPending = false;
+  let leases = 0;
+  page.on('request', (request) => {
+    if (new URL(request.url()).pathname === '/v1/connect' && request.method() === 'POST') leases++;
+  });
+  await page.route('**/v1/rpc', async (route) => {
+    const { operation } = route.request().postDataJSON();
+    if (operation === 'requests.list' && ++requestReads === 1) await firstRead;
+    if (operation === 'workspace.snapshot' && holdNext) {
+      nextPending = true;
+      await nextRead;
+    }
+    if (operation === 'chat.commands')
+      return route.fulfill({
+        json: {
+          result: {
+            items: [{ text: 'status', label: '/status', description: 'Session status' }],
+            replace_from: 1,
+          },
+        },
+      });
+    return route.fallback();
+  });
+  try {
+    await page.goto('/');
+    const field = page.getByRole('textbox', { name: 'Message', exact: true });
+    await expect(field).toBeEnabled();
+    await field.fill('/s');
+    const send = page.getByRole('button', { name: 'Send message', exact: true });
+    await expect(send).toBeEnabled();
+    const menu = page.locator('[data-slot="command"][aria-label="Hermes commands"]');
+    await expect(
+      menu.getByRole('option', { name: '/status Session status', exact: true }),
+    ).toBeVisible();
+    const node = (await menu.elementHandle())!;
+    holdNext = true;
+    await page.evaluate(() => window.dispatchEvent(new Event('online')));
+    releaseFirst();
+    await expect.poll(() => nextPending).toBe(true);
+    await expect(send).toBeEnabled();
+    expect(await node.evaluate((element) => element.isConnected)).toBe(true);
+    await field.press('t');
+    await expect(field).toHaveValue('/st');
+    await expect(
+      menu.getByRole('option', { name: '/status Session status', exact: true }),
+    ).toBeVisible();
+    expect(await node.evaluate((element) => element.isConnected)).toBe(true);
+    expect(leases).toBe(1);
+  } finally {
+    holdNext = false;
+    releaseFirst();
+    releaseNext();
+  }
+});

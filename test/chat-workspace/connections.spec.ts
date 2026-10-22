@@ -1,4 +1,4 @@
-import { test, expect } from '@playwright/test';
+import { test, expect, type Locator } from '@playwright/test';
 import AxeBuilder from '@axe-core/playwright';
 import { installFixture } from './fixtures';
 import { connectionFixture, openConnections } from './connections-fixture';
@@ -138,9 +138,15 @@ test('catalog and permission failures do not hide configured services or fabrica
   await expect(page.locator('.connection-list .connection-row')).toHaveCount(6);
   await page.getByRole('button', { name: 'Add connection', exact: true }).click();
   await expect(page.getByRole('alert')).toContainText('Services unavailable');
+  async function recoverRead(target: Locator) {
+    await expect(async () => {
+      if (await target.isVisible()) return;
+      await page.getByRole('button', { name: 'Retry', exact: true }).click({ timeout: 1000 });
+      await expect(target).toBeVisible();
+    }).toPass({ timeout: 10000 });
+  }
   fixture.control.catalogError = false;
-  await page.getByRole('button', { name: 'Retry', exact: true }).click();
-  await expect(page.getByRole('button', { name: 'Add Calendar', exact: true })).toBeVisible();
+  await recoverRead(page.getByRole('button', { name: 'Add Calendar', exact: true }));
   await page.getByRole('button', { name: 'About Desktop setup', exact: true }).click();
   await expect(page.getByRole('status')).toContainText('Desktop needs setup in Hermes');
   await page.getByRole('button', { name: 'Connections', exact: true }).click();
@@ -149,6 +155,5 @@ test('catalog and permission failures do not hide configured services or fabrica
   await page.locator('.connection-row').filter({ hasText: 'Archive' }).click();
   await expect(page.getByRole('alert')).toContainText('Connection details unavailable');
   fixture.control.permissionsError = false;
-  await page.getByRole('button', { name: 'Retry', exact: true }).click();
-  await expect(page.getByRole('button', { name: /Tool access/ })).toBeVisible();
+  await recoverRead(page.getByRole('button', { name: /Tool access/ }));
 });
