@@ -39,12 +39,45 @@ describe('conversation request boundary', () => {
       .mockResolvedValueOnce({ state: 'completed' });
     const domain = new RequestDomain({ invoke });
     const [request] = await domain.list();
-    expect(await domain.decide(request!, true, 'DELETE mica')).toBe('completed');
+    expect(await domain.decide(request!, true, 'DELETE mica')).toEqual({
+      state: 'completed',
+      result: null,
+    });
     expect(invoke).toHaveBeenLastCalledWith('requests.approve', {
       id: 'r',
       fingerprint: 'intent',
       confirmation: 'DELETE mica',
     });
+  });
+  it('retains failure reasons and rejects unknown or malformed decision receipts', async () => {
+    const invoke = vi
+      .fn()
+      .mockResolvedValueOnce({
+        requests: [
+          {
+            id: 'r',
+            actor: 'arlo',
+            action: 'agent.create',
+            state: 'pending',
+            fingerprint: 'exact',
+            spec: {},
+          },
+        ],
+      })
+      .mockResolvedValueOnce({
+        state: 'failed',
+        result: { code: 'AUTH_MISSING', error: 'Sign in to Codex in Hermes.' },
+      })
+      .mockResolvedValueOnce({ state: 'surprise' })
+      .mockResolvedValueOnce({ state: 'completed', result: 'unverified' });
+    const domain = new RequestDomain({ invoke });
+    const [request] = await domain.list();
+    expect(await domain.decide(request!, true)).toEqual({
+      state: 'failed',
+      result: { code: 'AUTH_MISSING', error: 'Sign in to Codex in Hermes.' },
+    });
+    await expect(domain.decide(request!, true)).rejects.toThrow();
+    await expect(domain.decide(request!, true)).rejects.toThrow();
   });
   it('preserves native multiple-choice and locked-answer state', async () => {
     const invoke = vi

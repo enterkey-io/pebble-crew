@@ -353,3 +353,33 @@ The protocol name, blank-line-compatible NDJSON framing and 15-second heartbeat
 cadence remain unchanged. Older clients can continue using existing operations.
 See [browser recovery ownership](CONNECTION_RECOVERY.md) for scheduling and
 mutation certainty.
+
+## Creation authorization and outcomes in 0.7.10
+
+`models.describe` keeps the existing fingerprint contract and adds an optional
+`reason: {code,message} | null`. `auth_kind: native_oauth` identifies a native
+Codex login reference on supported Hermes 0.21.7. Grant checks observe local
+auth files without selecting, refreshing or importing credentials. Grants copy
+no OAuth tokens, pools or auth files. The fingerprint covers native account and
+route membership plus configured selection strategy; token rotation, cooldowns
+and request counters do not change it. Hermes 0.21.0 returns
+`NATIVE_UPGRADE_REQUIRED` for this path. API-key/custom grants remain separate.
+
+`agent.create.role` accepts the same five-field Role as update. Historical text
+normalizes to the description field when a new proposal is stored. Stored
+request fingerprints are never rewritten. Full roles are mirrored before native
+Bot Chat setup, with fresh persona and explicit capability restrictions.
+
+Creation records a stage before native dispatch. A pre-dispatch rejection is
+`failed`; a confirmed profile with incomplete setup is `partial`; a missing
+creation receipt is `uncertain`. These attempts are never replayed automatically.
+Incomplete creation profiles stay unenrolled across refreshes. Explicit owner
+enrollment of a repaired existing profile supersedes its incomplete request,
+retains its previous result and records the current stable identity. This does
+not claim a successful provider/model turn.
+
+`requests.approve` returns the saved `state` and `result` together. Clients apply
+both and fence earlier pending reads. A lost response requires a read-only
+status check before another decision. One request’s decision must not clear
+another request’s uncertainty. This concerns management requests; native tool
+approval response semantics are unchanged.

@@ -296,3 +296,151 @@ test('native multiple choice uses the shared questionnaire and returns its answe
       answer: 'Research',
     });
 });
+
+for (const theme of ['dark', 'light'] as const)
+  test(`${theme}: failed management approval shows its cause immediately and stale pending reads never restore Approve`, async ({
+    page,
+    context,
+  }, info) => {
+    await page.emulateMedia({ colorScheme: theme });
+    await installFixture(context);
+    let decisions = 0;
+    const request = {
+      id: 'create-codex',
+      actor: 'arlo',
+      action: 'agent.create',
+      state: 'pending',
+      fingerprint: 'exact-codex',
+      created: Date.now() / 1000,
+      spec: {
+        name: 'ron',
+        display_name: 'Ron',
+        role: { title: 'Cloudron Operator', description: 'Runs the owner’s server' },
+      },
+    };
+    await page.route('**/v1/rpc', async (route) => {
+      const { operation } = route.request().postDataJSON();
+      // Deliberately stale after the decision, reproducing a pre-decision poll.
+      if (operation === 'requests.list')
+        return route.fulfill({ json: { result: { requests: [request] } } });
+      if (operation === 'requests.approve') {
+        decisions++;
+        return route.fulfill({
+          json: {
+            result: {
+              state: 'failed',
+              result: {
+                code: 'AUTH_MISSING',
+                error: 'Sign in to Codex in Hermes before creating this pebble.',
+              },
+            },
+          },
+        });
+      }
+      return route.fallback();
+    });
+    await page.goto('/');
+    await expect(page.getByLabel('Message', { exact: true })).toBeEnabled();
+    const card = page.locator('[data-request-id="create-codex"]');
+    await card.getByRole('button', { name: 'Approve exact request', exact: true }).click();
+    await expect(card).toContainText('Sign in to Codex in Hermes before creating this pebble.');
+    await expect(card.getByRole('button', { name: 'Approve exact request' })).toHaveCount(0);
+    await page.waitForTimeout(5500);
+    await expect(card.getByRole('button', { name: 'Approve exact request' })).toHaveCount(0);
+    expect(decisions).toBe(1);
+    await expect(card).toContainText('send a new request');
+    await card.scrollIntoViewIfNeeded();
+    await page.screenshot({
+      path: info.outputPath('failed-management-receipt.png'),
+      animations: 'disabled',
+    });
+  });
+
+test('lost management decision waits for a read-only check without replaying approval', async ({
+  page,
+  context,
+}) => {
+  await installFixture(context);
+  let decisions = 0;
+  let settled = false;
+  const request = {
+    id: 'lost-decision',
+    actor: 'arlo',
+    action: 'agent.attach',
+    state: 'pending',
+    fingerprint: 'exact-lost',
+    created: Date.now() / 1000,
+    spec: { profile: 'arlo', toolsets: ['browser'], skills: [] },
+  };
+  await page.route('**/v1/rpc', async (route) => {
+    const { operation } = route.request().postDataJSON();
+    if (operation === 'requests.list')
+      return route.fulfill({
+        json: {
+          result: {
+            requests: [
+              { ...request, ...(settled ? { state: 'completed', result: { applied: true } } : {}) },
+            ],
+          },
+        },
+      });
+    if (operation === 'requests.approve') {
+      decisions++;
+      return route.abort('connectionreset');
+    }
+    return route.fallback();
+  });
+  await page.goto('/');
+  await expect(page.getByLabel('Message', { exact: true })).toBeEnabled();
+  const card = page.locator('[data-request-id="lost-decision"]');
+  await card.getByRole('button', { name: 'Approve exact request', exact: true }).click();
+  await expect(card.getByRole('button', { name: 'Check status', exact: true })).toBeVisible();
+  await expect(card.getByRole('button', { name: 'Approve exact request' })).toHaveCount(0);
+  await expect(card.getByRole('button', { name: 'Check status', exact: true })).toBeEnabled();
+  await card.getByRole('button', { name: 'Check status', exact: true }).click();
+  await expect(
+    card.getByRole('button', { name: 'Approve exact request', exact: true }),
+  ).toBeVisible();
+  settled = true;
+  // The authoritative refresh runs every five seconds; allow one full interval.
+  await expect(card).toContainText('Approved', { timeout: 12000 });
+  await expect(card.getByRole('button', { name: 'Check status' })).toHaveCount(0);
+  expect(decisions).toBe(1);
+});
+
+test('deciding another request preserves the first request’s unconfirmed decision', async ({
+  page,
+  context,
+}) => {
+  await installFixture(context);
+  const requests = ['first', 'second'].map((id) => ({
+    id,
+    actor: 'arlo',
+    action: 'agent.attach',
+    state: 'pending',
+    fingerprint: id,
+    created: Date.now() / 1000,
+    spec: { profile: 'arlo', skills: [], toolsets: ['browser'] },
+  }));
+  await page.route('**/v1/rpc', async (route) => {
+    const { operation, params } = route.request().postDataJSON();
+    if (operation === 'requests.list') return route.fulfill({ json: { result: { requests } } });
+    if (operation === 'requests.approve') {
+      if (params.id === 'first') return route.abort('connectionreset');
+      return route.fulfill({ json: { result: { state: 'completed' } } });
+    }
+    return route.fallback();
+  });
+  await page.goto('/');
+  await expect(page.getByLabel('Message', { exact: true })).toBeEnabled();
+  const first = page.locator('[data-request-id="first"]');
+  const second = page.locator('[data-request-id="second"]');
+  await first.getByRole('button', { name: 'Approve exact request', exact: true }).click();
+  await expect(first.getByRole('button', { name: 'Check status', exact: true })).toBeEnabled();
+  await second.getByRole('button', { name: 'Approve exact request', exact: true }).click();
+  await expect(second).toContainText('Approved');
+  await expect(first.getByRole('button', { name: 'Check status', exact: true })).toBeEnabled();
+  await expect(
+    first.getByRole('button', { name: 'Approve exact request', exact: true }),
+  ).toHaveCount(0);
+});

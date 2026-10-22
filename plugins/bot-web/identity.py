@@ -125,4 +125,6 @@ async def invoke(service, operation, params, state, profiles):
     if operation == 'agent.onboard':
         bot.update(enrolled=True, role=role)
     service.store.save(state, state['revision'])
+    if operation == 'agent.onboard':
+        service.store.resolve_creation(profile, bot['id'])
     return {'state': 'completed', 'profile': profile}

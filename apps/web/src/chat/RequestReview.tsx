@@ -14,6 +14,8 @@ export function RequestReview({
   onInspect,
   compactResolved = false,
   targetName,
+  decisionIssue,
+  onCheck,
 }: {
   request: Row;
   busy: boolean;
@@ -21,6 +23,8 @@ export function RequestReview({
   onInspect: () => void;
   compactResolved?: boolean;
   targetName?: string | undefined;
+  decisionIssue?: string | undefined;
+  onCheck?: (() => void) | undefined;
 }) {
   const [confirmation, setConfirmation] = useState('');
   const spec = (r.spec ?? {}) as Row,
@@ -115,7 +119,15 @@ export function RequestReview({
       {Boolean(result.reason || result.error) && (
         <p role="status">{String(result.reason ?? result.error)}</p>
       )}
-      {r.state === 'pending' && (
+      {decisionIssue && (
+        <div className="space-y-2 text-sm text-muted-foreground" role="status">
+          <p>{decisionIssue}</p>
+          <Button variant="secondary" disabled={busy} onClick={onCheck}>
+            Check status
+          </Button>
+        </div>
+      )}
+      {r.state === 'pending' && !decisionIssue && (
         <>
           {deleting && (
             <Label className="flex-col items-start">
@@ -150,16 +162,36 @@ export function RequestReview({
           </div>
         </>
       )}
-      {deleting && ['executing', 'uncertain', 'partial'].includes(String(r.state)) && (
-        <Button type="button" variant="secondary" disabled={busy} onClick={onInspect}>
+      {['executing', 'uncertain', 'partial'].includes(String(r.state)) && (
+        <Button
+          type="button"
+          variant="secondary"
+          disabled={busy}
+          onClick={deleting ? onInspect : onCheck}
+        >
           Check outcome
         </Button>
       )}
     </ApprovalSurface>
   );
-  if (compactResolved && ['completed', 'denied', 'failed'].includes(String(r.state))) {
-    const state = r.state === 'completed' ? 'Approved' : r.state === 'denied' ? 'Denied' : 'Failed';
-    const Icon = r.state === 'completed' ? Check : r.state === 'denied' ? X : AlertCircle;
+  if (
+    compactResolved &&
+    ['completed', 'denied', 'failed', 'superseded'].includes(String(r.state))
+  ) {
+    const state =
+      r.state === 'completed'
+        ? 'Approved'
+        : r.state === 'denied'
+          ? 'Denied'
+          : r.state === 'superseded'
+            ? 'Resolved'
+            : 'Failed';
+    const Icon =
+      r.state === 'completed' || r.state === 'superseded'
+        ? Check
+        : r.state === 'denied'
+          ? X
+          : AlertCircle;
     return (
       <Collapsible data-slot="approval-receipt" className="group/receipt min-w-0">
         <CollapsibleTrigger asChild>
@@ -177,6 +209,16 @@ export function RequestReview({
             />
           </Button>
         </CollapsibleTrigger>
+        {r.state === 'failed' && (
+          <div role="status" className="max-w-prose space-y-1 pb-2 text-sm text-muted-foreground">
+            <p>
+              {typeof result.error === 'string'
+                ? result.error
+                : 'This request could not be completed.'}
+            </p>
+            <p>Ask the pebble to review the cause and send a new request.</p>
+          </div>
+        )}
         <CollapsibleContent className="pt-2">{details}</CollapsibleContent>
       </Collapsible>
     );

@@ -4,6 +4,13 @@ Track owner reports here through implementation, verification and release. A
 published fix is separate from updating and verifying the owner's installation.
 New reports receive a stable ID; later work updates the existing entry.
 
+## 0.7.10-preview.1 creation and approval outcomes
+
+| ID     | Report                                                                                          | Change and status                                                                                                                                                                                                                                             |
+| ------ | ----------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| PC-127 | Creating a pebble rejects an existing shared Codex OAuth login and loses structured role fields | Native login reference on the safe pinned current build, source-aware refresh remains in Hermes, complete roles and staged creation receipts. Legacy shared OAuth is explicitly upgrade-required. Verification in disposable homes; owner activation pending. |
+| PC-128 | A failed management approval leaves Approve available and hides its cause                       | Shared chat/Settings decision state, immediate full receipts, generation-fenced status reads, per-request uncertainty and visible failure cause. Desktop and phone verification; owner activation pending.                                                    |
+
 ## 0.7.9-preview.1 connection and board recovery
 
 | ID     | Report                                                                           | Change and status                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |

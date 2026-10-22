@@ -62,7 +62,22 @@ export class RequestDomain {
         ...(confirmation !== undefined ? { confirmation } : {}),
       }),
     );
-    return text(result.state, 64);
+    const state = text(result.state, 64);
+    if (
+      ![
+        'pending',
+        'executing',
+        'completed',
+        'denied',
+        'failed',
+        'partial',
+        'uncertain',
+        'expired',
+        'superseded',
+      ].includes(state)
+    )
+      throw new ClientError('INVALID_RESPONSE');
+    return { state, result: result.result == null ? null : record(result.result) };
   }
   async questions(sessionId: string) {
     return list(

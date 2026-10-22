@@ -109,6 +109,11 @@ export function decodeModelGrant(value: unknown) {
     model: text(data.model, 1000),
     supported: boolean(data.supported),
     auth_kind: text(data.auth_kind, 128, false),
+    ...optional(data, 'reason', (v) => {
+      if (v === null) return null;
+      const reason = record(v);
+      return { code: text(reason.code, 128, false), message: text(reason.message, 1000) };
+    }),
     fingerprint: text(data.fingerprint, 128, false),
   };
 }

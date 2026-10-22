@@ -317,6 +317,29 @@ class WorkspaceTests(unittest.IsolatedAsyncioTestCase):
         with self.assertRaises(InvalidOperation):
             await self.service.invoke('requests.approve', {'id': request_id, 'fingerprint': request['fingerprint']})
 
+    async def test_incomplete_creation_is_not_enrolled_by_native_metadata_on_refresh(self):
+        spec = {'name': 'incomplete', 'role': 'Job'}
+        request_id, _ = self.store.request('owner', 'agent.create', spec)
+        with self.store.db:
+            self.store.db.execute("UPDATE requests SET state='partial',result=? WHERE id=?", (json.dumps({'profile': 'incomplete'}), request_id))
+        self.native.profiles.append({'name': 'incomplete', 'ui_meta': {'hermes-bots': {'title': 'Incomplete', 'workspaceRole': {key: '' for key in ('title','description','responsibilities','boundaries','expectedOutputs')}}}})
+        for _ in range(2):
+            snapshot = await self.service.invoke('workspace.describe', {})
+            bot = next(bot for bot in snapshot['bots'] if bot['profile'] == 'incomplete')
+            self.assertFalse(bot['enrolled'])
+        self.assertEqual(self.store.incomplete_creations(), {'incomplete'})
+        # Explicit reviewed enrollment is recovery, not an automatic creation replay.
+        from unittest.mock import AsyncMock
+        self.service.ops.enable_existing = AsyncMock(return_value={'profile': 'incomplete', 'session_id': 'repaired-chat'})
+        await self.service.invoke('agent.enable', {'profile': 'incomplete', 'initialize_chat': True})
+        self.assertEqual(self.store.incomplete_creations(), set())
+        self.assertEqual(self.store.requests()[0]['state'], 'superseded')
+        self.assertEqual(self.store.requests()[0]['result']['resolution'], 'owner_enabled_existing_profile')
+        next_snapshot = await self.service.invoke('workspace.describe', {})
+        self.assertTrue(next(bot for bot in next_snapshot['bots'] if bot['profile'] == 'incomplete')['enrolled'])
+        self.assertFalse(any(method == 'profiles.create' for method, _ in self.native.calls))
+
+
     def test_photo_decoder_rejects_active_and_oversized_content(self):
         for value in ('https://example.test/photo.png', 'data:image/svg+xml;base64,PHN2Zz4=', 'data:image/png;base64,YmFk'):
             with self.assertRaises(InvalidOperation):

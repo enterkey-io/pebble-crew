@@ -1,3 +1,4 @@
+import { decodeRole } from '@hermes-client/protocol';
 import type { BrowserContext, Page } from '@playwright/test';
 import type { OrganizationState } from '../../apps/web/src/ui/organization';
 import type { WorkspaceSnapshot as WorkspaceState } from '@hermes-client/protocol';
@@ -653,13 +654,16 @@ export async function installFixture(
           name: String(value.display_name),
           pinned: false,
           team: null,
-          role: {
-            title: '',
-            description: String(value.role),
-            responsibilities: '',
-            boundaries: '',
-            expectedOutputs: '',
-          },
+          role:
+            typeof value.role === 'object' && value.role !== null
+              ? decodeRole(value.role)
+              : {
+                  title: '',
+                  description: String(value.role),
+                  responsibilities: '',
+                  boundaries: '',
+                  expectedOutputs: '',
+                },
         });
         state.revision++;
       } else state.bots = state.bots.filter((b) => b.id !== spec.id);
