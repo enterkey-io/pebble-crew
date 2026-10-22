@@ -1,12 +1,12 @@
 import { ConversationDomain } from '@hermes-client/protocol';
-import type { CommandSuggestion, BotBridgeClient } from '@hermes-client/protocol';
+import type { CommandSuggestion, SessionClient } from '@hermes-client/protocol';
 import { forwardRef, useEffect, useImperativeHandle, useState } from 'react';
 import { Command, CommandItem, CommandList } from '../components/ui/command';
 import { LoadingBar } from '../components/ui/loading-bar';
 
 export type CommandSuggestionsHandle = { key: (key: string) => boolean };
 type Catalog = {
-  client: BotBridgeClient;
+  client: SessionClient;
   sessionId: string;
   prefix: string;
   items: CommandSuggestion[];
@@ -15,7 +15,7 @@ type Catalog = {
 export const CommandSuggestions = forwardRef<
   CommandSuggestionsHandle,
   {
-    client: BotBridgeClient;
+    client: SessionClient;
     enabled: boolean;
     sessionId: string;
     text: string;

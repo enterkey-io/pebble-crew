@@ -4,7 +4,7 @@ import { LoadingBar } from './components/ui/loading-bar';
 import { Button } from './components/ui/button';
 import { safeError } from '@hermes-client/core';
 import { useEffect, useRef, useState } from 'react';
-import type { BotBridgeClient } from '@hermes-client/protocol';
+import type { SessionClient } from '@hermes-client/protocol';
 import { decodeWorkspaceSnapshot } from '@hermes-client/protocol';
 import type { WorkspaceSnapshot as WorkspaceState, WorkspaceBot } from '@hermes-client/protocol';
 import { OwnerAccount } from './OwnerAccount';
@@ -40,7 +40,7 @@ export function WorkspaceSettings({
   owner?: boolean;
   initialTab?: 'agents' | 'requests' | 'connections' | 'account' | 'general';
   initialProfile?: string | undefined;
-  client: BotBridgeClient;
+  client: SessionClient;
   state: WorkspaceState;
   onChange: (s: WorkspaceState) => void;
   onClose: () => void;

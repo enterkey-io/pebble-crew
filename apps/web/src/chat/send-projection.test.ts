@@ -279,3 +279,11 @@ it('restores fresh deferred envelopes without an anchor and updates merged text 
     'Another fallback',
   ]);
 });
+
+it('removes only a proven undispatched optimistic row while preserving the prior conversation', () => {
+  const view = new SendProjection();
+  view.begin({ id: 'not-sent', renderKey: 'not-sent', role: 'user', text: 'retry me' }, [
+    { id: 'old', role: 'assistant', text: 'existing' },
+  ]);
+  expect(view.cancelUnsent('not-sent').map((row) => row.id)).toEqual(['old']);
+});

@@ -278,6 +278,8 @@ class NativeGateway:
         for _ in range(3):
             generation = self.stream_positions.generation(sid)
             result = await self._call(method, params)
+            if result.get('missing'):
+                return result
             if (generation == self.stream_positions.generation(sid)
                     and result.get('running', False) == generation[1]
                     and result.get('snapshot_consistent', True)):

@@ -208,7 +208,7 @@ test('reconnecting retains the board and pauses its read loop until the new conn
   });
   try {
     await page.evaluate(() => {
-      const stop = Reflect.get(window, '__breakStream');
+      const stop = Reflect.get(window, '__expireConnection');
       if (typeof stop !== 'function') throw new Error('Missing synthetic stream control');
       stop();
     });
@@ -250,6 +250,6 @@ test('an expired board authorization reconnects through the existing owner login
   refused = false;
   await recovery.getByRole('button', { name: 'Reconnect', exact: true }).click();
   await expect(page.getByRole('region', { name: 'Triage', exact: true })).toBeVisible();
-  expect(connections).toBe(2);
+  expect(connections).toBe(1);
   await expect(recovery).toHaveCount(0);
 });

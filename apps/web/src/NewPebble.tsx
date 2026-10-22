@@ -1,3 +1,4 @@
+import { useRecoveryRevision } from './connection/recovery-context';
 import { usePageTitle } from './ui/page-title';
 import { Label } from './components/ui/label';
 import { Checkbox } from './components/ui/checkbox';
@@ -6,7 +7,7 @@ import { Disclosure } from './components/ui/disclosure';
 import { EditorSurface } from './ui/EditorSurface';
 import { useEffect, useState, useCallback, useReducer } from 'react';
 import { ArrowLeft, ChevronRight, UserPlus, Users } from 'lucide-react';
-import type { BotBridgeClient } from '@hermes-client/protocol';
+import type { SessionClient } from '@hermes-client/protocol';
 import { WorkspaceDomain, decodeModelGrant } from '@hermes-client/protocol';
 import { safeError } from '@hermes-client/core';
 import type { WorkspaceSnapshot as WorkspaceState } from '@hermes-client/protocol';
@@ -48,13 +49,14 @@ export function NewPebble({
   onDone,
   onDirtyChange,
 }: {
-  client: BotBridgeClient;
+  client: SessionClient;
   state: WorkspaceState;
   connected: boolean;
   onClose: () => void;
   onDone: (profile?: string, introduce?: boolean) => Promise<void>;
   onDirtyChange: (dirty: boolean) => void;
 }) {
+  const recovery = useRecoveryRevision();
   const [childDirty, setChildDirty] = useState(false);
   const [backConfirm, setBackConfirm] = useState(false);
   const [createdIdentity, setCreatedIdentity] = useState<{ profile: string; id: string }>();
@@ -99,7 +101,7 @@ export function NewPebble({
     return () => {
       live = false;
     };
-  }, [client, step.kind]);
+  }, [client, step.kind, recovery]);
   const createDirty = profileDirty(edit) || !!soul;
   useEffect(() => {
     if (step.kind !== 'configure') onDirtyChange(step.kind === 'create' && !request && createDirty);

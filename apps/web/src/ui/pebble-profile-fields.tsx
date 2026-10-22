@@ -1,7 +1,7 @@
 import { Label } from '../components/ui/label';
 import { useId } from 'react';
 import type { ReactNode } from 'react';
-import type { BotBridgeClient } from '@hermes-client/protocol';
+import type { SessionClient } from '@hermes-client/protocol';
 import {
   roleInstructions,
   withRoleInstructions,
@@ -37,7 +37,7 @@ export function PebbleProfileFields({
 }: {
   value: ProfileDraft;
   onChange: (patch: Partial<ProfileDraft>) => void;
-  client?: BotBridgeClient;
+  client?: SessionClient;
   profile?: string;
   onAvatarBusy: (busy: boolean) => void;
   revision?: number;

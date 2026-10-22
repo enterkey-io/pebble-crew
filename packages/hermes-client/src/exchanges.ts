@@ -1,6 +1,6 @@
 import { ClientError } from '@hermes-client/core';
 import { record } from './json';
-import type { BotBridgeClient } from './bridge';
+import type { SessionClient } from './session-client';
 function text(value: unknown, max = 512): string {
   if (typeof value !== 'string' || !value || value.length > max)
     throw new ClientError('INVALID_RESPONSE');
@@ -71,7 +71,7 @@ export function decodeExchange(value: unknown) {
 export type ExchangeReference = ReturnType<typeof decodeExchangeReferences>[number];
 export type Exchange = ReturnType<typeof decodeExchange>;
 export class ExchangeDomain {
-  constructor(private readonly client: BotBridgeClient) {}
+  constructor(private readonly client: SessionClient) {}
   async references(identity: string) {
     return decodeExchangeReferences(await this.client.invoke('exchange.references', { identity }));
   }

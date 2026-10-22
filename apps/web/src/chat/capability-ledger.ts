@@ -1,8 +1,8 @@
-import type { BotBridgeClient } from '@hermes-client/protocol';
+import type { SessionClient } from '@hermes-client/protocol';
 import type { AIPatternId } from '../ui-lab/catalog';
 
 type BridgeFeatures = Pick<
-  BotBridgeClient,
+  SessionClient,
   | 'supportsAttachments'
   | 'supportsGeneratedMedia'
   | 'supportsReactions'

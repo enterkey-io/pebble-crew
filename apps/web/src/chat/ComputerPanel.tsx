@@ -1,6 +1,6 @@
 import { Button } from '../components/ui/button';
 import { useEffect, useRef, useState } from 'react';
-import type { BotBridgeClient } from '@hermes-client/protocol';
+import type { SessionClient } from '@hermes-client/protocol';
 import type RFB from '@novnc/novnc';
 import { Notice } from '../ui/primitives';
 import { Drawer } from './Drawer';
@@ -18,7 +18,7 @@ export function ComputerPanel({
   profile,
   name,
 }: {
-  client: BotBridgeClient;
+  client: SessionClient;
   profile: string;
   name: string;
 }) {
@@ -149,7 +149,7 @@ function ComputerViewer({
   profile,
   name,
 }: {
-  client: BotBridgeClient;
+  client: SessionClient;
   profile: string;
   name: string;
 }) {

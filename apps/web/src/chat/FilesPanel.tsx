@@ -1,6 +1,6 @@
 import { Button } from '../components/ui/button';
 import { useEffect, useState } from 'react';
-import type { BotBridgeClient } from '@hermes-client/protocol';
+import type { SessionClient } from '@hermes-client/protocol';
 import { Notice } from '../ui/primitives';
 import { LoadingBar } from '../components/ui/loading-bar';
 export type { SharedConversationFile as SharedFile } from '@hermes-client/protocol';
@@ -24,7 +24,7 @@ export function FilesPanel({
   version,
   focusId,
 }: {
-  client: BotBridgeClient;
+  client: SessionClient;
   sessionId: string;
   version: number;
   focusId?: string | undefined;

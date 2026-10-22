@@ -4,465 +4,818 @@
   "routes": {
     "connect": {
       "path": "/v1/connect",
-      "methods": ["POST", "DELETE"],
+      "methods": [
+        "POST",
+        "DELETE"
+      ],
       "maxBytes": 65536
     },
     "renew": {
       "path": "/v1/renew",
-      "methods": ["POST"],
+      "methods": [
+        "POST"
+      ],
       "maxBytes": 65536
     },
     "rpc": {
       "path": "/v1/rpc",
-      "methods": ["POST"],
+      "methods": [
+        "POST"
+      ],
       "maxBytes": 65536
     },
     "avatar": {
       "path": "/v1/avatar",
-      "methods": ["POST"],
+      "methods": [
+        "POST"
+      ],
       "maxBytes": 3000000
     },
     "upload": {
       "path": "/v1/files/upload",
-      "methods": ["POST"],
+      "methods": [
+        "POST"
+      ],
       "maxBytes": 14684160
     },
     "read": {
       "path": "/v1/files/read",
-      "methods": ["POST"],
+      "methods": [
+        "POST"
+      ],
       "maxBytes": 65536
     },
     "events": {
       "path": "/v1/events",
-      "methods": ["GET"],
+      "methods": [
+        "GET"
+      ],
       "maxBytes": 65536
     },
     "oauth": {
       "path": "/v1/oauth/callback",
-      "methods": ["GET"],
+      "methods": [
+        "GET"
+      ],
       "maxBytes": 65536
+    },
+    "status": {
+      "path": "/v1/status",
+      "methods": [
+        "GET"
+      ],
+      "maxBytes": 0
     }
   },
   "operations": {
     "media.read": {
       "preferred": "read",
-      "accepted": ["read"]
+      "accepted": [
+        "read"
+      ],
+      "effect": "read"
     },
     "agent.attach": {
       "preferred": "rpc",
-      "accepted": ["rpc"]
+      "accepted": [
+        "rpc"
+      ],
+      "effect": "write"
     },
     "agent.capabilities": {
       "preferred": "rpc",
-      "accepted": ["rpc"]
+      "accepted": [
+        "rpc"
+      ],
+      "effect": "read"
     },
     "agent.create": {
       "preferred": "rpc",
-      "accepted": ["rpc"]
+      "accepted": [
+        "rpc"
+      ],
+      "effect": "write"
     },
     "agent.delete": {
       "preferred": "rpc",
-      "accepted": ["rpc"]
+      "accepted": [
+        "rpc"
+      ],
+      "effect": "write"
     },
     "agent.enable": {
       "preferred": "rpc",
-      "accepted": ["rpc"]
+      "accepted": [
+        "rpc"
+      ],
+      "effect": "write"
     },
     "agent.hide": {
       "preferred": "rpc",
-      "accepted": ["rpc"]
+      "accepted": [
+        "rpc"
+      ],
+      "effect": "write"
     },
     "agent.model": {
       "preferred": "rpc",
-      "accepted": ["rpc"]
+      "accepted": [
+        "rpc"
+      ],
+      "effect": "write"
     },
     "agent.onboard": {
       "preferred": "avatar",
-      "accepted": ["rpc", "avatar"]
+      "accepted": [
+        "rpc",
+        "avatar"
+      ],
+      "effect": "write"
     },
     "agent.pin": {
       "preferred": "rpc",
-      "accepted": ["rpc"]
+      "accepted": [
+        "rpc"
+      ],
+      "effect": "write"
     },
     "agent.propose": {
       "preferred": "rpc",
-      "accepted": ["rpc"]
+      "accepted": [
+        "rpc"
+      ],
+      "effect": "write"
     },
     "agent.update": {
       "preferred": "rpc",
-      "accepted": ["rpc"]
+      "accepted": [
+        "rpc"
+      ],
+      "effect": "write"
     },
     "agent.welcome": {
       "preferred": "rpc",
-      "accepted": ["rpc"]
+      "accepted": [
+        "rpc"
+      ],
+      "effect": "write"
     },
     "agents.list": {
       "preferred": "rpc",
-      "accepted": ["rpc"]
+      "accepted": [
+        "rpc"
+      ],
+      "effect": "read"
     },
     "bot.open": {
       "preferred": "rpc",
-      "accepted": ["rpc"]
+      "accepted": [
+        "rpc"
+      ],
+      "effect": "bind"
     },
     "bots.appearance.get": {
       "preferred": "rpc",
-      "accepted": ["rpc"]
+      "accepted": [
+        "rpc"
+      ],
+      "effect": "read"
     },
     "bots.appearance.update": {
       "preferred": "avatar",
-      "accepted": ["rpc", "avatar"]
+      "accepted": [
+        "rpc",
+        "avatar"
+      ],
+      "effect": "write"
     },
     "bots.list": {
       "preferred": "rpc",
-      "accepted": ["rpc"]
+      "accepted": [
+        "rpc"
+      ],
+      "effect": "read"
     },
     "bots.profile.update": {
       "preferred": "avatar",
-      "accepted": ["rpc", "avatar"]
+      "accepted": [
+        "rpc",
+        "avatar"
+      ],
+      "effect": "write"
     },
     "bots.update_handle": {
       "preferred": "rpc",
-      "accepted": ["rpc"]
+      "accepted": [
+        "rpc"
+      ],
+      "effect": "write"
     },
     "chat.approvals": {
       "preferred": "rpc",
-      "accepted": ["rpc"]
+      "accepted": [
+        "rpc"
+      ],
+      "effect": "read"
     },
     "chat.approve": {
       "preferred": "rpc",
-      "accepted": ["rpc"]
+      "accepted": [
+        "rpc"
+      ],
+      "effect": "write"
     },
     "chat.history": {
       "preferred": "rpc",
-      "accepted": ["rpc"]
+      "accepted": [
+        "rpc"
+      ],
+      "effect": "read"
     },
     "chat.react": {
       "preferred": "rpc",
-      "accepted": ["rpc"]
+      "accepted": [
+        "rpc"
+      ],
+      "effect": "write"
     },
     "chat.replay": {
       "preferred": "rpc",
-      "accepted": ["rpc"]
+      "accepted": [
+        "rpc"
+      ],
+      "effect": "read"
     },
     "chat.send": {
       "preferred": "rpc",
-      "accepted": ["rpc"]
+      "accepted": [
+        "rpc"
+      ],
+      "effect": "write"
     },
     "chat.stop": {
       "preferred": "rpc",
-      "accepted": ["rpc"]
+      "accepted": [
+        "rpc"
+      ],
+      "effect": "write"
     },
     "computer.control": {
       "preferred": "rpc",
-      "accepted": ["rpc"]
+      "accepted": [
+        "rpc"
+      ],
+      "effect": "write"
     },
     "computer.force_release": {
       "preferred": "rpc",
-      "accepted": ["rpc"]
+      "accepted": [
+        "rpc"
+      ],
+      "effect": "write"
     },
     "computer.observe": {
       "preferred": "rpc",
-      "accepted": ["rpc"]
+      "accepted": [
+        "rpc"
+      ],
+      "effect": "write"
     },
     "computer.release": {
       "preferred": "rpc",
-      "accepted": ["rpc"]
+      "accepted": [
+        "rpc"
+      ],
+      "effect": "write"
     },
     "computer.start": {
       "preferred": "rpc",
-      "accepted": ["rpc"]
+      "accepted": [
+        "rpc"
+      ],
+      "effect": "write"
     },
     "computer.status": {
       "preferred": "rpc",
-      "accepted": ["rpc"]
+      "accepted": [
+        "rpc"
+      ],
+      "effect": "read"
     },
     "computer.stop": {
       "preferred": "rpc",
-      "accepted": ["rpc"]
+      "accepted": [
+        "rpc"
+      ],
+      "effect": "write"
     },
     "connections.add": {
       "preferred": "rpc",
-      "accepted": ["rpc"]
+      "accepted": [
+        "rpc"
+      ],
+      "effect": "write"
     },
     "connections.auth_cancel": {
       "preferred": "rpc",
-      "accepted": ["rpc"]
+      "accepted": [
+        "rpc"
+      ],
+      "effect": "write"
     },
     "connections.auth_start": {
       "preferred": "rpc",
-      "accepted": ["rpc"]
+      "accepted": [
+        "rpc"
+      ],
+      "effect": "write"
     },
     "connections.auth_status": {
       "preferred": "rpc",
-      "accepted": ["rpc"]
+      "accepted": [
+        "rpc"
+      ],
+      "effect": "read"
     },
     "connections.list": {
       "preferred": "rpc",
-      "accepted": ["rpc"]
+      "accepted": [
+        "rpc"
+      ],
+      "effect": "read"
     },
     "connections.permissions": {
       "preferred": "rpc",
-      "accepted": ["rpc"]
+      "accepted": [
+        "rpc"
+      ],
+      "effect": "read",
+      "writeWhen": [
+        "tools"
+      ]
     },
     "connections.set_key": {
       "preferred": "rpc",
-      "accepted": ["rpc"]
+      "accepted": [
+        "rpc"
+      ],
+      "effect": "write"
     },
     "connections.test": {
       "preferred": "rpc",
-      "accepted": ["rpc"]
+      "accepted": [
+        "rpc"
+      ],
+      "effect": "write"
     },
     "crews.save": {
       "preferred": "rpc",
-      "accepted": ["rpc"]
+      "accepted": [
+        "rpc"
+      ],
+      "effect": "write"
     },
     "files.discard": {
       "preferred": "rpc",
-      "accepted": ["rpc"]
+      "accepted": [
+        "rpc"
+      ],
+      "effect": "write"
     },
     "files.list": {
       "preferred": "rpc",
-      "accepted": ["rpc"]
+      "accepted": [
+        "rpc"
+      ],
+      "effect": "read"
     },
     "files.read": {
       "preferred": "read",
-      "accepted": ["read"]
+      "accepted": [
+        "read"
+      ],
+      "effect": "read"
     },
     "files.reconcile": {
       "preferred": "rpc",
-      "accepted": ["rpc"]
+      "accepted": [
+        "rpc"
+      ],
+      "effect": "write"
     },
     "files.remove": {
       "preferred": "rpc",
-      "accepted": ["rpc"]
+      "accepted": [
+        "rpc"
+      ],
+      "effect": "write"
     },
     "files.upload": {
       "preferred": "upload",
-      "accepted": ["upload"]
+      "accepted": [
+        "upload"
+      ],
+      "effect": "write"
     },
     "models.describe": {
       "preferred": "rpc",
-      "accepted": ["rpc"]
+      "accepted": [
+        "rpc"
+      ],
+      "effect": "read"
     },
     "organization.chat": {
       "preferred": "rpc",
-      "accepted": ["rpc"]
+      "accepted": [
+        "rpc"
+      ],
+      "effect": "write"
     },
     "organization.get": {
       "preferred": "rpc",
-      "accepted": ["rpc"]
+      "accepted": [
+        "rpc"
+      ],
+      "effect": "read"
     },
     "organization.save": {
       "preferred": "rpc",
-      "accepted": ["rpc"]
+      "accepted": [
+        "rpc"
+      ],
+      "effect": "write"
     },
     "presentation.order": {
       "preferred": "rpc",
-      "accepted": ["rpc"]
+      "accepted": [
+        "rpc"
+      ],
+      "effect": "write"
     },
     "presentation.read": {
       "preferred": "rpc",
-      "accepted": ["rpc"]
+      "accepted": [
+        "rpc"
+      ],
+      "effect": "write"
     },
     "requests.approve": {
       "preferred": "rpc",
-      "accepted": ["rpc"]
+      "accepted": [
+        "rpc"
+      ],
+      "effect": "write"
     },
     "requests.deny": {
       "preferred": "rpc",
-      "accepted": ["rpc"]
+      "accepted": [
+        "rpc"
+      ],
+      "effect": "write"
     },
     "requests.list": {
       "preferred": "rpc",
-      "accepted": ["rpc"]
+      "accepted": [
+        "rpc"
+      ],
+      "effect": "read"
     },
     "requests.reconcile": {
       "preferred": "rpc",
-      "accepted": ["rpc"]
+      "accepted": [
+        "rpc"
+      ],
+      "effect": "write"
     },
     "roles.update": {
       "preferred": "rpc",
-      "accepted": ["rpc"]
+      "accepted": [
+        "rpc"
+      ],
+      "effect": "write"
     },
     "room.approve": {
       "preferred": "rpc",
-      "accepted": ["rpc"]
+      "accepted": [
+        "rpc"
+      ],
+      "effect": "write"
     },
     "room.create": {
       "preferred": "rpc",
-      "accepted": ["rpc"]
+      "accepted": [
+        "rpc"
+      ],
+      "effect": "write"
     },
     "room.log": {
       "preferred": "rpc",
-      "accepted": ["rpc"]
+      "accepted": [
+        "rpc"
+      ],
+      "effect": "read"
     },
     "room.send": {
       "preferred": "rpc",
-      "accepted": ["rpc"]
+      "accepted": [
+        "rpc"
+      ],
+      "effect": "write"
     },
     "room.state": {
       "preferred": "rpc",
-      "accepted": ["rpc"]
+      "accepted": [
+        "rpc"
+      ],
+      "effect": "read"
     },
     "room.stop": {
       "preferred": "rpc",
-      "accepted": ["rpc"]
+      "accepted": [
+        "rpc"
+      ],
+      "effect": "write"
     },
     "rooms.list": {
       "preferred": "rpc",
-      "accepted": ["rpc"]
+      "accepted": [
+        "rpc"
+      ],
+      "effect": "read"
     },
     "routines.list": {
       "preferred": "rpc",
-      "accepted": ["rpc"]
+      "accepted": [
+        "rpc"
+      ],
+      "effect": "read"
     },
     "routines.set_enabled": {
       "preferred": "rpc",
-      "accepted": ["rpc"]
+      "accepted": [
+        "rpc"
+      ],
+      "effect": "write"
     },
     "search.context": {
       "preferred": "rpc",
-      "accepted": ["rpc"]
+      "accepted": [
+        "rpc"
+      ],
+      "effect": "read"
     },
     "search.query": {
       "preferred": "rpc",
-      "accepted": ["rpc"]
+      "accepted": [
+        "rpc"
+      ],
+      "effect": "read"
     },
     "services.catalog": {
       "preferred": "rpc",
-      "accepted": ["rpc"]
+      "accepted": [
+        "rpc"
+      ],
+      "effect": "read"
     },
     "teams.save": {
       "preferred": "rpc",
-      "accepted": ["rpc"]
+      "accepted": [
+        "rpc"
+      ],
+      "effect": "write"
     },
     "workspace.describe": {
       "preferred": "rpc",
-      "accepted": ["rpc"]
+      "accepted": [
+        "rpc"
+      ],
+      "effect": "read"
     },
     "workspace.detect_primary": {
       "preferred": "rpc",
-      "accepted": ["rpc"]
+      "accepted": [
+        "rpc"
+      ],
+      "effect": "read"
     },
     "workspace.initialize": {
       "preferred": "avatar",
-      "accepted": ["rpc", "avatar"]
+      "accepted": [
+        "rpc",
+        "avatar"
+      ],
+      "effect": "write"
     },
     "workspace.set_orchestrator": {
       "preferred": "rpc",
-      "accepted": ["rpc"]
+      "accepted": [
+        "rpc"
+      ],
+      "effect": "write"
     },
     "workspace.snapshot": {
       "preferred": "rpc",
-      "accepted": ["rpc"]
+      "accepted": [
+        "rpc"
+      ],
+      "effect": "read"
     },
     "workspace.welcome": {
       "preferred": "rpc",
-      "accepted": ["rpc"]
+      "accepted": [
+        "rpc"
+      ],
+      "effect": "write"
     },
     "voice.status": {
       "preferred": "rpc",
-      "accepted": ["rpc"]
+      "accepted": [
+        "rpc"
+      ],
+      "effect": "read"
     },
     "voice.preferences": {
       "preferred": "rpc",
-      "accepted": ["rpc"]
+      "accepted": [
+        "rpc"
+      ],
+      "effect": "write"
     },
     "voice.credential": {
       "preferred": "rpc",
-      "accepted": ["rpc"]
+      "accepted": [
+        "rpc"
+      ],
+      "effect": "write"
     },
     "voice.session": {
       "preferred": "rpc",
-      "accepted": ["rpc"]
+      "accepted": [
+        "rpc"
+      ],
+      "effect": "write"
     },
     "voice.submit": {
       "preferred": "rpc",
-      "accepted": ["rpc"]
+      "accepted": [
+        "rpc"
+      ],
+      "effect": "write"
     },
     "secrets.pending": {
       "preferred": "rpc",
-      "accepted": ["rpc"]
+      "accepted": [
+        "rpc"
+      ],
+      "effect": "read"
     },
     "secrets.respond": {
       "preferred": "rpc",
-      "accepted": ["rpc"]
+      "accepted": [
+        "rpc"
+      ],
+      "effect": "write"
     },
     "voice.end": {
       "preferred": "rpc",
-      "accepted": ["rpc"]
+      "accepted": [
+        "rpc"
+      ],
+      "effect": "write"
     },
     "chat.commands": {
       "preferred": "rpc",
-      "accepted": ["rpc"]
+      "accepted": [
+        "rpc"
+      ],
+      "effect": "read"
     },
     "chat.command": {
       "preferred": "rpc",
-      "accepted": ["rpc"]
+      "accepted": [
+        "rpc"
+      ],
+      "effect": "write"
     },
     "reporting.describe": {
       "preferred": "rpc",
-      "accepted": ["rpc"]
+      "accepted": [
+        "rpc"
+      ],
+      "effect": "read"
     },
     "work.describe": {
       "preferred": "rpc",
-      "accepted": ["rpc"]
+      "accepted": [
+        "rpc"
+      ],
+      "effect": "read"
     },
     "work.board": {
       "preferred": "rpc",
-      "accepted": ["rpc"]
+      "accepted": [
+        "rpc"
+      ],
+      "effect": "read"
     },
     "work.task": {
       "preferred": "rpc",
-      "accepted": ["rpc"]
+      "accepted": [
+        "rpc"
+      ],
+      "effect": "read"
     },
     "work.receipt": {
       "preferred": "rpc",
-      "accepted": ["rpc"]
+      "accepted": [
+        "rpc"
+      ],
+      "effect": "read"
     },
     "work.project.create": {
       "preferred": "rpc",
-      "accepted": ["rpc"]
+      "accepted": [
+        "rpc"
+      ],
+      "effect": "write"
     },
     "work.project.update": {
       "preferred": "rpc",
-      "accepted": ["rpc"]
+      "accepted": [
+        "rpc"
+      ],
+      "effect": "write"
     },
     "work.task.create": {
       "preferred": "rpc",
-      "accepted": ["rpc"]
+      "accepted": [
+        "rpc"
+      ],
+      "effect": "write"
     },
     "work.task.update": {
       "preferred": "rpc",
-      "accepted": ["rpc"]
+      "accepted": [
+        "rpc"
+      ],
+      "effect": "write"
     },
     "work.task.comment": {
       "preferred": "rpc",
-      "accepted": ["rpc"]
+      "accepted": [
+        "rpc"
+      ],
+      "effect": "write"
     },
     "work.task.move": {
       "preferred": "rpc",
-      "accepted": ["rpc"]
+      "accepted": [
+        "rpc"
+      ],
+      "effect": "write"
     },
     "questions.pending": {
       "preferred": "rpc",
-      "accepted": ["rpc"]
+      "accepted": [
+        "rpc"
+      ],
+      "effect": "read"
     },
     "questions.respond": {
       "preferred": "rpc",
-      "accepted": ["rpc"]
+      "accepted": [
+        "rpc"
+      ],
+      "effect": "write"
     },
     "room.react": {
       "preferred": "rpc",
-      "accepted": ["rpc"]
+      "accepted": [
+        "rpc"
+      ],
+      "effect": "write"
     },
     "exchange.references": {
       "preferred": "rpc",
-      "accepted": ["rpc"]
+      "accepted": [
+        "rpc"
+      ],
+      "effect": "read"
     },
     "exchange.read": {
       "preferred": "rpc",
-      "accepted": ["rpc"]
+      "accepted": [
+        "rpc"
+      ],
+      "effect": "read"
+    },
+    "chat.snapshot": {
+      "preferred": "rpc",
+      "accepted": [
+        "rpc"
+      ],
+      "effect": "read"
     }
   }
 }

@@ -69,6 +69,8 @@ def create_app(token, origins, hosts, gateway=None, trust=None, workspace=None, 
         state_path = Path(workspace.store.db.execute('PRAGMA database_list').fetchone()[2])
         files = AttachmentStore(state_path.parent / 'files')
     clients = {}
+    from .connection import NativeHealth, Subscription, reclaimable
+    health = NativeHealth(native)
     from .computer import Computer
     computer = Computer(native, ops, clients, origins, hosts, enabled=os.environ.get("HERMES_BOT_WEB_EXPERIMENTAL_COMPUTER") == "1")
     pairing = BrowserPairing()
@@ -265,17 +267,17 @@ def create_app(token, origins, hosts, gateway=None, trust=None, workspace=None, 
         client = clients.get(connection)
         if client is None or time.monotonic() - client["touched"] > LEASE_SECONDS:
             clients.pop(connection, None)
-            raise InvalidOperation("Reconnect to Hermes")
+            raise InvalidOperation("Reconnect to Hermes", "LEASE_GONE")
         if client["principal"] != request.scope.get("bot.principal"):
             raise InvalidOperation("Connection belongs to another browser")
         client["touched"] = time.monotonic()
         if request.scope.get("bot.ticket_expires"):
-            client["expires"] = request.scope["bot.ticket_expires"]
+            client["expires"] = max(client.get("expires") or 0, request.scope["bot.ticket_expires"])
         return client
 
     @app.exception_handler(InvalidOperation)
     async def invalid(request, error):
-        return JSONResponse({"error": "Operation unavailable or invalid. Refresh and check the connection.", "code": error.code if error.code in VOICE_ERROR_CODES | {"UPDATE_REQUIRED", "UNSUPPORTED_COMMAND", "STALE_REVISION", "HANDLE_TAKEN", "INVALID_REPORTING", "MODEL_UNAVAILABLE", "REQUIRES_SETUP", "INVALID_PHOTO", "INVALID_PARAMETERS", "INVALID_ATTACHMENT", "ATTACHMENT_QUOTA"} else "INVALID_PARAMETERS"}, 409 if error.code == "STALE_REVISION" else 400)
+        return JSONResponse({"error": "Operation unavailable or invalid. Refresh and check the connection.", "code": error.code if error.code in VOICE_ERROR_CODES | {"CONVERSATION_CHANGED", "LEASE_GONE", "STREAM_ACTIVE", "NATIVE_UNAVAILABLE", "CAPACITY", "UPDATE_REQUIRED", "UNSUPPORTED_COMMAND", "STALE_REVISION", "HANDLE_TAKEN", "INVALID_REPORTING", "MODEL_UNAVAILABLE", "REQUIRES_SETUP", "INVALID_PHOTO", "INVALID_PARAMETERS", "INVALID_ATTACHMENT", "ATTACHMENT_QUOTA"} else "INVALID_PARAMETERS"}, 409 if error.code == "STALE_REVISION" else 400)
 
     @app.exception_handler(NativeError)
     async def native_error(request, error):
@@ -287,25 +289,28 @@ def create_app(token, origins, hosts, gateway=None, trust=None, workspace=None, 
             return JSONResponse({"error": "Hermes is restarting. Reconnecting automatically."}, 503)
         for key in list(clients):
             idle = clients[key]
-            expired = time.monotonic() - idle["touched"] > LEASE_SECONDS
-            abandoned = idle["principal"] == request.scope["bot.principal"] and not idle["streaming"] and idle.get("ended") is not None and time.monotonic() - idle["ended"] > 1
-            if expired or abandoned:
+            if reclaimable(idle, LEASE_SECONDS):
                 clients.pop(key)
         if len(clients) >= 8:
-            return JSONResponse({"error": "Connection limit reached"}, 429)
+            return JSONResponse({"code": "CAPACITY"}, 429, headers={"Retry-After": "5"})
         connection = secrets.token_urlsafe(32)
-        clients[connection] = {"touched": time.monotonic(), "streaming": False,
+        clients[connection] = {"touched": time.monotonic(), "stream": None,
                                "inflight": 0, "sessions": set(), "principal": request.scope["bot.principal"],
                                "expires": request.scope.get("bot.ticket_expires"), "ended": None}
         build = getattr(native, "build", None) or {}
         return {"connection": connection, "protocol": "hermes-bot-web.v1", "bridge_version": VERSION,
-                "capabilities": {"exchanges": bool(workspace), "exchange_events": bool(workspace), "existing_agents": True, "owner_login": owner_trust is not None, "workspace": bool(workspace), "reporting": 1 if workspace else None, "projects": bool(workspace and getattr(native, 'work_supported', False)), "attachments": bool(files), "generated_media": True, "reactions": True, "room_reactions": bool(workspace), "live_voice": live_voice_supported(), "secrets": bool(getattr(native, "build", None) and native.build.get("server_requests")), "questions": bool(getattr(native, "build", None)), "computer": computer.supported},
+                "capabilities": {"connection_recovery": 1, "exchanges": bool(workspace), "exchange_events": bool(workspace), "existing_agents": True, "owner_login": owner_trust is not None, "workspace": bool(workspace), "reporting": 1 if workspace else None, "projects": bool(workspace and getattr(native, 'work_supported', False)), "attachments": bool(files), "generated_media": True, "reactions": True, "room_reactions": bool(workspace), "live_voice": live_voice_supported(), "secrets": bool(getattr(native, "build", None) and native.build.get("server_requests")), "questions": bool(getattr(native, "build", None)), "computer": computer.supported},
                 "hermes_version": build.get("version"), "hermes_revision": build.get("revision")}
 
     @app.post("/v1/renew")
     async def renew(request: Request):
         lease(request)
         return {"renewed": True}
+
+    @app.get("/v1/status")
+    async def connection_status(request: Request):
+        lease(request)
+        return await health.read()
 
     @app.delete("/v1/connect")
     async def disconnect(request: Request):
@@ -321,6 +326,8 @@ def create_app(token, origins, hosts, gateway=None, trust=None, workspace=None, 
     @app.post("/v1/rpc")
     async def rpc(request: Request):
         client = lease(request)
+        if getattr(native, "healthy", True) is False:
+            return JSONResponse({"code": "NATIVE_UNAVAILABLE"}, 503, headers={"Retry-After": "2"})
         if client["inflight"] >= 4:
             return JSONResponse({"error": "Too many pending operations"}, 429)
         client["inflight"] += 1
@@ -390,6 +397,8 @@ def create_app(token, origins, hosts, gateway=None, trust=None, workspace=None, 
                     raise InvalidOperation('Owner-local search unavailable')
                 from .search import query, context
                 result = await (query if operation == 'search.query' else context)(workspace, files, client['principal'], params)
+            elif operation == 'bot.open':
+                result = await ops.invoke(operation, params, bind=client['sessions'].add)
             elif operation == 'chat.send':
                 if files and 'attachments' in params:
                     result = await files.submit(ops, client['principal'], params)
@@ -420,8 +429,6 @@ def create_app(token, origins, hosts, gateway=None, trust=None, workspace=None, 
                     if params.pop('reporting_version', None) != 1:
                         raise InvalidOperation('Refresh Pebble Crew before editing reporting relationships', 'UPDATE_REQUIRED')
                 result = await (workspace.invoke(operation, params) if workspace and workspace.handles(operation) else ops.invoke(operation, params))
-            if operation == "bot.open":
-                client["sessions"].add(result["session_id"])
             return {"result": result}
         except (TypeError, KeyError, ValueError) as error:
             raise InvalidOperation("Invalid operation values") from error
@@ -449,14 +456,14 @@ def create_app(token, origins, hosts, gateway=None, trust=None, workspace=None, 
     @app.get("/v1/events")
     async def events(request: Request):
         client = lease(request)
-        if client["streaming"]:
-            return JSONResponse({"error": "Event stream already active"}, 409)
-        client["streaming"] = True
-        queue = asyncio.Queue(maxsize=256)
+        if client['stream'] is not None:
+            client['stream'].end()
+        queue = Subscription(client['sessions'])
+        client['stream'] = queue
         native.listeners.add(queue)
         connection = request.headers["x-bot-connection"]
         def active():
-            return (clients.get(connection) is client
+            return (clients.get(connection) is client and client['stream'] is queue
                     and time.monotonic() - client["touched"] <= LEASE_SECONDS
                     and ((client.get("expires") is not None and time.time() < client["expires"])
                          or (client.get("expires") is None and pairing.alive(client["principal"]))))
@@ -491,8 +498,9 @@ def create_app(token, origins, hosts, gateway=None, trust=None, workspace=None, 
                         yield json.dumps(event, ensure_ascii=False) + "\n\n"
             finally:
                 native.listeners.discard(queue)
-                client["streaming"] = False
-                client["ended"] = time.monotonic()
+                if client['stream'] is queue:
+                    client['stream'] = None
+                    client["ended"] = time.monotonic()
         return StreamingResponse(stream(), media_type="application/x-ndjson",
                                  headers={"X-Accel-Buffering": "no"})
 

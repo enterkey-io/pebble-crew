@@ -72,6 +72,12 @@ def read_clock(home):
 def register():
     from tui_gateway import server
 
+    def connection_health(rid, params):
+        if params != {}:
+            return server._err(rid, -32602, 'Invalid health request')
+        return server._ok(rid, {'responsive': True})
+    server.method('bot_web.connection.health')(connection_health)
+
     def identities(rid, params):
         try:
             if params:

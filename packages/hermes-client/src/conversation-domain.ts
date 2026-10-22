@@ -1,5 +1,5 @@
 import { ClientError } from '@hermes-client/core';
-import type { BotBridgeClient } from './bridge';
+import type { SessionClient } from './session-client';
 import { record } from './json';
 import { decodeStreamPosition } from './stream-position';
 import type { StreamPosition } from './stream-position';
@@ -293,7 +293,7 @@ export function decodeApprovals(
   });
 }
 export class ConversationDomain {
-  constructor(private readonly bridge: Pick<BotBridgeClient, 'invoke'>) {}
+  constructor(private readonly bridge: Pick<SessionClient, 'invoke'>) {}
   async send(edit: ChatSend) {
     const value = record(
       await this.bridge.invoke('chat.send', {
@@ -379,6 +379,11 @@ export class ConversationDomain {
     if (typeof data.output !== 'string' || data.output.length > 64000)
       throw new ClientError('INVALID_RESPONSE');
     return data.output;
+  }
+  async snapshot(sessionId: string): Promise<BotConversation> {
+    return decodeBotConversation(
+      await this.bridge.invoke('chat.snapshot', { session_id: sessionId }),
+    );
   }
   async open(profile: string): Promise<BotConversation> {
     return decodeBotConversation(await this.bridge.invoke('bot.open', { profile }));

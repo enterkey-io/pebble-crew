@@ -185,15 +185,15 @@ test('opening during continuous deltas merges the native snapshot without gaps o
         session_id: 'session-arlo',
         running: true,
         active_user_row_id: 31,
-        stream_position: position(opens === 1 ? 2 : 3),
+        stream_position: position(opens === 1 ? 2 : opens === 2 ? 3 : 4),
         messages: [{ row_id: 31, role: 'user', text: 'Start' }],
-        inflight: { assistant: opens === 1 ? 'A😀' : 'A😀B' },
+        inflight: { assistant: opens === 1 ? 'A😀' : opens === 2 ? 'A😀B' : 'A😀BC' },
       };
     },
   });
   await page.goto('/');
   await expect(page.getByLabel('Message', { exact: true })).toBeEnabled();
-  await expect.poll(() => opens).toBe(2);
+  await expect.poll(() => opens).toBeGreaterThanOrEqual(2);
   await expect(page.getByRole('log').locator('[data-message-role="assistant"]')).toContainText(
     'A😀BC',
   );

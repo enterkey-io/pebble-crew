@@ -1,3 +1,4 @@
+import { useRecoveryRevision } from '../connection/recovery-context';
 import { useCallback, useEffect, useState } from 'react';
 import { safeError } from '@hermes-client/core';
 import type { ClientError, ErrorCode } from '@hermes-client/core';
@@ -19,11 +20,15 @@ export function useWorkRead<T>({
   scope,
   read,
   connected,
+  recovery,
 }: {
   scope: string | undefined;
   read: () => Promise<T>;
   connected: boolean;
+  recovery?: number;
 }) {
+  const revision = useRecoveryRevision();
+  const recovered = recovery ?? revision;
   const [refresh, setRefresh] = useState(0);
   const [snapshot, setSnapshot] = useState<{
     scope: string | undefined;
@@ -34,6 +39,14 @@ export function useWorkRead<T>({
   const reload = useCallback(() => setRefresh((n) => n + 1), []);
   useEffect(() => {
     if (!scope || !connected) return;
+    if (
+      snapshot.scope === scope &&
+      snapshot.read === read &&
+      snapshot.refresh === refresh &&
+      snapshot.state.kind === 'failed' &&
+      snapshot.state.error.code === 'INVALID_RESPONSE'
+    )
+      return;
     let active = true;
     let failures = 0;
     let timer: ReturnType<typeof setTimeout>;
@@ -70,7 +83,7 @@ export function useWorkRead<T>({
       active = false;
       clearTimeout(timer);
     };
-  }, [scope, read, connected, refresh]);
+  }, [scope, read, connected, refresh, recovered]);
   const updateValue = useCallback(
     (update: (value: T) => T) => {
       setSnapshot((current) =>

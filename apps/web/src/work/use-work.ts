@@ -1,13 +1,14 @@
 import { useCallback } from 'react';
 import { ClientError } from '@hermes-client/core';
 import { WorkDomain } from '@hermes-client/protocol';
-import type { BotBridgeClient } from '@hermes-client/protocol';
+import type { SessionClient } from '@hermes-client/protocol';
 import { useWorkRead } from './use-work-read';
 
 export function useWorkCatalog(
-  client: BotBridgeClient | undefined,
+  client: SessionClient | undefined,
   workspaceId: string | undefined,
   connected: boolean,
+  recovery = 0,
 ) {
   const read = useCallback(async () => {
     if (!client || !workspaceId) throw new ClientError('DISCONNECTED');
@@ -18,6 +19,7 @@ export function useWorkCatalog(
   const result = useWorkRead({
     scope: workspaceId,
     read,
+    recovery,
     connected: connected && !!client?.supportsProjects,
   });
   return { catalog: result.state.value, state: result.state, reload: result.reload };

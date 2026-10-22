@@ -1,6 +1,6 @@
 import { ClientError } from '@hermes-client/core';
 import { record } from './json';
-import type { BotBridgeClient } from './bridge';
+import type { SessionClient } from './session-client';
 
 const statuses = [
   'triage',
@@ -199,7 +199,7 @@ export type WorkTaskDraft = Pick<WorkTask, 'title' | 'body' | 'priority' | 'assi
 type Mutation = { workspaceId: string; operationId: string };
 
 export class WorkDomain {
-  constructor(private readonly bridge: Pick<BotBridgeClient, 'invoke'>) {}
+  constructor(private readonly bridge: Pick<SessionClient, 'invoke'>) {}
   async catalog() {
     return decodeWorkCatalog(await this.bridge.invoke('work.describe', {}));
   }

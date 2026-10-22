@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { WorkDomain } from '@hermes-client/protocol';
-import type { BotBridgeClient, WorkTask, WorkStatus } from '@hermes-client/protocol';
+import type { SessionClient, WorkTask, WorkStatus } from '@hermes-client/protocol';
 import { safeError } from '@hermes-client/core';
 import { moveIntent } from './move-intent';
 
@@ -10,7 +10,7 @@ export function useTaskMovement({
   board,
   onChanged,
 }: {
-  client: BotBridgeClient;
+  client: SessionClient;
   workspaceId: string;
   board: string;
   onChanged: (task: WorkTask, beforeId?: string | null) => void;

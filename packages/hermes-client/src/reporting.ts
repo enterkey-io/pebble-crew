@@ -1,5 +1,5 @@
 import { ClientError } from '@hermes-client/core';
-import type { BotBridgeClient } from './bridge';
+import type { SessionClient } from './session-client';
 import { record } from './json';
 import { decodeWorkspaceSnapshot } from './workspace';
 import type { WorkspaceBot, WorkspaceSnapshot } from './workspace';
@@ -70,7 +70,7 @@ export function decodeReporting(value: unknown) {
 }
 
 export class ReportingDomain {
-  constructor(private readonly client: Pick<BotBridgeClient, 'invoke'>) {}
+  constructor(private readonly client: Pick<SessionClient, 'invoke'>) {}
   async read() {
     return decodeReporting(await this.client.invoke('reporting.describe', {}));
   }

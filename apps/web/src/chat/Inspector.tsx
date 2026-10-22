@@ -11,7 +11,7 @@ import type { ReactNode } from 'react';
 import type { ChatBot } from './Rail';
 import { PebbleAvatar, CrewAvatar } from './Rail';
 import type { WorkspaceSnapshot as WorkspaceState } from '@hermes-client/protocol';
-import type { BotBridgeClient } from '@hermes-client/protocol';
+import type { SessionClient } from '@hermes-client/protocol';
 import type { Row } from '../conversation';
 export function Inspector({
   bot,
@@ -31,7 +31,7 @@ export function Inspector({
   bot?: ChatBot | undefined;
   room?: Row | undefined;
   workspace?: WorkspaceState | undefined;
-  client: BotBridgeClient;
+  client: SessionClient;
   routines: Row[];
   children?: ReactNode;
   pending: string;

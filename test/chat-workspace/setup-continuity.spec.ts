@@ -24,7 +24,9 @@ test('connection recovery retains the visible conversation without a red interru
     }
     await route.fallback();
   });
-  await page.evaluate(() => (window as unknown as { __breakStream: () => void }).__breakStream());
+  await page.evaluate(() =>
+    (window as unknown as { __expireConnection: () => void }).__expireConnection(),
+  );
   await expect.poll(() => reconnecting).toBe(true);
   await expect(page.locator('.banner[role="alert"]')).toHaveCount(0);
   expect(await bubble.evaluate((node) => node.isConnected)).toBe(true);
@@ -77,7 +79,7 @@ for (const flow of ['existing', 'new'] as const) {
     await page.evaluate(() => {
       Object.defineProperty(document, 'visibilityState', { configurable: true, value: 'hidden' });
       document.dispatchEvent(new Event('visibilitychange'));
-      (window as unknown as { __breakStream: () => void }).__breakStream();
+      (window as unknown as { __expireConnection: () => void }).__expireConnection();
     });
     await page.evaluate(() => {
       Object.defineProperty(document, 'visibilityState', { configurable: true, value: 'visible' });

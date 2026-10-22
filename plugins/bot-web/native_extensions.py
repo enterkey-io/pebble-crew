@@ -97,6 +97,8 @@ def register(source):
             return server._err(rid, -32602, 'Invalid conversation snapshot')
         session, error = server._sess_nowait(params, rid)
         if error:
+            if params['session_id'] not in server._sessions:
+                return server._ok(rid, {'missing': True})
             return error
         sid = params['session_id']
         # Native display reads deliberately keep database I/O outside the

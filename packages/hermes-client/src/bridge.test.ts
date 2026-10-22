@@ -55,6 +55,45 @@ describe('direct Bot Mode bridge', () => {
       3,
     );
   });
+  it('retirement preserves dispatched mutation receipts and rejects queued work without dispatch', async () => {
+    const replies: ((response: Response) => void)[] = [];
+    const fetcher = vi.fn<typeof fetch>(async (input) =>
+      String(input).endsWith('/v1/connect')
+        ? connectedResponse()
+        : new Promise<Response>((resolve) => replies.push(resolve)),
+    );
+    const client = new BotBridgeClient(endpoint, token, fetcher);
+    await client.connect();
+    const calls = Array.from({ length: 4 }, (_, index) =>
+      client.invoke('chat.send', { session_id: 'synthetic', text: String(index) }),
+    );
+    const result = Promise.allSettled(calls);
+    client.retire();
+    replies.forEach((resolve) => resolve(Response.json({ result: { accepted: true } })));
+    const outcomes = await result;
+    expect(outcomes.slice(0, 3).every((outcome) => outcome.status === 'fulfilled')).toBe(true);
+    expect(outcomes[3]).toMatchObject({
+      status: 'rejected',
+      reason: { code: 'DISCONNECTED', delivery: 'not-dispatched' },
+    });
+    expect(replies).toHaveLength(3);
+  });
+  it('commits a new bearer only after the bridge accepts renewal', async () => {
+    const fetcher = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(connectedResponse())
+      .mockResolvedValueOnce(new Response(null, { status: 503 }))
+      .mockResolvedValueOnce(Response.json({ result: {} }));
+    const client = new BotBridgeClient(endpoint, 'header.before.signature', fetcher);
+    await client.connect();
+    await expect(client.renew('header.rejected.signature')).rejects.toMatchObject({
+      code: 'RPC_FAILED',
+    });
+    await client.invoke('workspace.describe', {});
+    expect(fetcher.mock.calls[2]?.[1]?.headers).toMatchObject({
+      Authorization: 'Bearer header.before.signature',
+    });
+  });
   it('shares the three-request budget between multi-file uploads and ordinary RPC', async () => {
     const pending: (() => void)[] = [];
     let active = 0,

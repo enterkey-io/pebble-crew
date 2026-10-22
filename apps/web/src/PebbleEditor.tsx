@@ -1,3 +1,4 @@
+import { useRecoveryRevision } from './connection/recovery-context';
 import { usePageTitle } from './ui/page-title';
 import { VoiceSettingsEditor } from './voice/VoiceSettingsEditor';
 import type { VoiceSettingsRequest } from './voice/decode';
@@ -11,7 +12,7 @@ import { Button } from './components/ui/button';
 import { useEffect, useReducer, useRef, useState } from 'react';
 import type {
   WorkspaceAgentCapabilities,
-  BotBridgeClient,
+  SessionClient,
   WriteOutcome,
 } from '@hermes-client/protocol';
 import { WorkspaceDomain } from '@hermes-client/protocol';
@@ -53,7 +54,7 @@ export function PebbleEditor({
   voiceRequest,
   onVoiceReady,
 }: {
-  client: BotBridgeClient;
+  client: SessionClient;
   bot: WorkspaceBot;
   state: WorkspaceState;
   onChange: (state: WorkspaceState) => void;
@@ -66,6 +67,7 @@ export function PebbleEditor({
   voiceRequest?: VoiceSettingsRequest | undefined;
   onVoiceReady?: (() => void) | undefined;
 }) {
+  const recovery = useRecoveryRevision();
   const [tab, setTab] = useState<string>(initialTab);
   usePageTitle(
     `${({ identity: 'Profile', role: 'Role', tools: 'Tools & skills', voice: 'Voice' } as Record<string, string>)[tab] ?? 'Profile'} · ${bot.name}`,
@@ -127,7 +129,7 @@ export function PebbleEditor({
     return () => {
       live = false;
     };
-  }, [client, bot.profile]);
+  }, [client, bot.profile, recovery]);
   const dirty = profileDirty(edit) || toolsDirty(toolEdit);
   const saved = useRef(false);
   useEffect(() => {

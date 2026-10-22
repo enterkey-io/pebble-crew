@@ -68,5 +68,5 @@ class PayloadImportTests(unittest.TestCase):
             self.assertIn((source / 'documents.py').resolve(), payload_paths(source))
             path = source / 'payload.py'
             use_historical_inventory(path, ('live_voice.py', 'commands.py', 'voice_credentials.py', 'reporting.py'))
-            with self.assertRaisesRegex(ValueError, 'omits local import: documents.py'):
+            with self.assertRaisesRegex(ValueError, r'omits local import:.*documents\.py'):
                 payload_paths(source)

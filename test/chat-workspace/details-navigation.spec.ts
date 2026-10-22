@@ -36,7 +36,9 @@ test('details uses an edit icon and keeps the Files tab selected through reconne
   await files.click();
   await expect(details.getByText('No files shared here yet.', { exact: true })).toBeVisible();
   const beforeReconnect = connections;
-  await page.evaluate(() => (window as unknown as { __breakStream: () => void }).__breakStream());
+  await page.evaluate(() =>
+    (window as unknown as { __expireConnection: () => void }).__expireConnection(),
+  );
   await expect.poll(() => connections).toBeGreaterThan(beforeReconnect);
   await expect(page.locator('.connection-status')).toHaveAttribute('data-online', 'true');
   await expect(files).toHaveAttribute('aria-selected', 'true');

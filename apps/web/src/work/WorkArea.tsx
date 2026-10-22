@@ -6,7 +6,7 @@ import { useCallback, useRef, useState } from 'react';
 import { Flag, MoreHorizontal } from 'lucide-react';
 import { WorkDomain } from '@hermes-client/protocol';
 import type {
-  BotBridgeClient,
+  SessionClient,
   WorkspaceSnapshot,
   WorkCatalog,
   WorkStatus,
@@ -46,7 +46,7 @@ export function WorkArea({
   connected,
   onReconnect,
 }: {
-  client: BotBridgeClient;
+  client: SessionClient;
   workspace: WorkspaceSnapshot;
   catalog: WorkCatalog;
   board: string;
