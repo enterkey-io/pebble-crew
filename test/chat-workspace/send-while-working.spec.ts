@@ -32,6 +32,7 @@ test('ordinary Send redirects working chat while Stop stays available and every 
   const input = page.getByLabel('Message', { exact: true });
   await expect(input).toBeEnabled();
   await input.fill('Start the work');
+  await expect(page.getByRole('button', { name: 'Send message', exact: true })).toBeEnabled();
   await input.press('Enter');
   await expect.poll(() => sends).toBe(1);
   await emit(page, 'message.start');
