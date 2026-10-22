@@ -299,6 +299,7 @@ export function NewPebble({
         />
       ) : step.kind === 'configure' ? (
         <ExistingPebbleSetup
+          connected={connected}
           key={step.profile}
           client={client}
           profile={step.profile}

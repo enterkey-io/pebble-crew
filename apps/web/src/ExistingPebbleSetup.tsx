@@ -29,12 +29,14 @@ export function ExistingPebbleSetup({
   client,
   profile,
   state,
+  connected,
   onDone,
   onDirtyChange,
 }: {
   client: SessionClient;
   profile: string;
   state: WorkspaceState;
+  connected: boolean;
   onDone: (profile: string, introduce: boolean) => Promise<void>;
   onDirtyChange: (dirty: boolean) => void;
 }) {
@@ -95,7 +97,8 @@ export function ExistingPebbleSetup({
     return () => onDirtyChange(false);
   }, [bot, edit, onDirtyChange]);
   async function add() {
-    if (busy || !bot || retired || edit.retired || uncertain || edit.conflicts.length) return;
+    if (!connected || busy || !bot || retired || edit.retired || uncertain || edit.conflicts.length)
+      return;
     setBusy(true);
     setError('');
     try {
@@ -178,6 +181,7 @@ export function ExistingPebbleSetup({
         </Label>
         <Button
           disabled={
+            !connected ||
             loading ||
             busy ||
             !bot ||

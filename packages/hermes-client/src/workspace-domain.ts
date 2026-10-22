@@ -61,7 +61,9 @@ async function write<T>(action: () => Promise<T>): Promise<WriteOutcome<T>> {
   try {
     return { kind: 'confirmed', value: await action() };
   } catch (error) {
-    const { code } = safeError(error);
+    const failure = safeError(error);
+    const { code } = failure;
+    if (failure.delivery === 'not-dispatched') return { kind: 'refused', reason: code };
     // Other failures can follow a native asset or metadata write. Never replay them.
     if (
       [

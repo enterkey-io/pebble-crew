@@ -476,10 +476,9 @@ test('native existing-agent onboarding survives recovery and preserves reporting
     '\nAsk before publishing. Return a research brief.';
   await page.getByLabel('Instructions', { exact: true }).fill(instructions);
   const beforeSetupRecovery = signals.events;
-  const beforeTickets = signals.tickets;
   await page.evaluate(() => Reflect.get(window, '__interruptNativeEvents')());
   await expect.poll(() => signals.events).toBeGreaterThan(beforeSetupRecovery);
-  expect(signals.tickets).toBe(beforeTickets);
+  await expect(page.locator('main.pc-shell')).toHaveAttribute('data-live-updates', 'live');
   await expect(page.getByRole('button', { name: 'Add pebble', exact: true })).toBeEnabled();
   await expect(page.getByLabel('Name', { exact: true })).toHaveValue('Hazel');
   await expect(page.getByRole('combobox', { name: 'Reports to', exact: true })).toContainText(

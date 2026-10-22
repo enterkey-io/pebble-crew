@@ -22,6 +22,17 @@ const edit: ProfileEdit = {
 };
 
 describe('workspace domain commands', () => {
+  it('keeps a provably undispatched save retryable and never replays it', async () => {
+    const invoke = vi
+      .fn()
+      .mockRejectedValue(new ClientError('DISCONNECTED', undefined, 'not-dispatched'));
+    const domain = new WorkspaceDomain({ invoke });
+    expect(await domain.onboardExisting(edit)).toEqual({ kind: 'refused', reason: 'DISCONNECTED' });
+    expect(invoke).toHaveBeenCalledTimes(1);
+    invoke.mockResolvedValue({ state: 'completed', profile: 'amy' });
+    expect(await domain.onboardExisting(edit)).toMatchObject({ kind: 'confirmed' });
+    expect(invoke).toHaveBeenCalledTimes(2);
+  });
   it('keeps tool, model and Main Pebble uncertainty distinct from confirmed saves', async () => {
     const invoke = vi.fn().mockRejectedValue(new ClientError('REQUEST_TIMEOUT'));
     const domain = new WorkspaceDomain({ invoke });
