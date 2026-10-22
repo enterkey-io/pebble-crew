@@ -4,7 +4,8 @@ import { LoadingBar } from './components/ui/loading-bar';
 import { Button } from './components/ui/button';
 import { safeError } from '@hermes-client/core';
 import { useEffect, useRef, useState } from 'react';
-import type { SessionClient } from '@hermes-client/protocol';
+import { useManagementRequests } from './chat/useManagementRequests';
+import type { SessionClient, WorkspaceRequest } from '@hermes-client/protocol';
 import { decodeWorkspaceSnapshot } from '@hermes-client/protocol';
 import type { WorkspaceSnapshot as WorkspaceState, WorkspaceBot } from '@hermes-client/protocol';
 import { OwnerAccount } from './OwnerAccount';
@@ -69,72 +70,34 @@ export function WorkspaceSettings({
     initialProfile ?? state.orchestrator ?? state.bots[0]?.profile ?? '',
   );
   const [error, setError] = useState(''),
-    [notice, setNotice] = useState(''),
-    [busy, setBusy] = useState(false),
-    [loading, setLoading] = useState(false);
-  const [requests, setRequests] = useState<Row[]>([]);
+    [notice, setNotice] = useState('');
   const [refresh, setRefresh] = useState(0);
-  const requestsLoaded = useRef(false);
+  const management = useManagementRequests({
+    client: tab === 'requests' ? client : undefined,
+    scope: state.id,
+    version: refresh,
+  });
+  const { requests, busy, issueFor, checkStatus, loading } = management;
   useEffect(() => {
     setError('');
     setNotice('');
   }, [tab, profile]);
-  useEffect(() => {
-    let live = true;
-    let timer: ReturnType<typeof setTimeout>;
-    if (tab === 'requests') {
-      setLoading(!requestsLoaded.current);
-      const load = async () => {
-        try {
-          const data = (await client.invoke('requests.list', {})) as { requests: Row[] };
-          if (live) {
-            setRequests(data.requests);
-            requestsLoaded.current = true;
-            setLoading(false);
-          }
-        } catch {
-          if (live) {
-            setError('Requests could not be loaded.');
-            setLoading(false);
-          }
-        } finally {
-          if (live) timer = setTimeout(() => void load(), 5000);
-        }
-      };
-      void load();
-    } else {
-      requestsLoaded.current = false;
-      setLoading(false);
-    }
-    return () => {
-      live = false;
-      clearTimeout(timer);
-    };
-  }, [client, tab, profile, refresh]);
-  async function decide(r: Row, approve: boolean, confirmation?: string) {
-    if (busy) return;
-    setBusy(true);
+  async function decide(r: WorkspaceRequest, approve: boolean, confirmation?: string) {
     setError('');
     setNotice('');
+    const result = await management.decide(r, approve, confirmation);
+    if (!result) return;
+    setNotice(
+      result.state === 'completed'
+        ? 'Change completed.'
+        : result.state === 'denied'
+          ? 'Request denied.'
+          : '',
+    );
     try {
-      const result = (await client.invoke(approve ? 'requests.approve' : 'requests.deny', {
-        id: r.id,
-        fingerprint: r.fingerprint,
-        ...(confirmation == null ? {} : { confirmation }),
-      })) as Row;
       onChange(decodeWorkspaceSnapshot(await client.invoke('workspace.describe', {})));
-      setNotice(
-        result.state === 'completed'
-          ? 'Change completed.'
-          : result.state === 'denied'
-            ? 'Request denied.'
-            : `Request ${String(result.state)}. Review its outcome before retrying.`,
-      );
-      setRefresh((x) => x + 1);
-    } catch (e) {
-      setError(safeError(e).message);
-    } finally {
-      setBusy(false);
+    } catch {
+      /* The saved decision remains authoritative while the roster recovers. */
     }
   }
   if (tab === 'agents') {
@@ -184,9 +147,9 @@ export function WorkspaceSettings({
       value={tab}
       onChange={(id) => onNavigate(() => setTab(id as typeof tab))}
     >
-      {error && (
+      {(error || management.loadError) && (
         <Notice error>
-          {error}{' '}
+          {error || 'Requests could not be loaded.'}{' '}
           <Button variant="ghost" className="text-button" onClick={() => setRefresh((x) => x + 1)}>
             Try again
           </Button>
@@ -198,7 +161,7 @@ export function WorkspaceSettings({
       {tab === 'account' && owner && <OwnerAccount />}
       {tab === 'requests' && !loading && (
         <>
-          {!requests.length && !error && (
+          {!requests.length && !error && !management.loadError && (
             <div className="ui-empty">
               <h2>No requests</h2>
               <p>Changes proposed by your pebbles appear here.</p>
@@ -209,7 +172,9 @@ export function WorkspaceSettings({
               <RequestReview
                 key={String(r.id)}
                 request={r}
-                busy={busy}
+                busy={busy === r.id}
+                decisionIssue={issueFor(r)}
+                onCheck={() => void checkStatus(r)}
                 onDecision={(a, c) => void decide(r, a, c)}
                 onInspect={() => {
                   void client

@@ -74,8 +74,10 @@ class WorkspaceStore:
     def request(self, actor, action, spec):
         if action not in ACTIONS:
             raise InvalidOperation('Management action unavailable')
+        if action == 'agent.create':
+            spec = {**spec, 'role': normalize_role(spec.get('role'))}
         raw = json.dumps(spec, sort_keys=True, separators=(',', ':'))
-        if len(raw) > 24000:
+        if len(raw) > 60000:
             raise InvalidOperation('Request too large')
         fingerprint = hashlib.sha256((action + raw).encode()).hexdigest()
         with self.db:
@@ -91,11 +93,32 @@ class WorkspaceStore:
         return [{'id': row[0], 'actor': row[1], 'action': row[2], 'spec': json.loads(row[3]), 'fingerprint': row[4], 'state': row[5], 'result': json.loads(row[6]) if row[6] else None, 'created': row[7]}
                 for row in self.db.execute('SELECT id,actor,action,spec,fingerprint,state,result,created FROM requests ORDER BY created DESC, rowid DESC LIMIT 100')]
 
+    def incomplete_creations(self):
+        return {json.loads(row[0]).get('name') for row in self.db.execute(
+            "SELECT spec FROM requests WHERE action='agent.create' AND state IN ('executing','partial','uncertain')")}
+
+    def resolve_creation(self, profile, identity):
+        if self.read()['bots'].get(profile, {}).get('id') != identity:
+            raise InvalidOperation('Profile identity changed; review it again')
+        with self.db:
+            for request_id, spec, previous in self.db.execute("SELECT id,spec,result FROM requests WHERE action='agent.create' AND state IN ('executing','partial','uncertain')").fetchall():
+                if json.loads(spec).get('name') == profile:
+                    result = {'profile': profile, 'identity': identity, 'resolution': 'owner_enabled_existing_profile',
+                              'previous': json.loads(previous) if previous else None}
+                    self.db.execute("UPDATE requests SET state='superseded',result=? WHERE id=?", (json.dumps(result), request_id))
+
 
 def bounded(value, length=1000, blank=True):
     if not isinstance(value, str) or len(value) > length or (not blank and not value.strip()):
         raise InvalidOperation('Invalid text')
     return value.strip()
+
+
+def normalize_role(value):
+    if isinstance(value, str):
+        value = {key: value if key == 'description' else '' for key in ROLE_TEXT_LIMITS}
+    fields(value, list(ROLE_TEXT_LIMITS))
+    return {key: bounded(value[key], limit) for key, limit in ROLE_TEXT_LIMITS.items()}
 
 
 def appearance(value):
@@ -158,6 +181,7 @@ class WorkspaceService:
             if state.get('model_grant') != model:
                 state['model_grant'] = model
                 changed = True
+        incomplete_creations = self.store.incomplete_creations()
         for row in profiles:
             name = row['name']
             if name not in state['bots']:
@@ -198,11 +222,11 @@ class WorkspaceService:
             if isinstance(native_role, dict) and set(native_role) == set(ROLE_TEXT_LIMITS) and all(isinstance(v, str) and len(v) <= ROLE_TEXT_LIMITS[k] for k, v in native_role.items()):
                 state['bots'][name]['role'] = deepcopy(native_role)
             state['bots'][name]['name'] = self.ops.summary(row)['name']
-            await bind(self, row, state['bots'][name], stamps.get(name))
+            await bind(self, row, state['bots'][name], stamps.get(name), enrollment_complete=name not in incomplete_creations)
         if changed or json.dumps(state, sort_keys=True) != before:
             state = self.store.save(state, state['revision'])
         result = deepcopy(state)
-        result['bots'] = [{**state['bots'][r['name']], **self.ops.summary(r)} for r in profiles]
+        result['bots'] = [{**state['bots'][r['name']], **self.ops.summary(r), 'enrolled': state['bots'][r['name']]['enrolled']} for r in profiles]
         return result, profiles
 
     async def mirror(self, profile, changes, description=None):
@@ -343,16 +367,18 @@ class WorkspaceService:
             try:
                 if request['action'] == 'agent.delete':
                     self._approved_delete = request['spec']['id']
+                self._creation_request = request['id'] if request['action'] == 'agent.create' else None
                 result = await self._invoke(request['action'], request['spec'])
                 status = result.get('state', 'completed')
                 if status == 'blocked':
                     status = 'pending'
             except InvalidOperation as error:
-                result, status = {'error': str(error)}, 'failed'
+                result, status = {'error': str(error), 'code': error.code}, 'failed'
             except NativeError:
                 result, status = {'error': 'Native result needs reconciliation. Do not resubmit creation.'}, 'uncertain'
             finally:
                 self._approved_delete = None
+                self._creation_request = None
             with self.store.db:
                 self.store.db.execute('UPDATE requests SET state=?,result=? WHERE id=?', (status, json.dumps(result), request['id']))
             return {'state': status, 'result': result}
@@ -398,6 +424,7 @@ class WorkspaceService:
             result = await self.ops.enable_existing(params['profile'])
             state['bots'][params['profile']]['enrolled'] = True
             self.store.save(state, state['revision'])
+            self.store.resolve_creation(params['profile'], state['bots'][params['profile']]['id'])
             return result
         if operation == 'models.describe':
             fields(params, [])
@@ -408,46 +435,8 @@ class WorkspaceService:
                 raise InvalidOperation('Model grant changed')
             return await self.ops.gateway.call('bot_web.models', {'action': 'grant', 'profile': params['profile'], 'expected': params['expected']})
         if operation == 'agent.create':
-            fields(params, ['name', 'display_name', 'soul', 'role', 'model_source', 'model_fingerprint', 'skills', 'toolsets', 'manager', 'team', 'expected_revision'])
-            name = bounded(params['name'], 40, False)
-            if not re.fullmatch(r'[a-z][a-z0-9-]{1,39}', name) or (name in state['bots'] and state['bots'][name].get('available', True)):
-                raise InvalidOperation('Choose a new profile name')
-            if params['expected_revision'] != state['revision'] or not state['initialized']:
-                raise InvalidOperation('Workspace changed', 'STALE_REVISION')
-            display_name = bounded(params['display_name'], 80, False)
-            if params['model_source'] != 'default':
-                raise InvalidOperation('Choose a supported explicit model grant')
-            model = await self.ops.gateway.call('bot_web.models', {'action': 'describe'})
-            if not model.get('supported') or model['fingerprint'] != params['model_fingerprint']:
-                raise InvalidOperation('Review the current primary model authorization first', 'MODEL_UNAVAILABLE')
-            if (params['manager'] is not None and (params['manager'] not in state['bots'] or not state['bots'][params['manager']].get('enrolled'))) or (params['team'] is not None and params['team'] not in {t['id'] for t in state['teams']}):
-                raise InvalidOperation('Choose an enrolled manager and existing team')
-            if not isinstance(params['skills'], list) or params['skills'] or not isinstance(params['toolsets'], list) or not params['toolsets'] or any(t not in {'workspace', 'skills'} for t in params['toolsets']):
-                raise InvalidOperation('Fresh bots start with reviewed workspace/skills tools only; attach other installed resources separately')
-            soul = bounded(params['soul'], 12000, False)
-            role = bounded(params['role'], 1000)
-            result = await self.ops.gateway.call('profiles.create', {'name': name, 'description': role, 'soul': soul,
-                'no_alias': True, 'no_skills': True, 'clone_channels': False, 'mirror_credentials': False})
-            # The approved source authorizes one selected provider, never all credentials.
-            await self.ops.gateway.call('bot_web.runtime.prepare', {'profile': name})
-            if result.get('ok') is not True or result.get('soul_written') is not True:
-                raise NativeError('Fresh persona creation was not fully confirmed')
-            granted = await self.ops.gateway.call('bot_web.models', {'action': 'grant', 'profile': name, 'expected': model['fingerprint']})
-            capabilities = await self.ops.gateway.call('profiles.describe', {'name': name})
-            attached = await self.ops.gateway.call('profiles.configure', {'name': name, 'disabled_skills': [s['name'] for s in capabilities.get('skills', [])], 'enabled_toolsets': sorted(set(params['toolsets']))})
-            if granted.get('configured') is not True or attached.get('applied', {}).get('skills') is not True or attached.get('applied', {}).get('toolsets') is not True:
-                return {'state': 'partial', 'profile': name, 'canonical': False, 'runtime': 'unavailable'}
-            # Native session.create can eagerly build an agent. Initialize only after its
-            # persona, provider, plugin and explicit capabilities have been verified.
-            await self.mirror(name, {'title': display_name})
-            await self.ops.enable_existing(name)
-            await self.sync()
-            state = self.store.read()
-            from .reporting import assign
-            assign(state, name, params['manager'])
-            state['bots'][name].update(enrolled=True, team=params['team'], role={'title': '', 'description': role, 'responsibilities': '', 'boundaries': '', 'expectedOutputs': ''})
-            self.store.save(state, state['revision'])
-            return {'state': 'completed' if granted.get('configured') is True and attached.get('applied', {}).get('toolsets') is True and attached.get('applied', {}).get('skills') is True else 'partial', 'profile': name, 'id': state['bots'][name]['id'], 'created': result.get('ok') is True, 'provider': 'configured' if granted.get('configured') else 'authorization_required', 'runtime': 'unverified', 'canonical': True}
+            from .creation import create
+            return await create(self, params, state)
         if operation == 'connections.add':
             fields(params, ['profile', 'recipe', 'name', 'expected_revision'])
             if params['expected_revision'] != state['revision']:
@@ -560,8 +549,7 @@ class WorkspaceService:
             self.graph(state)
         elif operation in {'roles.update', 'agent.update'}:
             role = params['role']
-            fields(role, ['title', 'description', 'responsibilities', 'boundaries', 'expectedOutputs'])
-            role = {key: bounded(value, ROLE_TEXT_LIMITS[key]) for key, value in role.items()}
+            role = normalize_role(role)
             if params['team'] is not None and params['team'] not in {t['id'] for t in state['teams']}:
                 raise InvalidOperation('Team unavailable')
             from .reporting import assign

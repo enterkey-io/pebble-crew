@@ -5,7 +5,7 @@ installable plugin. It includes the web app, local administrator login and nativ
 integration, served through one owner-controlled address. All state stays on the
 owner's infrastructure; no vendor account, content store or relay is required.
 
-The combined-plugin candidate is **0.7.9-preview.1** (integration 0.7.8). This is a
+The combined-plugin candidate is **0.7.10-preview.1** (integration 0.7.8). This is a
 development preview, not production certification. A version in source does not
 mean its release is published or an owner's host was upgraded. See
 [implementation status](docs/IMPLEMENTATION_STATUS.md).

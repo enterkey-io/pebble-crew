@@ -83,6 +83,7 @@ export function NewPebble({
     [error, setError] = useState(''),
     [request, setRequest] = useState<Row>();
   const [uncertain, setUncertain] = useState(false);
+  const [requestIssue, setRequestIssue] = useState<string>();
   useEffect(() => {
     if (step.kind !== 'create') return;
     let live = true;
@@ -179,9 +180,11 @@ export function NewPebble({
         })) as Row;
         saved = { ...saved, ...result };
       }
+      setRequestIssue(undefined);
       setRequest(saved);
       if (saved.state === 'completed') await finishProfile(creationIdentity(saved));
     } catch (e) {
+      setRequestIssue('The decision could not be confirmed. Check status before trying again.');
       setError(safeError(e).message);
     } finally {
       setBusy(false);
@@ -191,6 +194,7 @@ export function NewPebble({
     if (busy || uncertain || (!createdIdentity && (!model?.supported || request))) return;
     setBusy(true);
     setError('');
+    let deciding = false;
     const nativeName = value.handle.replace(/_/g, '-');
     try {
       let target = createdIdentity;
@@ -203,7 +207,7 @@ export function NewPebble({
           soul:
             soul.trim() ||
             `Your name is ${value.name}. Follow the owner's instructions and coordinate through your available tools.`,
-          role: role.description,
+          role,
           model_source: 'default',
           model_fingerprint: model.fingerprint,
           skills: [],
@@ -221,18 +225,28 @@ export function NewPebble({
         if (!exact || exact.action !== 'agent.create' || typeof exact.fingerprint !== 'string')
           throw new Error('The creation request changed.');
         setRequest(exact);
+        deciding = true;
         const approved = (await client.invoke('requests.approve', {
           id: exact.id,
           fingerprint: exact.fingerprint,
         })) as Row;
+        deciding = false;
+        setRequestIssue(undefined);
         setRequest({ ...exact, ...approved });
         if (approved.state !== 'completed')
-          throw new Error('Creation needs review before another attempt.');
+          throw new Error(
+            String(
+              (approved.result as Row | undefined)?.error ??
+                'Creation needs review before another attempt.',
+            ),
+          );
         target = creationIdentity(approved);
         setCreatedIdentity(target);
       }
       await finishProfile(target);
     } catch (e) {
+      if (deciding)
+        setRequestIssue('The decision could not be confirmed. Check status before trying again.');
       setError(safeError(e).message);
     } finally {
       setBusy(false);
@@ -323,18 +337,12 @@ export function NewPebble({
               <div>
                 <RequestReview
                   request={request}
+                  decisionIssue={requestIssue}
                   busy={busy}
                   onDecision={(approve) => void checkRequest(approve)}
                   onInspect={() => void checkRequest()}
+                  onCheck={() => void checkRequest()}
                 />
-                <Button
-                  type="button"
-                  variant="secondary"
-                  disabled={busy}
-                  onClick={() => void checkRequest()}
-                >
-                  Check status
-                </Button>
               </div>
             ) : (
               <>
@@ -362,7 +370,8 @@ export function NewPebble({
                   <p>
                     {model?.supported
                       ? `${model.provider} · ${model.model}`
-                      : 'Configure your model in Hermes to create a new pebble.'}
+                      : (model?.reason?.message ??
+                        'Configure your model in Hermes to create a new pebble.')}
                   </p>
                   <Label layout="stacked">
                     Personality

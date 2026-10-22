@@ -320,7 +320,7 @@ async def verify(home, model_port):
         assert 'fixture-model-command' in status['output'], status
         await command(ops, 'chat.command', {'session_id': command_sid, 'text': '/model fixture-model --session --provider custom:fixture'})
         current = await workspace.invoke('workspace.describe', {})
-        created = await workspace.invoke('agent.create', {'name': 'new-researcher', 'display_name': 'New Researcher', 'soul': 'SYNTHETIC_NEW_RESEARCHER_PERSONALITY', 'role': 'Research synthetic fixtures', 'model_source': 'default', 'model_fingerprint': model['fingerprint'], 'skills': [], 'toolsets': ['workspace', 'skills'], 'manager': 'default', 'team': None, 'expected_revision': current['revision']})
+        created = await workspace.invoke('agent.create', {'name': 'new-researcher', 'display_name': 'New Researcher', 'soul': 'SYNTHETIC_NEW_RESEARCHER_PERSONALITY', 'role': {'title': 'Research lead', 'description': 'Research synthetic fixtures', 'responsibilities': 'SYNTHETIC_FULL_ROLE_INSTRUCTIONS', 'boundaries': 'No external purchases', 'expectedOutputs': 'Verified report'}, 'model_source': 'default', 'model_fingerprint': model['fingerprint'], 'skills': [], 'toolsets': ['workspace', 'skills'], 'manager': 'default', 'team': None, 'expected_revision': current['revision']})
         assert created['state'] == 'completed', created
         from hermes_cli.profiles import get_profile_dir
         created_home = Path(get_profile_dir('new-researcher'))
@@ -331,6 +331,10 @@ async def verify(home, model_port):
         assert {s['name'] for s in capabilities['skills'] if s['enabled']} <= ESSENTIAL_SKILLS, 'Fresh bot inherited optional skills'
         named_start = len(WorkspaceModel.requests)
         new_chat = await ops.invoke('bot.open', {'profile': 'new-researcher'})
+        saved_role = store.read()['bots']['new-researcher']['role']
+        assert saved_role['title'] == 'Research lead' and saved_role['responsibilities'] == 'SYNTHETIC_FULL_ROLE_INSTRUCTIONS', saved_role
+        native_role = next(p for p in (await native.call('profiles.list', {}))['profiles'] if p['name'] == 'new-researcher')['ui_meta']['hermes-bots']['workspaceRole']
+        assert native_role == saved_role
         await ops.invoke('chat.send', {'session_id': new_chat['session_id'], 'text': 'Synthetic new-agent model verification'})
         async with asyncio.timeout(60):
             while True:

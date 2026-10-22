@@ -47,9 +47,9 @@ async def identities(service, state, profiles):
     return stamps
 
 
-async def bind(service, row, bot, stamp):
+async def bind(service, row, bot, stamp, *, enrollment_complete):
     bot['available'] = True
-    bot['enrolled'] = isinstance(row.get('ui_meta', {}).get('hermes-bots'), dict)
+    bot['enrolled'] = enrollment_complete and isinstance(row.get('ui_meta', {}).get('hermes-bots'), dict)
     if not isinstance(stamp, str) or not re.fullmatch('[0-9a-f]{64}', stamp):
         return
     bot['native_incarnation'] = stamp

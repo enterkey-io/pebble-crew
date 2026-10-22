@@ -54,9 +54,13 @@ propose a change, use exactly one of the following actions and spec fields:
 - `agent.enable`: `profile`, `initialize_chat: true`.
 - `agent.create`: `name`, `display_name`, `soul`, `role`, `model_source`,
   `model_fingerprint`, `skills`, `toolsets`, `manager`, `team`, `expected_revision`.
+  Role is an object with `title`, `description`, `responsibilities`, `boundaries`,
+  and `expectedOutputs`. Put the complete job instructions in `responsibilities`.
   Use source `default` and the current supported model grant fingerprint from
   `describe`. This requests one selected primary-provider grant, not all
-  credentials. Start with empty `skills` and only `workspace`/`skills` toolsets.
+  credentials. Shared Codex OAuth stays in its native Hermes store; Pebble Crew
+  never copies tokens. If the model grant is unsupported, report its reason; do
+  not ask for a new login or edit auth files as a workaround. Start with empty `skills` and only `workspace`/`skills` toolsets.
   Choose an available enrolled manager or null, and an existing team or null. Creation is fresh,
   never a clone. Configuration is not proof of a successful runtime turn.
 - `agent.update`: `profile`, `role`, `manager`, `team`, `expected_revision`.
