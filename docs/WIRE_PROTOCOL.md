@@ -15,7 +15,7 @@ characters across reads. Dispatch a record as soon as its line is complete.
 | ---------------------- | ------------------------------------------------- |
 | 0.2.4 published source | JSON followed by LF (single newline)              |
 | 0.4.0                  | JSON followed by LF (single newline)              |
-| 0.4.1–0.7.0            | JSON followed by LF LF (compatibility blank line) |
+| 0.4.1–0.7.9            | JSON followed by LF LF (compatibility blank line) |
 
 The installed 0.2.4 probe was reported to observe blank separators. The tagged
 0.2.4 source emits single newlines; that deployment difference has not been
@@ -34,8 +34,8 @@ records immediately and disable buffering.
 
 Use exact allowed Origin, Authorization and X-Bot-Connection headers. Credentials
 and lease IDs never belong in URLs or diagnostic reports. On EOF, discard a
-partial line and reconnect using a fresh authenticated lease; do not replay
-mutations.
+partial line and replace only the event subscription on the same valid lease.
+Replace a lease only after a lease-specific failure. Never replay mutations.
 
 ## Diagnostic cleanup and global revocation
 
@@ -325,3 +325,31 @@ Crew member or null; its derived display position is first. A Crew manager never
 implicitly changes native reporting. The original schema-1 presentation is
 retained for recovery; older saves and unsafe downgrades refuse rather than
 silently removing shortcuts.
+
+## Connection recovery in 0.7.9
+
+The optional `connection_recovery: 1` handshake capability adds these contracts:
+
+- `GET /v1/status` uses ordinary Origin, bearer and lease headers. Its bounded
+  model-free probe returns `{native: "responsive" | "unavailable" | "unconfirmed",
+age_ms: number}`. This is dispatcher evidence, separate from stream heartbeats.
+- `chat.snapshot` takes an already-bound `session_id` and returns the same display
+  snapshot as `bot.open`, without resume, tool enablement or provisioning. `bot.open`
+  binds the session filter before its snapshot. A lost conversation binding returns
+  `CONVERSATION_CHANGED`; reopen that target without replacing a valid lease.
+- `LEASE_GONE` explicitly identifies an absent or idle lease. Generic validation
+  errors never identify lease loss. `CAPACITY` returns HTTP 429 with `Retry-After`
+  when eight valid leases are in use. `NATIVE_UNAVAILABLE` can reject a request
+  before native dispatch. These codes are allowlisted and contain no private text.
+- A new authenticated event stream replaces the previous subscription on that
+  lease. Old stream cleanup cannot close the replacement. Unrelated native events
+  are filtered before bounded queue admission. Permitted global events are redacted.
+- Renewal extends authority monotonically for the same authenticated principal.
+  It does not replace the lease or reset another browser's access.
+
+Operation `effect` metadata in the canonical catalog distinguishes read, bind and
+write. It fences late reads; it does not authorize automatic replay of writes.
+The protocol name, blank-line-compatible NDJSON framing and 15-second heartbeat
+cadence remain unchanged. Older clients can continue using existing operations.
+See [browser recovery ownership](CONNECTION_RECOVERY.md) for scheduling and
+mutation certainty.

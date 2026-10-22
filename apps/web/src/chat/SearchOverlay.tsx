@@ -1,6 +1,6 @@
 import { LoadingBar } from '../components/ui/loading-bar';
 import { useEffect, useRef, useState } from 'react';
-import type { BotBridgeClient } from '@hermes-client/protocol';
+import type { SessionClient } from '@hermes-client/protocol';
 import { Search, MessageSquare, Users, FileText, CalendarClock } from 'lucide-react';
 import { Dialog, DialogContent, DialogTitle, DialogDescription } from '../components/ui/dialog';
 import {
@@ -84,7 +84,7 @@ export function SearchOverlay({
 }: {
   open: boolean;
   onClose: () => void;
-  client: BotBridgeClient;
+  client: SessionClient;
   onBot: (profile: string, detail?: { tab: 'files' | 'routines'; id: string }) => void;
   onRoom: (room: Row) => void;
 }) {

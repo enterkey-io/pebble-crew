@@ -1,6 +1,6 @@
 import { createContext, lazy, Suspense, useContext, useEffect, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
-import type { BotBridgeClient, DownloadedMedia } from '@hermes-client/protocol';
+import type { SessionClient, DownloadedMedia } from '@hermes-client/protocol';
 import { Download, Eye, File, RotateCw, Play, Expand } from 'lucide-react';
 import { IconButton } from '../components/ui/icon-button';
 import { LoadingBar } from '../components/ui/loading-bar';
@@ -21,7 +21,7 @@ const ImageViewerContent = lazy(() => import('../components/ui/image-viewer'));
 
 export type MessageMedia =
   | { kind: 'pending'; identity: string }
-  | { kind: 'saved'; identity: string; client: BotBridgeClient; sessionId: string; rowId: number };
+  | { kind: 'saved'; identity: string; client: SessionClient; sessionId: string; rowId: number };
 export const MessageMediaContext = createContext<MessageMedia | undefined>(undefined);
 
 export function localReference(value: string) {

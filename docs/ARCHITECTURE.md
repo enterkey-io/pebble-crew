@@ -5,6 +5,8 @@ host. It serves the web app, owner login and native Bot Mode API through one
 owner-controlled HTTPS origin. Independent hosting remains optional. The former
 preview architecture is [historical](ARCHITECTURE_0_2_HISTORY.md).
 
+Browser transport and recovery ownership are detailed in [connection recovery](CONNECTION_RECOVERY.md).
+
 ## Requests and authentication
 
 The browser opens one address. Prebuilt browser assets and Better Auth run in

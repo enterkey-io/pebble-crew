@@ -1,7 +1,7 @@
 import { createPortal } from 'react-dom';
 import type { ReactNode } from 'react';
 import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from 'react';
-import type { BotBridgeClient, BridgeEvent } from '@hermes-client/protocol';
+import type { SessionClient, BridgeEvent } from '@hermes-client/protocol';
 
 import { Button } from '../components/ui/button';
 import { Alert, AlertDescription } from '../components/ui/alert';
@@ -25,7 +25,7 @@ export type VoiceChatHandle = { open: () => void; event: (event: BridgeEvent) =>
 export const VoiceChat = forwardRef<
   VoiceChatHandle,
   {
-    client: BotBridgeClient;
+    client: SessionClient;
     sessionId: string;
     running: boolean;
     onAccepted: (message: ChatMessage) => void;

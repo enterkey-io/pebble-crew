@@ -19,3 +19,5 @@ export { RequestDomain } from './request-domain';
 export type { WorkspaceRequest, QuestionRequest } from './request-domain';
 
 export * from './exchanges';
+
+export type { SessionClient, RpcPort } from './session-client';

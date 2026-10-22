@@ -45,3 +45,13 @@ with a fixed header and reachable Post comment, and useful focus after creating
 a task. Its phone wrapper covers both engines. The real native projects smoke
 asserts that presentation reordering survives reads without changing priority,
 native history, task revision or runs.
+
+`work-loading.spec.ts` injects catalog/board failures into the production UI. It
+checks automatic recovery without an error flash, kit recovery screens in both
+themes, retention of loaded task elements after a failed refresh, wrong-workspace
+catalog rejection without repeated reads, and navigation during a catalog failure.
+Its phone wrapper runs the same cases on iPhone and Android. Reconnection pauses
+board reads and keeps the loaded board mounted until the new connection is live.
+
+An expired board authorization uses the existing owner login to reconnect. Count
+new POST leases separately from the old lease's DELETE cleanup when checking it.

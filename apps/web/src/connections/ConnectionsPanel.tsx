@@ -1,6 +1,7 @@
+import { useRecoveryRevision } from '../connection/recovery-context';
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { ChevronLeft, Plus, Search } from 'lucide-react';
-import type { BotBridgeClient } from '@hermes-client/protocol';
+import type { SessionClient } from '@hermes-client/protocol';
 import type { WorkspaceBot } from '@hermes-client/protocol';
 import { Button } from '../components/ui/button';
 import { InputGroup, InputGroupInput, InputGroupAddon } from '../components/ui/input-group';
@@ -28,7 +29,7 @@ export function ConnectionsPanel({
   onNavigate,
   onDirtyChange,
 }: {
-  client: BotBridgeClient;
+  client: SessionClient;
   bots: WorkspaceBot[];
   profile: string;
   revision: number;
@@ -36,6 +37,7 @@ export function ConnectionsPanel({
   onNavigate: (action: () => void) => void;
   onDirtyChange: (dirty: boolean) => void;
 }) {
+  const recovery = useRecoveryRevision();
   const [view, setView] = useState<View>({ kind: 'list' });
   const [list, setList] = useState<Remote<Connection[]>>({ kind: 'loading' });
   const [catalog, setCatalog] = useState<Remote<Service[]>>({ kind: 'loading' });
@@ -52,7 +54,7 @@ export function ConnectionsPanel({
   const refreshList = useCallback(() => setRefresh((v) => v + 1), []);
   useEffect(() => {
     let live = true;
-    setList({ kind: 'loading' });
+    setList((current) => (current.kind === 'ready' ? current : { kind: 'loading' }));
     void client
       .invoke('connections.list', { profile })
       .then((v) => {
@@ -65,11 +67,11 @@ export function ConnectionsPanel({
     return () => {
       live = false;
     };
-  }, [client, profile, refresh]);
+  }, [client, profile, refresh, recovery]);
   useEffect(() => {
     if (view.kind !== 'catalog') return;
     let live = true;
-    setCatalog({ kind: 'loading' });
+    setCatalog((current) => (current.kind === 'ready' ? current : { kind: 'loading' }));
     void client
       .invoke('services.catalog', { profile })
       .then((v) => {
@@ -82,7 +84,7 @@ export function ConnectionsPanel({
     return () => {
       live = false;
     };
-  }, [client, profile, view.kind, catalogRetry]);
+  }, [client, profile, view.kind, catalogRetry, recovery]);
   useLayoutEffect(() => {
     const pane = root.current?.closest('.ui-tab-panel');
     if (!pane) return;

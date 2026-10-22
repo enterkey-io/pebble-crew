@@ -2,6 +2,7 @@ import json
 import time
 import uuid
 import unittest
+from unittest.mock import patch
 import jwt
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 from test_security import TOKEN, ORIGIN, HOST, Native
@@ -64,3 +65,18 @@ class OwnerTrustTests(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(accepted.headers['referrer-policy'], 'no-referrer')
             self.assertNotIn('synthetic', accepted.text)
             self.assertEqual(native.calls[0][0], 'bot_web.connections.oauth')
+
+    async def test_delayed_old_bearer_cannot_shorten_a_renewed_lease(self):
+        now = int(time.time())
+        old = self.ticket(exp=now+5)
+        newer = self.ticket(exp=now+300)
+        base = {'Origin': ORIGIN}
+        connected = await self.http.post('/v1/connect', headers={**base, 'Authorization': 'Bearer '+old})
+        lease = connected.json()['connection']
+        headers = {**base, 'X-Bot-Connection': lease}
+        self.assertEqual((await self.http.post('/v1/renew', headers={**headers, 'Authorization': 'Bearer '+newer})).status_code, 200)
+        self.assertEqual((await self.http.post('/v1/renew', headers={**headers, 'Authorization': 'Bearer '+old})).status_code, 200)
+        # The old bearer has now expired; the newer authorized ticket remains valid.
+        with patch('bot_web.connection.time.time', return_value=now+10):
+            self.assertEqual((await self.http.post('/v1/connect', headers={**base, 'Authorization': 'Bearer '+newer})).status_code, 200)
+        self.assertEqual((await self.http.post('/v1/renew', headers={**headers, 'Authorization': 'Bearer '+newer})).status_code, 200)

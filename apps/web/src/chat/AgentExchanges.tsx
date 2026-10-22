@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { MessagesSquare } from 'lucide-react';
 import { safeError } from '@hermes-client/core';
 import { ExchangeDomain } from '@hermes-client/protocol';
-import type { BotBridgeClient, Exchange, ExchangeReference } from '@hermes-client/protocol';
+import type { SessionClient, Exchange, ExchangeReference } from '@hermes-client/protocol';
 import type { ReactNode } from 'react';
 import { Button } from '../components/ui/button';
 import {
@@ -17,7 +17,7 @@ import { MessageBody } from '../MessageBody';
 import { useOverlayHistory } from '../ui/overlay-history';
 
 export function useAgentExchanges(
-  client: BotBridgeClient | undefined,
+  client: SessionClient | undefined,
   identity: string | undefined,
   face: (profile: string) => ReactNode,
 ) {
@@ -91,7 +91,7 @@ function ExchangeViewer({
   onClose,
   face,
 }: {
-  client: BotBridgeClient;
+  client: SessionClient;
   id: string | undefined;
   revision: number;
   onClose: () => void;

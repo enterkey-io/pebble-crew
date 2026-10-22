@@ -1,8 +1,9 @@
+import { useRecoveryRevision } from './connection/recovery-context';
 import { Label } from './components/ui/label';
 import { Checkbox } from './components/ui/checkbox';
 import { Form } from './components/ui/form';
 import { useEffect, useReducer, useState } from 'react';
-import type { BotBridgeClient } from '@hermes-client/protocol';
+import type { SessionClient } from '@hermes-client/protocol';
 import { WorkspaceDomain } from '@hermes-client/protocol';
 import type { WorkspaceBot, WorkspaceSnapshot as WorkspaceState } from '@hermes-client/protocol';
 import {
@@ -28,15 +29,18 @@ export function ExistingPebbleSetup({
   client,
   profile,
   state,
+  connected,
   onDone,
   onDirtyChange,
 }: {
-  client: BotBridgeClient;
+  client: SessionClient;
   profile: string;
   state: WorkspaceState;
+  connected: boolean;
   onDone: (profile: string, introduce: boolean) => Promise<void>;
   onDirtyChange: (dirty: boolean) => void;
 }) {
+  const recovery = useRecoveryRevision();
   const [bot, setBot] = useState<WorkspaceBot>(),
     [loading, setLoading] = useState(true),
     [busy, setBusy] = useState(false),
@@ -87,13 +91,14 @@ export function ExistingPebbleSetup({
     return () => {
       live = false;
     };
-  }, [client, profile, state.revision]);
+  }, [client, profile, state.revision, recovery]);
   useEffect(() => {
     onDirtyChange(!!bot && profileDirty(edit));
     return () => onDirtyChange(false);
   }, [bot, edit, onDirtyChange]);
   async function add() {
-    if (busy || !bot || retired || edit.retired || uncertain || edit.conflicts.length) return;
+    if (!connected || busy || !bot || retired || edit.retired || uncertain || edit.conflicts.length)
+      return;
     setBusy(true);
     setError('');
     try {
@@ -176,6 +181,7 @@ export function ExistingPebbleSetup({
         </Label>
         <Button
           disabled={
+            !connected ||
             loading ||
             busy ||
             !bot ||

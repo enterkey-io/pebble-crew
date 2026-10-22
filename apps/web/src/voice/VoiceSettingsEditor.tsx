@@ -1,6 +1,7 @@
+import { useLeaseRevision } from '../connection/recovery-context';
 import { useEffect, useState } from 'react';
 import { ConversationDomain } from '@hermes-client/protocol';
-import type { BotBridgeClient } from '@hermes-client/protocol';
+import type { SessionClient } from '@hermes-client/protocol';
 import { VoiceChat } from './VoiceChat';
 import { LoadingBar } from '../components/ui/loading-bar';
 import { Alert, AlertDescription } from '../components/ui/alert';
@@ -16,7 +17,7 @@ export function VoiceSettingsEditor({
   onReady,
   onClose,
 }: {
-  client: BotBridgeClient;
+  client: SessionClient;
   profile: string;
   callActive: boolean;
   request?: VoiceSettingsRequest | undefined;
@@ -25,6 +26,7 @@ export function VoiceSettingsEditor({
   onReady?: (() => void) | undefined;
   onClose: () => void;
 }) {
+  const recovery = useLeaseRevision();
   const [session, setSession] = useState(''),
     [error, setError] = useState('');
   useEffect(() => {
@@ -40,7 +42,7 @@ export function VoiceSettingsEditor({
     return () => {
       current = false;
     };
-  }, [client, profile]);
+  }, [client, profile, recovery]);
   if (error)
     return (
       <Alert>

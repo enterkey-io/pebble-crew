@@ -1,8 +1,9 @@
+import { useRecoveryRevision } from '../connection/recovery-context';
 import { Label } from '../components/ui/label';
 import { Form } from '../components/ui/form';
 import { useEffect, useReducer, useRef, useState } from 'react';
 import { ExternalLink } from 'lucide-react';
-import type { BotBridgeClient } from '@hermes-client/protocol';
+import type { SessionClient } from '@hermes-client/protocol';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
 import { Checkbox } from '../components/ui/checkbox';
@@ -20,12 +21,13 @@ export function ConnectionDetail({
   onDirtyChange,
   onChanged,
 }: {
-  client: BotBridgeClient;
+  client: SessionClient;
   profile: string;
   connection: Connection;
   onDirtyChange: (dirty: boolean) => void;
   onChanged: () => void;
 }) {
+  const recovery = useRecoveryRevision();
   const name = connection.name;
   const [access, setAccess] = useState<Remote<Permission>>({ kind: 'loading' });
   const [edit, dispatch] = useReducer(reducePolicyEdit, emptyPolicyEdit);
@@ -71,7 +73,7 @@ export function ConnectionDetail({
     return () => {
       live = false;
     };
-  }, [client, profile, name, retry]);
+  }, [client, profile, name, retry, recovery]);
   async function refreshAccess() {
     const next = permissions(await client.invoke('connections.permissions', { profile, name }));
     setAccess({ kind: 'ready', value: next });
@@ -110,7 +112,7 @@ export function ConnectionDetail({
       live = false;
       clearTimeout(timer);
     };
-  }, [client, profile, name, flow?.id, onChanged]);
+  }, [client, profile, name, flow?.id, onChanged, recovery]);
   async function run(action: () => Promise<void>) {
     if (busy) return;
     setBusy(true);

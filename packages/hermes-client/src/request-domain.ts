@@ -1,5 +1,5 @@
 import { ClientError } from '@hermes-client/core';
-import type { BotBridgeClient } from './bridge';
+import type { SessionClient } from './session-client';
 import { record } from './json';
 
 function text(value: unknown, limit = 8000): string {
@@ -50,7 +50,7 @@ function decodeQuestionRequest(value: unknown) {
 }
 export type QuestionRequest = ReturnType<typeof decodeQuestionRequest>;
 export class RequestDomain {
-  constructor(private readonly bridge: Pick<BotBridgeClient, 'invoke'>) {}
+  constructor(private readonly bridge: Pick<SessionClient, 'invoke'>) {}
   async list() {
     return list(record(await this.bridge.invoke('requests.list', {})).requests, decodeRequest);
   }

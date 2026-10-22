@@ -58,6 +58,12 @@ export class SendProjection {
       this.cuts.push({ message, offset: duringReply.length, after: this.newReply() });
     return this.project(this.latest);
   }
+  cancelUnsent(submissionId: string) {
+    this.pending.delete(submissionId);
+    this.cuts = this.cuts.filter((cut) => cut.message.id !== submissionId);
+    this.tail.delete(submissionId);
+    return this.project(this.latest);
+  }
   acknowledge(nativeId: unknown, submissionId: string, deferred = false) {
     const pending = this.pending.get(submissionId);
     if (pending) pending.acknowledged = true;

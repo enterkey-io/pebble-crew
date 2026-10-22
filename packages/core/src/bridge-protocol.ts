@@ -23,3 +23,14 @@ export function acceptsOperationRoute(operation: string, path: string): boolean 
     ([name, route]) => route.path === path && definition?.accepted.includes(name),
   );
 }
+
+export function operationEffect(
+  operation: string,
+  params: Readonly<Record<string, unknown>> = {},
+): 'read' | 'bind' | 'write' {
+  const value = Object.entries(catalog.operations).find(([name]) => name === operation)?.[1];
+  if (!value) throw new ClientError('UNSUPPORTED');
+  if ('writeWhen' in value && value.writeWhen.some((field) => Object.hasOwn(params, field)))
+    return 'write';
+  return value.effect === 'read' ? 'read' : value.effect === 'bind' ? 'bind' : 'write';
+}

@@ -112,7 +112,9 @@ test('reconnecting keeps composer controls, typography, focus and the editable d
       sends++;
   });
   try {
-    await page.evaluate(() => (window as unknown as { __breakStream: () => void }).__breakStream());
+    await page.evaluate(() =>
+      (window as unknown as { __expireConnection: () => void }).__expireConnection(),
+    );
     await expect.poll(() => reconnecting).toBe(true);
     await expect(attachment).toHaveCount(1);
     expect(await attachmentNode.evaluate((node) => node.isConnected)).toBe(true);
@@ -176,7 +178,9 @@ test('unsaved connection tools and key survive a new transport lease', async ({
   await page.getByRole('button', { name: 'Add or replace API key', exact: true }).click();
   await page.getByRole('textbox', { name: 'API key', exact: true }).fill('synthetic-unsaved-key');
   const initial = leases;
-  await page.evaluate(() => (window as unknown as { __breakStream: () => void }).__breakStream());
+  await page.evaluate(() =>
+    (window as unknown as { __expireConnection: () => void }).__expireConnection(),
+  );
   await expect.poll(() => leases).toBeGreaterThan(initial);
   await expect(page.locator('.connection-status')).toContainText('Hermes connected');
   await expect(changedTool).toBeChecked();
@@ -202,7 +206,9 @@ test('a changed remote tool policy requires an explicit keep or discard decision
   await page.getByRole('button', { name: /Tool access/ }).click();
   await page.getByRole('checkbox', { name: 'document_action_15', exact: true }).check();
   fixture.policies.set('Archive', ['document_action_1']);
-  await page.evaluate(() => (window as unknown as { __breakStream: () => void }).__breakStream());
+  await page.evaluate(() =>
+    (window as unknown as { __expireConnection: () => void }).__expireConnection(),
+  );
   await expect(page.getByText('Tool access changed elsewhere.')).toBeVisible();
   await expect(page.getByRole('button', { name: 'Save changes', exact: true })).toBeDisabled();
   await expect(

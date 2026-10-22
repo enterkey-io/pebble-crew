@@ -98,7 +98,13 @@ for (const theme of ['dark', 'light'] as const)
       ).toHaveCount(0);
     }
     await field.fill('Both approvals are done. Please continue.');
+    await expect(page.getByRole('button', { name: 'Send message', exact: true })).toBeEnabled();
+    const sent = page.waitForRequest(
+      (request) =>
+        request.url().endsWith('/v1/rpc') && request.postDataJSON().operation === 'chat.send',
+    );
     await field.press('Enter');
+    await sent;
     await emit(page, 'message.start');
     await emit(page, 'message.delta', { text: 'I have the approvals and will continue.' });
     const log = page.getByRole('log');

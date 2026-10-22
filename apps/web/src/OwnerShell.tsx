@@ -13,7 +13,9 @@ import { clearSavedDrafts } from './chat/drafts';
 import { Disclosure } from './components/ui/disclosure';
 
 export interface OwnerConnection {
-  ticket: () => Promise<{ ticket: string; bridgeUrl: string }>;
+  ticket: (
+    signal?: AbortSignal,
+  ) => Promise<{ ticket: string; bridgeUrl: string; expiresIn?: number }>;
   logout: () => Promise<void>;
 }
 export function OwnerShell({ setupProof = '' }: { setupProof?: string } = {}) {
@@ -97,9 +99,9 @@ export function OwnerShell({ setupProof = '' }: { setupProof?: string } = {}) {
       <OwnerPhotoProvider image={image} onUnauthorized={() => setMode('login')}>
         <App
           owner={{
-            ticket: async () => {
+            ticket: async (signal) => {
               try {
-                return (await ownerRequest('/api/hermes/ticket', {})) as {
+                return (await ownerRequest('/api/hermes/ticket', {}, signal)) as {
                   ticket: string;
                   bridgeUrl: string;
                 };

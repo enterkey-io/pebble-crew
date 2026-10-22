@@ -160,31 +160,49 @@ export async function installFixture(
   let approvals: Record<string, unknown>[] = [];
   await context.addInitScript(() => {
     const original = window.fetch;
-    const streams = new Set<ReadableStreamDefaultController<Uint8Array>>();
+    const streams = new Map<
+      ReadableStreamDefaultController<Uint8Array>,
+      ReturnType<typeof setInterval>
+    >();
+    let expired = false;
+    const closeStreams = () => {
+      for (const [stream, timer] of streams) {
+        clearInterval(timer);
+        stream.close();
+      }
+      streams.clear();
+    };
     Object.assign(window, {
       __chatEvent: (event: unknown) => {
-        for (const stream of streams)
+        for (const stream of streams.keys())
           stream.enqueue(new TextEncoder().encode(JSON.stringify(event) + '\n\n'));
       },
-      __breakStream: () => {
-        for (const stream of streams) stream.close();
-        streams.clear();
+      __breakStream: closeStreams,
+      __expireConnection: () => {
+        expired = true;
+        closeStreams();
       },
     });
     window.fetch = async (input, init) => {
       const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
+      if (
+        expired &&
+        (url.endsWith('/v1/events') || url.endsWith('/v1/renew') || url.endsWith('/v1/status'))
+      )
+        return Response.json({ code: 'LEASE_GONE' }, { status: 400 });
+      if (url.endsWith('/v1/connect') && init?.method === 'POST') expired = false;
       if (url.endsWith('/v1/events')) {
         let controller: ReadableStreamDefaultController<Uint8Array>;
         let timer: ReturnType<typeof setInterval>;
         const body = new ReadableStream<Uint8Array>({
           start(c) {
             controller = c;
-            streams.add(c);
             c.enqueue(new TextEncoder().encode('{"type":"bridge.ready"}\n\n'));
             timer = setInterval(
               () => c.enqueue(new TextEncoder().encode('{"type":"bridge.heartbeat"}\n\n')),
               1000,
             );
+            streams.set(c, timer);
           },
           cancel() {
             clearInterval(timer);
@@ -224,7 +242,11 @@ export async function installFixture(
       path === '/api/instance/status'
         ? { setupRequired: false }
         : path === '/api/hermes/ticket'
-          ? { ticket: 'f'.repeat(43), bridgeUrl: 'https://hermes.fixture.invalid' }
+          ? {
+              ticket: 'header.fixture.signature',
+              bridgeUrl: 'https://hermes.fixture.invalid',
+              expiresIn: 300,
+            }
           : { user: { id: 'owner' } };
     await route.fulfill({ json: value });
   });
@@ -238,6 +260,7 @@ export async function installFixture(
           protocol: 'hermes-bot-web.v1',
           connection,
           capabilities: {
+            connection_recovery: 1,
             exchanges: options.exchanges === true,
             exchange_events: options.exchangeEvents === true,
             live_voice: options.voice === true,
@@ -256,6 +279,9 @@ export async function installFixture(
       });
       return;
     }
+    if (path === '/v1/status') {
+      return route.fulfill({ json: { native: 'responsive', age_ms: 0 } });
+    }
     if (path === '/v1/renew') {
       await route.fulfill({ json: { renewed: true } });
       return;
@@ -269,7 +295,8 @@ export async function installFixture(
       await route.fulfill({ status: 400, json: { code: 'INVALID_PARAMETERS' } });
       return;
     }
-    if (operation === 'bot.open') lease?.add(`session-${params.profile}`);
+    if (operation === 'bot.open' || operation === 'chat.snapshot')
+      lease?.add(`session-${params.profile}`);
     let result: unknown = {};
     if (operation === 'workspace.snapshot') {
       const liveIds = state.bots.filter((b) => b.managed).map((b) => b.id),
@@ -511,11 +538,11 @@ export async function installFixture(
       const bot = state.bots.find((b) => b.read_key === params.key);
       if (bot) bot.unread = false;
     }
-    if (operation === 'bot.open')
+    if (operation === 'bot.open' || operation === 'chat.snapshot')
       result = options.open
-        ? await options.open(params.profile)
+        ? await options.open(params.profile ?? String(params.session_id).replace(/^session-/, ''))
         : {
-            session_id: `session-${params.profile}`,
+            session_id: params.session_id ?? `session-${params.profile}`,
             messages: messages.map((m) => ({
               ...m,
               display_metadata: { reactions: reactions.get(m.row_id) ?? [] },

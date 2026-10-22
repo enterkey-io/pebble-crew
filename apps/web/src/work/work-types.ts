@@ -1,4 +1,4 @@
-import type { BotBridgeClient, WorkCatalog, WorkspaceSnapshot } from '@hermes-client/protocol';
+import type { SessionClient, WorkCatalog, WorkspaceSnapshot } from '@hermes-client/protocol';
 
 export type WorkDialogTarget =
   | { kind: 'new-project' }
@@ -6,7 +6,7 @@ export type WorkDialogTarget =
   | { kind: 'new-task'; board: string }
   | { kind: 'task'; board: string; id: string };
 export type SharedProps = {
-  client: BotBridgeClient;
+  client: SessionClient;
   catalog: WorkCatalog;
   workspace: WorkspaceSnapshot;
   onClose: () => void;

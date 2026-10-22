@@ -4,7 +4,7 @@ import { Form } from './components/ui/form';
 import { Button } from './components/ui/button';
 import { InputGroup, InputGroupAddon, InputGroupInput } from './components/ui/input-group';
 import { useEffect, useState } from 'react';
-import type { BotBridgeClient } from '@hermes-client/protocol';
+import type { SessionClient } from '@hermes-client/protocol';
 import { decodeWorkspaceSnapshot } from '@hermes-client/protocol';
 import type { Appearance, WorkspaceSnapshot as WorkspaceState } from '@hermes-client/protocol';
 import { AvatarChooser } from './AgentAvatar';
@@ -12,7 +12,7 @@ export function WorkspaceSetup({
   client,
   onComplete,
 }: {
-  client: BotBridgeClient;
+  client: SessionClient;
   onComplete: (state: WorkspaceState, profile: string, welcome: boolean) => void;
 }) {
   const [profile, setProfile] = useState('');

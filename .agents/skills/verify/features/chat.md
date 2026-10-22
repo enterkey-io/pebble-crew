@@ -96,3 +96,19 @@ bytes. Inspect settled desktop/iPhone/Android captures. The native owner media
 journey reads the clip through the real canonical-row authorization boundary.
 `commands.spec.ts` asserts locally filtered suggestions, one-Enter execution, and
 shared Tool results inside the conversation; commands never become chat prompts.
+
+## Connection recovery ownership
+
+`live-updates-recovery.spec.ts` tests a stream-only failure independently of an
+expired lease. It keeps Send usable with the same lease, restores missed replies
+without replacing message elements or drafts, changes conversations during the
+stream outage, preserves an in-flight send, tolerates a failed ticket renewal,
+and retries a temporary first conversation bind. Run its desktop and phone
+wrappers. `__breakStream` interrupts only events; `__expireConnection` provides
+explicit LEASE_GONE for replacement journeys. Do not require lease replacement
+merely to prove that event recovery happened.
+
+`scripts/fixture/connection_smoke.py` checks native dispatcher health, read-only
+snapshots and target-only rebinding after a native restart on both pinned builds.
+It uses a disposable home and asserts zero model turns. This complements the
+native owner browser and exact-package gates.

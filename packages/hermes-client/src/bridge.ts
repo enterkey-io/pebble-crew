@@ -25,6 +25,7 @@ export class BotBridgeClient {
   readonly #lifetime = new ConnectionLifetime();
   readonly #active = new Set<AbortController>();
   #token: string;
+  #retired = false;
   #connection = '';
   #existingAgents = false;
   #workspace = false;
@@ -40,8 +41,13 @@ export class BotBridgeClient {
   #roomReactions = false;
   #exchanges = false;
   #exchangeEvents = false;
+  #recovery = false;
   #rpcActive = 0;
   readonly #rpcWaiting: (() => void)[] = [];
+
+  get supportsConnectionRecovery(): boolean {
+    return this.#recovery;
+  }
 
   get supportsExchangeEvents(): boolean {
     return this.#exchangeEvents;
@@ -73,7 +79,12 @@ export class BotBridgeClient {
     return this.#roomReactions;
   }
   computerSocket(ticket: string): WebSocket {
-    if (!this.#connection || !this.#computer || !/^[A-Za-z0-9_-]{43}$/.test(ticket))
+    if (
+      this.#retired ||
+      !this.#connection ||
+      !this.#computer ||
+      !/^[A-Za-z0-9_-]{43}$/.test(ticket)
+    )
       throw new ClientError('UNSUPPORTED');
     const url = endpointUrl(this.#endpoint, 'v1/computer/stream');
     url.protocol = url.protocol === 'https:' ? 'wss:' : 'ws:';
@@ -118,6 +129,7 @@ export class BotBridgeClient {
     const existingAgents =
       !!data.capabilities && record(data.capabilities).existing_agents === true;
     this.#connection = data.connection;
+    this.#recovery = !!data.capabilities && record(data.capabilities).connection_recovery === 1;
     this.#exchanges = !!data.capabilities && record(data.capabilities).exchanges === true;
     this.#exchangeEvents =
       !!data.capabilities && record(data.capabilities).exchange_events === true;
@@ -166,6 +178,7 @@ export class BotBridgeClient {
     if (this.#rpcActive >= 3) await new Promise<void>((done) => this.#rpcWaiting.push(done));
     else this.#rpcActive++;
     try {
+      if (this.#retired) throw new ClientError('DISCONNECTED', undefined, 'not-dispatched');
       return await task();
     } finally {
       const next = this.#rpcWaiting.shift();
@@ -178,8 +191,23 @@ export class BotBridgeClient {
   async renew(token: string): Promise<void> {
     if (!/^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/.test(token) || token.length > 4096)
       throw new ClientError('INVALID_CREDENTIAL');
+    await this.#request('v1/renew', 'POST', undefined, undefined, token);
     this.#token = token;
-    await this.#request('v1/renew', 'POST');
+  }
+
+  async health(): Promise<'responsive' | 'unavailable' | 'unconfirmed'> {
+    if (!this.#recovery) {
+      await this.invoke('bots.list', {});
+      return 'responsive';
+    }
+    const value = record(await this.#request('v1/status', 'GET'));
+    if (
+      value.native !== 'responsive' &&
+      value.native !== 'unavailable' &&
+      value.native !== 'unconfirmed'
+    )
+      throw new ClientError('INVALID_RESPONSE');
+    return value.native;
   }
 
   async uploadFile(sessionId: string, file: File, signal?: AbortSignal) {
@@ -330,11 +358,13 @@ export class BotBridgeClient {
   }
   async #request(
     route: string,
-    method: 'POST' | 'DELETE',
+    method: 'POST' | 'DELETE' | 'GET',
     body?: unknown,
     signal?: AbortSignal,
+    token?: string,
   ): Promise<unknown> {
     const generation = this.#lifetime.capture();
+    if (this.#retired) throw new ClientError('DISCONNECTED', undefined, 'not-dispatched');
     const controller = new AbortController();
     this.#active.add(controller);
     const abort = () => controller.abort();
@@ -343,7 +373,7 @@ export class BotBridgeClient {
     const timer = setTimeout(() => controller.abort(), 50_000);
     try {
       const url = endpointUrl(this.#endpoint, route);
-      const response = await this.#fetch(url, this.#options(controller, method, body));
+      const response = await this.#fetch(url, this.#options(controller, method, body, token));
       this.#lifetime.assertCurrent(generation);
       await this.#check(response, url);
       const data = await readBoundedJson(response, 4 * 1024 * 1024);
@@ -359,7 +389,12 @@ export class BotBridgeClient {
     }
   }
 
-  #options(controller: AbortController, method: string, body?: unknown): RequestInit {
+  #options(
+    controller: AbortController,
+    method: string,
+    body?: unknown,
+    token = this.#token,
+  ): RequestInit {
     return {
       method,
       credentials: 'omit',
@@ -368,7 +403,7 @@ export class BotBridgeClient {
       referrerPolicy: 'no-referrer',
       signal: controller.signal,
       headers: {
-        Authorization: `Bearer ${this.#token}`,
+        Authorization: `Bearer ${token}`,
         'X-Bot-Connection': this.#connection,
         ...(body === undefined ? {} : { 'Content-Type': 'application/json' }),
       },
@@ -379,7 +414,7 @@ export class BotBridgeClient {
   async #check(response: Response, url: URL): Promise<void> {
     if (
       !response.ok &&
-      [400, 409, 422].includes(response.status) &&
+      [400, 409, 422, 429, 502, 503].includes(response.status) &&
       (!response.url || response.url === url.href)
     ) {
       let code: unknown;
@@ -389,6 +424,11 @@ export class BotBridgeClient {
         /* Untrusted diagnostics never enter user-visible errors. */
       }
       const known = [
+        'CONVERSATION_CHANGED',
+        'LEASE_GONE',
+        'STREAM_ACTIVE',
+        'NATIVE_UNAVAILABLE',
+        'CAPACITY',
         'UPDATE_REQUIRED',
         'UNSUPPORTED_COMMAND',
         'STALE_REVISION',
@@ -404,22 +444,35 @@ export class BotBridgeClient {
       const match =
         known.find((item) => item === code) ??
         Object.keys(voiceErrors).find((item): item is keyof typeof voiceErrors => item === code);
-      throw new ClientError(match ?? 'RPC_FAILED');
+      const retry = Number(response.headers.get('Retry-After'));
+      throw new ClientError(
+        match ?? 'RPC_FAILED',
+        {
+          status: response.status,
+          retryAfterMs: Number.isFinite(retry) ? Math.max(0, Math.min(300_000, retry * 1000)) : 0,
+        },
+        match === 'LEASE_GONE' || match === 'NATIVE_UNAVAILABLE' ? 'not-dispatched' : 'unknown',
+      );
     }
     if (!response.ok || (response.url && response.url !== url.href)) {
       void response.body?.cancel();
       throw new ClientError(
         response.status === 401 || response.status === 403 ? 'UNAUTHORIZED' : 'RPC_FAILED',
+        undefined,
+        response.status === 401 || response.status === 403 ? 'not-dispatched' : 'unknown',
       );
     }
   }
 
-  async events(onEvent: (event: BridgeEvent) => void): Promise<void> {
+  async events(onEvent: (event: BridgeEvent) => void, signal?: AbortSignal): Promise<void> {
     if (!this.#connection) throw new ClientError('DISCONNECTED');
     const generation = this.#lifetime.capture();
     const controller = new AbortController();
     this.#active.add(controller);
-    let idle = setTimeout(() => controller.abort(), 35_000);
+    const abort = () => controller.abort();
+    signal?.addEventListener('abort', abort, { once: true });
+    if (signal?.aborted) controller.abort();
+    let idle = setTimeout(abort, 35_000);
     let reader: ReadableStreamDefaultReader<Uint8Array> | undefined;
     try {
       const url = endpointUrl(this.#endpoint, 'v1/events');
@@ -462,10 +515,16 @@ export class BotBridgeClient {
       throw safeError(error);
     } finally {
       clearTimeout(idle);
+      signal?.removeEventListener('abort', abort);
       controller.abort();
       await reader?.cancel().catch(() => undefined);
       this.#active.delete(controller);
     }
+  }
+
+  /** Stop queued/new dispatch without cancelling an already dispatched mutation receipt. */
+  retire(): void {
+    this.#retired = true;
   }
 
   disconnect(): void {

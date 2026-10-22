@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import type { BotBridgeClient } from '@hermes-client/protocol';
+import type { SessionClient } from '@hermes-client/protocol';
 import { safeError } from '@hermes-client/core';
 export type DraftFile = {
   key: string;
@@ -11,7 +11,7 @@ export type DraftFile = {
   file?: File | undefined;
 };
 export function useUploads(
-  client: BotBridgeClient | undefined,
+  client: SessionClient | undefined,
   conversation: string,
   sessionId: string | undefined,
 ) {

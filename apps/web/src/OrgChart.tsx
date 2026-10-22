@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { ReportingDomain } from '@hermes-client/protocol';
-import type { BotBridgeClient, WorkspaceSnapshot } from '@hermes-client/protocol';
+import type { SessionClient, WorkspaceSnapshot } from '@hermes-client/protocol';
 import { LoadingBar } from './components/ui/loading-bar';
 import { OrganizationDiagram } from './org/OrganizationDiagram';
 import { Disclosure } from './components/ui/disclosure';
@@ -13,7 +13,7 @@ export function OrgChart({
   onClose,
   onNavigate,
 }: {
-  client: BotBridgeClient;
+  client: SessionClient;
   state: WorkspaceSnapshot;
   onEdit: (profile: string) => void;
   onClose: () => void;

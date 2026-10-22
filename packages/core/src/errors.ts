@@ -28,6 +28,11 @@ export const voiceErrors = {
 
 export type ErrorCode =
   | keyof typeof voiceErrors
+  | 'CONVERSATION_CHANGED'
+  | 'LEASE_GONE'
+  | 'STREAM_ACTIVE'
+  | 'NATIVE_UNAVAILABLE'
+  | 'CAPACITY'
   | 'UNSUPPORTED_COMMAND'
   | 'STALE_REVISION'
   | 'HANDLE_TAKEN'
@@ -51,6 +56,11 @@ export type ErrorCode =
   | 'RPC_FAILED';
 
 const messages: Record<ErrorCode, string> = {
+  CONVERSATION_CHANGED: 'This conversation needs to be reopened.',
+  LEASE_GONE: 'The connection needs to be restored.',
+  STREAM_ACTIVE: 'Live updates are already connected.',
+  NATIVE_UNAVAILABLE: 'Hermes is temporarily unavailable.',
+  CAPACITY: 'Too many open connections. Close an unused tab and try again.',
   UPDATE_REQUIRED: 'Update Pebble Crew and its Hermes plugin, then reopen the app.',
   ...voiceErrors,
   UNSUPPORTED_COMMAND:
@@ -83,7 +93,11 @@ const messages: Record<ErrorCode, string> = {
 
 /** Remote messages, URLs and credentials never enter public errors. */
 export class ClientError extends Error {
-  constructor(readonly code: ErrorCode) {
+  constructor(
+    readonly code: ErrorCode,
+    readonly evidence?: { status: number; retryAfterMs: number },
+    readonly delivery: 'unknown' | 'not-dispatched' = 'unknown',
+  ) {
     super(messages[code]);
     this.name = 'ClientError';
   }

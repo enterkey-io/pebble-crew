@@ -49,6 +49,34 @@ describe('native work boundary', () => {
       state: 'assigned',
     });
   });
+  it('rejects a board response for another workspace or board', async () => {
+    const board = {
+      slug: 'research',
+      name: 'Research',
+      description: '',
+      project_id: null,
+      revision: 'revision-1',
+      mapping: 'unlinked',
+      count: 0,
+    };
+    const invoke = vi.fn().mockResolvedValue({ workspace_id: 'owner-2', board, columns: [] });
+    const domain = new WorkDomain({ invoke });
+    await expect(domain.board({ workspaceId: 'owner-1', board: 'research' })).rejects.toMatchObject(
+      { code: 'INVALID_RESPONSE' },
+    );
+    invoke.mockResolvedValue({
+      workspace_id: 'owner-1',
+      board: { ...board, slug: 'other' },
+      columns: [],
+    });
+    await expect(domain.board({ workspaceId: 'owner-1', board: 'research' })).rejects.toMatchObject(
+      { code: 'INVALID_RESPONSE' },
+    );
+    invoke.mockResolvedValue({ workspace_id: 'owner-1', board, columns: [] });
+    await expect(
+      domain.board({ workspaceId: 'owner-1', board: 'research' }),
+    ).resolves.toMatchObject({ workspaceId: 'owner-1', board: { slug: 'research' } });
+  });
   it('requires actual field-edit capability and rejects malformed task states', () => {
     expect(
       decodeWorkCatalog({

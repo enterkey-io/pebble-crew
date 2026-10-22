@@ -146,6 +146,52 @@ class StreamTests(unittest.IsolatedAsyncioTestCase):
             renewed = await self.http.post('/v1/renew', headers=self.headers)
             self.assertEqual(renewed.status_code, 200)
 
+    async def test_another_tab_cannot_evict_a_recently_used_lease_after_its_stream_ends(self):
+        import time
+        _, task = await self.stream()
+        task.cancel()
+        with suppress(asyncio.CancelledError):
+            await task
+        with patch('bot_web.server.time.monotonic', return_value=time.monotonic() + 2):
+            self.assertEqual((await self.http.post('/v1/renew', headers=self.headers)).status_code, 200)
+            self.assertEqual((await self.http.post('/v1/connect', headers=self.headers)).status_code, 200)
+            self.assertEqual((await self.http.post('/v1/renew', headers=self.headers)).status_code, 200)
+
+    async def test_unrelated_event_bursts_are_filtered_before_queue_admission(self):
+        from bot_web.native import NativeGateway
+        from bot_web.reactions import ReactionDisplay
+        self.native.display = ReactionDisplay()
+        with patch('bot_web.server.HEARTBEAT_SECONDS', 0.02):
+            frames, task = await self.stream()
+            for _ in range(1000):
+                NativeGateway._publish(self.native, {'type': 'status.update', 'session_id': 'unrelated', 'payload': {'text': 'private synthetic'}})
+            self.assertEqual(await asyncio.wait_for(frames.get(), 0.5), {'type': 'bridge.heartbeat'})
+            self.assertFalse(task.done())
+
+    async def test_replacement_stream_cleanup_cannot_close_its_successor(self):
+        with patch('bot_web.server.HEARTBEAT_SECONDS', 0.02):
+            _, old = await self.stream()
+            frames, current = await self.stream()
+            await asyncio.wait_for(old, 0.5)
+            self.assertEqual(await asyncio.wait_for(frames.get(), 0.5), {'type': 'bridge.heartbeat'})
+            self.assertFalse(current.done())
+
+    async def test_capacity_does_not_evict_other_tabs(self):
+        for _ in range(7):
+            self.assertEqual((await self.http.post('/v1/connect', headers=self.headers)).status_code, 200)
+        denied = await self.http.post('/v1/connect', headers=self.headers)
+        self.assertEqual(denied.status_code, 429)
+        self.assertEqual(denied.json()['code'], 'CAPACITY')
+        self.assertEqual((await self.http.post('/v1/renew', headers=self.headers)).status_code, 200)
+
+    async def test_native_health_and_admission_do_not_confuse_heartbeats_with_responsiveness(self):
+        self.native.healthy = False
+        status = await self.http.get('/v1/status', headers=self.headers)
+        self.assertEqual(status.json()['native'], 'unavailable')
+        refusal = await self.http.post('/v1/rpc', headers=self.headers, json={'operation': 'bots.list', 'params': {}})
+        self.assertEqual(refusal.status_code, 503)
+        self.assertEqual(refusal.json()['code'], 'NATIVE_UNAVAILABLE')
+
 
 if __name__ == "__main__":
     unittest.main()

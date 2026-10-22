@@ -17,7 +17,7 @@ import {
 import { memo, useEffect, useMemo, useState } from 'react';
 import Markdown, { defaultUrlTransform } from 'react-markdown';
 import type { Components } from 'react-markdown';
-import type { BotBridgeClient } from '@hermes-client/protocol';
+import type { SessionClient } from '@hermes-client/protocol';
 import remarkGfm from 'remark-gfm';
 import { Copy, Check } from 'lucide-react';
 import { Button } from './components/ui/button';
@@ -149,7 +149,7 @@ export const MessageBody = memo(function MessageBody({
   conversationKey,
 }: {
   text: string;
-  client?: BotBridgeClient | undefined;
+  client?: SessionClient | undefined;
   sessionId?: string | undefined;
   rowId?: string | undefined;
   conversationKey?: string | undefined;

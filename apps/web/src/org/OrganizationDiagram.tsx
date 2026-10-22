@@ -2,7 +2,7 @@ import { useId, useLayoutEffect, useRef, type RefObject } from 'react';
 import { useReducedMotion } from 'motion/react';
 import { TransformComponent, TransformWrapper, useControls } from 'react-zoom-pan-pinch';
 import { LocateFixed, Maximize, Minus, Plus } from 'lucide-react';
-import type { BotBridgeClient, WorkspaceSnapshot } from '@hermes-client/protocol';
+import type { SessionClient, WorkspaceSnapshot } from '@hermes-client/protocol';
 import { Button } from '../components/ui/button';
 import { Card } from '../components/ui/card';
 import { Badge } from '../components/ui/badge';
@@ -21,7 +21,7 @@ function ChartCards({
 }: {
   layout: Diagram;
   workspace: WorkspaceSnapshot;
-  client: BotBridgeClient;
+  client: SessionClient;
   onEdit: (profile: string) => void;
   landmark: RefObject<string | null>;
 }) {
@@ -159,7 +159,7 @@ export function OrganizationDiagram({
   onEdit,
 }: {
   workspace: WorkspaceSnapshot;
-  client: BotBridgeClient;
+  client: SessionClient;
   onEdit: (profile: string) => void;
 }) {
   const viewport = useRef<HTMLDivElement>(null);

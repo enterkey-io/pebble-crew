@@ -19,7 +19,7 @@ import { ChainOfThought } from '../components/ai-elements/chain-of-thought';
 import { Tool } from '../components/ai-elements/tool';
 import { useLayoutEffect, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
-import type { BotBridgeClient } from '@hermes-client/protocol';
+import type { SessionClient } from '@hermes-client/protocol';
 import { motion, useReducedMotion } from 'motion/react';
 import { MessageBody, CopyMessage } from '../MessageBody';
 import { messageDate } from '../conversation';
@@ -62,7 +62,7 @@ export function Transcript({
   authorAvatar?: (name: string) => ReactNode;
   onDownloadFile: (file: { id: string; name: string }) => void;
   onReact?: ReactionAction | undefined;
-  client?: BotBridgeClient | undefined;
+  client?: SessionClient | undefined;
   sessionId?: string | undefined;
   ownerColor?: string | undefined;
   footer?: ReactNode;

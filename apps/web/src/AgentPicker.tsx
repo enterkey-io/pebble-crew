@@ -1,6 +1,7 @@
+import { useRecoveryRevision } from './connection/recovery-context';
 import { useEffect, useRef, useState } from 'react';
 import { Check, ChevronRight, Search } from 'lucide-react';
-import type { BotBridgeClient } from '@hermes-client/protocol';
+import type { SessionClient } from '@hermes-client/protocol';
 import type { WorkspaceSnapshot as WorkspaceState } from '@hermes-client/protocol';
 import { AgentAvatar } from './AgentAvatar';
 import { InputGroup, InputGroupAddon, InputGroupInput } from './components/ui/input-group';
@@ -20,11 +21,12 @@ export function AgentPicker({
   connected,
   onChoose,
 }: {
-  client: BotBridgeClient;
+  client: SessionClient;
   state: WorkspaceState;
   connected: boolean;
   onChoose: (profile: string) => void;
 }) {
+  const recovery = useRecoveryRevision();
   const [agents, setAgents] = useState<Agent[]>([]),
     [query, setQuery] = useState(''),
     [loading, setLoading] = useState(true),
@@ -75,7 +77,7 @@ export function AgentPicker({
     return () => {
       live = false;
     };
-  }, [client]);
+  }, [client, recovery]);
   const visible = agents.filter((agent) =>
     `${agent.name} ${agent.profile}`.toLocaleLowerCase().includes(query.trim().toLocaleLowerCase()),
   );

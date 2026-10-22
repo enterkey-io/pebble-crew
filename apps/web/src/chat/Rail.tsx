@@ -29,7 +29,7 @@ import { Item, ItemMedia, ItemContent, ItemTitle, ItemDescription } from '../com
 import { readRailDrag } from '../ui/organization';
 import type { Organization, OrganizationEditor } from '../ui/organization';
 import type { WorkspaceSnapshot as WorkspaceState, WorkspaceBot } from '@hermes-client/protocol';
-import type { BotBridgeClient } from '@hermes-client/protocol';
+import type { SessionClient } from '@hermes-client/protocol';
 import type { Activity } from '../avatar-lab/engine';
 import type { Row } from '../conversation';
 import { PersonalAvatar } from '../OwnerPhoto';
@@ -53,7 +53,7 @@ export function PebbleAvatar({
 }: {
   bot: ChatBot;
   workspace?: WorkspaceState | undefined;
-  client: BotBridgeClient;
+  client: SessionClient;
   state?: Activity | undefined;
   large?: boolean | undefined;
   unread?: boolean;
@@ -83,7 +83,7 @@ export function CrewAvatar({
 }: {
   room: Row;
   workspace?: WorkspaceState | undefined;
-  client: BotBridgeClient;
+  client: SessionClient;
 }) {
   const members = Array.isArray(room.members) ? room.members : [];
   const profiles = members
@@ -156,7 +156,7 @@ export function Rail({
   bots: ChatBot[];
   rooms: Row[];
   workspace?: WorkspaceState | undefined;
-  client: BotBridgeClient;
+  client: SessionClient;
   selected?: string | undefined;
   states: Record<string, Activity>;
   online: boolean;

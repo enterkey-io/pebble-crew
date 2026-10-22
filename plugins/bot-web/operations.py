@@ -129,7 +129,7 @@ class BotOperations:
                 return bot
         raise InvalidOperation("Managed bot unavailable")
 
-    async def invoke(self, operation, params):
+    async def invoke(self, operation, params, *, bind=None):
         if operation == "agents.list":
             fields(params, [])
             return {"agents": [self.summary(row) for row in await self.profiles()]}
@@ -158,6 +158,8 @@ class BotOperations:
                     raise InvalidOperation('Profile changed while opening this conversation')
                 self.sessions[sid] = bot["name"]
                 self.session_incarnations[sid] = stamp
+                if bind is not None:
+                    bind(sid)
                 await self.gateway.call('bot_web.reactions.enable', {'session_id': sid})
                 live = await self.gateway.call('bot_web.conversation.snapshot', {'session_id': sid})
                 return {"session_id": sid, "profile": bot["name"],
@@ -167,6 +169,16 @@ class BotOperations:
                         "correction_row_ids": live.get('correction_row_ids'),
                         "deferred_prompts": live.get('deferred_prompts', []),
                         "stream_position": live.get('stream_position')}
+        if operation == 'chat.snapshot':
+            fields(params, ['session_id'])
+            sid = identifier(params['session_id'])
+            profile = self.sessions.get(sid)
+            if not profile or await self.stamp(profile) != self.session_incarnations.get(sid):
+                raise InvalidOperation('Reopen the changed conversation', 'CONVERSATION_CHANGED')
+            result = await self.gateway.call('bot_web.conversation.snapshot', {'session_id': sid})
+            if result.get('missing') or await self.stamp(profile) != self.session_incarnations.get(sid):
+                raise InvalidOperation('Conversation changed during snapshot', 'CONVERSATION_CHANGED')
+            return {**result, 'session_id': sid, 'profile': profile}
         if operation in {"chat.send", "chat.stop", "chat.history", "chat.approvals", "chat.approve", "chat.replay", "chat.react"}:
             extras = {"chat.send": ["text"], "chat.approve": ["request_id", "choice"],
                       "chat.replay": ["last_seen"], "chat.react": ["row_id", "emoji"]}.get(operation, [])

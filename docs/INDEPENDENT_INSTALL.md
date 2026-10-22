@@ -27,13 +27,13 @@ Before mutations, record versions, existing deployment/supervision, routes, file
 
 ## 2. Obtain one immutable release
 
-The candidate installed-owner release is `v0.3.0-preview.1`. Use its published artifacts only after that release exists; if absent, report that the candidate has not been published rather than substitute executable code from main.
+The candidate installed-owner release is `v0.7.9-preview.1`. Use its published artifacts only after that release exists; if absent, report that the candidate has not been published rather than substitute executable code from main.
 
-- [Manifest](https://github.com/enterkey-io/pebble-crew/releases/download/v0.3.0-preview.1/workspace-manifest.json)
-- [SHA256SUMS](https://github.com/enterkey-io/pebble-crew/releases/download/v0.3.0-preview.1/SHA256SUMS)
-- [Owner web application](https://github.com/enterkey-io/pebble-crew/releases/download/v0.3.0-preview.1/workspace-owner-preview.zip)
-- [Hermes integration](https://github.com/enterkey-io/pebble-crew/releases/download/v0.3.0-preview.1/workspace-plugin-preview.zip)
-- [Full source](https://github.com/enterkey-io/pebble-crew/releases/download/v0.3.0-preview.1/workspace-source-preview.zip)
+- [Manifest](https://github.com/enterkey-io/pebble-crew/releases/download/v0.7.9-preview.1/workspace-manifest.json)
+- [SHA256SUMS](https://github.com/enterkey-io/pebble-crew/releases/download/v0.7.9-preview.1/SHA256SUMS)
+- [Owner web application](https://github.com/enterkey-io/pebble-crew/releases/download/v0.7.9-preview.1/workspace-owner-preview.zip)
+- [Hermes integration](https://github.com/enterkey-io/pebble-crew/releases/download/v0.7.9-preview.1/workspace-plugin-preview.zip)
+- [Full source](https://github.com/enterkey-io/pebble-crew/releases/download/v0.7.9-preview.1/workspace-source-preview.zip)
 
 Verify each downloaded archive against both manifest and checksum file. Before extracting, reject absolute paths, traversal, symlinks and entries escaping the destination. Use private staging directories. Keep app authentication state and Hermes stores outside staging/code directories.
 

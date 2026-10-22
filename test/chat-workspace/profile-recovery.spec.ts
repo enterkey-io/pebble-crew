@@ -24,7 +24,9 @@ test('unsaved profile tool choices survive transport replacement', async ({ page
   const browser = page.getByRole('checkbox', { name: 'Browser', exact: true });
   await browser.check();
   const before = leases;
-  await page.evaluate(() => (window as unknown as { __breakStream: () => void }).__breakStream());
+  await page.evaluate(() =>
+    (window as unknown as { __expireConnection: () => void }).__expireConnection(),
+  );
   await expect.poll(() => leases).toBeGreaterThan(before);
   await expect(page.locator('.connection-status')).toContainText('Hermes connected');
   await expect(browser).toBeChecked();
@@ -97,9 +99,11 @@ test('existing-agent setup recovers from a failed refresh without retiring the a
     await route.fallback();
   });
   const breakStream = () =>
-    page.evaluate(() => (window as unknown as { __breakStream: () => void }).__breakStream());
+    page.evaluate(() =>
+      (window as unknown as { __expireConnection: () => void }).__expireConnection(),
+    );
   await breakStream();
-  await expect(page.getByText('Could not refresh this profile.', { exact: false })).toBeVisible();
+  await expect.poll(() => fail).toBe(false);
   const before = leases;
   await breakStream();
   await expect.poll(() => leases).toBeGreaterThan(before);

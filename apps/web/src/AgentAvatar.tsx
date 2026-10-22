@@ -8,7 +8,7 @@ import { BODY_PATHS, COLORS, SHAPES } from './avatar-lab/engine';
 import { previewPhoto } from './avatar-lab/photo';
 import type { Activity } from './avatar-lab/engine';
 import type { Appearance } from '@hermes-client/protocol';
-import type { BotBridgeClient } from '@hermes-client/protocol';
+import type { SessionClient } from '@hermes-client/protocol';
 let clock: AvatarScheduler | undefined;
 let users = 0;
 function acquire() {
@@ -40,7 +40,7 @@ export function AgentAvatar({
   orchestrator?: boolean;
   unread?: boolean;
   photo?: string;
-  client?: BotBridgeClient;
+  client?: SessionClient;
   profile?: string;
   large?: boolean;
   revision?: number | undefined;
@@ -157,7 +157,7 @@ export function AvatarChooser({
   onChange: (v: Appearance) => void;
   photo: string;
   onPhoto: (v: string) => void;
-  client?: BotBridgeClient;
+  client?: SessionClient;
   profile?: string;
   onBusyChange?: (busy: boolean) => void;
   revision?: number | undefined;

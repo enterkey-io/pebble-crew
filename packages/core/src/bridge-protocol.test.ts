@@ -6,6 +6,7 @@ import {
   BRIDGE_PROTOCOL,
   bridgeRoute,
   operationRoute,
+  operationEffect,
 } from './bridge-protocol';
 
 describe('bridge protocol catalog', () => {
@@ -40,6 +41,20 @@ describe('bridge protocol catalog', () => {
     expect(acceptsOperationRoute('arbitrary', '/v1/rpc')).toBe(false);
     expect(() => operationRoute('arbitrary')).toThrow();
     expect(() => operationRoute('constructor')).toThrow();
+  });
+  it('preserves mutation receipts for the permissions operation that can also read', () => {
+    expect(
+      operationEffect('connections.permissions', { profile: 'example', name: 'service' }),
+    ).toBe('read');
+    expect(
+      operationEffect('connections.permissions', {
+        profile: 'example',
+        name: 'service',
+        tools: [],
+      }),
+    ).toBe('write');
+    expect(operationEffect('bot.open')).toBe('bind');
+    expect(operationEffect('chat.send')).toBe('write');
   });
   it('contains every literal operation called by the production web app and domain port', () => {
     const files = readdirSync(resolve('apps/web/src'), { recursive: true })

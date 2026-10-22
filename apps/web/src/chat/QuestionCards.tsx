@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import type { TranscriptCard } from './presentation';
 import { CircleHelp } from 'lucide-react';
-import type { BotBridgeClient } from '@hermes-client/protocol';
+import type { SessionClient } from '@hermes-client/protocol';
 import { RequestDomain, type QuestionRequest } from '@hermes-client/protocol';
 import { ApprovalSurface } from '../components/ai-elements/confirmation';
 import {
@@ -24,7 +24,7 @@ function Question({
   question,
   onAnswer,
 }: {
-  client: BotBridgeClient;
+  client: SessionClient;
   sessionId: string;
   request: QuestionRequest;
   question: QuestionRequest['questions'][number];
@@ -101,7 +101,7 @@ export function useQuestionCards({
   sessionId,
   version,
 }: {
-  client: BotBridgeClient | undefined;
+  client: SessionClient | undefined;
   sessionId: string | undefined;
   version: number;
 }): TranscriptCard[] {

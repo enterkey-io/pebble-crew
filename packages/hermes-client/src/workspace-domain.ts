@@ -1,6 +1,6 @@
 import { ClientError, safeError } from '@hermes-client/core';
 import type { ErrorCode } from '@hermes-client/core';
-import type { BotBridgeClient } from './bridge';
+import type { SessionClient } from './session-client';
 import { record } from './json';
 import { decodeAgentCapabilities, decodeRole, decodeWorkspaceSnapshot } from './workspace';
 import type { Appearance, Role, WorkspaceBot, WorkspaceSnapshot } from './workspace';
@@ -61,7 +61,9 @@ async function write<T>(action: () => Promise<T>): Promise<WriteOutcome<T>> {
   try {
     return { kind: 'confirmed', value: await action() };
   } catch (error) {
-    const { code } = safeError(error);
+    const failure = safeError(error);
+    const { code } = failure;
+    if (failure.delivery === 'not-dispatched') return { kind: 'refused', reason: code };
     // Other failures can follow a native asset or metadata write. Never replay them.
     if (
       [
@@ -78,7 +80,7 @@ async function write<T>(action: () => Promise<T>): Promise<WriteOutcome<T>> {
 }
 
 export class WorkspaceDomain {
-  constructor(private readonly bridge: Pick<BotBridgeClient, 'invoke'>) {}
+  constructor(private readonly bridge: Pick<SessionClient, 'invoke'>) {}
 
   async describeWorkspace(): Promise<WorkspaceSnapshot> {
     return decodeWorkspaceSnapshot(await this.bridge.invoke('workspace.describe', {}));

@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 import type { TranscriptCard } from './presentation';
-import type { BotBridgeClient, WorkspaceSnapshot } from '@hermes-client/protocol';
+import type { SessionClient, WorkspaceSnapshot } from '@hermes-client/protocol';
 import { RequestDomain, type WorkspaceRequest } from '@hermes-client/protocol';
 import { RequestReview } from './RequestReview';
 import { Notice } from '../ui/primitives';
@@ -41,7 +41,7 @@ export function useConversationRequests({
   onOpen,
   focusId,
 }: {
-  client: BotBridgeClient | undefined;
+  client: SessionClient | undefined;
   profile: string | undefined;
   workspace: WorkspaceSnapshot | undefined;
   version: number;
