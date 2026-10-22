@@ -213,3 +213,61 @@ for (const code of ['RPC_FAILED', 'NATIVE_UNAVAILABLE'])
     await expect(page.getByText('Choose a conversation', { exact: true })).toHaveCount(0);
     await expect(page.locator('.banner[role="alert"]')).toHaveCount(0);
   });
+
+test('a new lease cannot send on the old binding while a retired snapshot is still pending', async ({
+  page,
+  context,
+}) => {
+  await installFixture(context);
+  let leases = 0;
+  let sends = 0;
+  page.on('response', (response) => {
+    if (
+      new URL(response.url()).pathname === '/v1/connect' &&
+      response.request().method() === 'POST' &&
+      response.ok()
+    )
+      leases++;
+  });
+  page.on('request', (request) => {
+    if (
+      new URL(request.url()).pathname === '/v1/rpc' &&
+      request.postDataJSON()?.operation === 'chat.send'
+    )
+      sends++;
+  });
+  await page.goto('/');
+  const field = page.getByRole('textbox', { name: 'Message', exact: true });
+  await expect(field).toBeEnabled();
+  await expect(page.locator('main.pc-shell')).toHaveAttribute('data-live-updates', 'live');
+  await field.fill('Keep this until the new lease is bound');
+  let release = () => {};
+  const held = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  let pending = false;
+  let block = true;
+  await page.route('**/v1/rpc', async (route) => {
+    if (block && route.request().postDataJSON().operation === 'chat.snapshot') {
+      pending = true;
+      await held;
+    }
+    return route.fallback();
+  });
+  try {
+    await page.evaluate(() => Reflect.get(window, '__breakStream')());
+    await expect.poll(() => pending).toBe(true);
+    await page.evaluate(() => Reflect.get(window, '__expireConnection')());
+    await expect.poll(() => leases).toBe(2);
+    await expect(page.locator('.connection-status')).toHaveAttribute('data-online', 'true');
+    await expect(page.getByRole('button', { name: 'Send message', exact: true })).toBeDisabled();
+    await expect(field).toHaveValue('Keep this until the new lease is bound');
+    expect(sends).toBe(0);
+  } finally {
+    block = false;
+    release();
+  }
+  await expect(page.getByRole('button', { name: 'Send message', exact: true })).toBeEnabled();
+  await expect(field).toHaveValue('Keep this until the new lease is bound');
+  expect(leases).toBe(2);
+});

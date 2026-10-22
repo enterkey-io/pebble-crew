@@ -1176,6 +1176,7 @@ export function App({ owner }: { owner?: OwnerConnection }) {
       } else if (notice.kind === 'status') {
         const status = notice.status;
         const available = status.kind === 'available';
+        if (available && selectionEpoch.current !== owned.bindingEpoch) setChatBound(false);
         setConnectionAvailable(available);
         setStreamState(
           available && status.updates === 'live'
