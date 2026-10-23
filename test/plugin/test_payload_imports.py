@@ -85,3 +85,11 @@ class PayloadImportTests(unittest.TestCase):
             previous = ('live_voice.py', 'commands.py', 'voice_credentials.py', 'reporting.py', 'documents.py', 'work_store.py', 'work_native.py', 'work.py', 'work_delivery.py', 'request_delivery.py', 'room_reactions.py', 'stream_position.py', 'skills/manage-work/SKILL.md', 'exchanges.py', 'connection.py', 'codex_binding.py', 'creation.py', 'request_review.py')
             path.write_text('PRE_VOICE_FILES = '+repr(PRE_VOICE_FILES)+'\nFILES = PRE_VOICE_FILES + '+repr(previous)+'\n')
             self.assertEqual(source_inventory(Path(directory)), PRE_VOICE_FILES + previous)
+
+    def test_exact_0712_release_inventory_remains_readable(self):
+        import subprocess
+        previous = subprocess.check_output(['git', 'show',
+            '33391fecf0b920d06a374752f3f1725df847595f:plugins/bot-web/payload.py'], cwd=ROOT, text=True)
+        with tempfile.TemporaryDirectory() as directory:
+            (Path(directory) / 'payload.py').write_text(previous)
+            self.assertNotIn('conversation_presentation.py', source_inventory(Path(directory)))

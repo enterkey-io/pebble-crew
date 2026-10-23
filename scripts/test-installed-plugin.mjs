@@ -251,7 +251,7 @@ try {
     'true',
   );
   await page.getByRole('checkbox', { name: 'Send an introduction' }).uncheck();
-  await page.locator('.handle-input input').fill('aurora');
+  await page.getByLabel('Handle', { exact: true }).fill('aurora');
   await page.getByRole('button', { name: 'Snow', exact: true }).click();
   await page.getByRole('button', { name: 'Start chatting', exact: true }).click();
   const message = page.getByLabel('Message', { exact: true });
@@ -260,8 +260,9 @@ try {
   await expect(page.getByRole('option').filter({ hasText: '/model' }).first()).toBeVisible();
   await message.fill('/model');
   await page.getByRole('button', { name: 'Send message', exact: true }).click();
-  await expect(page.getByRole('alert')).toContainText('Use /model <model name>');
-  await page.getByRole('button', { name: 'Dismiss command result', exact: true }).click();
+  await expect(
+    page.getByRole('log').getByRole('region', { name: '/model result', exact: true }),
+  ).toContainText('Use /model <model name>');
   checks.native_slash_catalog_and_command_are_packaged = true;
   await message.fill('Synthetic installed plugin round trip');
   await page.getByRole('button', { name: 'Send message', exact: true }).click();
