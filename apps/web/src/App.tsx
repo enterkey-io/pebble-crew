@@ -1,3 +1,5 @@
+import { ProactiveSetup } from './proactive/ProactiveSetup';
+import { PlansArea, BoardOutcome } from './work/PlansArea';
 import type { AttentionNavigation } from './chat/ConversationAttention';
 import { useSecretCards } from './chat/SecretCards';
 import { ConversationAttention } from './chat/ConversationAttention';
@@ -136,6 +138,7 @@ export function App({ owner }: { owner?: OwnerConnection }) {
   const [voiceSettingsRequest, setVoiceSettingsRequest] = useState<VoiceSettingsRequest>();
   const [workspace, setWorkspace] = useState<WorkspaceState>();
   const [settings, setSettings] = useState(false);
+  const [proactiveOpen, setProactiveOpen] = useState(false);
   const [orgOpen, setOrgOpen] = useState(false);
   const [area, setArea] = useState<'chat' | 'tasks'>('chat');
   const [workBoard, setWorkBoard] = useState('default');
@@ -670,7 +673,7 @@ export function App({ owner }: { owner?: OwnerConnection }) {
     const pane = transcriptPane.current;
     if (!pane || pickingAgents) return;
     if (transcriptFollow.current?.node !== pane) {
-      transcriptFollow.current?.cancel();
+      transcriptFollow.current?.dispose();
       transcriptFollow.current = new TranscriptFollow(pane);
       transcriptContext.current = '';
     }
@@ -694,6 +697,23 @@ export function App({ owner }: { owner?: OwnerConnection }) {
     if (content) observer.observe(content);
     return () => observer.disconnect();
   }, [client, selection, pickingAgents, settings, starting]);
+  useEffect(() => {
+    const pause = () => transcriptFollow.current?.pause();
+    const resume = () => {
+      if (document.visibilityState === 'visible')
+        transcriptFollow.current?.resume(followLatest.current);
+    };
+    const visibility = () => (document.visibilityState === 'hidden' ? pause() : resume());
+    window.addEventListener('blur', pause);
+    window.addEventListener('focus', resume);
+    document.addEventListener('visibilitychange', visibility);
+    return () => {
+      window.removeEventListener('blur', pause);
+      window.removeEventListener('focus', resume);
+      document.removeEventListener('visibilitychange', visibility);
+      transcriptFollow.current?.dispose();
+    };
+  }, []);
   useComposerSize(
     composer,
     draft,
@@ -1887,7 +1907,9 @@ export function App({ owner }: { owner?: OwnerConnection }) {
           : orgOpen
             ? 'Org chart'
             : area === 'tasks'
-              ? (work.catalog?.boards.find((board) => board.slug === workBoard)?.name ?? 'Tasks')
+              ? workBoard === '$plans'
+                ? 'Plans'
+                : (work.catalog?.boards.find((board) => board.slug === workBoard)?.name ?? 'Tasks')
               : title,
   );
 
@@ -1922,6 +1944,7 @@ export function App({ owner }: { owner?: OwnerConnection }) {
           client={client}
           onComplete={(state, profile, welcome) => {
             setWorkspace(state);
+            setProactiveOpen(true);
             restoreProfile.current = profile;
             welcomeProfile.current = welcome ? profile : '';
             autoOpened.current = false;
@@ -1970,7 +1993,10 @@ export function App({ owner }: { owner?: OwnerConnection }) {
       }
       onNewTask={() =>
         navigate(() => {
-          setWorkDialog({ kind: 'new-task', board: workBoard });
+          setWorkDialog({
+            kind: 'new-task',
+            board: workBoard === '$plans' ? 'default' : workBoard,
+          });
           setNav(false);
         })
       }
@@ -2083,6 +2109,9 @@ export function App({ owner }: { owner?: OwnerConnection }) {
     <Suspense fallback={<LoadingBar active label="Loading Settings" />}>
       <WorkspaceSettings
         management={management}
+        onProactive={
+          work.catalog?.capabilities.proactive ? () => setProactiveOpen(true) : undefined
+        }
         onNavigate={navigate}
         key={`${settingsTab}:${editProfile ?? ''}`}
         onDirtyChange={onDirtyChange}
@@ -2178,6 +2207,13 @@ export function App({ owner }: { owner?: OwnerConnection }) {
               {rail}
             </Drawer>
           )}
+          {proactiveOpen && workspace && work.catalog?.capabilities.proactive && (
+            <ProactiveSetup
+              client={client}
+              workspaceId={workspace.id}
+              onClose={() => setProactiveOpen(false)}
+            />
+          )}
           <WorkspacePanels navigation={rail} phone={phone}>
             <Chat
               aria-busy={starting || switching}
@@ -2224,20 +2260,42 @@ export function App({ owner }: { owner?: OwnerConnection }) {
                 !(settings && settingsTab !== 'agents') &&
                 workspace &&
                 (work.catalog ? (
-                  <WorkArea
-                    key={work.catalog.workspaceId + '/' + workBoard}
-                    client={client}
-                    workspace={workspace}
-                    catalog={work.catalog}
-                    board={workBoard}
-                    refresh={workRevision}
-                    connected={connectionAvailable}
-                    onReconnect={owner ? retryConnection : disconnect}
-                    onNavigate={() => setNav(true)}
-                    onTask={(id) => setWorkDialog({ kind: 'task', board: workBoard, id })}
-                    onCreate={() => setWorkDialog({ kind: 'new-task', board: workBoard })}
-                    onEditProject={() => setWorkDialog({ kind: 'project', board: workBoard })}
-                  />
+                  workBoard === '$plans' && work.catalog.capabilities.plans ? (
+                    <PlansArea
+                      client={client}
+                      workspace={workspace}
+                      organization={organization}
+                      connected={connectionAvailable}
+                      onNavigate={() => setNav(true)}
+                      onBoard={setWorkBoard}
+                    />
+                  ) : (
+                    <WorkArea
+                      key={work.catalog.workspaceId + '/' + workBoard}
+                      client={client}
+                      workspace={workspace}
+                      catalog={work.catalog}
+                      board={workBoard}
+                      goal={
+                        work.catalog.capabilities.plans ? (
+                          <BoardOutcome
+                            client={client}
+                            workspace={workspace}
+                            organization={organization}
+                            connected={connectionAvailable}
+                            board={workBoard}
+                          />
+                        ) : undefined
+                      }
+                      refresh={workRevision}
+                      connected={connectionAvailable}
+                      onReconnect={owner ? retryConnection : disconnect}
+                      onNavigate={() => setNav(true)}
+                      onTask={(id) => setWorkDialog({ kind: 'task', board: workBoard, id })}
+                      onCreate={() => setWorkDialog({ kind: 'new-task', board: workBoard })}
+                      onEditProject={() => setWorkDialog({ kind: 'project', board: workBoard })}
+                    />
+                  )
                 ) : (
                   <section className="pc-work-area" aria-label="Tasks">
                     <WorkHeader title="Tasks" onNavigate={() => setNav(true)} />

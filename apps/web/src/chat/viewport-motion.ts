@@ -3,18 +3,49 @@ export class TranscriptFollow {
   private frame = 0;
   private previous = 0;
   private written = 0;
+  private suspended = false;
+  private resumeFrame = 0;
   constructor(readonly node: HTMLElement) {}
 
   get active() {
     return this.frame !== 0;
   }
   get ownsScroll() {
-    return this.active && Math.abs(this.node.scrollTop - this.written) < 1;
+    return (
+      (this.active || this.resumeFrame !== 0) && Math.abs(this.node.scrollTop - this.written) < 1
+    );
   }
   cancel() {
     cancelAnimationFrame(this.frame);
     this.frame = 0;
     this.previous = 0;
+  }
+  pause() {
+    this.suspended = true;
+    this.cancel();
+    cancelAnimationFrame(this.resumeFrame);
+    this.resumeFrame = 0;
+  }
+  resume(follow: boolean) {
+    if (!this.suspended || this.resumeFrame) return;
+    if (!follow) {
+      this.suspended = false;
+      return;
+    }
+    this.snap();
+    this.resumeFrame = requestAnimationFrame(() => {
+      this.snap();
+      this.resumeFrame = requestAnimationFrame(() => {
+        this.snap();
+        this.resumeFrame = 0;
+        this.suspended = false;
+      });
+    });
+  }
+  dispose() {
+    this.cancel();
+    cancelAnimationFrame(this.resumeFrame);
+    this.resumeFrame = 0;
   }
   snap() {
     this.cancel();
@@ -22,6 +53,8 @@ export class TranscriptFollow {
     this.written = this.node.scrollTop;
   }
   follow() {
+    if (this.suspended) return;
+    if (Math.abs(this.node.scrollHeight - this.node.clientHeight - this.node.scrollTop) < 1) return;
     if (matchMedia('(prefers-reduced-motion: reduce)').matches) {
       this.snap();
       return;
@@ -34,7 +67,7 @@ export class TranscriptFollow {
     const target = Math.max(0, this.node.scrollHeight - this.node.clientHeight);
     const distance = target - this.node.scrollTop;
     // Settle tiny residual offsets without a long animation tail.
-    if (Math.abs(distance) < 4) {
+    if (distance < 4 || (this.previous && now - this.previous > 250)) {
       this.node.scrollTop = target;
       this.written = this.node.scrollTop;
       this.frame = 0;

@@ -181,6 +181,25 @@ export function decodeNativeMessages(value: unknown): ConversationMessage[] {
       id: identity(data.row_id),
       timestamp: timestamp(data.timestamp),
       reactions: decodeMessageReactions(metadata?.reactions),
+      ...(data.shared_files !== undefined
+        ? {
+            files: rows(data.shared_files).map((value) => {
+              const file = record(value);
+              if (
+                typeof file.id !== 'string' ||
+                !/^[A-Za-z0-9_-]{43}$/.test(file.id) ||
+                typeof file.name !== 'string' ||
+                !file.name ||
+                file.name.length > 255 ||
+                typeof file.size !== 'number' ||
+                !Number.isSafeInteger(file.size) ||
+                file.size < 0
+              )
+                throw new ClientError('INVALID_RESPONSE');
+              return { id: file.id, name: file.name, size: file.size };
+            }),
+          }
+        : {}),
       ...(data.role === 'tool'
         ? {
             toolName: boundedText(data.name ?? data.tool_name, 512) || 'Tool',

@@ -54,7 +54,11 @@ export function decodeWorkCatalog(value: unknown) {
   return {
     workspaceId: text(data.workspace_id, 128),
     boards: list(data.boards, decodeBoard),
-    capabilities: { editDetails: capabilities.edit_details },
+    capabilities: {
+      editDetails: capabilities.edit_details,
+      plans: capabilities.plans === true,
+      proactive: capabilities.proactive === true,
+    },
     unlinkedProjects: list(data.unlinked_projects, (value) => {
       const project = record(value);
       return { id: text(project.id, 128), name: text(project.name) };

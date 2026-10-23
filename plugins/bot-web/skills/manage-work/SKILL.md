@@ -52,3 +52,39 @@ schedules stay with the agent; they are not a project board or Tasks setting.
 
 If project links conflict, show the existing board and ask for repair. Never
 silently merge projects, adopt an ambiguous catalog or delete a partial board.
+
+
+## Plans and project goals
+
+`work.plans` takes `workspace_id` and returns the current strategic Plans graph,
+its integer `revision`, and linked native boards. Plans guide priorities; saving
+one never creates tasks, queues work or changes an agent's SOUL or reporting.
+
+The current Main Pebble may maintain Plans and project goals for the owner. Ask
+before unsolicited changes; a clear owner request already authorizes the change.
+Other pebbles read these records. Verified private exchanges and task workers can
+read complete context with `work.plans`, but cannot use it to manage the graph.
+
+`work.plan.save` takes `workspace_id`, a fresh `operation_id`,
+`expected_revision` from the graph, and `plan`:
+
+- `id`: null for a new Plan, or its existing UUID.
+- `title`, `outcome` (the intended result), `body` (supporting details).
+- `status`: active, paused, completed or archived.
+- `owner_id`: a current enrolled stable Pebble ID or null.
+- `parent_id`: an existing Plan UUID or null; cycles are rejected.
+- `crew_ids`: current contributing Crew IDs.
+- `boards`: exact `{catalog_id, project_id, slug}` references returned by
+  `work.plans`; names and ambient board selections are insufficient.
+
+`work.board.outcome.save` takes the same workspace, operation and revision, plus
+`outcome: {board: <exact reference>, outcome: <goal text>, crew_ids: [...]}`.
+This is separate from the native project's description/instructions. A board is
+a project board, not a container for unrelated projects. Crew purposes and their
+manager coordinate contributions without changing reporting lines.
+
+Read a completed `work.receipt` before confirming a save. On STALE_REVISION,
+read the current graph, reconcile the owner's requested change, and use a new
+operation ID for the revised payload. Never reuse one ID for different fields or
+revisions. Proactive onboarding is owner opt-in and uses native Hermes cron; use
+ordinary chat to review or adjust routines later, not a task board.

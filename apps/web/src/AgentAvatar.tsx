@@ -33,6 +33,7 @@ export function AgentAvatar({
   profile,
   large = false,
   revision,
+  animated = true,
 }: {
   id: string;
   look: Appearance;
@@ -44,6 +45,7 @@ export function AgentAvatar({
   profile?: string;
   large?: boolean;
   revision?: number | undefined;
+  animated?: boolean;
 }) {
   const host = useRef<HTMLSpanElement>(null);
   const view = useRef<AvatarView | undefined>(undefined);
@@ -73,11 +75,7 @@ export function AgentAvatar({
   const image = look.kind === 'photo' ? photo || savedPhoto : '';
   useEffect(() => {
     if (!host.current || look.kind !== 'shape') return;
-    const scheduler = acquire();
     const motion = matchMedia('(prefers-reduced-motion: reduce)');
-    const update = () => scheduler.configure(true, motion.matches);
-    update();
-    motion.addEventListener('change', update);
     const avatar = new AvatarView(
       id,
       SHAPES.includes(look.shape) ? look.shape : 'pebble',
@@ -88,6 +86,17 @@ export function AgentAvatar({
     );
     view.current = avatar;
     host.current.append(avatar.svg);
+    if (!animated) {
+      avatar.render(0, true);
+      return () => {
+        avatar.svg.remove();
+        view.current = undefined;
+      };
+    }
+    const scheduler = acquire();
+    const update = () => scheduler.configure(true, motion.matches);
+    update();
+    motion.addEventListener('change', update);
     scheduler.add(avatar);
     const root =
       host.current.closest('.pebble-row,.pinned-tile') ??
@@ -103,7 +112,7 @@ export function AgentAvatar({
       motion.removeEventListener('change', update);
       release();
     };
-  }, [id, look.kind, look.shape, look.color, orchestrator, large]);
+  }, [id, look.kind, look.shape, look.color, orchestrator, large, animated]);
   useEffect(() => {
     if (view.current && clock) {
       view.current.setState(state, clock.clock);

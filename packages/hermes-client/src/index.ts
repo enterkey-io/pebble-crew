@@ -26,3 +26,6 @@ export type {
 export * from './exchanges';
 
 export type { SessionClient, RpcPort } from './session-client';
+
+export * from './plans-domain';
+export * from './proactive-domain';

@@ -306,3 +306,21 @@ it('reads the native room decision envelope without mistaking expired approval f
     }).decide(target, 'once'),
   ).toBe('resolved');
 });
+
+it('keeps verified uploaded Markdown cards separate from owner-authored message text', () => {
+  const files = ['a', 'b', 'c'].map((letter) => ({
+    id: letter.repeat(43),
+    name: `${letter}.md`,
+    size: 42,
+  }));
+  const messages = decodeNativeMessages([
+    { role: 'user', row_id: 17, text: 'Use these references.', shared_files: files },
+  ]);
+  expect(messages[0]?.text).toBe('Use these references.');
+  expect(messages[0]?.files).toEqual(files);
+  expect(() =>
+    decodeNativeMessages([
+      { role: 'user', text: '', shared_files: [{ ...files[0], id: '../private' }] },
+    ]),
+  ).toThrow();
+});

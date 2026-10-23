@@ -55,7 +55,6 @@ def create_app(token, origins, hosts, gateway=None, trust=None, workspace=None, 
     native = gateway or NativeGateway()
     ops = BotOperations(native)
     from .live_voice import LiveVoice, supported as live_voice_supported
-    voice = LiveVoice(ops)
     from .attachments import GeneratedMedia
     media = GeneratedMedia(ops)
     if workspace is None and gateway is None:
@@ -68,6 +67,7 @@ def create_app(token, origins, hosts, gateway=None, trust=None, workspace=None, 
         from .attachments import AttachmentStore
         state_path = Path(workspace.store.db.execute('PRAGMA database_list').fetchone()[2])
         files = AttachmentStore(state_path.parent / 'files')
+    voice = LiveVoice(ops, workspace.store if workspace else None)
     clients = {}
     from .connection import NativeHealth, Subscription, reclaimable
     health = NativeHealth(native)
@@ -431,6 +431,9 @@ def create_app(token, origins, hosts, gateway=None, trust=None, workspace=None, 
                     if params.pop('reporting_version', None) != 1:
                         raise InvalidOperation('Refresh Pebble Crew before editing reporting relationships', 'UPDATE_REQUIRED')
                 result = await (workspace.invoke(operation, params) if workspace and workspace.handles(operation) else ops.invoke(operation, params))
+            if files and operation in {'bot.open', 'chat.snapshot', 'chat.history'} and isinstance(result, dict) and isinstance(result.get('messages'), list):
+                sid = result.get('session_id') if operation == 'bot.open' else params.get('session_id')
+                result = {**result, 'messages': await files.present(ops, client['principal'], sid, result['messages'])}
             return {"result": result}
         except (TypeError, KeyError, ValueError) as error:
             raise InvalidOperation("Invalid operation values") from error

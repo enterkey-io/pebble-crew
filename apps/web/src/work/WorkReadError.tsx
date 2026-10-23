@@ -40,7 +40,7 @@ export function WorkReadError({
   onReconnect,
 }: {
   error: ClientError;
-  subject: 'this board' | 'project boards';
+  subject: 'this board' | 'project boards' | 'plans';
   retained?: boolean;
   onRetry: () => void;
   onReconnect: () => void;

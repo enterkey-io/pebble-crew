@@ -127,6 +127,15 @@ class AttachmentStore:
             raise
         return self.row(file_id, principal, target)
 
+    async def present(self, ops, principal, session_id, messages):
+        from .attachment_presentation import project_message, REFERENCE
+        if not any(row.get('role') == 'user' and isinstance(row.get('text'), str) and REFERENCE.search(row['text']) for row in messages):
+            return messages
+        target = await self.target(ops, session_id)
+        rows = self.db.execute("SELECT id,name,size FROM files WHERE principal=? AND profile=? AND incarnation=? AND canonical=? AND state IN ('sent','uncertain')", (principal, *target)).fetchall()
+        files = [dict(zip(('id', 'name', 'size'), row)) for row in rows]
+        return [project_message(row, files) for row in messages]
+
     async def invoke(self, ops, principal, operation, params):
         fields(params, ['session_id', 'id'] if operation in {'files.remove', 'files.read'} else ['session_id'])
         target = await self.target(ops, params['session_id'])

@@ -31,7 +31,9 @@ export function WorkspaceSettings({
   callActive = false,
   voiceRequest,
   onVoiceReady,
+  onProactive,
 }: {
+  onProactive?: (() => void) | undefined;
   initialAgentTab?: 'identity' | 'voice';
   callActive?: boolean;
   voiceRequest?: import('./voice/decode').VoiceSettingsRequest | undefined;
@@ -166,7 +168,7 @@ export function WorkspaceSettings({
         </Notice>
       )}
       <LoadingBar active={loading} label="Loading Settings" />
-      {tab === 'general' && <GeneralSettings />}
+      {tab === 'general' && <GeneralSettings onProactive={onProactive} />}
       {tab === 'account' && owner && <OwnerAccount />}
       {tab === 'requests' && !loading && (
         <>

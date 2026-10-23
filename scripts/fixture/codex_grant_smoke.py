@@ -125,7 +125,19 @@ async def exercise(home):
         assert (home / 'auth.json').read_text() == json.dumps(pool)
         assert 'synthetic-refresh' not in json.dumps([description, rotated, changed, broken, missing, pooled])
     finally:
+        # Record only this disposable gateway's descendants before their parent exits.
+        import psutil
+        descendants = psutil.Process(gateway.process.pid).children(recursive=True) if gateway.process and gateway.process.returncode is None else []
         await gateway.stop()
+        _, alive = await asyncio.to_thread(psutil.wait_procs, descendants, timeout=3)
+        for child in alive:
+            try: child.terminate()
+            except psutil.NoSuchProcess: pass
+        _, alive = await asyncio.to_thread(psutil.wait_procs, alive, timeout=3)
+        for child in alive:
+            try: child.kill()
+            except psutil.NoSuchProcess: pass
+        await asyncio.to_thread(psutil.wait_procs, alive, timeout=3)
     print(json.dumps({'shared_codex_grant': 'pass', 'native_refresh_source_and_rotation': 'pass', 'model_calls': 0, 'provider_calls': 0}))
 
 

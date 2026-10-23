@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react';
 import { motion } from 'motion/react';
 import { useTaskMovement } from './use-task-movement';
 import { workMoveStatuses } from '@hermes-client/protocol';
@@ -45,7 +46,9 @@ export function WorkArea({
   refresh,
   connected,
   onReconnect,
+  goal,
 }: {
+  goal?: ReactNode;
   client: SessionClient;
   workspace: WorkspaceSnapshot;
   catalog: WorkCatalog;
@@ -93,6 +96,7 @@ export function WorkArea({
         description={summary?.description}
         onNavigate={onNavigate}
       >
+        {goal}
         {summary?.mapping === 'linked' && (
           <IconButton
             quiet

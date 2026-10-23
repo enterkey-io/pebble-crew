@@ -407,3 +407,51 @@ test('the owner can change a Crew manager and purpose without changing reporting
   await showRail(page);
   await expect(crew.locator('.pc-crew-member').first().getByRole('button')).toContainText('Mica');
 });
+
+test('Crew portraits show more actual members with a single animated foreground face', async ({
+  page,
+  context,
+}, info) => {
+  const organization = org();
+  organization.crews[0]!.members = Array.from({ length: 8 }, (_, index) => `identity-${index}`);
+  await installFixture(context, { organization });
+  await page.goto('/');
+  await expect(page.getByLabel('Message', { exact: true })).toBeEnabled();
+  await showRail(page);
+  const portrait = page.locator('[data-crew-id=studio] .pc-crew-faces').filter({ visible: true });
+  await expect(portrait).toHaveAttribute('aria-label', '8 members');
+  await expect(portrait.locator(':scope > [data-member]')).toHaveCount(5);
+  await expect(portrait.locator('small')).toHaveText('+3');
+  await expect(portrait.locator('[data-member="0"] svg.avatar')).toHaveAttribute(
+    'data-motion',
+    'animated',
+  );
+  for (let index = 1; index < 5; index++)
+    await expect(portrait.locator(`[data-member="${index}"] svg.avatar`)).toHaveAttribute(
+      'data-motion',
+      'static',
+    );
+  await expect(portrait).toBeInViewport({ ratio: 1 });
+  const geometry = await portrait.evaluate((node) => {
+    const box = node.getBoundingClientRect();
+    return Array.from(node.querySelectorAll(':scope > [data-member]')).map((face) => {
+      const rect = face.getBoundingClientRect();
+      return {
+        x: rect.x - box.x,
+        right: rect.right - box.x,
+        bottom: rect.bottom - box.y,
+        width: box.width,
+        height: box.height,
+      };
+    });
+  });
+  for (const face of geometry) {
+    expect(face.x).toBeGreaterThanOrEqual(-0.1);
+    expect(face.right).toBeLessThanOrEqual(face.width + 0.1);
+    expect(face.bottom).toBeLessThanOrEqual(face.height + 1);
+  }
+  await page.screenshot({
+    path: info.outputPath('crew-layered-portrait.png'),
+    animations: 'disabled',
+  });
+});
