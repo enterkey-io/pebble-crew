@@ -4,12 +4,21 @@ Track owner reports here through implementation, verification and release. A
 published fix is separate from updating and verifying the owner's installation.
 New reports receive a stable ID; later work updates the existing entry.
 
-## Current implementation reports
+## 0.7.12-preview.1 coordination and chat
 
-- **PC-136 — Crew group portraits:** show up to five actual members, with smaller static background faces and one live foreground face. Share this portrait across sidebar, header and inspector. Implemented; desktop/phone visual verification pending.
+| ID     | Report                                                     | Change and verification                                                                                                                                                                                                                                                                           |
+| ------ | ---------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| PC-134 | Returning from another app scrolls a settled conversation  | TranscriptFollow suspends hidden/blurred movement and restores latest/manual position without catch-up animation. Real-frame desktop, iPhone and Android journeys pass.                                                                                                                           |
+| PC-135 | Three Markdown uploads expand into the owner's chat bubble | The authenticated upload projection returns caption and file metadata without rewriting native history or model input. The real three-file native send, completion and reload pass; the localhost model separately verifies every document arrived. Desktop and phone screenshots were inspected. |
+| PC-136 | Crew portraits show only two bot icons                     | One shared portrait shows up to five actual members, smaller static background faces, one animated foreground and the remaining count. Production desktop/iPhone/Android geometry and screenshots pass.                                                                                           |
 
-- PC-134: returning from another app animates the transcript despite no new messages. Investigating viewport suspension and focus restoration.
-- PC-135: attaching three Markdown files exposes the expanded file contents in the owner's message bubble. The bridge now projects verified upload references into attachment metadata before returning history. Native model content and persisted history remain intact. Verification in progress.
+Crew managers, full shared purpose, Plans/project goals and optional proactive
+setup are implemented in the owner-local plugin. Plans use reviewed conflict and
+receipt recovery; native cron setup is opt-in and model-free. Current and legacy
+native acceptance verify actual worker and routine delivery to existing Bot Chat.
+The final archive passes installation, host-first update, restart recovery,
+explicit rollback and failed activation. CI and publication are tracked in PR #11;
+upgrading the owner's installation remains a separate action.
 
 ## Additional reports under investigation
 
