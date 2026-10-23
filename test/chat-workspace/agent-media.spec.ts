@@ -186,3 +186,37 @@ test('Library includes older agent-shared photos and documents and reuses author
       .getByRole('heading', { name: 'Older plan', exact: true }),
   ).toBeVisible();
 });
+
+test('Library bounds the initial scan of a long text-only history and continues on demand', async ({
+  page,
+  context,
+}) => {
+  await installFixture(context);
+  let catalogs = 0;
+  await context.route('https://hermes.fixture.invalid/v1/rpc', async (route) => {
+    const { operation } = route.request().postDataJSON();
+    if (operation !== 'media.list') return route.fallback();
+    catalogs++;
+    await route.fulfill({ json: { result: { files: [], next: 'page-' + catalogs } } });
+  });
+  await page.goto('/');
+  await expect(page.getByLabel('Message', { exact: true })).toBeEnabled();
+  expect(catalogs).toBe(0);
+  await page.getByRole('button', { name: /Show details/ }).click();
+  const details = page.locator('.details-panel');
+  await details.getByRole('tab', { name: 'Library', exact: true }).click();
+  await expect(
+    details.getByRole('progressbar', { name: 'Loading Library', exact: true }),
+  ).toHaveCount(0);
+  await expect(details.getByRole('button', { name: 'Load more', exact: true })).toBeVisible();
+  expect(catalogs).toBe(3);
+  await details.getByRole('button', { name: 'Load more', exact: true }).click();
+  await expect(
+    details.getByRole('progressbar', { name: 'Loading Library', exact: true }),
+  ).toHaveCount(0);
+  expect(catalogs).toBe(4);
+  await details.getByRole('tab', { name: 'Routines', exact: true }).click();
+  await page.waitForTimeout(250);
+  expect(catalogs).toBe(4);
+  await expect(page.getByRole('alert')).toHaveCount(0);
+});

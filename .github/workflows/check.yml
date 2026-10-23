@@ -105,6 +105,7 @@ jobs:
           echo "HERMES_NATIVE_ROOT=$GITHUB_WORKSPACE/native-hermes" >> "$GITHUB_ENV"
           echo "HERMES_NATIVE_PYTHON=$RUNNER_TEMP/hermes-ui-env/bin/python" >> "$GITHUB_ENV"
       - run: python scripts/fixture/connection_smoke.py
+      - run: python scripts/fixture/attribution_smoke.py
       - run: python scripts/fixture/codex_grant_smoke.py
       - run: python scripts/fixture/model_grant_smoke.py
       - run: python scripts/fixture/voice_preferences_smoke.py
@@ -159,6 +160,7 @@ jobs:
       - run: '"$RUNNER_TEMP/hermes-legacy-env/bin/python" scripts/fixture/codex_grant_smoke.py'
       - run: '"$RUNNER_TEMP/hermes-legacy-env/bin/python" scripts/fixture/model_grant_smoke.py'
       - run: '"$RUNNER_TEMP/hermes-legacy-env/bin/python" scripts/fixture/connection_smoke.py'
+      - run: '"$RUNNER_TEMP/hermes-legacy-env/bin/python" scripts/fixture/attribution_smoke.py'
       - run: '"$RUNNER_TEMP/hermes-legacy-env/bin/python" scripts/fixture/reactions_smoke.py'
       - run: '"$RUNNER_TEMP/hermes-legacy-env/bin/python" scripts/fixture/busy_send_smoke.py'
       - run: '"$RUNNER_TEMP/hermes-legacy-env/bin/python" scripts/fixture/media_smoke.py'

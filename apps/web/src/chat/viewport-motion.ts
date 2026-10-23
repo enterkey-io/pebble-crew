@@ -4,6 +4,7 @@ export class TranscriptFollow {
   private previous = 0;
   private written = 0;
   private suspended = false;
+  private pausedTop = 0;
   private resumeFrame = 0;
   constructor(readonly node: HTMLElement) {}
 
@@ -12,7 +13,8 @@ export class TranscriptFollow {
   }
   get ownsScroll() {
     return (
-      (this.active || this.resumeFrame !== 0) && Math.abs(this.node.scrollTop - this.written) < 1
+      this.suspended ||
+      ((this.active || this.resumeFrame !== 0) && Math.abs(this.node.scrollTop - this.written) < 1)
     );
   }
   cancel() {
@@ -21,6 +23,8 @@ export class TranscriptFollow {
     this.previous = 0;
   }
   pause() {
+    if (this.suspended) return;
+    this.pausedTop = this.node.scrollTop;
     this.suspended = true;
     this.cancel();
     cancelAnimationFrame(this.resumeFrame);
@@ -28,19 +32,28 @@ export class TranscriptFollow {
   }
   resume(follow: boolean) {
     if (!this.suspended || this.resumeFrame) return;
-    if (!follow) {
-      this.suspended = false;
-      return;
-    }
-    this.snap();
+    const restore = () => {
+      if (follow) this.snap();
+      else {
+        this.node.scrollTop = this.pausedTop;
+        this.written = this.node.scrollTop;
+      }
+    };
+    restore();
     this.resumeFrame = requestAnimationFrame(() => {
-      this.snap();
+      restore();
       this.resumeFrame = requestAnimationFrame(() => {
-        this.snap();
+        restore();
         this.resumeFrame = 0;
         this.suspended = false;
       });
     });
+  }
+  interrupt() {
+    this.cancel();
+    cancelAnimationFrame(this.resumeFrame);
+    this.resumeFrame = 0;
+    this.suspended = false;
   }
   dispose() {
     this.cancel();

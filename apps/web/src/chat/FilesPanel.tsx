@@ -13,6 +13,7 @@ import { documentFormat } from '@hermes-client/protocol';
 import { useDocumentActions } from '../documents/DocumentReader';
 import { Dialog } from '../components/ui/dialog';
 const ImageViewer = lazy(() => import('../components/ui/image-viewer'));
+const INITIAL_MEDIA_PAGES = 3;
 type Generated = Awaited<ReturnType<ConversationDomain['mediaPage']>>['files'][number];
 type LibraryItem = { kind: 'upload'; file: SharedFile } | { kind: 'generated'; file: Generated };
 const key = (item: LibraryItem) =>
@@ -59,13 +60,15 @@ export function FilesPanel({
     async function generated() {
       const files: LibraryItem[] = [];
       let next: string | null = null;
+      let pages = 0;
       if (client.supportsGeneratedMedia)
         do {
           const page = await domain.mediaPage(sessionId, next);
+          pages++;
           if (generation.current !== epoch) return { files, next: null };
           files.push(...page.files.map((file) => ({ kind: 'generated' as const, file })));
           next = page.next;
-        } while (next && files.length < 20);
+        } while (next && files.length < 20 && pages < INITIAL_MEDIA_PAGES);
       return { files, next };
     }
     async function load() {

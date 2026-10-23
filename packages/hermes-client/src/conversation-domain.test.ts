@@ -324,3 +324,63 @@ it('keeps verified uploaded Markdown cards separate from owner-authored message 
     ]),
   ).toThrow();
 });
+
+it('keeps native process completion and automation out of owner-authored messages', () => {
+  const history = decodeHistory({
+    messages: [
+      { role: 'user', row_id: 1, text: 'Actual owner question' },
+      {
+        role: 'user',
+        row_id: 2,
+        text: 'PRIVATE_PROCESS_OUTPUT',
+        display_kind: 'process_complete',
+        display_metadata: { display_text: 'Background process finished' },
+      },
+      { role: 'user', row_id: 3, text: 'PRIVATE_WAKE', display_kind: 'internal_notification' },
+      { role: 'assistant', row_id: 4, text: 'Actual assistant answer' },
+      { role: 'user', row_id: 5, text: 'PRIVATE_HIDDEN', display_kind: 'hidden' },
+      { role: 'user', row_id: 6, text: 'PRIVATE_FUTURE', display_kind: 'future_automation' },
+      {
+        role: 'user',
+        row_id: 7,
+        text: '[IMPORTANT: Background process is what I want to discuss]',
+      },
+      { role: 'user', row_id: 8, text: 'My correction', display_kind: 'steer' },
+    ],
+  });
+  expect(history.coverage).toEqual({ count: 8, maxRow: 8 });
+  expect(history.messages.filter((m) => m.role === 'user').map((m) => m.id)).toEqual([
+    '1',
+    '7',
+    '8',
+  ]);
+  expect(history.messages.find((m) => m.id === '2')).toMatchObject({
+    role: 'tool',
+    toolName: 'process',
+    text: '',
+    context: 'Background process finished',
+  });
+  expect(JSON.stringify(history)).not.toContain('PRIVATE_');
+});
+
+it('does not turn queued or live machinery inputs into restored owner corrections', () => {
+  const value = decodeBotConversation({
+    session_id: 'native',
+    messages: [],
+    running: true,
+    inflight: {
+      assistant: 'Working',
+      user_display_kind: 'process_complete',
+      corrections: ['PRIVATE_WAKE'],
+    },
+    deferred_prompts: [
+      { text: 'PRIVATE_QUEUED', display_kind: 'hidden' },
+      { text: 'PRIVATE_QUEUED', display_kind: 'process_complete' },
+      { text: 'Actual queued owner message', row_id: 8 },
+    ],
+  });
+  expect(value.inflight).toBe('Working');
+  expect(value.corrections).toEqual([]);
+  expect(value.deferred).toEqual([{ text: 'Actual queued owner message', rowId: '8' }]);
+  expect(JSON.stringify(value)).not.toContain('PRIVATE_');
+});

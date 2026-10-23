@@ -85,7 +85,7 @@
   transition: background-color var(--motion-hover);
 }
 .pc-row[data-unread] {
-  padding-right: 18px;
+  padding-right: 30px;
 }
 .pc-row:hover,
 .pc-row.is-selected {
