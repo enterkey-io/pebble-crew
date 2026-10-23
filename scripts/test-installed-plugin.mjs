@@ -195,7 +195,8 @@ try {
     errors = [];
   let connects = 0,
     eventStreams = 0,
-    recoverableOwner = false;
+    recoverableOwner = false,
+    firstConnectionMetadata;
   const traffic = [];
   page.on('response', (response) => {
     const path = new URL(response.url()).pathname;
@@ -206,9 +207,7 @@ try {
     }
     if (response.status() === 200 && path === '/v1/connect' && method === 'POST') {
       connects++;
-      void response.json().then((data) => {
-        recoverableOwner = data.capabilities?.connection_recovery === 1;
-      });
+      firstConnectionMetadata ??= response.json().catch(() => null);
     }
     if (response.status() === 200 && path === '/v1/events') eventStreams++;
   });
@@ -262,6 +261,9 @@ try {
   await page.getByRole('button', { name: 'Start chatting', exact: true }).click();
   const message = page.getByLabel('Message', { exact: true });
   await expect(message).toBeEnabled();
+  const initialHandshake = await firstConnectionMetadata;
+  expect(initialHandshake).toBeTruthy();
+  recoverableOwner = initialHandshake.capabilities?.connection_recovery === 1;
   await message.fill('/');
   await expect(page.getByRole('option').filter({ hasText: '/model' }).first()).toBeVisible();
   await message.fill('/model');
@@ -365,6 +367,7 @@ try {
     );
     await page.reload();
     expect((await (await handshake).json()).capabilities.connection_recovery).toBe(1);
+    recoverableOwner = true;
     await expect(message).toBeEnabled();
     await expect(page.getByText('Native fixture reply', { exact: true }).last()).toBeVisible();
     const metadata = await page.request.get(origin + '/version.json');
