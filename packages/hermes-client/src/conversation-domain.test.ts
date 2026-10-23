@@ -370,7 +370,7 @@ it('does not turn queued or live machinery inputs into restored owner correction
     running: true,
     inflight: {
       assistant: 'Working',
-      user_display_kind: 'process_complete',
+      display_kind: 'process_complete',
       corrections: ['PRIVATE_WAKE'],
     },
     deferred_prompts: [

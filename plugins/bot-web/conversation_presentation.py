@@ -36,6 +36,9 @@ def project_result(method, result):
     projected = dict(result)
     if isinstance(result.get('inflight'), dict):
         projected['inflight'] = {key: value for key, value in result['inflight'].items() if key != 'user'}
+        if method != 'bot_web.conversation.snapshot':
+            projected['inflight'].update(corrections=[], correction_offsets=[])
+            projected.pop('correction_row_ids', None)
     if isinstance(result.get('messages'), list):
         projected['messages'] = [project_message(row) for row in result['messages']]
     return projected

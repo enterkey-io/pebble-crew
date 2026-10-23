@@ -126,12 +126,15 @@ def register(source):
             candidate = staged if isinstance(staged, dict) else (
                 messages[start] if isinstance(messages, list) and type(start) is int
                 and 0 <= start < len(messages) else None)
+            live = result.get('inflight') or {}
+            corrections = live.get('corrections') or []
+            offsets = live.get('correction_offsets') or []
+            result.pop('correction_row_ids', None)
+            if result.get('inflight') is not None:
+                result['inflight'] = {**live, 'corrections': [], 'correction_offsets': []}
             if isinstance(candidate, dict) and not owner_input(candidate):
                 # A native notification starts a model turn, not an owner turn.
                 result.pop('active_user_row_id', None)
-                result.pop('correction_row_ids', None)
-                if isinstance(result.get('inflight'), dict):
-                    result['inflight'] = {**result['inflight'], 'corrections': [], 'correction_offsets': []}
             # A structural native cursor selects the row. Text only verifies
             # that cursor, and a row in the pre-turn prefix cannot be current.
             prefix = {row.get('_row_id') for row in session.get('history', [])
@@ -149,14 +152,12 @@ def register(source):
                     anchor = next((index for index, row in enumerate(messages)
                                    if row.get('_row_id') == candidate['_row_id']), None)
                     if anchor is not None:
-                        corrections = (result.get('inflight') or {}).get('corrections') or []
                         users = [row for row in messages[anchor + 1:] if row.get('role') == 'user']
                         if len(users) == len(corrections) and all(
                                 server._inflight_text(row.get('content')) == corrections[index]
                                 for index, row in enumerate(users)):
                             admitted = [(index, row) for index, row in enumerate(users) if owner_input(row)]
                             live = result.get('inflight') or {}
-                            offsets = live.get('correction_offsets') or []
                             result['inflight'] = {**live,
                                 'corrections': [corrections[index] for index, _ in admitted],
                                 'correction_offsets': [offsets[index] for index, _ in admitted] if len(offsets) == len(corrections) else []}

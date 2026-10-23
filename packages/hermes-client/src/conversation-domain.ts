@@ -561,8 +561,7 @@ export function decodeBotConversation(value: unknown): BotConversation {
   const inflight = optionalRecord(data.inflight);
   const assistant = boundedText(inflight?.assistant);
   const corrections =
-    ownerInput({ display_kind: inflight?.user_display_kind }) &&
-    Array.isArray(inflight?.corrections)
+    ownerInput({ display_kind: inflight?.display_kind }) && Array.isArray(inflight?.corrections)
       ? rows(inflight.corrections)
           .slice(0, 128)
           .map((value) => boundedText(value, 16000))
