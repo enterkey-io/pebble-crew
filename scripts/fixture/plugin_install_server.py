@@ -81,7 +81,8 @@ def main():
     (home / '.env').write_text('# Synthetic fixture only\n')
     (home / 'SOUL.md').write_text('You are the existing synthetic Aurora personality.\n')
     soul_digest = hashlib.sha256((home / 'SOUL.md').read_bytes()).hexdigest()
-    for name in ('alpha', 'beta', 'gamma'):
+    upgrade_profiles = ('alpha', 'beta', 'gamma', 'alina', 'delta', 'epsilon', 'zeta', 'eta', 'theta')
+    for name in upgrade_profiles:
         profile = create_profile(name, no_alias=True, no_skills=True)
         (profile / 'config.yaml').write_text(config)
         (profile / 'SOUL.md').write_text(f'You are the existing synthetic {name} personality.\n')
@@ -246,27 +247,30 @@ def main():
                 elif self.path == '/contract-upgrade':
                     assert args.previous_archive, 'This journey requires the actual pinned previous release'
                     turns = Model.turns
-                    rpc('agent.enable', {'profile': 'alpha', 'initialize_chat': True})
+                    for profile in upgrade_profiles:
+                        rpc('agent.enable', {'profile': profile, 'initialize_chat': True})
                     from hermes_cli.profiles import get_profile_dir
                     named = Path(get_profile_dir('alpha')) / 'plugins/bot-web'
                     old_runtime = tool_marker(named)
                     before = cli('runtime-status')
-                    assert before['active_host']['runtime']['contract'] == 'workspace-runtime-v1'
+                    assert before['active_host']['runtime']['contract'] == json.loads((initial_plugin / 'runtime-contract.json').read_text())['contract']
+                    checks['upgrade_starts_with_ten_enrolled_previous_runtimes'] = len(before['profiles']) == 10
+                    assert checks['upgrade_starts_with_ten_enrolled_previous_runtimes']
                     protected = {p: hashlib.sha256(p.read_bytes()).hexdigest()
-                        for profile in ('default', 'alpha', 'beta', 'gamma')
+                        for profile in ('default', *upgrade_profiles)
                         for name in ('SOUL.md', '.env', 'config.yaml', 'profile.yaml', '.pebble-crew-identity')
                         if (p := Path(get_profile_dir(profile)) / name).is_file()}
                     plugin.rename(directory / 'previous-plugin-backup')
                     shutil.copytree(unpack / 'bot-web', plugin)
                     refused = cli('sync-runtime', '--source-package', '--native-idle', expect_failure=True)
-                    checks['v1_host_refuses_new_runtime_sync_without_touching_runtime'] = (
+                    checks['previous_host_refuses_incompatible_runtime_sync_without_writes'] = (
                         'update first' in refused.stderr and tool_marker(named) == old_runtime
                         and json.loads((state / 'install.json').read_text())['active_release'] == active)
-                    assert checks['v1_host_refuses_new_runtime_sync_without_touching_runtime'], refused.stderr
+                    assert checks['previous_host_refuses_incompatible_runtime_sync_without_writes'], refused.stderr
                     cli('update')
                     current = json.loads((state / 'install.json').read_text())['active_release']
                     transition = cli('runtime-status')
-                    checks['actual_preview15_host_activates_candidate_with_v1_copies'] = (
+                    checks['previous_host_activates_candidate_with_previous_runtime_copies'] = (
                         current != active and transition['active_host']['runtime']['contract'] == json.loads((plugin/'runtime-contract.json').read_text())['contract']
                         and tool_marker(named) == old_runtime)
                     synced = cli('sync-runtime', '--native-idle')

@@ -363,13 +363,13 @@ try {
     expect((await metadata.json()).tag).toBe(
       JSON.parse(await readFile('release.json', 'utf8')).tag,
     );
-    checks.actual_preview15_upgrade_serves_candidate_version = true;
-    checks.actual_preview15_upgrade_preserves_login_and_native_history = true;
+    checks.actual_previous_release_upgrade_serves_candidate_version = true;
+    checks.actual_previous_release_upgrade_preserves_login_and_native_history = true;
     await expect(page.locator('.pc-rail-footer .personal-avatar img')).toHaveAttribute(
       'src',
       accountImage,
     );
-    checks.actual_preview15_upgrade_preserves_account_photo = true;
+    checks.actual_previous_release_upgrade_preserves_account_photo = true;
     console.log('Actual preview.15 to candidate host-first upgrade passed.');
     await exerciseRestarts(true);
   }
