@@ -76,7 +76,7 @@ def save_preferences(voice, complete):
     return actual
 
 
-def create_session(sdp, name, preview, history=None):
+def create_session(sdp, name, preview, history=None, coordination=""):
     from tools import voice_live as native
     source = resolve_source()
     key, base = source['key'], source['base']
@@ -91,6 +91,8 @@ def create_session(sdp, name, preview, history=None):
         'You are Hermes, a calm and friendly voice assistant.',
         f'You are the speaking voice of {name}, the selected Hermes agent.', 1)
     session['instructions'] = without_pebble_delivery(session['instructions'])
+    if coordination and not preview:
+        session['instructions'] += '\n' + coordination
     if preview:
         session['instructions'] = 'This is a short voice preview. Read the supplied sample once, then wait silently. Do not delegate or ask questions.'
         session['input'] = []
@@ -140,8 +142,9 @@ def create_session(sdp, name, preview, history=None):
 
 
 class LiveVoice:
-    def __init__(self, ops):
+    def __init__(self, ops, workspace=None):
         self.ops = ops
+        self.workspace = workspace
         self.inflight = set()
         self.calls = {}
 
@@ -202,6 +205,8 @@ class LiveVoice:
                 history.insert(0, {'type': 'message', 'role': row['role'], 'content': [{'type': 'output_text' if row['role'] == 'assistant' else 'input_text', 'text': text}]})
         bot = await self.ops.bot(profile)
         name = self.ops.summary(bot)['name']
+        from .coordination import voice_context
+        coordination = voice_context(self.workspace, profile) if self.workspace and operation == 'voice.session' and params.get('preview') is False else ''
         def execute():
             from hermes_cli.web_server_profiles import _config_profile_scope
             with _CONFIG, _config_profile_scope(profile):
@@ -222,7 +227,7 @@ class LiveVoice:
                 sdp = params['sdp']
                 if not isinstance(sdp, str) or not sdp.startswith('v=0') or len(sdp) > 48_000 or type(params['preview']) is not bool:
                     raise ValueError('Invalid voice offer')
-                return create_session(sdp, name, params['preview'], history)
+                return create_session(sdp, name, params['preview'], history, coordination)
         self.inflight.add(sid)
         try:
             result = await asyncio.to_thread(execute)

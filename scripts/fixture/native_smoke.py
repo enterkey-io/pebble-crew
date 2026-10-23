@@ -114,6 +114,11 @@ class Model(BaseHTTPRequestHandler):
             (output / 'sample-video.mp4').write_bytes((Path(__file__).resolve().parents[2] / 'test/fixtures/sample-video.mp4').read_bytes())
             text = 'Here are the results.\n\n![Project chart](<' + str(output / 'chart one.png') + '>)\n\n[Download figures](<' + str(output / 'figures.csv') + '>)'
             text += '\n\n[Project clip](<' + str(output / 'sample-video.mp4') + '>)'
+        if 'nativethreedocuments' in str(latest_user.get('content')):
+            content = str(latest_user.get('content'))
+            assert all(f'PRIVATE_REFERENCE_DOCUMENT_{i}' in content for i in range(3)), 'Three uploaded documents did not reach native model context'
+            assert '--- Attached Context ---' in content, 'Native Markdown expansion was not exercised'
+            text = 'Three reference documents received by Hermes.'
         tools = data.get("tools", [])
         tool_names = {t.get('function', {}).get('name') for t in tools}
         def can_call(name):

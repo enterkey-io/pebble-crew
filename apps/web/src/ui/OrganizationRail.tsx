@@ -1,17 +1,10 @@
+import { CrewFaces } from './CrewFaces';
 import { DiscardChanges } from './DiscardChanges';
 import { Form } from '../components/ui/form';
 import { useEffect, useState } from 'react';
 import type { Dispatch, DragEvent, ReactNode, SetStateAction } from 'react';
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
-import {
-  ChevronDown,
-  Pin,
-  Plus,
-  SlidersHorizontal,
-  Users,
-  Flag,
-  CornerUpRight,
-} from 'lucide-react';
+import { ChevronDown, Pin, Plus, SlidersHorizontal, Flag, CornerUpRight } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { NavigationItem } from './NavigationItem';
 import { UnreadDot } from './UnreadDot';
@@ -209,7 +202,7 @@ export function OrganizationRail({
   onChange: ChangeOrganization;
   pebbles: RailPebble[];
   activeId: string;
-  face: (id: string) => ReactNode;
+  face: (id: string, large?: boolean, animated?: boolean) => ReactNode;
   onOpenPebble: (id: string) => void;
   onOpenCrew: (id: string) => void;
   onEditPebble: (id: string) => void;
@@ -516,15 +509,10 @@ export function OrganizationRail({
               aria-label={`${crew.name} ${crew.members.length} pebbles. Open chat`}
               onClick={() => onOpenCrew(id)}
               media={
-                <span className="pc-crew-faces">
-                  {crew.members.length ? (
-                    crew.members
-                      .slice(0, 2)
-                      .map((member) => <span key={member}>{face(member)}</span>)
-                  ) : (
-                    <Users />
-                  )}
-                </span>
+                <CrewFaces
+                  members={crewMembers(crew)}
+                  face={(id, animated) => face(id, false, animated)}
+                />
               }
             />
           </div>

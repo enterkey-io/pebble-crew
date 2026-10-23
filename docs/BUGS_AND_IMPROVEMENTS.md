@@ -4,6 +4,13 @@ Track owner reports here through implementation, verification and release. A
 published fix is separate from updating and verifying the owner's installation.
 New reports receive a stable ID; later work updates the existing entry.
 
+## Current implementation reports
+
+- **PC-136 — Crew group portraits:** show up to five actual members, with smaller static background faces and one live foreground face. Share this portrait across sidebar, header and inspector. Implemented; desktop/phone visual verification pending.
+
+- PC-134: returning from another app animates the transcript despite no new messages. Investigating viewport suspension and focus restoration.
+- PC-135: attaching three Markdown files exposes the expanded file contents in the owner's message bubble. The bridge now projects verified upload references into attachment metadata before returning history. Native model content and persisted history remain intact. Verification in progress.
+
 ## Additional reports under investigation
 
 | ID     | Report                                                                                                                 | Status                                                                                                                                                                                                                                                                                                                                                |

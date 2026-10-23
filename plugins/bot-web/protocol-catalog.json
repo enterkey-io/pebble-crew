@@ -837,6 +837,62 @@
         "rpc"
       ],
       "effect": "read"
+    },
+    "work.plans": {
+      "preferred": "rpc",
+      "accepted": [
+        "rpc"
+      ],
+      "effect": "read"
+    },
+    "work.plan.save": {
+      "preferred": "rpc",
+      "accepted": [
+        "rpc"
+      ],
+      "effect": "read"
+    },
+    "work.board.outcome.save": {
+      "preferred": "rpc",
+      "accepted": [
+        "rpc"
+      ],
+      "effect": "read"
+    },
+    "work.proactive.status": {
+      "preferred": "rpc",
+      "accepted": [
+        "rpc"
+      ],
+      "effect": "read"
+    },
+    "work.proactive.suggest": {
+      "preferred": "rpc",
+      "accepted": [
+        "rpc"
+      ],
+      "effect": "read"
+    },
+    "work.proactive.enable": {
+      "preferred": "rpc",
+      "accepted": [
+        "rpc"
+      ],
+      "effect": "read"
+    },
+    "work.proactive.skip": {
+      "preferred": "rpc",
+      "accepted": [
+        "rpc"
+      ],
+      "effect": "read"
+    },
+    "work.proactive.receipt": {
+      "preferred": "rpc",
+      "accepted": [
+        "rpc"
+      ],
+      "effect": "read"
     }
   }
 }

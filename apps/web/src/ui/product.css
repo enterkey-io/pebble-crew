@@ -676,29 +676,6 @@
 .search-status.error {
   color: var(--destructive);
 }
-.crew-stack {
-  position: relative;
-  width: 44px;
-  height: 44px;
-  flex-shrink: 0;
-  display: inline-block;
-}
-.crew-stack > span {
-  position: absolute;
-  width: 30px;
-  height: 32px;
-}
-.crew-stack .agent-avatar {
-  width: 30px;
-  height: 32px;
-}
-.crew-stack > small {
-  position: absolute;
-  right: -4px;
-  bottom: -3px;
-  color: var(--muted-foreground);
-  font-size: 10px;
-}
 .unread-dot {
   width: 10px;
   height: 10px;

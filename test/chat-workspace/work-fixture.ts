@@ -1,7 +1,10 @@
 import type { BrowserContext } from '@playwright/test';
 import { installFixture } from './fixtures';
 
-export async function installWorkFixture(context: BrowserContext) {
+export async function installWorkFixture(
+  context: BrowserContext,
+  options: { coordination?: boolean } = {},
+) {
   const workspace = await installFixture(context, { projects: true });
   let revision = 1;
   const nextRevision = () => (++revision).toString(16).padStart(64, '0');
@@ -70,7 +73,11 @@ export async function installWorkFixture(context: BrowserContext) {
         json: {
           result: {
             workspace_id: workspace.state.id,
-            capabilities: { edit_details: true },
+            capabilities: {
+              edit_details: true,
+              plans: !!options.coordination,
+              proactive: !!options.coordination,
+            },
             boards,
             unlinked_projects: [],
           },
@@ -261,6 +268,7 @@ export async function installWorkFixture(context: BrowserContext) {
     return route.fulfill({ json: { result } });
   });
   return {
+    workspace: workspace.state,
     boards,
     tasks,
     calls,

@@ -7,9 +7,11 @@ from pathlib import Path
 from .operations import InvalidOperation, fields, identifier
 from .work_native import NativeWork, task_revision
 from .work_store import WorkStore, fingerprint, operation_id
+from .plans import Plans, PLAN_OPERATIONS
+from .proactive import Proactive, PROACTIVE_OPERATIONS
 
 
-OPERATIONS = {'work.describe', 'work.board', 'work.task', 'work.receipt',
+OPERATIONS = {'work.proactive.receipt', 'work.proactive.status', 'work.proactive.suggest', 'work.proactive.enable', 'work.proactive.skip', 'work.plans', 'work.plan.save', 'work.board.outcome.save', 'work.describe', 'work.board', 'work.task', 'work.receipt',
     'work.project.create', 'work.project.update', 'work.task.create', 'work.task.update', 'work.task.comment', 'work.task.move'}
 
 
@@ -36,6 +38,8 @@ class WorkService:
     def invoke(self, operation, params, actor='owner'):
         if operation not in OPERATIONS or not isinstance(params, dict):
             raise InvalidOperation('Work operation unavailable')
+        if operation in PROACTIVE_OPERATIONS:
+            return Proactive(self.workspace, self.store).invoke(operation, params, actor)
         with self.store.locked():
             state = self.workspace.read()
             if not state.get('initialized'):
@@ -44,14 +48,16 @@ class WorkService:
                 fields(params, [])
             elif params.get('workspace_id') != state['id']:
                 raise InvalidOperation('This project belongs to a different workspace')
-            bot = self.store.catalog(state)
-            # A stable identity survives a Main Pebble transfer or native rename,
-            # while a removed/recreated profile must never inherit the catalog.
-            from hermes_cli.profiles import get_profile_dir
-            from .search_native import identity
-            if identity(Path(get_profile_dir(bot['profile']))) != bot.get('native_incarnation'):
-                raise InvalidOperation('The project catalog profile identity changed', 'REQUIRES_SETUP')
-            native = self.native_factory(bot['profile'])
+            if operation == 'work.receipt':
+                fields(params, ['workspace_id', 'operation_id'])
+                return self.store.receipt(params['operation_id'], actor)
+            if operation in PLAN_OPERATIONS:
+                def references():
+                    identity, native = self.catalog_native(state)
+                    with native.scoped():
+                        return identity, self.describe(state, native)
+                return Plans(self.workspace, self.store, references).invoke(operation, params, actor)
+            _, native = self.catalog_native(state)
             with native.scoped():
                 catalog = self.describe(state, native)
                 if operation == 'work.describe':
@@ -80,6 +86,16 @@ class WorkService:
                     raise InvalidOperation('This board’s project links need repair in Hermes before changes can be saved', 'REQUIRES_SETUP')
                 return self.mutate_task(native, state, board, operation, params, actor)
 
+    def catalog_native(self, state):
+        bot = self.store.catalog(state)
+        # A stable identity survives a Main Pebble transfer or native rename,
+        # while a removed/recreated profile must never inherit the catalog.
+        from hermes_cli.profiles import get_profile_dir
+        from .search_native import identity
+        if identity(Path(get_profile_dir(bot['profile']))) != bot.get('native_incarnation'):
+            raise InvalidOperation('The project catalog profile identity changed', 'REQUIRES_SETUP')
+        return bot['id'], self.native_factory(bot['profile'])
+
     def describe(self, state, native):
         projects = native.list_projects()
         boards = native.list_boards()
@@ -97,7 +113,7 @@ class WorkService:
                 'description': (project.get('description') if linked else board.get('description')) or '',
                 'mapping': mapping, 'count': int(board.get('total', 0)),
                 'revision': fingerprint(project if linked else {k: board.get(k) for k in ('slug', 'name', 'description', 'project_id')})})
-        return {'workspace_id': state['id'], 'capabilities': {'edit_details': native.edit_details},
+        return {'workspace_id': state['id'], 'capabilities': {'edit_details': native.edit_details, 'plans': True, 'proactive': True},
             'boards': items, 'unlinked_projects': [
                 {'id': p['id'], 'name': p['name']} for p in projects
                 if not any(b['project_id'] == p['id'] and b['mapping'] == 'linked' for b in items)]}
@@ -293,6 +309,10 @@ def execute(operation, params, actor='owner'):
 
 def register_native():
     from tui_gateway import server
+    # Discovery can wait on a configured MCP server. Keep the native RPC reader available.
+    if not isinstance(getattr(server, '_LONG_HANDLERS', None), (set, frozenset)):
+        raise RuntimeError('Native concurrent RPC registration is unavailable')
+    server._LONG_HANDLERS = server._LONG_HANDLERS | {'bot_web.work'}
     def invoke(rid, params):
         try:
             fields(params, ['operation', 'params'])
@@ -327,13 +347,31 @@ def register_runtime(ctx):
         import os
         store = None
         try:
-            if os.environ.get('HERMES_KANBAN_TASK'):
-                raise InvalidOperation('Use your task-scoped native Kanban tools in a worker session')
             fields(args, ['operation', 'params'])
             store = WorkspaceStore(workspace_path())
-            profile = caller(store, session_id)
+            if os.environ.get('HERMES_KANBAN_TASK'):
+                from agent.delegation_context import is_dispatcher_owned_worker_context
+                from .coordination import worker_profile
+                if not is_dispatcher_owned_worker_context() or not worker_profile(store) or args['operation'] != 'work.plans':
+                    raise InvalidOperation('Use task-scoped native Kanban tools; only work.plans is available here for strategic context')
+                from .plans import runtime_snapshot
+                return json.dumps(runtime_snapshot(store, args['params']), ensure_ascii=False)
+            profile = caller(store, session_id, allow_exchange=True)
             if not profile:
                 raise InvalidOperation('Use work tools from your current Pebble Crew conversation')
+            from .exchanges import Exchanges
+            ledger = Exchanges(store)
+            try:
+                private = ledger.scope(session_id, profile)
+            finally:
+                ledger.close()
+            if private:
+                if args['operation'] != 'work.plans':
+                    raise InvalidOperation('Only read-only Plan context is available in a private exchange')
+                from .plans import runtime_snapshot
+                return json.dumps(runtime_snapshot(store, args['params']), ensure_ascii=False)
+            if not caller(store, session_id):
+                raise InvalidOperation('Use work tools from your current owner conversation')
             actor = store.read()['bots'][profile]['id']
             return json.dumps(execute(args['operation'], args['params'], actor), ensure_ascii=False)
         except InvalidOperation as error:
@@ -344,13 +382,15 @@ def register_runtime(ctx):
             if store:
                 store.db.close()
     ctx.register_tool(name='workspace_work', toolset='workspace',
-        description='Use native project boards and tasks. Describe first. Each project gets its own board; General tasks is for unfiled work. Tasks default to Triage. Explicit creation status or work.task.move to todo/ready queues assigned work with the native dispatcher. Read native events, comments and worker reports for progress.',
+        description='Use native project boards, tasks and owner-local Plans/outcomes. work.plans reads strategic goals; work.plan.save and work.board.outcome.save require the current Main identity. Ask before unsolicited goal changes; a clear owner request authorizes them. Saving goals never starts tasks. Describe first. Each project gets its own board; General tasks is for unfiled work. Tasks default to Triage. Explicit creation status or work.task.move to todo/ready queues assigned work with the native dispatcher. Read native events, comments and worker reports for progress.',
         schema={'name': 'workspace_work', 'description': 'Read bot-web:manage-work. work.describe provides workspace and explicit board references. Use a stable UUID operation_id for retries. Confirm completion from a receipt, never from a queued or uncertain response. Only explicit creation status or work.task.move to todo/ready starts the native queue. Comments @mention enrolled handles to notify their existing conversation.',
             'parameters': {'type': 'object', 'additionalProperties': False, 'required': ['operation', 'params'],
-                'properties': {'operation': {'type': 'string', 'enum': sorted(OPERATIONS)},
+                'properties': {'operation': {'type': 'string', 'enum': sorted(OPERATIONS - PROACTIVE_OPERATIONS)},
                     'params': {'type': 'object', 'additionalProperties': False, 'properties': {
-                        **{key: {'type': 'string'} for key in ('workspace_id', 'operation_id', 'board', 'id', 'project_id', 'expected_revision', 'name', 'description', 'title', 'body', 'status')},
+                        **{key: {'type': 'string'} for key in ('workspace_id', 'operation_id', 'board', 'id', 'plan_id', 'project_id', 'expected_revision', 'name', 'description', 'title', 'body', 'status')},
                         'assignee': {'type': ['string', 'null'], 'description': 'Exact enrolled Hermes profile name, or null for unassigned.'},
+                        'expected_revision': {'type': ['string', 'integer']},
+                        'plan': {'type': 'object'}, 'outcome': {'type': 'object'},
                         'priority': {'type': 'integer', 'description': 'Normal 0, low -1, high 1, urgent 2.'}}}}}}, handler=tool)
     ctx.register_skill('manage-work', Path(__file__).with_name('skills') / 'manage-work' / 'SKILL.md',
         description='Create separate native project boards and manage scoped tasks safely, with explicit task movement and comment mentions.')
@@ -362,11 +402,16 @@ def worker_reporting(**_kwargs):
     from agent.delegation_context import is_dispatcher_owned_worker_context
     if not os.environ.get('HERMES_KANBAN_TASK') or not is_dispatcher_owned_worker_context():
         return None
+    from .coordination import worker_context
+    try:
+        coordination = worker_context()
+    except Exception:
+        coordination = ''
     return {'context': 'Pebble Crew task reporting: use kanban_show to read the task and existing comments before work. '
         'Leave a concise kanban_comment(task_id=<your native task id>, body=...) with your approach, meaningful progress, blockers and verified result so other agents and the owner can follow the work. '
         'Use native kanban_complete/kanban_block/kanban_request_review with a concrete summary; a final chat reply alone does not finish the task. '
         'If the deliverable is a message to the owner, put the exact message in your completion summary/result for delivery to their existing Bot Chat. '
-        'Do not claim a message was sent unless you used a delivery tool and verified it. Never mark unfinished work complete.'}
+        'Do not claim a message was sent unless you used a delivery tool and verified it. Never mark unfinished work complete.' + coordination}
 
 
 def guard_native_create(tool_name=None, args=None, next_call=None, **_kwargs):

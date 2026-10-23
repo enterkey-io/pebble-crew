@@ -21,3 +21,6 @@ PyYAML==6.0.3
 
 websockets==15.0.1
 markdown-it-py==4.2.0
+
+# Real synthetic MCP discovery acceptance; optional in owner Hermes installations.
+mcp==1.30.0

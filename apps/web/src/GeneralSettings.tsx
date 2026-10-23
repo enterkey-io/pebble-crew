@@ -1,3 +1,4 @@
+import { Button } from './components/ui/button';
 import { Monitor, Moon, Sun } from 'lucide-react';
 import { Label } from './components/ui/label';
 import {
@@ -10,7 +11,7 @@ import {
 import { Item, ItemContent, ItemTitle, ItemDescription, ItemActions } from './components/ui/item';
 import { useAppearance } from './ui/AppearanceProvider';
 
-export function GeneralSettings() {
+export function GeneralSettings({ onProactive }: { onProactive?: (() => void) | undefined }) {
   const { mode, setMode } = useAppearance();
   return (
     <section aria-label="General settings">
@@ -48,6 +49,19 @@ export function GeneralSettings() {
           </Select>
         </ItemActions>
       </Item>
+      {onProactive && (
+        <Item className="flex-nowrap px-0">
+          <ItemContent>
+            <ItemTitle>Proactive help</ItemTitle>
+            <ItemDescription>Choose routines for your Main Pebble.</ItemDescription>
+          </ItemContent>
+          <ItemActions>
+            <Button variant="secondary" onClick={onProactive}>
+              Set up
+            </Button>
+          </ItemActions>
+        </Item>
+      )}
     </section>
   );
 }

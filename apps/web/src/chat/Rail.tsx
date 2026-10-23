@@ -1,3 +1,6 @@
+import { Target } from 'lucide-react';
+import { Users } from 'lucide-react';
+import { CrewFaces } from '../ui/CrewFaces';
 import { useId } from 'react';
 import { PebbleTile } from '../ui/PebbleTile';
 import { Button } from '../components/ui/button';
@@ -50,6 +53,7 @@ export function PebbleAvatar({
   large,
   unread = false,
   mainBadge = true,
+  animated = true,
 }: {
   bot: ChatBot;
   workspace?: WorkspaceState | undefined;
@@ -58,10 +62,12 @@ export function PebbleAvatar({
   large?: boolean | undefined;
   unread?: boolean;
   mainBadge?: boolean;
+  animated?: boolean;
 }) {
   const identity = workspace?.bots.find((b) => b.profile === bot.profile);
   return identity ? (
     <AgentAvatar
+      animated={animated}
       id={identity.id}
       profile={bot.profile}
       client={client}
@@ -92,28 +98,24 @@ export function CrewAvatar({
     )
     .map((p) => (p === 'hermes' ? 'default' : p));
   return (
-    <span className="crew-stack" aria-label={`${members.length} members`}>
-      {profiles.slice(0, 3).map((profile, i) => {
-        const b = workspace?.bots.find((b) => b.profile === profile);
-        return (
-          <span key={`${profile}-${i}`} style={{ left: `${i * 9}px`, top: `${(i % 2) * 12}px` }}>
-            {b ? (
-              <AgentAvatar
-                id={b.id}
-                look={b.appearance}
-                client={client}
-                profile={profile}
-                revision={workspace?.revision}
-              />
-            ) : (
-              <span className="crew-member-placeholder">{i + 1}</span>
-            )}
-          </span>
+    <CrewFaces
+      members={profiles}
+      face={(profile, animated) => {
+        const bot = workspace?.bots.find((b) => b.profile === profile);
+        return bot ? (
+          <AgentAvatar
+            id={bot.id}
+            look={bot.appearance}
+            client={client}
+            profile={profile}
+            revision={workspace?.revision}
+            animated={animated}
+          />
+        ) : (
+          <Users aria-hidden="true" />
         );
-      })}
-      {!members.length && <span className="crew-member-placeholder">#</span>}
-      {members.length > 3 && <small>+{members.length - 3}</small>}
-    </span>
+      }}
+    />
   );
 }
 
@@ -214,7 +216,7 @@ export function Rail({
     });
   const byId = (id: string) => all.find((b) => identity(b)?.id === id);
   const railId = useId();
-  const face = (id: string, large = false) => {
+  const face = (id: string, large = false, animated = true) => {
     const bot = byId(id);
     return bot ? (
       <PebbleAvatar
@@ -224,6 +226,7 @@ export function Rail({
         state={states[bot.profile]}
         large={large}
         unread={large}
+        animated={animated}
       />
     ) : null;
   };
@@ -305,6 +308,15 @@ export function Rail({
       <div className="pc-rail-scroll rail-scroll">
         {area === 'tasks' ? (
           <nav aria-label="Project boards" className="grid content-start gap-1">
+            {catalog?.capabilities.plans && (
+              <NavigationItem
+                className="min-h-12 px-3 mb-3"
+                title="Plans"
+                media={<Target className="size-4 text-muted-foreground" />}
+                aria-current={selectedBoard === '$plans' ? 'page' : undefined}
+                onClick={() => onBoard('$plans')}
+              />
+            )}
             {catalog?.boards.map((board) => (
               <NavigationItem
                 key={board.slug}

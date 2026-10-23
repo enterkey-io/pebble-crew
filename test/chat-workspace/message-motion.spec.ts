@@ -116,3 +116,45 @@ test('reduced motion settles at the latest message without an entrance', async (
     .evaluate((node) => node.scrollHeight - node.clientHeight - node.scrollTop);
   expect(Math.abs(distance)).toBeLessThan(2);
 });
+
+test('returning to a settled conversation does not replay its scroll; scrolled-up readers stay put', async ({
+  page,
+  context,
+}, info) => {
+  await installFixture(context);
+  await page.goto('/');
+  await expect(page.getByLabel('Message', { exact: true })).toBeEnabled();
+  const pane = page.getByRole('log');
+  await expect
+    .poll(() =>
+      pane.evaluate((node) => Math.abs(node.scrollHeight - node.clientHeight - node.scrollTop)),
+    )
+    .toBeLessThan(2);
+  const away = await context.newPage();
+  for (const scrolledUp of [false, true]) {
+    await page.bringToFront();
+    if (scrolledUp)
+      await pane.evaluate((node) => {
+        node.scrollTop = 100;
+        node.dispatchEvent(new Event('scroll'));
+      });
+    const before = await pane.evaluate((node) => node.scrollTop);
+    await away.bringToFront();
+    await page.evaluate(() => window.dispatchEvent(new Event('blur')));
+    await page.waitForTimeout(300);
+    await recordFrames(page);
+    await page.bringToFront();
+    await page.evaluate(() => window.dispatchEvent(new Event('focus')));
+    const frames = await readFrames(page);
+    expect(Math.max(...frames.map((frame) => Math.abs(frame.top - before)))).toBeLessThan(2);
+    await info.attach(scrolledUp ? 'resume-scrolled-up-frames' : 'resume-latest-frames', {
+      body: JSON.stringify(frames),
+      contentType: 'application/json',
+    });
+  }
+  await away.close();
+  await page.screenshot({
+    path: info.outputPath('resume-scroll-settled.png'),
+    animations: 'disabled',
+  });
+});

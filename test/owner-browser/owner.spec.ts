@@ -154,6 +154,9 @@ test('private first use, native onboarding, idle keepalive and reconnection', as
   // Accelerated timers diverge from Web Animations' clock. Real-frame browser journeys verify motion.
   await page.emulateMedia({ reducedMotion: 'reduce' });
   await page.getByRole('button', { name: 'Start chatting', exact: true }).click();
+  const proactive = page.getByRole('dialog', { name: 'Proactive help', exact: true });
+  await expect(proactive).toBeVisible();
+  await proactive.getByRole('button', { name: 'Not now', exact: true }).click();
   await expect(page.getByLabel('Message', { exact: true })).toBeEnabled({ timeout: 30000 });
   const sessionCookie = (await context.cookies()).find((c) => c.name.includes('session_token'));
   expect(sessionCookie).toMatchObject({ httpOnly: true, secure: true, sameSite: 'Strict' });
@@ -185,6 +188,54 @@ test('private first use, native onboarding, idle keepalive and reconnection', as
   );
   expectNoChatSends(signals);
   ownerCookies = await context.cookies();
+});
+
+test('three Markdown uploads stay attachment cards across native completion and reload', async ({
+  page,
+  context,
+}, info) => {
+  await context.addCookies(ownerCookies);
+  await page.goto('/');
+  const field = page.getByLabel('Message', { exact: true });
+  await expect(field).toBeEnabled();
+  await page.getByRole('button', { name: /^Aurora .*Bot Chat$/ }).click();
+  const documents = [0, 1, 2].map((index) => ({
+    name: `reference ${index}.md`,
+    mimeType: 'text/markdown',
+    buffer: Buffer.from(`# Reference ${index}\n\nPRIVATE_REFERENCE_DOCUMENT_${index}`),
+  }));
+  await page.getByLabel('Choose attachments').setInputFiles(documents);
+  await expect(page.locator('.attachment-chips li')).toHaveCount(3);
+  await field.fill('nativethreedocuments: use these as reference.');
+  await page.getByRole('button', { name: 'Send message', exact: true }).click();
+  await expect(page.getByRole('log')).toContainText(
+    'Three reference documents received by Hermes.',
+    { timeout: 60000 },
+  );
+  async function assertClean() {
+    const message = page
+      .locator('[data-message-role="user"]')
+      .filter({ hasText: 'nativethreedocuments:' });
+    await expect(message).toHaveCount(1);
+    for (const document of documents) await expect(message).toContainText(document.name);
+    await expect(message).not.toContainText('PRIVATE_REFERENCE_DOCUMENT');
+    await expect(message).not.toContainText('Attached Context');
+    await expect(message).not.toContainText('@file:');
+  }
+  await assertClean();
+  await page.reload();
+  await expect(field).toBeEnabled();
+  await assertClean();
+  await page.screenshot({
+    path: info.outputPath('three-markdown-attachments-desktop.png'),
+    animations: 'disabled',
+  });
+  await page.setViewportSize({ width: 390, height: 844 });
+  await assertClean();
+  await page.screenshot({
+    path: info.outputPath('three-markdown-attachments-phone.png'),
+    animations: 'disabled',
+  });
 });
 
 test('native private replies update durable owner history through the real live stream', async ({

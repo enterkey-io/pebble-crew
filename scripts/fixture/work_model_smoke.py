@@ -30,6 +30,9 @@ def records(value):
 
 
 class WorkModel(Model):
+    requests = 0
+    plan_operation = str(uuid.uuid4())
+    outcome_operation = str(uuid.uuid4())
     step = 0
     completed = False
     discovered = False
@@ -37,23 +40,41 @@ class WorkModel(Model):
     worker_step = 0
     worker_guided = False
     worker_completed = False
+    worker_missing_context = False
     owner_notified = False
     project_operation = str(uuid.uuid4())
     task_operation = str(uuid.uuid4())
 
     def do_POST(self):
+        WorkModel.requests += 1
         payload = self.rfile.read(int(self.headers['Content-Length']))
         data = json.loads(payload)
+        if any(str(m.get('content', '')).startswith('You name chat sessions.') for m in data.get('messages', []) if m.get('role') == 'system') and not data.get('tools'):
+            return self.respond(data, None, None, json.dumps({'title': 'Native task acceptance'}))
         user = str(next((m.get('content') for m in reversed(data.get('messages', [])) if m.get('role') == 'user'), ''))
+        if 'Synthetic proactive calendar review.' in user:
+            return self.respond(data, None, None, 'PROACTIVE_NATIVE_RESULT: Calendar review is ready.')
+        if 'PROACTIVE_NATIVE_RESULT:' in user:
+            return self.respond(data, None, None, 'Your proactive calendar brief reached this existing chat.')
         if user.startswith('work kanban task '):
+            if 'COORDINATION_GLOBAL_GOAL' not in json.dumps(data['messages']):
+                WorkModel.worker_missing_context = True
+            assert 'COORDINATION_GLOBAL_GOAL' in json.dumps(data['messages']), 'Worker did not receive the current Plan goal'
+            assert 'COORDINATION_BOARD_OUTCOME' in json.dumps(data['messages']), 'Worker did not receive the exact project goal'
+            assert 'CREW_PURPOSE_END' in json.dumps(data['messages']), 'Worker lost the full Crew purpose'
             step = WorkModel.worker_step
-            tools = ['kanban_show', 'kanban_comment', 'kanban_complete']
+            tools = ['workspace_work', 'kanban_show', 'kanban_comment', 'kanban_complete']
             name = tools[step] if step < len(tools) else None
             if name:
                 assert 'Pebble Crew task reporting:' in json.dumps(data['messages']), 'Worker did not receive the reporting protocol'
                 WorkModel.worker_guided = True
             task_id = user.split('work kanban task ', 1)[1].split()[0]
-            args = [{'task_id': task_id}, {'task_id': task_id, 'body': 'I will prepare the requested greeting and record the result.'},
+            import re
+            raw_context = '\n'.join(str(m.get('content')) for m in data['messages'])
+            workspace_id = re.search(r'"workspace_id":\s*"([^"]+)"', raw_context).group(1)
+            if step >= 1:
+                assert any('"plans"' in str(m.get('content')) for m in data['messages'] if m.get('role') == 'tool'), 'Worker could not read complete Plans through its verified read-only tool path'
+            args = [{'operation': 'work.plans', 'params': {'workspace_id': workspace_id}}, {'task_id': task_id}, {'task_id': task_id, 'body': 'I will prepare the requested greeting and record the result.'},
                 {'task_id': task_id, 'summary': 'Hello! This is the greeting you requested.', 'result': 'Hello! This is the greeting you requested.'}][step] if name else None
             names = {t['function']['name'] for t in data.get('tools', [])}
             if name and name not in names and not any('kanban_complete' in json.dumps(m.get('content')) for m in data['messages'] if m.get('role') == 'tool'):
@@ -87,7 +108,7 @@ class WorkModel(Model):
             assert 'workspace_work' not in names, 'Expected the real deferred tool path'
             name, arguments = 'tool_describe', {'names': ['workspace_work']}
         elif step == 1:
-            assert any(isinstance(v.get('tools'), dict) and 'workspace_work' in v['tools'] and 'work.project.create' in json.dumps(v) for v in values), 'Work schema never received'
+            assert any(isinstance(v.get('tools'), dict) and 'workspace_work' in v['tools'] and 'work.project.create' in json.dumps(v) for v in values), 'Work schema never received: ' + repr(history)[:3500]
             WorkModel.discovered = True
             arguments = {'operation': 'work.describe', 'params': {}}
         else:
@@ -104,11 +125,29 @@ class WorkModel(Model):
             elif step == 4:
                 task = next(v for v in values if v.get('id') == self.task_operation and v.get('state') == 'completed')
                 arguments = {'operation': 'work.task', 'params': {**scope, 'board': task['board'], 'id': task['task_id']}}
+            elif step == 5:
+                arguments = {'operation': 'work.plans', 'params': scope}
+            elif step == 6:
+                graph = next(v for v in reversed(values) if 'plans' in v and 'revision' in v)
+                board = graph['boards'][0]
+                ref = {key: board[key] for key in ('catalog_id', 'project_id', 'slug')}
+                arguments = {'operation': 'work.plan.save', 'params': {**scope, 'operation_id': self.plan_operation, 'expected_revision': graph['revision'],
+                    'plan': {'id': None, 'title': 'A shared launch goal', 'outcome': 'COORDINATION_GLOBAL_GOAL: Reach 100 customers', 'body': 'Review evidence weekly', 'status': 'active', 'owner_id': None, 'parent_id': None, 'crew_ids': [], 'boards': [ref]}}}
+            elif step == 7:
+                graph = next(v for v in reversed(values) if 'plans' in v and 'revision' in v)
+                receipt = next(v for v in reversed(values) if v.get('kind') == 'plan')
+                ref = {key: graph['boards'][0][key] for key in ('catalog_id', 'project_id', 'slug')}
+                arguments = {'operation': 'work.board.outcome.save', 'params': {**scope, 'operation_id': self.outcome_operation, 'expected_revision': receipt['revision'],
+                    'outcome': {'board': ref, 'outcome': 'COORDINATION_BOARD_OUTCOME: Prove useful delivery', 'crew_ids': []}}}
+            elif step == 8:
+                arguments = {'operation': 'work.plans', 'params': scope}
             else:
                 task = next(v['task'] for v in values if isinstance(v.get('task'), dict) and v['task'].get('title') == 'Read the originals')
                 assert task['status'] == 'triage' and task['project_id']
+                assert 'COORDINATION_GLOBAL_GOAL' in json.dumps(data['messages'])
+                assert 'CREW_PURPOSE_END' in json.dumps(data['messages'])
                 WorkModel.completed = True
-                reply = 'Native project and its triage task confirmed.'
+                reply = 'Native project, triage task and current goals confirmed.'
         if not reply and name not in names:
             wrapper = next(t['function'] for t in data['tools'] if t['function']['name'] == 'tool_call')
             nested = {'name': name, 'arguments': arguments}
@@ -150,7 +189,7 @@ async def exercise(root, home, port):
     config = yaml.safe_load((home / 'config.yaml').read_text())
     config['platform_toolsets'] = {'cli': ['terminal']}
     config['tools'] = {'tool_search': {'listing': 'off'}}
-    config['agent'].update(max_turns=10, coding_context='off')
+    config['agent'].update(max_turns=16, coding_context='off')
     (home / 'config.yaml').write_text(yaml.safe_dump(config))
     soul = home / 'SOUL.md'
     soul.write_text('SYNTHETIC_WORK_PERSONALITY: preserve this identity.\n')
@@ -167,6 +206,11 @@ async def exercise(root, home, port):
         await workspace.invoke('workspace.initialize', {'profile': primary['profile'], 'handle': 'aurora',
             'appearance': {'kind': 'shape', 'shape': 'pebble', 'color': 'iris'}, 'photo': None,
             'expected_revision': primary['revision']})
+        state = store.read()
+        members = [b['id'] for b in state['bots'].values() if b.get('enrolled') and b.get('available')]
+        await workspace.invoke('organization.save', {'expected_revision': 0, 'organization': {'schema': 2,
+            'sections': [{'id': 'pebbles', 'name': 'Pebbles', 'collapsed': False, 'items': [{'kind': 'crew', 'id': 'studio'}]}],
+            'crews': [{'id': 'studio', 'name': 'Studio', 'purpose': 'Full Crew purpose. ' * 90 + 'CREW_PURPOSE_END', 'managerId': members[0], 'members': members, 'collapsed': False}]}})
         sid = (await ops.invoke('bot.open', {'profile': primary['profile']}))['session_id']
         events = asyncio.Queue(maxsize=256)
         gateway.listeners.add(events)
@@ -234,6 +278,7 @@ async def exercise(root, home, port):
                     await asyncio.sleep(.2)
             assert outcome['task']['status'] == 'done', outcome
             assert WorkModel.worker_guided and WorkModel.worker_step >= 3
+            assert not WorkModel.worker_missing_context, 'A native worker model request was missing current coordination context'
             assert outcome['comments'] and outcome['runs'], outcome
             assert any(event['kind'] == 'completed' for event in outcome['events'])
             await deliver(workspace, gateway)
@@ -261,9 +306,54 @@ async def exercise(root, home, port):
                 except psutil.NoSuchProcess:
                     pass
             work.close()
+        from bot_web.proactive import Proactive
+        from bot_web.proactive_native import NativeProactive
+        from cron.jobs import get_job
+        from cron.scheduler import run_job, _deliver_result
+        # Discovery uses actual MCP transport, schema, native include-over-exclude policy.
+        config = yaml.safe_load((home / 'config.yaml').read_text())
+        config['mcp_servers'] = {'fixture-calendar': {'command': sys.executable,
+            'args': [str(root / 'test/fixtures/proactive-mcp.py'), str(home / 'unexpected-tool-call')],
+            'tools': {'include': ['calendar_*'], 'exclude': ['*']}}}
+        config['timezone'] = 'America/Chicago'
+        (home / 'config.yaml').write_text(yaml.safe_dump(config))
+        work = WorkService(store, workspace_path().with_name('work.sqlite'))
+        try:
+            before_setup = WorkModel.requests
+            setup = Proactive(store, work.store)
+            proposal = setup.invoke('work.proactive.suggest', {'workspace_id': store.read()['id']}, 'owner')
+            assert len(proposal['suggestions']) == 1, proposal
+            assert proposal['timezone'] == 'America/Chicago', proposal
+            request = {'workspace_id': store.read()['id'], 'proposal_id': proposal['proposal_id'], 'operation_id': str(uuid.uuid4()),
+                'template_id': 'calendar', 'prompt': 'Synthetic proactive calendar review. Read only; do not change anything.', 'time': '09:00', 'days': 'weekdays', 'timezone': proposal['timezone']}
+            saved = setup.invoke('work.proactive.enable', request, 'owner')
+            assert saved['state'] == 'completed', saved
+            assert setup.invoke('work.proactive.enable', request, 'owner') == saved
+            assert WorkModel.requests == before_setup, 'Routine setup called a model'
+            assert not (home / 'unexpected-tool-call').exists(), 'Discovery invoked a tool'
+            adapter = NativeProactive('default')
+            with adapter.scoped():
+                job = get_job(saved['job_id'])
+            assert job['schedule']['expr'] == '0 9 * * 1-5' and job['next_run_at'] and job['last_run_at'] is None
+            # Only acceptance deliberately executes this disposable routine with the localhost model.
+            def execute_routine():
+                with adapter.scoped():
+                    outcome = run_job(job)
+                    assert outcome[0], outcome[3]
+                    return _deliver_result(job, outcome[2])
+            delivery_result = await asyncio.to_thread(execute_routine)
+            assert delivery_result is None or 'queued' in delivery_result.lower() or 'unverified' in delivery_result.lower(), delivery_result
+            async with asyncio.timeout(60):
+                while True:
+                    transcript = await ops.invoke('chat.history', {'session_id': sid})
+                    if 'Your proactive calendar brief reached this existing chat.' in json.dumps(transcript):
+                        break
+                    await asyncio.sleep(.2)
+        finally:
+            work.close()
         assert soul.read_bytes() == original
         print(json.dumps({'revision': gateway.build['revision'], 'deferred_work_schema': True,
-            'saved_tool_selection': True, 'native_model_project_and_task': True, 'real_dispatcher_worker': True, 'worker_reporting_protocol': True, 'native_history': True, 'result_delivered_to_existing_bot_chat_once': True,
+            'saved_tool_selection': True, 'native_model_project_and_task': True, 'real_dispatcher_worker': True, 'worker_reporting_protocol': True, 'native_history': True, 'current_crew_and_goals_in_real_worker': True, 'native_proactive_setup_model_free': True, 'native_proactive_bot_chat_delivery': True, 'result_delivered_to_existing_bot_chat_once': True,
             'model': 'deterministic-local-only', 'persona_preserved': True, 'mention_woke_existing_bot_once': True}))
     finally:
         store.db.close()
@@ -275,7 +365,10 @@ def main():
     with tempfile.TemporaryDirectory(prefix='pebble-native-work-model-') as directory:
         home = Path(directory) / 'home'
         home.mkdir()
+        uv_cache = os.environ.get('UV_CACHE_DIR')
         os.environ.clear()
+        if uv_cache:
+            os.environ['UV_CACHE_DIR'] = uv_cache
         os.environ.update(HERMES_HOME=str(home), HERMES_KANBAN_HOME=str(home), HERMES_RUNTIME_DIR=str(Path(directory)/'runtime'),
             PATH=f'{Path(sys.executable).parent}:/usr/bin:/bin', HERMES_NO_AUTO_INSTALL='1', PYTHONUNBUFFERED='1', NO_PROXY='127.0.0.1,localhost')
         os.environ.update(isolated_user_environment(directory))
