@@ -262,11 +262,17 @@ def main():
                         if (p := Path(get_profile_dir(profile)) / name).is_file()}
                     plugin.rename(directory / 'previous-plugin-backup')
                     shutil.copytree(unpack / 'bot-web', plugin)
-                    refused = cli('sync-runtime', '--source-package', '--native-idle', expect_failure=True)
-                    checks['previous_host_refuses_incompatible_runtime_sync_without_writes'] = (
-                        'update first' in refused.stderr and tool_marker(named) == old_runtime
-                        and json.loads((state / 'install.json').read_text())['active_release'] == active)
-                    assert checks['previous_host_refuses_incompatible_runtime_sync_without_writes'], refused.stderr
+                    candidate_contract = json.loads((plugin / 'runtime-contract.json').read_text())
+                    previous_contract = before['active_host']['runtime']
+                    if (candidate_contract['contract'] not in previous_contract['accepts']
+                            or previous_contract['contract'] not in candidate_contract['accepts']):
+                        refused = cli('sync-runtime', '--source-package', '--native-idle', expect_failure=True)
+                        checks['previous_host_refuses_incompatible_runtime_sync_without_writes'] = (
+                            'update first' in refused.stderr and tool_marker(named) == old_runtime
+                            and json.loads((state / 'install.json').read_text())['active_release'] == active)
+                        assert checks['previous_host_refuses_incompatible_runtime_sync_without_writes'], refused.stderr
+                    else:
+                        checks['previous_and_candidate_runtime_contracts_mutually_accept'] = True
                     cli('update')
                     current = json.loads((state / 'install.json').read_text())['active_release']
                     transition = cli('runtime-status')
