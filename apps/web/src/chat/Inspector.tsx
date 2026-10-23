@@ -102,7 +102,7 @@ export function Inspector({
             <Tabs
               tabs={[
                 { id: 'routines', label: 'Routines' },
-                { id: 'files', label: 'Files' },
+                { id: 'files', label: 'Library' },
                 ...(computer ? [{ id: 'computer', label: 'Computer' }] : []),
               ]}
               value={tab}
@@ -111,19 +111,20 @@ export function Inspector({
               {tab === 'computer' ? (
                 <ComputerPanel client={client} profile={bot.profile} name={bot.name} />
               ) : tab === 'files' ? (
-                client.supportsAttachments ? (
+                client.supportsAttachments || client.supportsGeneratedMedia ? (
                   sessionId ? (
                     <FilesPanel
+                      key={sessionId}
                       client={client}
                       sessionId={sessionId}
                       version={filesVersion}
                       focusId={target?.tab === 'files' ? target.id : undefined}
                     />
                   ) : (
-                    <LoadingBar active label="Loading files" />
+                    <LoadingBar active label="Loading Library" />
                   )
                 ) : (
-                  <p className="empty-note">Files aren’t available on this connection.</p>
+                  <p className="empty-note">Library isn’t available on this connection.</p>
                 )
               ) : (
                 <div className="routine-list">

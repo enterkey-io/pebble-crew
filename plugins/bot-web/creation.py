@@ -12,6 +12,9 @@ async def create(service, params, state):
         raise InvalidOperation('Choose a new profile name')
     if params['expected_revision'] != state['revision'] or not state['initialized']:
         raise InvalidOperation('Workspace changed. Ask for a new request.', 'STALE_REVISION')
+    incomplete = service.store.incomplete_creations(exclude=getattr(service, '_creation_request', None))
+    if name in incomplete or None in incomplete:
+        raise InvalidOperation('An earlier creation is unconfirmed. Inspect it before creating another profile.')
     display_name = bounded(params['display_name'], 80, False)
     soul, role = bounded(params['soul'], 12000, False), normalize_role(params['role'])
     if params['model_source'] != 'default':
@@ -26,6 +29,7 @@ async def create(service, params, state):
         raise InvalidOperation('Choose an enrolled manager and existing team')
     if not isinstance(params['skills'], list) or params['skills'] or not isinstance(params['toolsets'], list) or not params['toolsets'] or any(t not in {'workspace', 'skills'} for t in params['toolsets']):
         raise InvalidOperation('Fresh bots start with reviewed workspace/skills tools only; attach other installed resources separately')
+    manager_id = state['bots'].get(params['manager'], {}).get('id')
     request_id = getattr(service, '_creation_request', None)
     if request_id is None:
         request_id, status = service.store.request('owner', 'agent.create', params)
@@ -71,6 +75,8 @@ async def create(service, params, state):
         stage('chat_initialized')
         await service.sync()
         state = service.store.read()
+        if state['bots'].get(params['manager'], {}).get('id') != manager_id:
+            raise InvalidOperation('Manager identity changed during setup; inspect the created profile.')
         from .reporting import assign
         assign(state, name, params['manager'])
         state['bots'][name].update(enrolled=True, team=params['team'], role=role)

@@ -561,6 +561,8 @@ def main():
         try:
             if args.serve:
                 asyncio.run(exercise(root, home, model.server_port, seed_only=True))
+                if args.owner_trust:
+                    (Path(args.owner_trust).parent / 'native-home.txt').write_text(str(home))
                 from bot_web.server import create_app
                 import uvicorn
                 if args.diagnostics:

@@ -136,22 +136,18 @@
   gap: 8px;
   margin-bottom: 10px;
 }
-.jump-latest,
-.approval-nudge {
+.jump-latest {
   position: absolute;
   left: 50%;
   translate: -50% 0;
-  bottom: 100px;
+  bottom: calc(100% + 8px);
   border-radius: 20px;
   padding: 8px 14px;
   background: var(--popover);
   font-size: 12px;
   box-shadow: 0 4px 20px #0005;
 }
-.approval-nudge {
-  bottom: 144px;
-  color: var(--ring);
-}
+
 .error,
 .upload-error {
   color: var(--destructive);

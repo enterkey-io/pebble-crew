@@ -43,8 +43,17 @@ async def exercise(root, home, port):
             message = db.append_message(canonical, 'assistant', f'![Chart](<{picture}>)\n\nMEDIA:"{picture}"\n\n![File URI]({picture.as_uri()})\n\n**File**\nMEDIA:{document}')
             user = db.append_message(canonical, 'user', f'![Not agent output](<{picture}>)')
             private = db.append_message(canonical, 'assistant', f'[Private config]({profile_home / "config.yaml"})')
+            for number in range(40): db.append_message(canonical, 'assistant', 'Text without media ' + str(number))
             db.close()
             sid = (await ops.invoke('bot.open', {'profile': profile}))['session_id']
+            page = await media.list({'session_id': sid, 'cursor': None})
+            listed = list(page['files'])
+            while page['next']:
+                page = await media.list({'session_id': sid, 'cursor': page['next']})
+                listed.extend(page['files'])
+            assert {item['name'] for item in listed} == {'chart one.png', 'figures.csv'}, listed
+            assert all(item['row_id'] == message for item in listed), listed
+            assert next(item for item in listed if item['name'] == 'figures.csv')['size'] == len(document_bytes)
             params = {'session_id': sid, 'row_id': message, 'reference': reference_key(str(picture))}
             blob, name, mime = await media.read(params)
             assert (blob, name, mime) == (picture.read_bytes(), 'chart one.png', 'image/png')

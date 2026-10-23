@@ -533,7 +533,29 @@ export async function installFixture(
       result = { state: 'accepted' };
     }
     if (operation === 'workspace.describe') result = state;
-    if (operation === 'requests.list') result = { requests };
+    if (operation === 'media.list') result = { files: [], next: null };
+    if (operation === 'requests.list')
+      result = params.view
+        ? {
+            requests: requests.filter((row) =>
+              params.view === 'pending' ? row.state === 'pending' : row.state !== 'pending',
+            ),
+            generation: 1,
+            next: null,
+            restart: false,
+          }
+        : { requests };
+    if (operation === 'requests.get')
+      result = { request: requests.find((row) => row.id === params.id) ?? null };
+    if (operation === 'requests.review')
+      result = {
+        kind: 'ready',
+        digest: 'fixture-review',
+        legacy: false,
+        current_context: false,
+        manager: null,
+        manager_identity: null,
+      };
     if (operation === 'presentation.read') {
       read.set(params.key, Math.max(read.get(params.key) ?? 0, params.cursor));
       const bot = state.bots.find((b) => b.read_key === params.key);
@@ -566,8 +588,11 @@ export async function installFixture(
       result = { row_id: params.row_id, reactions: next };
     }
     if (operation === 'chat.approvals') result = { approvals };
-    if (operation === 'chat.approve')
+    if (operation === 'chat.approve') {
+      const count = approvals.length;
       approvals = approvals.filter((a) => a.request_id !== params.request_id);
+      result = { resolved: count - approvals.length };
+    }
     if (operation === 'routines.list') result = { jobs: routines };
     if (operation === 'routines.set_enabled') {
       routines = routines.map((r) => ({ ...r, enabled: params.enabled }));

@@ -32,9 +32,9 @@ test('details uses an edit icon and keeps the Files tab selected through reconne
   await expect(edit.locator('svg')).toHaveCount(1);
   await expect(edit).toHaveText('');
   await expect(details.getByText('Edit pebble', { exact: true })).toHaveCount(0);
-  const files = details.getByRole('tab', { name: 'Files', exact: true });
+  const files = details.getByRole('tab', { name: 'Library', exact: true });
   await files.click();
-  await expect(details.getByText('No files shared here yet.', { exact: true })).toBeVisible();
+  await expect(details.getByText('Nothing shared here yet.', { exact: true })).toBeVisible();
   const beforeReconnect = connections;
   await page.evaluate(() =>
     (window as unknown as { __expireConnection: () => void }).__expireConnection(),
@@ -42,7 +42,7 @@ test('details uses an edit icon and keeps the Files tab selected through reconne
   await expect.poll(() => connections).toBeGreaterThan(beforeReconnect);
   await expect(page.locator('.connection-status')).toHaveAttribute('data-online', 'true');
   await expect(files).toHaveAttribute('aria-selected', 'true');
-  await expect(details.getByText('No files shared here yet.', { exact: true })).toBeVisible();
+  await expect(details.getByText('Nothing shared here yet.', { exact: true })).toBeVisible();
   await expect(details.getByRole('alert')).toHaveCount(0);
   expect(fileErrors).toEqual([]);
   await page.mouse.move(0, 0);
@@ -87,16 +87,16 @@ test('a failed file load offers retry without claiming the conversation has no f
   await expect(page.getByLabel('Message', { exact: true })).toBeEnabled();
   await page.getByRole('button', { name: /Show details/ }).click();
   const details = page.locator('.details-panel');
-  await details.getByRole('tab', { name: 'Files', exact: true }).click();
-  await expect(details.getByRole('alert')).toContainText('Files could not be loaded.');
-  await expect(details.getByText('No files shared here yet.', { exact: true })).toHaveCount(0);
+  await details.getByRole('tab', { name: 'Library', exact: true }).click();
+  await expect(details.getByRole('alert')).toContainText('Uploaded files could not be loaded.');
+  await expect(details.getByText('Nothing shared here yet.', { exact: true })).toHaveCount(0);
   fail = false;
   await details.getByRole('button', { name: 'Try again', exact: true }).click();
-  await expect(details.getByText('No files shared here yet.', { exact: true })).toBeVisible();
+  await expect(details.getByText('Nothing shared here yet.', { exact: true })).toBeVisible();
   await expect(details.getByRole('alert')).toHaveCount(0);
 });
 
-test('Files stays discoverable when the connection cannot provide attachments', async ({
+test('Library still provides agent media when owner uploads are unavailable', async ({
   page,
   context,
 }, info) => {
@@ -110,8 +110,8 @@ test('Files stays discoverable when the connection cannot provide attachments', 
   await expect(page.getByLabel('Message', { exact: true })).toBeEnabled();
   await page.getByRole('button', { name: /Show details/ }).click();
   const details = page.locator('.details-panel');
-  await details.getByRole('tab', { name: 'Files', exact: true }).click();
-  await expect(details.getByText('Files aren’t available on this connection.')).toBeVisible();
+  await details.getByRole('tab', { name: 'Library', exact: true }).click();
+  await expect(details.getByText('Nothing shared here yet.', { exact: true })).toBeVisible();
   expect(fileCalls).toBe(0);
   await page.screenshot({ animations: 'disabled', path: info.outputPath('files-unavailable.png') });
 });

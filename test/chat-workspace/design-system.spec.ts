@@ -190,11 +190,11 @@ test('attachments are conversation bound, can be removed, send without text, and
   await page.getByRole('button', { name: 'Send message' }).click();
   await expect(page.locator('.attachment-chips')).toHaveCount(0);
   await page.getByRole('button', { name: /Show details/ }).click();
-  await page.getByRole('tab', { name: 'Files', exact: true }).click();
+  await page.getByRole('tab', { name: 'Library', exact: true }).click();
   await expect(page.locator('.file-list')).toContainText('notes.txt');
   const download = page.waitForEvent('download');
   await page
-    .getByRole('tabpanel', { name: 'Files', exact: true })
+    .getByRole('tabpanel', { name: 'Library', exact: true })
     .getByRole('button', { name: 'Download notes.txt', exact: true })
     .click();
   expect((await download).suggestedFilename()).toBe('notes.txt');

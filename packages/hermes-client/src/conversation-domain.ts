@@ -342,6 +342,38 @@ export class ConversationDomain {
       target.kind === 'chat' ? { session_id: target.sessionId } : { room_id: target.roomId },
     );
   }
+  async mediaPage(sessionId: string, cursor: string | null = null) {
+    const data = record(await this.bridge.invoke('media.list', { session_id: sessionId, cursor }));
+    if (
+      !Array.isArray(data.files) ||
+      data.files.length > 1600 ||
+      (data.next !== null && (typeof data.next !== 'string' || data.next.length > 1000))
+    )
+      throw new ClientError('INVALID_RESPONSE');
+    const files = data.files.map((value) => {
+      const file = record(value);
+      if (
+        typeof file.row_id !== 'number' ||
+        !Number.isSafeInteger(file.row_id) ||
+        file.row_id <= 0 ||
+        typeof file.reference !== 'string' ||
+        !/^[a-f0-9]{64}$/.test(file.reference) ||
+        typeof file.name !== 'string' ||
+        !file.name ||
+        file.name.length > 180 ||
+        file.name.includes('/') ||
+        file.name.includes('\\') ||
+        [...file.name].some((char) => char.charCodeAt(0) < 32) ||
+        typeof file.size !== 'number' ||
+        !Number.isSafeInteger(file.size) ||
+        file.size <= 0 ||
+        file.size > 10 * 1024 * 1024
+      )
+        throw new ClientError('INVALID_RESPONSE');
+      return { rowId: file.row_id, reference: file.reference, name: file.name, size: file.size };
+    });
+    return { files, next: data.next };
+  }
   async files(sessionId: string): Promise<SharedConversationFile[]> {
     return decodeSharedFiles(await this.bridge.invoke('files.list', { session_id: sessionId }));
   }
@@ -429,21 +461,28 @@ export class ConversationDomain {
     });
     return { id: eventId, reactions: decodeMessageReactions(data.reactions), state };
   }
-  decide(target: ApprovalTarget, choice: 'once' | 'deny') {
-    return target.kind === 'chat'
-      ? this.bridge.invoke('chat.approve', {
-          session_id: target.sessionId,
-          request_id: target.requestId,
-          choice,
-        })
-      : this.bridge.invoke('room.approve', {
-          room_id: target.roomId,
-          member_id: target.memberId,
-          task_id: target.taskId,
-          execution_generation: target.executionGeneration,
-          request_id: target.requestId,
-          choice,
-        });
+  async decide(target: ApprovalTarget, choice: 'once' | 'deny') {
+    const result = record(
+      await (target.kind === 'chat'
+        ? this.bridge.invoke('chat.approve', {
+            session_id: target.sessionId,
+            request_id: target.requestId,
+            choice,
+          })
+        : this.bridge.invoke('room.approve', {
+            room_id: target.roomId,
+            member_id: target.memberId,
+            task_id: target.taskId,
+            execution_generation: target.executionGeneration,
+            request_id: target.requestId,
+            choice,
+          })),
+    );
+    const resolved =
+      target.kind === 'room' ? optionalRecord(result.result)?.resolved : result.resolved;
+    if (resolved === 0) return 'expired';
+    if (resolved === 1 || (target.kind === 'room' && result.approved === true)) return 'resolved';
+    throw new ClientError('INVALID_RESPONSE');
   }
 }
 

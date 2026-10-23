@@ -1,63 +1,32 @@
-import { useEffect, useRef } from 'react';
-import type { ReactNode } from 'react';
 import type { TranscriptCard } from './presentation';
 import type { SessionClient, WorkspaceSnapshot } from '@hermes-client/protocol';
-import { useManagementRequests } from './useManagementRequests';
+import type { ManagementRequests } from './useManagementRequests';
 import { RequestReview } from './RequestReview';
 import { ApprovalSurface } from '../components/ai-elements/confirmation';
 import { Button } from '../components/ui/button';
-
-function RequestPosition({
-  id,
-  focus,
-  children,
-}: {
-  id: string;
-  focus: boolean;
-  children: ReactNode;
-}) {
-  const container = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    if (!focus) return;
-    container.current?.querySelector<HTMLElement>('button')?.focus({ preventScroll: true });
-    container.current?.scrollIntoView({
-      block: 'center',
-      behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth',
-    });
-  }, [focus]);
-  return (
-    <div ref={container} data-request-id={id}>
-      {children}
-    </div>
-  );
-}
 
 export function useConversationRequests({
   client,
   profile,
   workspace,
-  version,
+  management,
   onOpen,
-  focusId,
 }: {
   client: SessionClient | undefined;
   profile: string | undefined;
   workspace: WorkspaceSnapshot | undefined;
-  version: number;
+  management: ManagementRequests;
   onOpen: (profile: string, requestId: string) => void;
-  focusId?: string | undefined;
 }): TranscriptCard[] {
-  const {
-    requests: listed,
-    busy,
-    issueFor,
-    decide,
-    checkStatus,
-    refresh,
-  } = useManagementRequests({ client, scope: workspace?.id, version });
   if (!client || !workspace || !profile) return [];
-  const requests = listed.slice().reverse();
-  const own = requests.filter((request) => request.actor === profile);
+  const requests = management.requests
+    .slice()
+    .sort((a, b) => (a.createdAt ?? 0) - (b.createdAt ?? 0));
+  const own = requests.filter(
+    (request) =>
+      request.actor === profile ||
+      (request.actor === 'owner' && profile === workspace.orchestrator),
+  );
   const waiting =
     profile === workspace.orchestrator
       ? requests.filter(
@@ -66,50 +35,78 @@ export function useConversationRequests({
         )
       : [];
   return [
-    ...own.map((request): TranscriptCard => ({
-      id: 'request:' + request.id,
-      createdAt: request.createdAt,
-      content: (
-        <RequestPosition id={request.id} focus={focusId === request.id}>
-          <RequestReview
-            request={request}
-            compactResolved
-            decisionIssue={issueFor(request)}
-            onCheck={() => void checkStatus(request)}
-            targetName={workspace.bots.find((bot) => bot.profile === request.spec.profile)?.name}
-            busy={busy === request.id}
-            onDecision={(approve, confirmation) => void decide(request, approve, confirmation)}
-            onInspect={() => {
-              void client
-                .invoke('requests.reconcile', { id: request.id })
-                .then(() => refresh())
-                .catch(() => void checkStatus(request));
-            }}
-          />
-        </RequestPosition>
-      ),
-    })),
-    ...waiting.flatMap((request): TranscriptCard[] => {
-      const agent = workspace.bots.find((bot) => bot.profile === request.actor);
-      if (!agent) return [];
-      return [
-        {
-          id: 'waiting:' + request.id,
-          createdAt: request.createdAt,
-          content: (
-            <ApprovalSurface
-              title={`${agent.name} is waiting for you`}
-              description="An approval is needed in their conversation."
-            >
-              <div className="flex justify-end">
-                <Button variant="secondary" onClick={() => onOpen(agent.profile, request.id)}>
-                  View request
-                </Button>
-              </div>
-            </ApprovalSurface>
-          ),
-        },
-      ];
+    ...own.map((request): TranscriptCard => {
+      return {
+        id: 'request:' + request.id,
+        needsInput: request.state === 'pending',
+        createdAt: request.createdAt,
+        content: (
+          <div data-request-id={request.id}>
+            <RequestReview
+              client={client}
+              request={request}
+              compactResolved
+              draft={management.reviewDraftFor(request)}
+              onDraft={(value) => management.setReviewDraft(request, value)}
+              decisionIssue={management.issueFor(request)}
+              onCheck={() => void management.checkStatus(request)}
+              targetName={workspace.bots.find((bot) => bot.profile === request.spec.profile)?.name}
+              busy={management.busy === request.id}
+              onDecision={(approve, confirmation, review) =>
+                void management.decide(request, approve, confirmation, review)
+              }
+              onInspect={() => {
+                void client
+                  .invoke('requests.reconcile', { id: request.id })
+                  .then(management.refresh)
+                  .catch(() => void management.checkStatus(request));
+              }}
+            />
+          </div>
+        ),
+      };
     }),
+    ...waiting.map((request): TranscriptCard => {
+      const agent = workspace.bots.find((bot) => bot.profile === request.actor);
+      return {
+        id: 'waiting:' + request.id,
+        needsInput: true,
+        createdAt: request.createdAt,
+        content: (
+          <ApprovalSurface
+            title={`${agent?.name ?? 'A pebble'} is waiting for you`}
+            description="Review their request."
+          >
+            <div className="flex justify-end">
+              <Button variant="secondary" onClick={() => onOpen(agent?.profile ?? '', request.id)}>
+                View request
+              </Button>
+            </div>
+          </ApprovalSurface>
+        ),
+      };
+    }),
+    ...(management.loadError || management.faults.length
+      ? [
+          {
+            id: 'request-read-issue',
+            needsInput: true,
+            content: (
+              <ApprovalSurface
+                title="Requests need checking"
+                description={
+                  management.loadError
+                    ? 'Pending requests could not be loaded.'
+                    : 'A request could not be read. Other requests are still available.'
+                }
+              >
+                <Button variant="secondary" onClick={management.refresh}>
+                  Try again
+                </Button>
+              </ApprovalSurface>
+            ),
+          },
+        ]
+      : []),
   ];
 }

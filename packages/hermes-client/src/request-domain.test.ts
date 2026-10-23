@@ -132,3 +132,65 @@ describe('conversation request boundary', () => {
     await expect(domain.answer('chat', 'bad', 'q', 'Research')).rejects.toThrow();
   });
 });
+
+describe('complete approval discovery', () => {
+  it('drains bounded pending pages without letting recent receipts truncate pending work', async () => {
+    const pending = Array.from({ length: 205 }, (_, i) => ({
+      id: 'p' + i,
+      actor: 'aurora',
+      action: 'agent.attach',
+      state: 'pending',
+      fingerprint: 'f' + i,
+      spec: {},
+    }));
+    const invoke = vi.fn(async (_operation: string, params: Record<string, unknown>) => {
+      const offset = Number(params.cursor ?? 0),
+        found = pending.slice(offset, offset + 25);
+      return params.view === 'recent'
+        ? { requests: [], generation: 1, next: null }
+        : {
+            requests: found,
+            generation: 1,
+            next: offset + 25 < pending.length ? String(offset + 25) : null,
+          };
+    });
+    const read = await new RequestDomain({ invoke }).read();
+    expect(read.requests).toHaveLength(205);
+    expect(read.faults).toEqual([]);
+    expect(invoke).toHaveBeenCalledTimes(10);
+  });
+  it('isolates malformed rows and retains healthy decisions while exposing a fault', async () => {
+    const good = {
+      id: 'ron',
+      actor: 'aurora',
+      action: 'agent.create',
+      state: 'pending',
+      fingerprint: 'exact',
+      spec: {},
+    };
+    const invoke = vi
+      .fn()
+      .mockResolvedValueOnce({
+        requests: [good, { ...good, id: 'bad', spec: [] }],
+        generation: 1,
+        next: null,
+      })
+      .mockResolvedValueOnce({ requests: [], next: null });
+    const result = await new RequestDomain({ invoke }).read();
+    expect(result.requests.map((row) => row.id)).toEqual(['ron']);
+    expect(result.faults.map((row) => row.id)).toEqual(['bad']);
+  });
+  it('restarts a changed scan and retrieves exact IDs without searching history', async () => {
+    const row = { id: 'old', actor: 'aurora', action: 'agent.attach', state: 'pending', spec: {} };
+    const invoke = vi
+      .fn()
+      .mockResolvedValueOnce({ restart: true })
+      .mockResolvedValueOnce({ generation: 2, requests: [row], next: null })
+      .mockResolvedValueOnce({ requests: [], next: null })
+      .mockResolvedValueOnce({ request: row });
+    const domain = new RequestDomain({ invoke });
+    expect((await domain.read()).requests[0]?.id).toBe('old');
+    expect((await domain.get('old'))?.state).toBe('pending');
+    expect(invoke).toHaveBeenLastCalledWith('requests.get', { id: 'old' });
+  });
+});

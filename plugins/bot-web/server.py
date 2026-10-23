@@ -117,7 +117,7 @@ def create_app(token, origins, hosts, gateway=None, trust=None, workspace=None, 
                 try:
                     next_snapshot = time.monotonic() + 4
                     snapshot = await workspace.invoke('workspace.snapshot', {})
-                    requests = tuple((r['id'], r['state']) for r in workspace.store.requests())
+                    requests = workspace.store.request_generation()
                     if requests != request_revision:
                         request_revision = requests
                         for queue in tuple(native.listeners):
@@ -373,6 +373,8 @@ def create_app(token, origins, hosts, gateway=None, trust=None, workspace=None, 
                 if not profile or await ops.stamp(profile) != ops.session_incarnations.get(sid):
                     raise InvalidOperation('Reopen this Pebble before answering')
                 result = await (native.question_prompt(operation, params) if operation.startswith('questions.') else native.secret_prompt(operation, params))
+            elif operation == 'media.list':
+                result = await media.list(params)
             elif operation == 'media.read':
                 blob, name, mime = await media.read(params)
                 from urllib.parse import quote

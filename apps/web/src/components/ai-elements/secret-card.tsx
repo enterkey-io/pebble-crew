@@ -14,7 +14,11 @@ export function SecretCard({
   description,
   onSubmit,
   onSkip,
+  initialValue = '',
+  onValueChange,
 }: {
+  initialValue?: string | undefined;
+  onValueChange?: ((value: string) => void) | undefined;
   title: string;
   label: string;
   description: string;
@@ -33,6 +37,7 @@ export function SecretCard({
           const value = field.current?.value ?? '';
           if (!value || busy) return;
           if (field.current) field.current.value = '';
+          onValueChange?.('');
           setBusy(true);
           setError('');
           void onSubmit(value)
@@ -44,6 +49,8 @@ export function SecretCard({
           {label}
           <Input
             ref={field}
+            defaultValue={initialValue}
+            onChange={(event) => onValueChange?.(event.target.value)}
             type="password"
             autoComplete="off"
             autoCorrect="off"

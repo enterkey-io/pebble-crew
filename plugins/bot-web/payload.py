@@ -11,7 +11,7 @@ PRE_VOICE_FILES = (
 )
 
 
-FILES = PRE_VOICE_FILES + ('live_voice.py', 'commands.py', 'voice_credentials.py', 'reporting.py', 'documents.py', 'work_store.py', 'work_native.py', 'work.py', 'work_delivery.py', 'request_delivery.py', 'room_reactions.py', 'stream_position.py', 'skills/manage-work/SKILL.md', 'exchanges.py', 'connection.py', 'codex_binding.py', 'creation.py')
+FILES = PRE_VOICE_FILES + ('live_voice.py', 'commands.py', 'voice_credentials.py', 'reporting.py', 'documents.py', 'work_store.py', 'work_native.py', 'work.py', 'work_delivery.py', 'request_delivery.py', 'room_reactions.py', 'stream_position.py', 'skills/manage-work/SKILL.md', 'exchanges.py', 'connection.py', 'codex_binding.py', 'creation.py', 'request_review.py')
 
 def source_inventory(source):
     """Read a known literal inventory without importing inspected/rollback code."""
