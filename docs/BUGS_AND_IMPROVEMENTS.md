@@ -4,10 +4,10 @@ Track owner reports here through implementation, verification and release. A
 published fix is separate from updating and verifying the owner's installation.
 New reports receive a stable ID; later work updates the existing entry.
 
-## Unreleased chat corrections
+## 0.7.13-preview.1 corrections
 
-These changes are tested in an isolated checkout. They are not installed on the
-owner's server.
+These changes are included in the 0.7.13-preview.1 candidate. They are not
+installed on the owner's server.
 
 | ID     | Report                                                         | Change and verification                                                                                                                                                                                                                                                                                 |
 | ------ | -------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -16,6 +16,8 @@ owner's server.
 | PC-139 | Images accumulate resources while scrolling                    | Offscreen images release their object URLs and blobs. Open viewers keep their resources until closed. Browser journeys verify bounded live URLs and unchanged thumbnail geometry. This older defect does not establish the cause of the latest slowdown.                                                |
 | PC-140 | The last deployment introduced slowness and choppy interaction | Still under investigation. The served main JavaScript matches the published 0.7.11 bundle. Five alternating runs per release with 300 text messages and decision history did not reproduce the reported regression. Synthetic renderer measurements do not establish performance on the owner's device. |
 | PC-141 | Library can scan the whole conversation while it opens         | The 0.7.11 initial scan waits for 20 media results without a page limit. The corrected initial scan reads at most three pages and leaves older results behind Load more. The browser regression fails against the published release and passes against the fix.                                         |
+
+| PC-142 | Updating 0.7.11 to 0.7.12 rejects Alina's runtime | The inventory reader recognizes the exact 0.7.11 file list. Unknown or incomplete copies still fail. Published packages reproduce the original refusal. Installed-package acceptance starts from the actual 0.7.11 archive with ten enrolled profiles and verifies host activation and runtime sync. |
 
 PC-134 follow-up preserves the reader's scroll intent during background layout
 changes. Returning to the app restores the latest position or the saved reading

@@ -214,7 +214,8 @@ test('Library bounds the initial scan of a long text-only history and continues 
   await expect(
     details.getByRole('progressbar', { name: 'Loading Library', exact: true }),
   ).toHaveCount(0);
-  expect(catalogs).toBe(4);
+  await expect.poll(() => catalogs).toBe(4);
+  await expect(details.getByRole('button', { name: 'Load more', exact: true })).toBeEnabled();
   await details.getByRole('tab', { name: 'Routines', exact: true }).click();
   await page.waitForTimeout(250);
   expect(catalogs).toBe(4);

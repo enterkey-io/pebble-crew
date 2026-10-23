@@ -378,7 +378,7 @@ try {
       accountImage,
     );
     checks.actual_previous_release_upgrade_preserves_account_photo = true;
-    console.log('Actual preview.15 to candidate host-first upgrade passed.');
+    console.log('Actual previous-release to candidate host-first upgrade passed.');
     await exerciseRestarts(true);
   }
   await message.fill('Unsent native owner draft\nkept after refreshing');
