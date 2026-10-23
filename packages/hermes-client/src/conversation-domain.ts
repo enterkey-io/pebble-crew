@@ -162,6 +162,21 @@ export function decodeRoomReactions(value: unknown): RoomReactionState {
     }),
   };
 }
+const ownerKinds = new Set(['', 'steer', 'skill_invocation']);
+function ownerInput(data: Record<string, unknown>): boolean {
+  return (
+    data.display_kind == null ||
+    (typeof data.display_kind === 'string' && ownerKinds.has(data.display_kind))
+  );
+}
+const nativeActivities: Readonly<Record<string, { name: string; title: string }>> = {
+  process_complete: { name: 'process', title: 'Background process finished' },
+  async_delegation_complete: { name: 'delegate_task', title: 'Background task finished' },
+  model_switch: { name: 'model', title: 'Model changed' },
+  personality_switch: { name: 'settings', title: 'Personality changed' },
+  auto_continue: { name: 'process', title: 'Resuming interrupted work' },
+};
+
 /** Hidden model analysis and arbitrary source records stop here. */
 export function decodeNativeMessages(value: unknown): ConversationMessage[] {
   const messages: ConversationMessage[] = [];
@@ -169,7 +184,26 @@ export function decodeNativeMessages(value: unknown): ConversationMessage[] {
     const data = optionalRecord(item);
     if (!data || (data.role !== 'user' && data.role !== 'assistant' && data.role !== 'tool'))
       continue;
+    if (data.display_kind === 'hidden') continue;
     const metadata = optionalRecord(data.display_metadata);
+    if (data.role === 'user' && !ownerInput(data)) {
+      const activity =
+        typeof data.display_kind === 'string' ? nativeActivities[data.display_kind] : undefined;
+      if (activity)
+        messages.push({
+          role: 'tool',
+          text: '',
+          toolName: activity.name,
+          id: identity(data.row_id),
+          timestamp: timestamp(data.timestamp),
+          reactions: [],
+          context:
+            typeof metadata?.display_text === 'string' && metadata.display_text.trim()
+              ? metadata.display_text.slice(0, 240)
+              : activity.title,
+        });
+      continue;
+    }
     messages.push({
       role: data.role,
       text:
@@ -526,11 +560,12 @@ export function decodeBotConversation(value: unknown): BotConversation {
   if (!sessionId) throw new ClientError('INVALID_RESPONSE');
   const inflight = optionalRecord(data.inflight);
   const assistant = boundedText(inflight?.assistant);
-  const corrections = Array.isArray(inflight?.corrections)
-    ? rows(inflight.corrections)
-        .slice(0, 128)
-        .map((value) => boundedText(value, 16000))
-    : [];
+  const corrections =
+    ownerInput({ display_kind: inflight?.display_kind }) && Array.isArray(inflight?.corrections)
+      ? rows(inflight.corrections)
+          .slice(0, 128)
+          .map((value) => boundedText(value, 16000))
+      : [];
   const offsets = inflight?.correction_offsets;
   const correctionIds = Array.isArray(data.correction_row_ids) ? data.correction_row_ids : [];
   const characters = Array.from(assistant);
@@ -560,8 +595,9 @@ export function decodeBotConversation(value: unknown): BotConversation {
     deferred: Array.isArray(data.deferred_prompts)
       ? rows(data.deferred_prompts)
           .slice(0, 128)
-          .map((value) => {
-            const prompt = record(value);
+          .map(record)
+          .filter(ownerInput)
+          .map((prompt) => {
             return { text: boundedText(prompt.text, 16000), rowId: identity(prompt.row_id) };
           })
       : [],

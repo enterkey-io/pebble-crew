@@ -307,7 +307,8 @@ class NativeGateway:
                     self._capture_questions(pending.get('request_id'), params.get('session_id') or result.get('session_id'), pending, legacy=True)
                 if method == 'bot_web.conversation.snapshot' and isinstance(result, dict):
                     result = {**result, 'stream_length': len((result.get('inflight') or {}).get('assistant') or '')}
-                return self.display.result(method, result)
+                from .conversation_presentation import project_result
+                return project_result(method, self.display.result(method, result))
         except (TimeoutError, BrokenPipeError, ConnectionError) as error:
             # A timed-out mutation may have been accepted. Never retry automatically.
             raise NativeError("Operation outcome unknown; refresh before retrying") from error

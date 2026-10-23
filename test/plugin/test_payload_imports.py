@@ -5,7 +5,7 @@ import shutil
 import tempfile
 import unittest
 from test_security import ROOT
-from bot_web.payload import payload_paths, source_inventory, PRE_VOICE_FILES
+from bot_web.payload import payload_paths, source_inventory, PRE_VOICE_FILES, FILES
 
 
 def use_historical_inventory(path, suffix):
@@ -70,3 +70,26 @@ class PayloadImportTests(unittest.TestCase):
             use_historical_inventory(path, ('live_voice.py', 'commands.py', 'voice_credentials.py', 'reporting.py'))
             with self.assertRaisesRegex(ValueError, r'omits local import:.*documents\.py'):
                 payload_paths(source)
+
+    def test_the_last_release_inventory_does_not_require_the_new_presentation_module(self):
+        with tempfile.TemporaryDirectory() as directory:
+            previous_base = tuple(name for name in PRE_VOICE_FILES if name != 'conversation_presentation.py')
+            previous_files = tuple(name for name in FILES[len(PRE_VOICE_FILES):] if name != 'conversation_presentation.py')
+            path = Path(directory) / 'payload.py'
+            path.write_text('PRE_VOICE_FILES = '+repr(previous_base)+'\nFILES = PRE_VOICE_FILES + '+repr(previous_files)+'\n')
+            self.assertEqual(source_inventory(Path(directory)), previous_base + previous_files)
+
+    def test_0711_inventory_remains_readable_for_upgrade_and_rollback(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / 'payload.py'
+            previous = ('live_voice.py', 'commands.py', 'voice_credentials.py', 'reporting.py', 'documents.py', 'work_store.py', 'work_native.py', 'work.py', 'work_delivery.py', 'request_delivery.py', 'room_reactions.py', 'stream_position.py', 'skills/manage-work/SKILL.md', 'exchanges.py', 'connection.py', 'codex_binding.py', 'creation.py', 'request_review.py')
+            path.write_text('PRE_VOICE_FILES = '+repr(PRE_VOICE_FILES)+'\nFILES = PRE_VOICE_FILES + '+repr(previous)+'\n')
+            self.assertEqual(source_inventory(Path(directory)), PRE_VOICE_FILES + previous)
+
+    def test_exact_0712_release_inventory_remains_readable(self):
+        import subprocess
+        previous = subprocess.check_output(['git', 'show',
+            '33391fecf0b920d06a374752f3f1725df847595f:plugins/bot-web/payload.py'], cwd=ROOT, text=True)
+        with tempfile.TemporaryDirectory() as directory:
+            (Path(directory) / 'payload.py').write_text(previous)
+            self.assertNotIn('conversation_presentation.py', source_inventory(Path(directory)))

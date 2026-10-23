@@ -691,7 +691,7 @@
 }
 .row-unread {
   position: absolute;
-  right: 3px;
+  right: 12px;
   top: calc(50% - 5px);
 }
 @keyframes unread-pulse {

@@ -41,10 +41,17 @@ for (const theme of ['dark', 'light']) {
       .filter({ has: page.getByRole('button', { name: /^Ember .*Bot Chat$/ }) });
     const rowDot = row.getByRole('img', { name: 'Unread messages', exact: true });
     await expect(rowDot).toBeVisible();
-    const bounds = (await row.boundingBox())!,
-      edge = (await rowDot.boundingBox())!;
-    expect(bounds.x + bounds.width - edge.x - edge.width).toBeLessThanOrEqual(4);
-    expect(Math.abs(edge.y + edge.height / 2 - bounds.y - bounds.height / 2)).toBeLessThan(1);
+    const spacing = await row.evaluate((node) => {
+      const bounds = node.getBoundingClientRect();
+      const edge = node.querySelector('.row-unread')!.getBoundingClientRect();
+      return {
+        right: bounds.right - edge.right,
+        center: Math.abs(edge.y + edge.height / 2 - bounds.y - bounds.height / 2),
+      };
+    });
+    expect(spacing.right).toBeGreaterThanOrEqual(11);
+    expect(spacing.right).toBeLessThanOrEqual(13);
+    expect(spacing.center).toBeLessThan(1);
     await expect(row.locator('.pc-overflow')).toHaveCount(0);
     await page.screenshot({ path: info.outputPath(`unread-${theme}.png`), animations: 'disabled' });
     await page.emulateMedia({ reducedMotion: 'reduce' });

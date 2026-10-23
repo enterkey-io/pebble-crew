@@ -1,10 +1,10 @@
 {
-  "version": "0.7.12-preview.1",
-  "tag": "v0.7.12-preview.1",
+  "version": "0.7.13-preview.1",
+  "tag": "v0.7.13-preview.1",
   "channel": "preview",
   "repository": "enterkey-io/pebble-crew",
   "bridge_protocol": "hermes-bot-web.v1",
-  "bridge_version": "0.7.12",
+  "bridge_version": "0.7.13",
   "hermes_revision": "af0cd4df34c73e41bcfcfa46c4081d1d83bdc81a",
   "hermes_revisions": [
     "29112bef099274229cadff79cdff7bf7b99c4b77",

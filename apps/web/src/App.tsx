@@ -2453,19 +2453,19 @@ export function App({ owner }: { owner?: OwnerConnection }) {
                       aria-live={pickingAgents ? undefined : 'off'}
                       onWheel={() => {
                         detailsAnchor.current = undefined;
-                        transcriptFollow.current?.cancel();
+                        transcriptFollow.current?.interrupt();
                       }}
                       onTouchStart={() => {
                         detailsAnchor.current = undefined;
                       }}
-                      onTouchMove={() => transcriptFollow.current?.cancel()}
+                      onTouchMove={() => transcriptFollow.current?.interrupt()}
                       onKeyDown={(event) => {
                         if (
                           ['ArrowUp', 'ArrowDown', 'PageUp', 'PageDown', 'Home', 'End'].includes(
                             event.key,
                           )
                         )
-                          transcriptFollow.current?.cancel();
+                          transcriptFollow.current?.interrupt();
                       }}
                       onScroll={(event) => {
                         if (pickingAgents || orgOpen) return;

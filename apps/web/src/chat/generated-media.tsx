@@ -143,6 +143,7 @@ export function GeneratedFile({ source, children }: { source: string; children: 
 }
 
 type ImageState =
+  | { kind: 'idle'; key: string }
   | { kind: 'loading'; key: string }
   | { kind: 'error'; key: string }
   | { kind: 'ready'; key: string; file: DownloadedMedia; url: string };
@@ -156,8 +157,8 @@ export function GeneratedImage({ source, alt }: { source: string; alt: string })
   const [visible, setVisible] = useState(false);
   const [attempt, setAttempt] = useState(0);
   const [viewer, setViewer] = useState<{ key: string; open: boolean; time?: number }>();
-  const [loaded, setState] = useState<ImageState>({ kind: 'loading', key });
-  const state: ImageState = loaded.key === key ? loaded : { kind: 'loading', key };
+  const [loaded, setState] = useState<ImageState>({ kind: 'idle', key });
+  const state: ImageState = loaded.key === key ? loaded : { kind: 'idle', key };
   const resource = useRef<{ key: string; url: string } | undefined>(undefined);
   useEffect(
     () => () => {
@@ -168,14 +169,12 @@ export function GeneratedImage({ source, alt }: { source: string; alt: string })
     },
     [key],
   );
+  const viewerOpen = viewer?.key === key && viewer.open;
   useEffect(() => {
     if (video) return;
     const observer = new IntersectionObserver(
       (entries) => {
-        if (entries.some((entry) => entry.isIntersecting)) {
-          setVisible(true);
-          observer.disconnect();
-        }
+        setVisible(entries.some((entry) => entry.isIntersecting));
       },
       { rootMargin: '200px' },
     );
@@ -183,7 +182,13 @@ export function GeneratedImage({ source, alt }: { source: string; alt: string })
     return () => observer.disconnect();
   }, [video]);
   useEffect(() => {
-    if (!visible || media?.kind !== 'saved') return;
+    if (!video && !visible && !viewerOpen) {
+      if (resource.current) URL.revokeObjectURL(resource.current.url);
+      resource.current = undefined;
+      setState({ kind: 'idle', key });
+      return;
+    }
+    if ((!visible && !viewerOpen) || media?.kind !== 'saved') return;
     if (resource.current?.key === key) return;
     const controller = new AbortController();
     setState({ kind: 'loading', key });
@@ -203,7 +208,7 @@ export function GeneratedImage({ source, alt }: { source: string; alt: string })
     return () => {
       controller.abort();
     };
-  }, [media, source, visible, attempt, key]);
+  }, [media, source, visible, viewerOpen, video, attempt, key]);
   useEffect(() => {
     if (state.kind === 'ready' && video && playRequested.current) {
       playRequested.current = false;
@@ -349,6 +354,8 @@ export function GeneratedImage({ source, alt }: { source: string; alt: string })
             />
           )}
         </span>
+      ) : state.kind === 'idle' ? (
+        <span aria-hidden="true" />
       ) : (
         <LoadingBar as="span" active label={video ? 'Loading video' : 'Loading image'} />
       )}

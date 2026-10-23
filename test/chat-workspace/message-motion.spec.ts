@@ -158,3 +158,38 @@ test('returning to a settled conversation does not replay its scroll; scrolled-u
     animations: 'disabled',
   });
 });
+
+test('background layout scrolling cannot turn off latest-follow or replace a saved reading position', async ({
+  page,
+  context,
+}, info) => {
+  await installFixture(context);
+  await page.goto('/');
+  await expect(page.getByLabel('Message', { exact: true })).toBeEnabled();
+  const pane = page.getByRole('log');
+  await expect
+    .poll(() =>
+      pane.evaluate((node) => Math.abs(node.scrollHeight - node.clientHeight - node.scrollTop)),
+    )
+    .toBeLessThan(2);
+  for (const reading of [false, true]) {
+    if (reading)
+      await pane.evaluate((node) => {
+        node.scrollTop = 100;
+        node.dispatchEvent(new Event('scroll'));
+      });
+    const before = await pane.evaluate((node) => node.scrollTop);
+    await page.evaluate(() => window.dispatchEvent(new Event('blur')));
+    await pane.evaluate((node) => {
+      node.scrollTop = Math.max(0, node.scrollTop / 2);
+      node.dispatchEvent(new Event('scroll'));
+    });
+    await page.evaluate(() => document.dispatchEvent(new Event('visibilitychange')));
+    await page.evaluate(() => window.dispatchEvent(new Event('focus')));
+    await expect.poll(() => pane.evaluate((node) => node.scrollTop)).toBeCloseTo(before, 0);
+  }
+  await page.screenshot({
+    animations: 'disabled',
+    path: info.outputPath('background-scroll-restoration.png'),
+  });
+});

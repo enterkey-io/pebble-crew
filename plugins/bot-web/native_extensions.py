@@ -8,6 +8,7 @@ import os
 from pathlib import Path
 import shutil
 import tempfile
+from conversation_presentation import owner_input
 
 
 def register(source):
@@ -116,7 +117,8 @@ def register(source):
                 result['deferred_prompts'] = [
                     {'text': server._inflight_text(envelope.get('text')),
                      'row_id': (envelope.get('_submit_user_row') or {}).get('_row_id')}
-                    for envelope in envelopes]
+                    for envelope in envelopes
+                    if owner_input({'display_kind': envelope.get('_queued_display_kind') or (envelope.get('_submit_user_row') or {}).get('display_kind')})]
             agent = session.get('agent')
             messages = getattr(agent, '_session_messages', None)
             start = getattr(agent, '_persist_user_message_idx', None)
@@ -124,6 +126,15 @@ def register(source):
             candidate = staged if isinstance(staged, dict) else (
                 messages[start] if isinstance(messages, list) and type(start) is int
                 and 0 <= start < len(messages) else None)
+            live = result.get('inflight') or {}
+            corrections = live.get('corrections') or []
+            offsets = live.get('correction_offsets') or []
+            result.pop('correction_row_ids', None)
+            if result.get('inflight') is not None:
+                result['inflight'] = {**live, 'corrections': [], 'correction_offsets': []}
+            if isinstance(candidate, dict) and not owner_input(candidate):
+                # A native notification starts a model turn, not an owner turn.
+                result.pop('active_user_row_id', None)
             # A structural native cursor selects the row. Text only verifies
             # that cursor, and a row in the pre-turn prefix cannot be current.
             prefix = {row.get('_row_id') for row in session.get('history', [])
@@ -132,6 +143,7 @@ def register(source):
                     and result['snapshot_consistent']
                     and isinstance(candidate, dict)
                     and candidate.get('role') == 'user'
+                    and owner_input(candidate)
                     and type(candidate.get('_row_id')) is int and candidate['_row_id'] > 0
                     and candidate['_row_id'] not in prefix
                     and server._inflight_text(candidate.get('content')) == turn.get('user')):
@@ -140,14 +152,18 @@ def register(source):
                     anchor = next((index for index, row in enumerate(messages)
                                    if row.get('_row_id') == candidate['_row_id']), None)
                     if anchor is not None:
-                        corrections = (result.get('inflight') or {}).get('corrections') or []
                         users = [row for row in messages[anchor + 1:] if row.get('role') == 'user']
-                        if len(users) <= len(corrections) and all(
+                        if len(users) == len(corrections) and all(
                                 server._inflight_text(row.get('content')) == corrections[index]
                                 for index, row in enumerate(users)):
+                            admitted = [(index, row) for index, row in enumerate(users) if owner_input(row)]
+                            live = result.get('inflight') or {}
+                            result['inflight'] = {**live,
+                                'corrections': [corrections[index] for index, _ in admitted],
+                                'correction_offsets': [offsets[index] for index, _ in admitted] if len(offsets) == len(corrections) else []}
                             result['correction_row_ids'] = [
                                 row.get('_row_id') if type(row.get('_row_id')) is int
-                                and row['_row_id'] > 0 else None for row in users]
+                                and row['_row_id'] > 0 else None for _, row in admitted]
         return server._ok(rid, result)
 
     server.method('bot_web.conversation.snapshot')(live_snapshot)

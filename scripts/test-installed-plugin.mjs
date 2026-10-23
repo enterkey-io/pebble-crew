@@ -194,7 +194,9 @@ try {
   const origins = new Set(),
     errors = [];
   let connects = 0,
-    eventStreams = 0;
+    eventStreams = 0,
+    recoverableOwner = false,
+    firstConnectionMetadata;
   const traffic = [];
   page.on('response', (response) => {
     const path = new URL(response.url()).pathname;
@@ -203,7 +205,10 @@ try {
       traffic.push({ path, method, status: response.status() });
       if (traffic.length > 128) traffic.shift();
     }
-    if (response.status() === 200 && path === '/v1/connect' && method === 'POST') connects++;
+    if (response.status() === 200 && path === '/v1/connect' && method === 'POST') {
+      connects++;
+      firstConnectionMetadata ??= response.json().catch(() => null);
+    }
     if (response.status() === 200 && path === '/v1/events') eventStreams++;
   });
   page.on('request', (r) => origins.add(new URL(r.url()).origin));
@@ -251,17 +256,21 @@ try {
     'true',
   );
   await page.getByRole('checkbox', { name: 'Send an introduction' }).uncheck();
-  await page.locator('.handle-input input').fill('aurora');
+  await page.getByLabel('Handle', { exact: true }).fill('aurora');
   await page.getByRole('button', { name: 'Snow', exact: true }).click();
   await page.getByRole('button', { name: 'Start chatting', exact: true }).click();
   const message = page.getByLabel('Message', { exact: true });
   await expect(message).toBeEnabled();
+  const initialHandshake = await firstConnectionMetadata;
+  expect(initialHandshake).toBeTruthy();
+  recoverableOwner = initialHandshake.capabilities?.connection_recovery === 1;
   await message.fill('/');
   await expect(page.getByRole('option').filter({ hasText: '/model' }).first()).toBeVisible();
   await message.fill('/model');
   await page.getByRole('button', { name: 'Send message', exact: true }).click();
-  await expect(page.getByRole('alert')).toContainText('Use /model <model name>');
-  await page.getByRole('button', { name: 'Dismiss command result', exact: true }).click();
+  await expect(
+    page.getByRole('log').getByRole('region', { name: '/model result', exact: true }),
+  ).toContainText('Use /model <model name>');
   checks.native_slash_catalog_and_command_are_packaged = true;
   await message.fill('Synthetic installed plugin round trip');
   await page.getByRole('button', { name: 'Send message', exact: true }).click();
@@ -310,6 +319,7 @@ try {
   const record = () => readFile(join(state, 'service.json'), 'utf8').then(JSON.parse);
   async function exerciseRestarts(candidate) {
     for (const kind of ['owner', 'native', 'bridge', 'manager']) {
+      console.log(candidate ? 'Checking candidate restart:' : 'Checking baseline restart:', kind);
       const before = await record();
       const beforeConnects = connects;
       const beforeStreams = eventStreams;
@@ -326,7 +336,7 @@ try {
         },
         'Supervisor did not replace the failed ' + kind,
       );
-      if (candidate && kind === 'owner') {
+      if (recoverableOwner && kind === 'owner') {
         const after = await record();
         expect(after.children.bridge).toBe(before.children.bridge);
         await expect.poll(() => eventStreams).toBeGreaterThan(beforeStreams);
@@ -357,20 +367,21 @@ try {
     );
     await page.reload();
     expect((await (await handshake).json()).capabilities.connection_recovery).toBe(1);
+    recoverableOwner = true;
     await expect(message).toBeEnabled();
     await expect(page.getByText('Native fixture reply', { exact: true }).last()).toBeVisible();
     const metadata = await page.request.get(origin + '/version.json');
     expect((await metadata.json()).tag).toBe(
       JSON.parse(await readFile('release.json', 'utf8')).tag,
     );
-    checks.actual_preview15_upgrade_serves_candidate_version = true;
-    checks.actual_preview15_upgrade_preserves_login_and_native_history = true;
+    checks.actual_previous_release_upgrade_serves_candidate_version = true;
+    checks.actual_previous_release_upgrade_preserves_login_and_native_history = true;
     await expect(page.locator('.pc-rail-footer .personal-avatar img')).toHaveAttribute(
       'src',
       accountImage,
     );
-    checks.actual_preview15_upgrade_preserves_account_photo = true;
-    console.log('Actual preview.15 to candidate host-first upgrade passed.');
+    checks.actual_previous_release_upgrade_preserves_account_photo = true;
+    console.log('Actual previous-release to candidate host-first upgrade passed.');
     await exerciseRestarts(true);
   }
   await message.fill('Unsent native owner draft\nkept after refreshing');

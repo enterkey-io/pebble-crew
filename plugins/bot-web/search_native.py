@@ -27,7 +27,8 @@ def visible_text(row, home):
     kwargs = {'profile_home': str(home), 'image_urls': False} if 'profile_home' in inspect.signature(display).parameters else {}
     projected = display([{**row, '_row_id': row['id']}], **kwargs)
     parts = []
-    for message in projected:
+    from conversation_presentation import project_message
+    for message in map(project_message, projected):
         if message.get('role') not in {'user', 'assistant'}:
             continue
         text = message.get('text')
