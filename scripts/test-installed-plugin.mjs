@@ -194,7 +194,8 @@ try {
   const origins = new Set(),
     errors = [];
   let connects = 0,
-    eventStreams = 0;
+    eventStreams = 0,
+    recoverableOwner = false;
   const traffic = [];
   page.on('response', (response) => {
     const path = new URL(response.url()).pathname;
@@ -203,7 +204,12 @@ try {
       traffic.push({ path, method, status: response.status() });
       if (traffic.length > 128) traffic.shift();
     }
-    if (response.status() === 200 && path === '/v1/connect' && method === 'POST') connects++;
+    if (response.status() === 200 && path === '/v1/connect' && method === 'POST') {
+      connects++;
+      void response.json().then((data) => {
+        recoverableOwner = data.capabilities?.connection_recovery === 1;
+      });
+    }
     if (response.status() === 200 && path === '/v1/events') eventStreams++;
   });
   page.on('request', (r) => origins.add(new URL(r.url()).origin));
@@ -311,6 +317,7 @@ try {
   const record = () => readFile(join(state, 'service.json'), 'utf8').then(JSON.parse);
   async function exerciseRestarts(candidate) {
     for (const kind of ['owner', 'native', 'bridge', 'manager']) {
+      console.log(candidate ? 'Checking candidate restart:' : 'Checking baseline restart:', kind);
       const before = await record();
       const beforeConnects = connects;
       const beforeStreams = eventStreams;
@@ -327,7 +334,7 @@ try {
         },
         'Supervisor did not replace the failed ' + kind,
       );
-      if (candidate && kind === 'owner') {
+      if (recoverableOwner && kind === 'owner') {
         const after = await record();
         expect(after.children.bridge).toBe(before.children.bridge);
         await expect.poll(() => eventStreams).toBeGreaterThan(beforeStreams);
