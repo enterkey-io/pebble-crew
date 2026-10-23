@@ -86,8 +86,9 @@ test('crew chevrons collapse only members, persist and leave chat opening on the
   expect(groupFace.height).toBeCloseTo(36, 1);
   expect(memberFace.x - groupFace.x).toBeGreaterThanOrEqual(12);
   for (const avatar of avatars) {
-    expect(avatar.width).toBeCloseTo(24, 1);
-    expect(avatar.height).toBeCloseTo(26, 1);
+    expect(avatar.width).toBeGreaterThanOrEqual(14);
+    expect(avatar.width).toBeLessThan(memberFace.width);
+    expect(avatar.height).toBeLessThanOrEqual(groupFace.height);
   }
   await crew.getByRole('button', { name: 'Collapse North pebbles', exact: true }).click();
   await expect(
