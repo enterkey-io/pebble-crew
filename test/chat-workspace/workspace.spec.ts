@@ -70,7 +70,9 @@ test('populated production workspace: layout, drafts, scroll, crew authors and r
   await emit(page, 'approval.request');
   await page.setViewportSize({ width: 720, height: 450 });
   await page.keyboard.press('Escape');
-  const approvalDialog = log.locator('[data-slot="confirmation"]');
+  const approvalDialog = page
+    .getByRole('region', { name: 'Waiting for your input' })
+    .locator('[data-slot="confirmation"]');
   await expect(approvalDialog).toContainText('Review synthetic operation');
   await approvalDialog.getByRole('button', { name: 'Deny', exact: true }).click();
   await expect(approvalDialog).toHaveCount(0);

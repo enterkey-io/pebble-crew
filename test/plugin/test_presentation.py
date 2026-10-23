@@ -28,6 +28,35 @@ class PresentationTests(WorkspaceTests):
         self.native.call = native
         await self.service.invoke('workspace.snapshot', {})
 
+    async def test_created_group_is_in_the_immediate_authenticated_snapshot(self):
+        import httpx
+        from unittest.mock import patch
+        from bot_web.server import create_app
+        from test_security import TOKEN, ORIGIN, HOST
+        rooms = []
+        call = self.native.call
+        async def native(method, params):
+            if method == 'groups.list': return {'rooms': list(rooms)}
+            if method == 'groups.create':
+                room = {**params, 'created_at': 1}
+                rooms.append(room)
+                return room
+            return await call(method, params)
+        self.native.call = native
+        self.service._snapshot = None
+        with patch('bot_web.presentation.time.monotonic', return_value=100):
+            await self.service.invoke('workspace.snapshot', {})
+            app = create_app(TOKEN, {ORIGIN}, {HOST}, self.native, workspace=self.service)
+            async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url='https://'+HOST) as client:
+                headers = {'Origin': ORIGIN, 'Authorization': 'Bearer '+TOKEN}
+                connected = await client.post('/v1/connect', headers=headers)
+                headers['X-Bot-Connection'] = connected.json()['connection']
+                created = await client.post('/v1/rpc', headers=headers, json={'operation':'room.create','params':{'room_id':'new-discussion','name':'New discussion','profiles':['default','amy']}})
+                self.assertEqual(created.status_code, 200, created.text)
+                snapshot = await client.post('/v1/rpc', headers=headers, json={'operation':'workspace.snapshot','params':{}})
+                self.assertEqual(snapshot.status_code, 200, snapshot.text)
+                self.assertEqual([r['room_id'] for r in snapshot.json()['result']['rooms']], ['new-discussion'])
+
     def spec(self, profile='amy'):
         state = self.store.read()
         return {'profile': profile, 'id': state['bots'][profile]['id'], 'expected_revision': state['revision']}

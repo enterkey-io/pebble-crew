@@ -28,3 +28,20 @@ it('does not reuse a superseded connection flight', async () => {
   finish();
   await old;
 });
+it('does not publish a snapshot invalidated by a confirmed mutation', async () => {
+  const loader = new RosterLoader(),
+    key = {};
+  const published: number[] = [];
+  let finish!: () => void,
+    calls = 0;
+  const read = async (current: () => boolean) => {
+    const version = ++calls;
+    if (version === 1) await new Promise<void>((resolve) => (finish = resolve));
+    if (current()) published.push(version);
+  };
+  const first = loader.load(key, read);
+  const changed = loader.load(key, read, true);
+  finish();
+  await Promise.all([first, changed]);
+  expect(published).toEqual([2]);
+});

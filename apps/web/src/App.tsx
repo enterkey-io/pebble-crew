@@ -989,10 +989,10 @@ export function App({ owner }: { owner?: OwnerConnection }) {
   async function loadRoster(connection: SessionClient, invalidate = false) {
     return rosterLoader.current.load(
       connection,
-      async () => {
+      async (isCurrent) => {
         if (connection.supportsWorkspace) {
           const data = object(await connection.invoke('workspace.snapshot', {}));
-          if (current.current !== connection) return;
+          if (current.current !== connection || !isCurrent()) return;
           const state = decodeWorkspaceSnapshot(data.workspace);
           if (
             workspaceRef.current?.id === state.id &&
@@ -1076,7 +1076,7 @@ export function App({ owner }: { owner?: OwnerConnection }) {
         } else {
           const roster = object(await connection.invoke('bots.list', {}));
           const nativeRooms = object(await connection.invoke('rooms.list', {}));
-          if (current.current !== connection) return;
+          if (current.current !== connection || !isCurrent()) return;
           setBots(
             rows(roster.bots).map((b) => ({
               profile: text(b.profile),
