@@ -254,10 +254,13 @@ hermes bot-web verify --public</code></pre>
 <p>the combined plugin.</p>
 <h2>Interface and optional capabilities</h2>
 <p>The combined update includes the complete redesigned UI and matching integration.</p>
-<p>Do not update only the static files when enabling Files/Computer. Direct-chat</p>
-<p>files use a private owner-local staging/index store under the integration state;</p>
-<p>no message bodies are stored in its send receipts. Group attachments and automatic</p>
-<p>generated-output indexing remain unavailable. Preserve this store during updates.</p>
+<p>Do not update only the static files when enabling Library/Computer. Direct-chat</p>
+<p>uploads use a private owner-local staging/index store under the integration state;</p>
+<p>no message bodies are stored in its send receipts. Library also catalogs authorized</p>
+<p>photos, videos and documents in saved native Bot Chat history, including older</p>
+<p>canonical history. It reads that history on demand rather than copying private</p>
+<p>files into a background index. Group attachments remain unavailable. Preserve the</p>
+<p>upload store and native history during updates.</p>
 <p>The experimental Computer viewer is disabled by default pending Linux acceptance.</p>
 <p>An operator testing it may explicitly set <code>HERMES_BOT_WEB_EXPERIMENTAL_COMPUTER=1</code></p>
 <p>in the bridge service environment. Do not enable it as part of ordinary install.</p>

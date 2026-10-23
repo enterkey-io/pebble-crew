@@ -332,10 +332,13 @@ the combined plugin.
 ## Interface and optional capabilities
 
 The combined update includes the complete redesigned UI and matching integration.
-Do not update only the static files when enabling Files/Computer. Direct-chat
-files use a private owner-local staging/index store under the integration state;
-no message bodies are stored in its send receipts. Group attachments and automatic
-generated-output indexing remain unavailable. Preserve this store during updates.
+Do not update only the static files when enabling Library/Computer. Direct-chat
+uploads use a private owner-local staging/index store under the integration state;
+no message bodies are stored in its send receipts. Library also catalogs authorized
+photos, videos and documents in saved native Bot Chat history, including older
+canonical history. It reads that history on demand rather than copying private
+files into a background index. Group attachments remain unavailable. Preserve the
+upload store and native history during updates.
 The experimental Computer viewer is disabled by default pending Linux acceptance.
 An operator testing it may explicitly set `HERMES_BOT_WEB_EXPERIMENTAL_COMPUTER=1`
 in the bridge service environment. Do not enable it as part of ordinary install.

@@ -383,3 +383,41 @@ both and fence earlier pending reads. A lost response requires a read-only
 status check before another decision. One request’s decision must not clear
 another request’s uncertainty. This concerns management requests; native tool
 approval response semantics are unchanged.
+
+## Pending-input queue and native media catalog (0.7.11-preview.1)
+
+This supersedes the pending-card placement described in earlier version sections.
+Pending approvals, structured questions and secret prompts occupy the conversation's
+input area in a stable, compact queue. Message drafts remain mounted while blocked.
+Terminal or inactive requests leave small transcript receipts. Native tool/question/
+secret receipts live in the signed-in app session; management receipts use the
+owner-local journal. Successful complete native snapshots may mark omitted native
+requests inactive; transport errors must retain known pending forms.
+
+`requests.list` accepts `view: "pending" | "recent"` and nullable `cursor`. Each
+page returns at most 25 rows with `generation`, `next` and `restart`. Drain pending
+pages independently of completed history. If the journal generation changes during
+a scan, restart the entire scan; never interpret an incomplete scan as revocation.
+An unreadable row returns its ID, actor, state and `unreadable: true`, without
+suppressing healthy siblings. `requests.get` reads the exact original request ID.
+
+`requests.review` returns `kind: "ready" | "blocked" | "outcome"`. Ready includes
+a review `digest`, `legacy`, `current_context`, `manager` and `manager_identity`.
+The client sends the displayed digest on approval. Legacy creation requests require
+explicit acceptance of the displayed current identity; the original ID, spec and
+intent fingerprint do not change. Creation review may survive unrelated workspace
+edits, while checking actor, target availability, model authorization and manager
+identity. Other management actions keep their conservative revision guard.
+Unknown native outcomes are observed, never automatically executed again.
+For v1 callers only, an unchanged captured proposal can still approve without a
+new digest; legacy or rebased creation cannot use that compatibility path.
+
+`media.list` accepts an opened `session_id` and nullable opaque `cursor`, returning
+`files` and `next`. Metadata contains saved message `row_id`, reference digest,
+filename and size; it contains no private path or file bytes. Each page examines
+at most 25 native history rows, so a page may be empty and still have `next`.
+The cursor binds the native profile, database and canonical compression lineage;
+changed history requires a fresh scan. Existing `media.read` independently
+revalidates every actual file read. Remote links, user/private message references
+and unsafe paths are excluded. `files.list` remains the separate owner-upload
+catalog; failure of one Library source does not discard the other.

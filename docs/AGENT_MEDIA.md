@@ -38,8 +38,18 @@ explicit click; the app never loads tracking images automatically.
 These are current files, not permanent snapshots. Deleted or changed artifacts
 can become unavailable. Files inside an isolated Docker/SSH sandbox must first
 be copied to a host-visible generated directory; this feature does not fetch
-arbitrary remote sandbox paths. Generated media in Crew/room chats and automatic
-video/audio players are separate work.
+arbitrary remote sandbox paths. Recognized MP4 videos support inline playback and
+the fullscreen viewer. Generated media in Crew/group chats and audio players
+remain separate work.
+
+## Library
+
+The Pebble sidebar's Library lists owner uploads and authorized photos, videos and
+documents from saved assistant messages in the canonical Bot Chat and its older
+compression history. Load more continues through older messages. View and Download
+use the same authorization and viewers as chat attachments. Listing does not fetch
+remote links or copy file contents into another store; deleted outputs can become
+unavailable. A failed upload listing does not hide agent-shared media, or vice versa.
 
 ## Verification
 
