@@ -245,6 +245,21 @@ class GeneratedMedia:
         self.ops = ops
         self.lock = asyncio.Lock()
 
+    async def list(self, params):
+        fields(params, ['session_id', 'cursor'])
+        sid = identifier(params['session_id'])
+        if sid not in self.ops.sessions or (params['cursor'] is not None and (not isinstance(params['cursor'], str) or len(params['cursor']) > 1000)):
+            raise InvalidOperation('Open a conversation first')
+        profile = self.ops.sessions[sid]
+        stamp = await self.ops.stamp(profile)
+        if stamp != self.ops.session_incarnations.get(sid): raise InvalidOperation('Conversation changed')
+        canonical = ((await self.ops.bot(profile)).get('canonical_session') or {}).get('id')
+        if not canonical: raise InvalidOperation('Conversation unavailable')
+        result = await self.ops.gateway.call('bot_web.media.list', {**params, 'profile': profile, 'incarnation': stamp, 'canonical': canonical})
+        if (await self.ops.stamp(profile) != stamp or ((await self.ops.bot(profile)).get('canonical_session') or {}).get('id') != canonical):
+            raise InvalidOperation('Conversation changed')
+        return result
+
     async def read(self, params):
         fields(params, ['session_id', 'row_id', 'reference'])
         sid = identifier(params['session_id'])

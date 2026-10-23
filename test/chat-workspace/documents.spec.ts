@@ -164,7 +164,7 @@ test('Files opens a shared text preview and returns to the same details tab', as
   await expect(page.getByLabel('Message', { exact: true })).toBeEnabled();
   await page.getByRole('button', { name: /Show details/ }).click();
   const details = page.locator('.details-panel');
-  await details.getByRole('tab', { name: 'Files', exact: true }).click();
+  await details.getByRole('tab', { name: 'Library', exact: true }).click();
   await details.getByRole('button', { name: 'View notes.txt', exact: true }).click();
   const reader = page.getByRole('region', { name: 'Document viewer', exact: true });
   await expect(reader.locator('pre')).toHaveText('Plain owner notes.');
@@ -176,7 +176,7 @@ test('Files opens a shared text preview and returns to the same details tab', as
     )
     .toBeGreaterThan(page.viewportSize()!.width < 768 ? page.viewportSize()!.width - 1 : 500);
   await page.getByRole('button', { name: 'Close document', exact: true }).click();
-  await expect(details.getByRole('tab', { name: 'Files', exact: true })).toHaveAttribute(
+  await expect(details.getByRole('tab', { name: 'Library', exact: true })).toHaveAttribute(
     'aria-selected',
     'true',
   );

@@ -1,3 +1,4 @@
+import { execFileSync } from 'node:child_process';
 import { openSidebarMenu } from '../sidebar-menu';
 import { test, expect } from '@playwright/test';
 import type { BrowserContext, Page } from '@playwright/test';
@@ -629,6 +630,18 @@ test('native chat reactions, generated media and agent-opened documents', async 
     animations: 'disabled',
     path: 'test-results/native-agent-media-phone.png',
   });
+  await page.getByRole('button', { name: /Show details/ }).click();
+  const library = page.locator('.details-panel');
+  await library.getByRole('tab', { name: 'Library', exact: true }).click();
+  await expect(library).toContainText('chart one.png');
+  await expect(library).toContainText('figures.csv');
+  await expect(library).toContainText('sample-video.mp4');
+  await library.getByRole('button', { name: 'View chart one.png', exact: true }).click();
+  const sharedViewer = page.getByRole('dialog', { name: 'chart one.png', exact: true });
+  await expect(sharedViewer).toBeVisible();
+  await sharedViewer.getByRole('button', { name: 'Close image', exact: true }).click();
+  await page.screenshot({ animations: 'disabled', path: 'test-results/native-library-phone.png' });
+  await library.getByRole('button', { name: 'Close details', exact: true }).click();
   await page.getByLabel('Message', { exact: true }).fill('nativedocument');
   await page.getByRole('button', { name: 'Send message', exact: true }).click();
   const reader = page.getByRole('region', { name: 'Document viewer', exact: true });
@@ -786,4 +799,53 @@ test('native organization edits and task activity persist through reload', async
   await page.getByRole('tab', { name: 'Activity', exact: true }).click();
   await expect(page.getByText('Native persistence', { exact: true })).toBeVisible();
   expect(errors).toEqual([]);
+});
+
+test('existing legacy creation survives another approval and completes once through the fixed composer', async ({
+  page,
+  context,
+}) => {
+  await context.addCookies(ownerCookies);
+  const home = (
+    await readFile(resolve(process.env.WORKSPACE_TEST_STATE!, 'native-home.txt'), 'utf8')
+  ).trim();
+  function fixture(action: string) {
+    return JSON.parse(
+      execFileSync(
+        process.env.HERMES_NATIVE_PYTHON!,
+        ['scripts/fixture/approval_seed.py', home, action],
+        { encoding: 'utf8', env: { ...process.env, PYTHONPATH: process.env.HERMES_NATIVE_ROOT } },
+      ).trim(),
+    );
+  }
+  const seeded = fixture('seed');
+  await page.goto('/');
+  await expect(page.getByLabel('Message', { exact: true })).toBeEnabled();
+  await page.getByRole('button', { name: new RegExp('^' + seeded.name + ' .*Bot Chat$') }).click();
+  const queue = page.getByRole('region', { name: 'Waiting for your input', exact: true });
+  await expect(queue).toContainText('1 of 2');
+  await expect(queue.locator('[data-request-id="' + seeded.id + '"]')).toBeVisible();
+  await queue.getByRole('button', { name: 'Next request', exact: true }).click();
+  await queue.getByRole('button', { name: 'Approve exact request' }).click();
+  await expect(queue).toContainText('1 of 1');
+  await expect(queue).toContainText('Older request');
+  await expect(queue.getByRole('button', { name: 'Approve exact request' })).toBeDisabled();
+  await queue.getByRole('checkbox', { name: 'Use this current setup', exact: true }).check();
+  await queue.getByRole('button', { name: 'Approve exact request' }).click();
+  await expect(queue).toHaveCount(0, { timeout: 30000 });
+  await expect(
+    page.getByRole('log').locator('[data-request-id="' + seeded.id + '"]'),
+  ).toContainText('Approved');
+  const result = fixture('read');
+  expect(result).toEqual({
+    id: seeded.id,
+    state: 'completed',
+    fingerprint: seeded.fingerprint,
+    manager: 'beta',
+    canonical: true,
+  });
+  await page.screenshot({
+    path: 'test-results/native-existing-approval.png',
+    animations: 'disabled',
+  });
 });

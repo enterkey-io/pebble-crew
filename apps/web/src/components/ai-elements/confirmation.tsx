@@ -4,6 +4,10 @@ import type { LucideIcon } from 'lucide-react';
 import { Button } from '../ui/button';
 import { Item, ItemContent, ItemTitle, ItemDescription, ItemActions } from '../ui/item';
 import { LoadingBar } from '../ui/loading-bar';
+import { Disclosure } from '../ui/disclosure';
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '../ui/collapsible';
+import { ChevronRight } from 'lucide-react';
+
 export type ConfirmationValue =
   | { kind: 'pending'; disabled?: boolean; onDecision: (decision: 'once' | 'deny') => void }
   | {
@@ -45,16 +49,38 @@ export function Confirmation({
   details,
   value,
   className,
+  compact = false,
 }: {
   title: string;
   description: string;
+  compact?: boolean;
   details?: ReactNode;
   value: ConfirmationValue;
   className?: string;
 }) {
-  return (
-    <ApprovalSurface title={title} description={description} {...(className ? { className } : {})}>
-      {details}
+  const terminal = !['pending', 'submitting'].includes(value.kind);
+  const full = (
+    <ApprovalSurface
+      title={title}
+      description={
+        compact && !terminal ? (
+          <span className="line-clamp-2 break-words">{description}</span>
+        ) : (
+          description
+        )
+      }
+      {...(className ? { className } : {})}
+    >
+      {compact && !terminal && (description.length > 160 || details) ? (
+        <Disclosure title="Read more">
+          <div className="max-h-[24dvh] overflow-y-auto overscroll-contain">
+            <p className="whitespace-pre-wrap break-words">{description}</p>
+            {details}
+          </div>
+        </Disclosure>
+      ) : (
+        details
+      )}
       {value.kind === 'pending' ? (
         <ItemActions className="justify-end">
           <Button
@@ -80,5 +106,25 @@ export function Confirmation({
         </div>
       )}
     </ApprovalSurface>
+  );
+  return compact && terminal ? (
+    <Collapsible data-slot="approval-receipt" className="group/receipt min-w-0">
+      <CollapsibleTrigger asChild>
+        <Button
+          variant="quiet"
+          className="h-auto max-w-full justify-start px-0 text-left whitespace-normal"
+        >
+          <ShieldCheck className="size-3.5 shrink-0" aria-hidden="true" />
+          <span>{value.kind !== 'pending' && value.message}</span>
+          <ChevronRight
+            className="size-3 shrink-0 transition-transform group-data-[state=open]/receipt:rotate-90 motion-reduce:transition-none"
+            aria-hidden="true"
+          />
+        </Button>
+      </CollapsibleTrigger>
+      <CollapsibleContent className="pt-2">{full}</CollapsibleContent>
+    </Collapsible>
+  ) : (
+    full
   );
 }

@@ -125,8 +125,28 @@ async def exercise(root, home, port):
         await completed(alpha)
         assert (protected / 'keep.txt').exists()
         await deliver_native(workspace, gateway)
+        # Recover a legacy creation under its original identity after an unrelated edit.
+        state = store.read()
+        role = {key: '' for key in ('title', 'description', 'responsibilities', 'boundaries', 'expectedOutputs')}
+        role['description'] = 'Synthetic approval recovery'
+        request_id, _ = store.request('alpha', 'agent.create', {'name': 'ron', 'display_name': 'Ron', 'soul': 'Synthetic owner-local profile.',
+            'role': role, 'model_source': 'default', 'model_fingerprint': state['model_grant']['fingerprint'],
+            'skills': [], 'toolsets': ['workspace', 'skills'], 'manager': 'alpha', 'team': None, 'expected_revision': state['revision']})
+        request = store.request_by_id(request_id)
+        with store.db: store.db.execute('DELETE FROM request_context WHERE request=?', (request_id,))
+        current = state['bots']['alpha']
+        await workspace.invoke('roles.update', {'profile': 'alpha', 'role': {**current['role'], 'description': 'Unrelated edit before approval'},
+            'manager': current['manager'], 'team': current['team'], 'expected_revision': state['revision']})
+        reviewed = await workspace.invoke('requests.review', {'id': request_id})
+        assert reviewed['kind'] == 'ready' and reviewed['legacy'] is True, reviewed
+        result = await workspace.invoke('requests.approve', {'id': request_id, 'fingerprint': request['fingerprint'], 'review_digest': reviewed['digest']})
+        assert result['state'] == 'completed', result
+        assert store.request_by_id(request_id)['fingerprint'] == request['fingerprint']
+        final = store.read()
+        assert final['bots']['ron']['manager_id'] == final['bots']['alpha']['id']
+        assert (await ops.invoke('bot.open', {'profile': 'ron'}))['session_id']
         assert soul.read_bytes() == original
-        print(json.dumps({'revision': gateway.build['revision'], 'native_clarify_tool': True,
+        print(json.dumps({'revision': gateway.build['revision'], 'native_clarify_tool': True, 'same_id_legacy_creation_after_unrelated_edit': True,
             'native_answer_received': True, 'main_notification_in_existing_chat_once': True, 'native_tool_approval_stays_owner_gated': True,
             'persona_preserved': True, 'model': 'deterministic-loopback-only'}))
     finally:

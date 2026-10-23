@@ -116,3 +116,73 @@ test('an unavailable shared image can retry without a global connection error', 
   await page.getByRole('button', { name: 'Retry image', exact: true }).click();
   await expect(page.getByRole('img', { name: 'Saved chart', exact: true })).toBeVisible();
 });
+
+test('Library includes older agent-shared photos and documents and reuses authorized viewers', async ({
+  page,
+  context,
+}, info) => {
+  const png = await readFile('apps/web/public/icons/pebble-192.png');
+  await installFixture(context);
+  let catalogs = 0;
+  await page.route('**/v1/rpc', async (route) => {
+    const { operation, params } = route.request().postDataJSON();
+    if (operation === 'media.list') {
+      catalogs++;
+      expect(params.session_id).toBe('session-arlo');
+      return route.fulfill({
+        json: {
+          result: {
+            files: params.cursor
+              ? [
+                  {
+                    row_id: 9,
+                    reference: 'a'.repeat(64),
+                    name: 'older-chart.png',
+                    size: png.length,
+                  },
+                  { row_id: 10, reference: 'b'.repeat(64), name: 'older-plan.md', size: 100 },
+                ]
+              : [],
+            next: params.cursor ? null : 'older-page',
+          },
+        },
+      });
+    }
+    return route.fallback();
+  });
+  await page.route('**/v1/files/read', async (route) => {
+    const { operation, params } = route.request().postDataJSON();
+    if (operation !== 'media.read') return route.fallback();
+    expect(params.session_id).toBe('session-arlo');
+    expect([9, 10]).toContain(params.row_id);
+    return route.fulfill({
+      body: params.row_id === 9 ? png : Buffer.from('# Older plan\n\n**Still available**'),
+      headers: {
+        'content-type': params.row_id === 9 ? 'image/png' : 'text/markdown',
+        'content-disposition': `attachment; filename*=UTF-8''${params.row_id === 9 ? 'older-chart.png' : 'older-plan.md'}`,
+      },
+    });
+  });
+  await page.goto('/');
+  await expect(page.getByLabel('Message', { exact: true })).toBeVisible();
+  await page.getByRole('button', { name: /Show details/ }).click();
+  const details = page.locator('.details-panel');
+  await details.getByRole('tab', { name: 'Library', exact: true }).click();
+  await expect(details).toContainText('older-chart.png');
+  await expect(details).toContainText('older-plan.md');
+  expect(catalogs).toBe(2);
+  await details.getByRole('button', { name: 'View older-chart.png', exact: true }).click();
+  const viewer = page.getByRole('dialog', { name: 'older-chart.png', exact: true });
+  await expect(viewer).toBeVisible();
+  await viewer.getByRole('button', { name: 'Close image', exact: true }).click();
+  await page.screenshot({
+    path: info.outputPath('library-agent-media.png'),
+    animations: 'disabled',
+  });
+  await details.getByRole('button', { name: 'View older-plan.md', exact: true }).click();
+  await expect(
+    page
+      .getByRole('region', { name: 'Document viewer', exact: true })
+      .getByRole('heading', { name: 'Older plan', exact: true }),
+  ).toBeVisible();
+});

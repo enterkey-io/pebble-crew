@@ -816,6 +816,27 @@
         "rpc"
       ],
       "effect": "read"
+    },
+    "requests.get": {
+      "preferred": "rpc",
+      "accepted": [
+        "rpc"
+      ],
+      "effect": "read"
+    },
+    "requests.review": {
+      "preferred": "rpc",
+      "accepted": [
+        "rpc"
+      ],
+      "effect": "read"
+    },
+    "media.list": {
+      "preferred": "rpc",
+      "accepted": [
+        "rpc"
+      ],
+      "effect": "read"
     }
   }
 }

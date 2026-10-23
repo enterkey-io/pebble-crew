@@ -1,3 +1,8 @@
+import type { AttentionNavigation } from './chat/ConversationAttention';
+import { useSecretCards } from './chat/SecretCards';
+import { ConversationAttention } from './chat/ConversationAttention';
+import { useManagementRequests } from './chat/useManagementRequests';
+import type { TranscriptCard } from './chat/presentation';
 import type { SessionClient } from '@hermes-client/protocol';
 import { usePageTitle } from './ui/page-title';
 import { DiscardChanges } from './ui/DiscardChanges';
@@ -5,6 +10,7 @@ import { useComposerSize } from './chat/use-composer-size';
 import { CommandSuggestions } from './chat/CommandSuggestions';
 import { MentionSuggestions, useMentionSuggestions } from './chat/MentionSuggestions';
 import type { CommandSuggestionsHandle } from './chat/CommandSuggestions';
+import { reconcileNativeApprovals, type NativeApprovalReview } from './chat/native-approvals';
 import { Confirmation } from './components/ai-elements/confirmation';
 import { Tool } from './components/ai-elements/tool';
 import {
@@ -176,7 +182,25 @@ export function App({ owner }: { owner?: OwnerConnection }) {
   const sendProjection = useRef(new SendProjection());
   const runEpoch = useRef(0);
   const [routines, setRoutines] = useState<Row[]>([]);
-  const [approvals, setApprovals] = useState<ConversationApproval[]>([]);
+  const [approvals, setApprovals] = useState<NativeApprovalReview[]>([]);
+  const approvalHistory = useRef(new Map<string, NativeApprovalReview[]>());
+  function observeApprovals(scope: string, pending: ConversationApproval[]) {
+    const rows = reconcileNativeApprovals(approvalHistory.current.get(scope) ?? [], pending);
+    approvalHistory.current.set(scope, rows);
+    setApprovals(rows);
+  }
+  const approvalRead = useRef(0);
+  async function refreshApprovals(connection: SessionClient, target: Selection) {
+    if (target.kind !== 'bot') return;
+    const started = ++approvalRead.current;
+    const pending = await new ConversationDomain(connection).approvals(target.sessionId);
+    if (
+      started === approvalRead.current &&
+      current.current === connection &&
+      selected.current === target
+    )
+      observeApprovals(target.sessionId, pending);
+  }
   const approvalFlights = useRef(new Set<string>());
   const [approvalSubmitting, setApprovalSubmitting] = useState<Record<string, boolean>>({});
   const [draft, setDraft] = useState('');
@@ -349,27 +373,42 @@ export function App({ owner }: { owner?: OwnerConnection }) {
   const [stopping, setStopping] = useState(false);
   const [pinOrder, setPinOrder] = useState<string[]>([]);
   const preferencesRevision = useRef(0);
-  const [review, setReview] = useState<Row>();
+  const [review, setReview] = useState<import('@hermes-client/protocol').WorkspaceRequest>();
   const [reviewBusy, setReviewBusy] = useState(false);
-  const [requestCount, setRequestCount] = useState(0);
   const [cardsVersion, setCardsVersion] = useState(0);
+  const attentionNavigations = useRef(new Map<string, AttentionNavigation>());
   const [requestFocus, setRequestFocus] = useState<string>();
+  const management = useManagementRequests({
+    client: workspace ? client : undefined,
+    scope: workspace?.id,
+    version: cardsVersion,
+  });
+  const requestCount = management.requests.filter((request) => request.state === 'pending').length;
+  const secretCards = useSecretCards({
+    client: client?.supportsSecrets ? client : undefined,
+    sessionId: selection?.kind === 'bot' ? selection.sessionId : undefined,
+    version: cardsVersion,
+    scope: workspace?.id,
+  });
   const requestCards = useConversationRequests({
     client,
     profile: selection?.kind === 'bot' ? selection.bot.profile : undefined,
     workspace,
-    version: cardsVersion,
-    focusId: requestFocus,
+    management,
     onOpen(profile, requestId) {
       const bot = bots.find((bot) => bot.profile === profile);
       if (bot) {
         setRequestFocus(requestId);
         void open(bot);
+      } else {
+        setSettingsTab('requests');
+        setSettings(true);
       }
     },
   });
   const questionCards = useQuestionCards({
     client: client?.supportsQuestions ? client : undefined,
+    scope: workspace?.id,
     sessionId: selection?.kind === 'bot' ? selection.sessionId : undefined,
     version: cardsVersion,
   });
@@ -451,6 +490,12 @@ export function App({ owner }: { owner?: OwnerConnection }) {
     target.kind === 'bot'
       ? `bot:${target.bot.id ?? target.bot.profile}`
       : `room:${text(target.room.room_id)}`;
+  const attentionKey = workspace?.id + ':' + (selection ? draftKey(selection) : '');
+  let attentionNavigation = attentionNavigations.current.get(attentionKey);
+  if (!attentionNavigation) {
+    attentionNavigation = { selection: undefined, order: new Map() };
+    attentionNavigations.current.set(attentionKey, attentionNavigation);
+  }
 
   const attachmentInput = useRef<HTMLInputElement>(null);
   const fileSession =
@@ -535,6 +580,7 @@ export function App({ owner }: { owner?: OwnerConnection }) {
     selected.current = undefined;
     selectionConnection.current = undefined;
     setClient(undefined);
+    approvalHistory.current.clear();
     setSelection(undefined);
     setBots([]);
     setRooms([]);
@@ -840,7 +886,7 @@ export function App({ owner }: { owner?: OwnerConnection }) {
       agentExchanges.refresh();
       return;
     }
-    if (event.type === 'questions.changed') {
+    if (event.type === 'questions.changed' || event.type === 'secret.changed') {
       setCardsVersion((version) => version + 1);
       return;
     }
@@ -935,8 +981,7 @@ export function App({ owner }: { owner?: OwnerConnection }) {
     if (event.type === 'status.update')
       setActivity(text(payload.text).trim().slice(0, 140) || 'Working');
     if (event.type === 'approval.request') {
-      const data = await new ConversationDomain(connection).approvals(target.sessionId);
-      if (selected.current === target) setApprovals(data);
+      await refreshApprovals(connection, target);
     }
     if (event.type === 'error') setError('Hermes reported an error. Refresh before retrying.');
   }
@@ -944,10 +989,10 @@ export function App({ owner }: { owner?: OwnerConnection }) {
   async function loadRoster(connection: SessionClient, invalidate = false) {
     return rosterLoader.current.load(
       connection,
-      async () => {
+      async (isCurrent) => {
         if (connection.supportsWorkspace) {
           const data = object(await connection.invoke('workspace.snapshot', {}));
-          if (current.current !== connection) return;
+          if (current.current !== connection || !isCurrent()) return;
           const state = decodeWorkspaceSnapshot(data.workspace);
           if (
             workspaceRef.current?.id === state.id &&
@@ -1028,13 +1073,10 @@ export function App({ owner }: { owner?: OwnerConnection }) {
           ) {
             await refreshHistory(connection, target);
           }
-          const req = object(await connection.invoke('requests.list', {}));
-          if (current.current === connection)
-            setRequestCount(rows(req.requests).filter((r) => r.state === 'pending').length);
         } else {
           const roster = object(await connection.invoke('bots.list', {}));
           const nativeRooms = object(await connection.invoke('rooms.list', {}));
-          if (current.current !== connection) return;
+          if (current.current !== connection || !isCurrent()) return;
           setBots(
             rows(roster.bots).map((b) => ({
               profile: text(b.profile),
@@ -1154,8 +1196,7 @@ export function App({ owner }: { owner?: OwnerConnection }) {
       const target = selected.current;
       if (settled && target?.kind === 'bot') {
         if (selectionEpoch.current === owned.bindingEpoch) setChatBound(true);
-        const pending = await new ConversationDomain(connection).approvals(target.sessionId);
-        if (selected.current === target) setApprovals(pending);
+        await refreshApprovals(connection, target);
       }
       if (current.current === connection) {
         setCardsVersion((version) => version + 1);
@@ -1285,8 +1326,7 @@ export function App({ owner }: { owner?: OwnerConnection }) {
       const ownedRoutines = object(await client.invoke('routines.list', { profile: bot.profile }));
       if (current.current !== client || selected.current !== target) return 'superseded';
       setRoutines(rows(ownedRoutines.jobs ?? []));
-      const pending = await new ConversationDomain(client).approvals(target.sessionId);
-      if (selected.current === target) setApprovals(pending);
+      await refreshApprovals(client, target);
       // The first open also authorizes this browser's event subscription for
       // the session. Snapshot once more after that authorization; positions
       // merge events that race the response, even under continuous streaming.
@@ -1414,7 +1454,8 @@ export function App({ owner }: { owner?: OwnerConnection }) {
         if (disposed) return;
         const driver = object(state.driver_status ?? {});
         const actions = rows(driver.pending_actions ?? []);
-        setApprovals(
+        observeApprovals(
+          'room:' + text(selection?.kind === 'room' ? selection.room.room_id : ''),
           decodeApprovals(
             actions.filter((action) => action.kind === 'approval'),
             {
@@ -1650,20 +1691,38 @@ export function App({ owner }: { owner?: OwnerConnection }) {
       }
     }
   }
-  async function approve(approval: ConversationApproval, choice: 'once' | 'deny') {
-    if (!client || !selection || blocked) return;
+  function settleApproval(approval: ConversationApproval, state: NativeApprovalReview['state']) {
+    const scope =
+      approval.target.kind === 'chat'
+        ? approval.target.sessionId
+        : 'room:' + approval.target.roomId;
+    const rows = (approvalHistory.current.get(scope) ?? []).map((row) =>
+      approvalKey(row.target) === approvalKey(approval.target) ? { ...row, state } : row,
+    );
+    approvalHistory.current.set(scope, rows);
+    setApprovals(rows);
+  }
+  async function approve(approval: NativeApprovalReview, choice: 'once' | 'deny') {
+    if (!client || !selection || blocked || approval.state !== 'pending') return;
     const requestKey = approvalKey(approval.target);
     if (approvalFlights.current.has(requestKey)) return;
     approvalFlights.current.add(requestKey);
+    approvalRead.current++;
     setApprovalSubmitting((old) => ({ ...old, [requestKey]: true }));
     const connection = client,
       target = selection;
     try {
-      await new ConversationDomain(client).decide(approval.target, choice);
+      const receipt = await new ConversationDomain(client).decide(approval.target, choice);
       if (current.current === connection && selected.current === target)
-        setApprovals((old) => old.filter((a) => approvalKey(a.target) !== requestKey));
-    } catch (error) {
-      if (current.current === connection && selected.current === target) fail(error);
+        settleApproval(
+          approval,
+          receipt === 'expired' ? 'inactive' : choice === 'once' ? 'approved' : 'denied',
+        );
+    } catch {
+      if (current.current === connection && selected.current === target) {
+        settleApproval(approval, 'uncertain');
+        await refreshApprovals(connection, target).catch(() => undefined);
+      }
     } finally {
       approvalFlights.current.delete(requestKey);
       setApprovalSubmitting((old) => {
@@ -1731,23 +1790,26 @@ export function App({ owner }: { owner?: OwnerConnection }) {
           spec: { profile: bot.profile, id: bot.id, expected_revision: workspace.revision },
         }),
       );
-      const list = object(await client.invoke('requests.list', {}));
-      setReview(rows(list.requests).find((r) => r.id === result.request_id));
+      if (typeof result.request_id === 'string')
+        setReview((await new RequestDomain(client).get(result.request_id)) ?? undefined);
+      management.refresh();
     } catch (e) {
       fail(e);
     }
   }
-  async function decideReview(approve: boolean, confirmation?: string) {
-    if (!client || !review) return;
+  async function decideReview(
+    approve: boolean,
+    confirmation?: string,
+    context?: import('@hermes-client/protocol').ManagementReview,
+  ) {
+    if (!client || !review || typeof review.id !== 'string') return;
     setReviewBusy(true);
     try {
-      await client.invoke(approve ? 'requests.approve' : 'requests.deny', {
-        id: review.id,
-        fingerprint: review.fingerprint,
-        ...(confirmation == null ? {} : { confirmation }),
-      });
-      const list = object(await client.invoke('requests.list', {}));
-      setReview(rows(list.requests).find((r) => r.id === review.id));
+      const domain = new RequestDomain(client),
+        request = await domain.get(review.id);
+      if (!request) return;
+      await management.decide(request, approve, confirmation, context);
+      setReview((await domain.get(request.id)) ?? review);
       await loadRoster(client, true);
     } catch (e) {
       fail(e);
@@ -2020,6 +2082,7 @@ export function App({ owner }: { owner?: OwnerConnection }) {
   const settingsContent = workspace ? (
     <Suspense fallback={<LoadingBar active label="Loading Settings" />}>
       <WorkspaceSettings
+        management={management}
         onNavigate={navigate}
         key={`${settingsTab}:${editProfile ?? ''}`}
         onDirtyChange={onDirtyChange}
@@ -2029,6 +2092,7 @@ export function App({ owner }: { owner?: OwnerConnection }) {
         callActive={voiceActive}
         voiceRequest={agentSettingsTab === 'voice' ? voiceSettingsRequest : undefined}
         onVoiceReady={(profile) => {
+          if (awaitingInput) return;
           if (selected.current?.kind !== 'bot' || selected.current.bot.profile !== profile) return;
           setSettings(false);
           requestAnimationFrame(() => voicePanel.current?.open());
@@ -2058,8 +2122,44 @@ export function App({ owner }: { owner?: OwnerConnection }) {
     </Suspense>
   ) : null;
   const transcript = sendProjection.current.display(messages, stream);
+  const nativeCards: TranscriptCard[] = approvals.map((approval) => ({
+    id: 'native-approval:' + approvalKey(approval.target),
+    needsInput: approval.state === 'pending',
+    content: (
+      <Confirmation
+        title="Approval needed"
+        description={approval.description}
+        compact
+        value={
+          approvalSubmitting[approvalKey(approval.target)]
+            ? { kind: 'submitting', message: 'Sending decision' }
+            : approval.state === 'pending'
+              ? {
+                  kind: 'pending',
+                  disabled: blocked,
+                  onDecision: (choice) => void approve(approval, choice),
+                }
+              : {
+                  kind: approval.state === 'inactive' ? 'expired' : approval.state,
+                  message:
+                    approval.state === 'approved'
+                      ? 'Tool action approved'
+                      : approval.state === 'denied'
+                        ? 'Tool action denied'
+                        : approval.state === 'inactive'
+                          ? 'Approval no longer pending in Hermes. Ask the pebble for a new request if needed.'
+                          : 'Decision unconfirmed. Check with the pebble before requesting it again.',
+                }
+        }
+      />
+    ),
+  }));
+  const attentionItems = [...requestCards, ...questionCards, ...nativeCards, ...secretCards].filter(
+    (card) => card.needsInput,
+  );
+  const awaitingInput = attentionItems.length > 0;
   const actionBlocked =
-    blocked || !connectionAvailable || (selection?.kind === 'bot' && !chatBound);
+    blocked || !connectionAvailable || (selection?.kind === 'bot' && !chatBound) || awaitingInput;
   const hasMessage = !!draft.trim() || uploads.files.length > 0;
   return (
     <ConnectionRecovery.Provider value={recovery}>
@@ -2216,8 +2316,7 @@ export function App({ owner }: { owner?: OwnerConnection }) {
                             label={`${requestCount} ${requestCount === 1 ? 'request' : 'requests'} to review`}
                             icon={Inbox}
                             onClick={() => {
-                              void new RequestDomain(client)
-                                .list()
+                              void Promise.resolve(management.requests)
                                 .then((requests) => {
                                   const request = requests.find(
                                     (request) =>
@@ -2326,26 +2425,10 @@ export function App({ owner }: { owner?: OwnerConnection }) {
                         suppressedTools={agentExchanges.suppressedTools}
                         cards={[
                           ...agentExchanges.cards,
-                          ...questionCards,
-                          ...approvals.map((approval) => ({
-                            id: 'native-approval:' + approvalKey(approval.target),
-                            content: (
-                              <Confirmation
-                                title="Approval needed"
-                                description={approval.description}
-                                value={
-                                  approvalSubmitting[approvalKey(approval.target)]
-                                    ? { kind: 'submitting', message: 'Sending decision' }
-                                    : {
-                                        kind: 'pending',
-                                        disabled: blocked,
-                                        onDecision: (choice) => void approve(approval, choice),
-                                      }
-                                }
-                              />
-                            ),
-                          })),
-                          ...requestCards,
+                          ...nativeCards.filter((card) => !card.needsInput),
+                          ...questionCards.filter((card) => !card.needsInput),
+                          ...secretCards.filter((card) => !card.needsInput),
+                          ...requestCards.filter((card) => !card.needsInput),
                         ]}
                         footer={
                           <>
@@ -2375,6 +2458,7 @@ export function App({ owner }: { owner?: OwnerConnection }) {
                                 client={client}
                                 sessionId={selection.sessionId}
                                 running={running}
+                                inputBlocked={awaitingInput}
                                 onActiveChange={setVoiceActive}
                                 barTarget={voiceBarTarget}
                                 agentName={selection.bot.name}
@@ -2499,7 +2583,7 @@ export function App({ owner }: { owner?: OwnerConnection }) {
                       {agentExchanges.viewer}
                     </ChatViewport>
                     {!pickingAgents && (
-                      <>
+                      <div className="relative shrink-0">
                         {showLatest && (
                           <Button
                             variant="secondary"
@@ -2509,14 +2593,31 @@ export function App({ owner }: { owner?: OwnerConnection }) {
                             ↓ Latest messages
                           </Button>
                         )}
+                        {awaitingInput && (
+                          <div className="pc-composer-wrap composer-wrap">
+                            <ConversationAttention
+                              key={selection ? draftKey(selection) : ''}
+                              navigation={attentionNavigation}
+                              items={attentionItems}
+                              focusId={requestFocus}
+                            />
+                          </div>
+                        )}
                         <div
+                          hidden={awaitingInput}
+                          inert={awaitingInput}
+                          style={awaitingInput ? { display: 'none' } : undefined}
                           className="pc-composer-wrap composer-wrap"
                           onDragOver={(e) => {
                             if (selection?.kind === 'bot' && client.supportsAttachments)
                               e.preventDefault();
                           }}
                           onDrop={(e) => {
-                            if (selection?.kind === 'bot' && client.supportsAttachments) {
+                            if (
+                              !actionBlocked &&
+                              selection?.kind === 'bot' &&
+                              client.supportsAttachments
+                            ) {
                               e.preventDefault();
                               uploads.add([...e.dataTransfer.files]);
                             }
@@ -2733,7 +2834,7 @@ export function App({ owner }: { owner?: OwnerConnection }) {
                             />
                           </PromptInputFrame>
                         </div>
-                      </>
+                      </div>
                     )}
                   </>
                 )}
@@ -2943,9 +3044,12 @@ export function App({ owner }: { owner?: OwnerConnection }) {
           {review && (
             <Drawer title="Review deletion" onClose={closeReview}>
               <RequestReview
+                client={client}
+                draft={management.reviewDraftFor(review)}
+                onDraft={(value) => management.setReviewDraft(review, value)}
                 request={review}
                 busy={reviewBusy}
-                onDecision={(a, c) => void decideReview(a, c)}
+                onDecision={(a, c, context) => void decideReview(a, c, context)}
                 onInspect={() =>
                   void client
                     .invoke('requests.reconcile', { id: review.id })

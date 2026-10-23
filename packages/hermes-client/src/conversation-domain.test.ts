@@ -153,7 +153,9 @@ describe('conversation presentation boundary', () => {
     const domain = new ConversationDomain({
       invoke: async (operation, params) => {
         calls.push({ operation, params });
-        return {};
+        return operation === 'room.approve'
+          ? { approved: true, result: { resolved: 1 } }
+          : { resolved: 1 };
       },
     });
     await domain.decide({ kind: 'chat', sessionId: 's1', requestId: 'r1' }, 'once');
@@ -269,4 +271,38 @@ it('accepts only complete authorized shared-file records at the presentation bou
     invoke: async () => ({ files: [{ ...file, id: '../../private', size: -1 }] }),
   });
   await expect(malformed.files('s1')).rejects.toThrow();
+});
+
+it('only confirms an exact native decision when Hermes reports one resolved approval', async () => {
+  const target = { kind: 'chat' as const, sessionId: 'session', requestId: 'request' };
+  expect(
+    await new ConversationDomain({ invoke: async () => ({ resolved: 1 }) }).decide(target, 'once'),
+  ).toBe('resolved');
+  expect(
+    await new ConversationDomain({ invoke: async () => ({ resolved: 0 }) }).decide(target, 'once'),
+  ).toBe('expired');
+  await expect(
+    new ConversationDomain({ invoke: async () => ({}) }).decide(target, 'once'),
+  ).rejects.toThrow();
+});
+
+it('reads the native room decision envelope without mistaking expired approval for success', async () => {
+  const target = {
+    kind: 'room' as const,
+    roomId: 'room',
+    memberId: 'member',
+    taskId: 'task',
+    executionGeneration: 1,
+    requestId: 'approval',
+  };
+  expect(
+    await new ConversationDomain({
+      invoke: async () => ({ approved: true, result: { resolved: 0 } }),
+    }).decide(target, 'once'),
+  ).toBe('expired');
+  expect(
+    await new ConversationDomain({
+      invoke: async () => ({ approved: true, result: { resolved: 1 } }),
+    }).decide(target, 'once'),
+  ).toBe('resolved');
 });

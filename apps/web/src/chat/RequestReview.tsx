@@ -1,12 +1,20 @@
+import { AttentionVisible } from './ConversationAttention';
+import { Checkbox } from '../components/ui/checkbox';
+import { RequestDomain, type SessionClient, type ManagementReview } from '@hermes-client/protocol';
 import { ApprovalSurface } from '../components/ai-elements/confirmation';
 import { Label } from '../components/ui/label';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
 import { Disclosure } from '../components/ui/disclosure';
-import { useState } from 'react';
+import { useContext, useEffect, useState } from 'react';
 import { Check, X, AlertCircle, ChevronRight } from 'lucide-react';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '../components/ui/collapsible';
 import type { Row } from '../conversation';
+export type RequestReviewDraft = {
+  confirmation: string;
+  expanded: boolean;
+  acceptedDigest: string | null;
+};
 export function RequestReview({
   request: r,
   busy,
@@ -16,17 +24,58 @@ export function RequestReview({
   targetName,
   decisionIssue,
   onCheck,
+  client,
+  draft,
+  onDraft,
 }: {
+  client?: SessionClient | undefined;
+  draft?: RequestReviewDraft | undefined;
+  onDraft?: ((value: RequestReviewDraft) => void) | undefined;
   request: Row;
   busy: boolean;
-  onDecision: (approve: boolean, confirmation?: string) => void;
+  onDecision: (approve: boolean, confirmation?: string, review?: ManagementReview) => void;
   onInspect: () => void;
   compactResolved?: boolean;
   targetName?: string | undefined;
   decisionIssue?: string | undefined;
   onCheck?: (() => void) | undefined;
 }) {
-  const [confirmation, setConfirmation] = useState('');
+  const [local, setLocal] = useState<RequestReviewDraft>({
+    confirmation: '',
+    expanded: false,
+    acceptedDigest: null,
+  });
+  const { confirmation, expanded, acceptedDigest } = draft ?? local;
+  function patch(value: Partial<typeof local>) {
+    const next = { confirmation, expanded, acceptedDigest, ...value };
+    if (onDraft) onDraft(next);
+    else setLocal(next);
+  }
+  const setConfirmation = (confirmation: string) => patch({ confirmation });
+  const setExpanded = (expanded: boolean) => patch({ expanded });
+  const visible = useContext(AttentionVisible);
+  const [review, setReview] = useState<ManagementReview>();
+  const [reviewVersion, setReviewVersion] = useState(0);
+  useEffect(() => {
+    if (!visible || !client || r.state !== 'pending' || typeof r.id !== 'string') return;
+    let active = true;
+    setReview(undefined);
+    void new RequestDomain(client)
+      .review(r.id)
+      .then((value) => {
+        if (active) setReview(value);
+      })
+      .catch(() => {
+        if (active)
+          setReview({
+            kind: 'blocked',
+            reason: 'This request could not be checked. Retry review.',
+          });
+      });
+    return () => {
+      active = false;
+    };
+  }, [visible, client, r.id, r.state, decisionIssue, reviewVersion]);
   const spec = (r.spec ?? {}) as Row,
     result = (r.result ?? {}) as Row;
   const deleting = r.action === 'agent.delete';
@@ -39,30 +88,8 @@ export function RequestReview({
     'agent.update': 'Update role',
     'agent.attach': 'Change tools and skills',
   };
-  const details = (
-    <ApprovalSurface
-      className={`request-card ${deleting ? 'destructive-request' : ''}`}
-      title={titles[String(r.action)] ?? String(r.action)}
-      description={
-        <>
-          <strong>{target}</strong> · {String(r.state)}
-        </>
-      }
-    >
-      {deleting && (
-        <p>
-          Removes this Hermes profile, its personality files, memory, local conversations, skills
-          and service. Crew history stays; this member can no longer work. This cannot be undone
-          here.
-        </p>
-      )}
-      {r.action === 'agent.hide' && (
-        <p>
-          {spec.hidden
-            ? 'Removes it from the sidebar. Its profile, conversations and crew membership stay.'
-            : 'Returns it to the sidebar.'}
-        </p>
-      )}
+  const fields = (
+    <>
       <dl className="request-fields">
         {Object.entries(spec)
           .filter(
@@ -116,20 +143,109 @@ export function RequestReview({
           <p className="preserve-whitespace">{String(spec.soul)}</p>
         </Disclosure>
       )}
-      {Boolean(result.reason || result.error) && (
-        <p role="status">{String(result.reason ?? result.error)}</p>
-      )}
-      {decisionIssue && (
-        <div className="space-y-2 text-sm text-muted-foreground" role="status">
-          <p>{decisionIssue}</p>
-          <Button variant="secondary" disabled={busy} onClick={onCheck}>
-            Check status
-          </Button>
-        </div>
-      )}
-      {r.state === 'pending' && !decisionIssue && (
-        <>
+    </>
+  );
+  const compactPending = compactResolved && r.state === 'pending';
+  const details = (
+    <Collapsible open={expanded} onOpenChange={setExpanded}>
+      <ApprovalSurface
+        className={`request-card ${compactResolved ? 'gap-3 px-4 py-3.5 leading-normal' : ''} ${deleting ? 'destructive-request' : ''}`}
+        title={titles[String(r.action)] ?? String(r.action)}
+        description={
+          <>
+            <strong>{target}</strong>
+            {r.state !== 'pending' && <> · {String(r.state)}</>}
+            {compactResolved && r.state === 'pending' && (
+              <span className="mt-1 line-clamp-2 break-words text-sm">
+                {r.action === 'agent.attach'
+                  ? [
+                      ...(Array.isArray(spec.toolsets) ? spec.toolsets : []),
+                      ...(Array.isArray(spec.skills) ? spec.skills : []),
+                    ].join(', ')
+                  : typeof spec.role === 'object' && spec.role
+                    ? String((spec.role as Row).description ?? (spec.role as Row).title ?? '')
+                    : typeof spec.description === 'string'
+                      ? spec.description
+                      : ''}
+              </span>
+            )}
+          </>
+        }
+      >
+        <div
+          className={
+            compactPending
+              ? 'max-h-[24dvh] space-y-3 overflow-y-auto overscroll-contain'
+              : 'contents'
+          }
+        >
           {deleting && (
+            <p>
+              Removes this Hermes profile, its personality files, memory, local conversations,
+              skills and service. Crew history stays; this member can no longer work. This cannot be
+              undone here.
+            </p>
+          )}
+          {r.action === 'agent.hide' && (
+            <p>
+              {spec.hidden
+                ? 'Removes it from the sidebar. Its profile, conversations and crew membership stay.'
+                : 'Returns it to the sidebar.'}
+            </p>
+          )}
+          {compactPending ? (
+            <CollapsibleContent className="space-y-3">{fields}</CollapsibleContent>
+          ) : (
+            fields
+          )}
+          {r.state === 'unavailable' && (
+            <p role="status">
+              This request is no longer available. Ask the pebble for a new request.
+            </p>
+          )}
+          {Boolean(result.reason || result.error) && (
+            <p role="status">{String(result.reason ?? result.error)}</p>
+          )}
+          {client && r.state === 'pending' && review?.kind === 'ready' && review.legacy && (
+            <div className="space-y-2 text-sm text-muted-foreground">
+              <p>Older request. Review the current agent binding before approving.</p>
+              <p className="break-all">
+                Current manager: {review.manager ?? 'None'}
+                {review.managerIdentity && (
+                  <span className="block text-xs">Identity: {review.managerIdentity}</span>
+                )}
+              </p>
+              <Label className="flex items-center gap-2 text-sm">
+                <Checkbox
+                  checked={review.kind === 'ready' && acceptedDigest === review.digest}
+                  onCheckedChange={(value) =>
+                    patch({
+                      acceptedDigest:
+                        value === true && review.kind === 'ready' ? review.digest : null,
+                    })
+                  }
+                />
+                Use this current setup
+              </Label>
+            </div>
+          )}
+          {client && r.state === 'pending' && review?.kind === 'blocked' && (
+            <div className="space-y-2 text-sm" role="status">
+              <p>{review.reason}</p>
+              <Button variant="quiet" onClick={() => setReviewVersion((n) => n + 1)}>
+                Retry review
+              </Button>
+            </div>
+          )}
+          {decisionIssue && (
+            <div className="space-y-2 text-sm text-muted-foreground" role="status">
+              <p>{decisionIssue}</p>
+              <Button variant="secondary" disabled={busy} onClick={onCheck}>
+                Check status
+              </Button>
+            </div>
+          )}
+          {r.state === 'pending' && !decisionIssue && deleting && (
             <Label className="flex-col items-start">
               <span>
                 Type <strong>{String(spec.profile)}</strong> to confirm
@@ -142,41 +258,63 @@ export function RequestReview({
               />
             </Label>
           )}
-          <div className="request-actions">
-            <Button
-              type="button"
-              variant="secondary"
-              disabled={busy}
-              onClick={() => onDecision(false)}
+        </div>
+        {r.state === 'pending' && !decisionIssue && (
+          <>
+            <div
+              className={`request-actions ${compactPending ? 'flex flex-wrap items-center gap-2' : ''}`}
             >
-              Deny
-            </Button>
-            <Button
-              type="button"
-              variant={deleting ? 'destructive' : 'default'}
-              disabled={busy || (deleting && confirmation !== spec.profile)}
-              onClick={() => onDecision(true, deleting ? confirmation : undefined)}
-            >
-              {deleting ? 'Delete permanently' : 'Approve exact request'}
-            </Button>
-          </div>
-        </>
-      )}
-      {['executing', 'uncertain', 'partial'].includes(String(r.state)) && (
-        <Button
-          type="button"
-          variant="secondary"
-          disabled={busy}
-          onClick={deleting ? onInspect : onCheck}
-        >
-          Check outcome
-        </Button>
-      )}
-    </ApprovalSurface>
+              {compactPending && (
+                <CollapsibleTrigger asChild>
+                  <Button variant="quiet" size="sm" className="mr-auto px-0">
+                    {expanded ? 'Read less' : 'Read more'}
+                  </Button>
+                </CollapsibleTrigger>
+              )}
+              <Button
+                type="button"
+                variant="secondary"
+                disabled={busy}
+                onClick={() => onDecision(false)}
+              >
+                Deny
+              </Button>
+              <Button
+                type="button"
+                aria-label={deleting ? 'Delete permanently' : 'Approve exact request'}
+                variant={deleting ? 'destructive' : 'default'}
+                disabled={
+                  busy ||
+                  (client !== undefined &&
+                    (review?.kind !== 'ready' ||
+                      (review.legacy && acceptedDigest !== review.digest))) ||
+                  (deleting && confirmation !== spec.profile)
+                }
+                onClick={() => onDecision(true, deleting ? confirmation : undefined, review)}
+              >
+                {deleting ? 'Delete permanently' : 'Approve'}
+              </Button>
+            </div>
+          </>
+        )}
+        {['executing', 'uncertain', 'partial'].includes(String(r.state)) && (
+          <Button
+            type="button"
+            variant="secondary"
+            disabled={busy}
+            onClick={deleting ? onInspect : onCheck}
+          >
+            Check outcome
+          </Button>
+        )}
+      </ApprovalSurface>
+    </Collapsible>
   );
   if (
     compactResolved &&
-    ['completed', 'denied', 'failed', 'superseded'].includes(String(r.state))
+    ['completed', 'denied', 'failed', 'superseded', 'expired', 'unavailable'].includes(
+      String(r.state),
+    )
   ) {
     const state =
       r.state === 'completed'
@@ -185,7 +323,9 @@ export function RequestReview({
           ? 'Denied'
           : r.state === 'superseded'
             ? 'Resolved'
-            : 'Failed';
+            : r.state === 'expired' || r.state === 'unavailable'
+              ? 'No longer active'
+              : 'Failed';
     const Icon =
       r.state === 'completed' || r.state === 'superseded'
         ? Check
@@ -209,6 +349,11 @@ export function RequestReview({
             />
           </Button>
         </CollapsibleTrigger>
+        {['expired', 'unavailable'].includes(String(r.state)) && (
+          <p role="status" className="pb-2 text-sm text-muted-foreground">
+            This request is no longer available. Ask the pebble for a new request.
+          </p>
+        )}
         {r.state === 'failed' && (
           <div role="status" className="max-w-prose space-y-1 pb-2 text-sm text-muted-foreground">
             <p>

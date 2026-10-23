@@ -4,7 +4,7 @@ import { LoadingBar } from './components/ui/loading-bar';
 import { Button } from './components/ui/button';
 import { safeError } from '@hermes-client/core';
 import { useEffect, useRef, useState } from 'react';
-import { useManagementRequests } from './chat/useManagementRequests';
+import type { ManagementRequests } from './chat/useManagementRequests';
 import type { SessionClient, WorkspaceRequest } from '@hermes-client/protocol';
 import { decodeWorkspaceSnapshot } from '@hermes-client/protocol';
 import type { WorkspaceSnapshot as WorkspaceState, WorkspaceBot } from '@hermes-client/protocol';
@@ -17,6 +17,7 @@ import { PageHeader, Notice } from './ui/primitives';
 type Row = Record<string, unknown>;
 export function WorkspaceSettings({
   client,
+  management,
   state,
   onChange,
   onClose,
@@ -41,6 +42,7 @@ export function WorkspaceSettings({
   owner?: boolean;
   initialTab?: 'agents' | 'requests' | 'connections' | 'account' | 'general';
   initialProfile?: string | undefined;
+  management: ManagementRequests;
   client: SessionClient;
   state: WorkspaceState;
   onChange: (s: WorkspaceState) => void;
@@ -71,21 +73,20 @@ export function WorkspaceSettings({
   );
   const [error, setError] = useState(''),
     [notice, setNotice] = useState('');
-  const [refresh, setRefresh] = useState(0);
-  const management = useManagementRequests({
-    client: tab === 'requests' ? client : undefined,
-    scope: state.id,
-    version: refresh,
-  });
   const { requests, busy, issueFor, checkStatus, loading } = management;
   useEffect(() => {
     setError('');
     setNotice('');
   }, [tab, profile]);
-  async function decide(r: WorkspaceRequest, approve: boolean, confirmation?: string) {
+  async function decide(
+    r: WorkspaceRequest,
+    approve: boolean,
+    confirmation?: string,
+    context?: import('@hermes-client/protocol').ManagementReview,
+  ) {
     setError('');
     setNotice('');
-    const result = await management.decide(r, approve, confirmation);
+    const result = await management.decide(r, approve, confirmation, context);
     if (!result) return;
     setNotice(
       result.state === 'completed'
@@ -150,18 +151,26 @@ export function WorkspaceSettings({
       {(error || management.loadError) && (
         <Notice error>
           {error || 'Requests could not be loaded.'}{' '}
-          <Button variant="ghost" className="text-button" onClick={() => setRefresh((x) => x + 1)}>
+          <Button variant="ghost" className="text-button" onClick={management.refresh}>
             Try again
           </Button>
         </Notice>
       )}
       {notice && <Notice>{notice}</Notice>}
+      {!!management.faults.length && (
+        <Notice>
+          Some requests could not be read.{' '}
+          <Button variant="quiet" onClick={management.refresh}>
+            Try again
+          </Button>
+        </Notice>
+      )}
       <LoadingBar active={loading} label="Loading Settings" />
       {tab === 'general' && <GeneralSettings />}
       {tab === 'account' && owner && <OwnerAccount />}
       {tab === 'requests' && !loading && (
         <>
-          {!requests.length && !error && !management.loadError && (
+          {!requests.length && !error && !management.loadError && !management.faults.length && (
             <div className="ui-empty">
               <h2>No requests</h2>
               <p>Changes proposed by your pebbles appear here.</p>
@@ -171,11 +180,14 @@ export function WorkspaceSettings({
             {requests.map((r) => (
               <RequestReview
                 key={String(r.id)}
+                client={client}
+                draft={management.reviewDraftFor(r)}
+                onDraft={(value) => management.setReviewDraft(r, value)}
                 request={r}
                 busy={busy === r.id}
                 decisionIssue={issueFor(r)}
                 onCheck={() => void checkStatus(r)}
-                onDecision={(a, c) => void decide(r, a, c)}
+                onDecision={(a, c, context) => void decide(r, a, c, context)}
                 onInspect={() => {
                   void client
                     .invoke('requests.reconcile', { id: r.id })

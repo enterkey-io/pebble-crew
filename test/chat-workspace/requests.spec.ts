@@ -18,6 +18,9 @@ test('request review fits phones, keeps fields readable and confirms the exact d
       return route.fulfill({
         json: {
           result: {
+            generation: 1,
+            next: null,
+            restart: false,
             requests: [
               {
                 id: 'delete-long-profile',
@@ -146,6 +149,9 @@ test('pending requests use a quiet header icon and respect reduced motion', asyn
     return route.fulfill({
       json: {
         result: {
+          generation: 1,
+          next: null,
+          restart: false,
           requests: [
             {
               id: 'pending',

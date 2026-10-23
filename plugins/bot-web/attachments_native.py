@@ -61,6 +61,7 @@ def register():
             return server._err(rid, 5071, 'Attachment state not confirmed')
     server.method('bot_web.attachments')(attachment)
     _register_generated()
+    _register_catalog()
 
 
 CHUNK_BYTES = 1024 * 1024
@@ -144,7 +145,7 @@ def output_path(home, reference):
     return relative
 
 
-def read_output(home, relative, offset, expected, text_revision):
+def output_descriptor(home, relative):
     directory = os.open(home, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
     try:
         for part in relative.parts[:-1]:
@@ -154,6 +155,19 @@ def read_output(home, relative, offset, expected, text_revision):
         fd = os.open(relative.name, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK, dir_fd=directory)
     finally:
         os.close(directory)
+    return fd
+
+
+def describe_output(home, relative):
+    with os.fdopen(output_descriptor(home, relative), 'rb') as stream:
+        info = os.fstat(stream.fileno())
+        if not stat.S_ISREG(info.st_mode) or info.st_nlink != 1 or not 0 < info.st_size <= MAX_BYTES:
+            raise ValueError('Artifact unavailable')
+        return {'name': relative.name[:180], 'size': info.st_size}
+
+
+def read_output(home, relative, offset, expected, text_revision):
+    fd = output_descriptor(home, relative)
     with os.fdopen(fd, 'rb') as stream:
         before = os.fstat(stream.fileno())
         if not stat.S_ISREG(before.st_mode) or before.st_nlink != 1 or not 0 < before.st_size <= MAX_BYTES:
@@ -259,3 +273,67 @@ def _register_generated():
         except Exception:
             return server._err(rid, 5082, 'Shared file unavailable in this conversation')
     server.method('bot_web.media')(read)
+
+
+def _register_catalog():
+    from tui_gateway import server
+    from search_native import identity, visible_text
+
+    def catalog(rid, params):
+        try:
+            if not isinstance(params, dict) or set(params) != {'session_id', 'profile', 'incarnation', 'canonical', 'cursor'}:
+                raise ValueError()
+            session, error = server._sess_nowait({'session_id': params['session_id']}, rid)
+            if error: return error
+            from hermes_cli.profiles import get_profile_dir, list_profiles
+            if params['profile'] not in {p.name for p in list_profiles()}: raise ValueError()
+            home = Path(get_profile_dir(params['profile']))
+            launch = server._launch_home() if hasattr(server, '_launch_home') else server._hermes_home
+            if Path(session.get('profile_home') or launch).resolve() != home.resolve(): raise ValueError()
+            stamp = identity(home)
+            path = home / 'state.db'
+            if stamp != params['incarnation'] or path.is_symlink(): raise ValueError()
+            database = os.stat(path, follow_symlinks=False)
+            if not stat.S_ISREG(database.st_mode): raise ValueError()
+            from hermes_state import SessionDB
+            db = SessionDB(db_path=path, read_only=True)
+            try:
+                canonical = db.get_session_by_title('Bot Chat')
+                if not canonical or canonical.get('archived') or canonical['id'] != params['canonical']: raise ValueError()
+                lineage = list(reversed(db.get_compression_lineage(db.get_compression_tip(canonical['id']) or canonical['id'])))
+                if len(lineage) > 32 or session.get('session_key') not in lineage: raise ValueError()
+                heads = [[sid, [row['id'] for row in db.get_messages(sid, include_compacted=True, limit=1, latest=True)]] for sid in lineage]
+                witness = hashlib.sha256(json.dumps([stamp, database.st_dev, database.st_ino, heads]).encode()).hexdigest()
+                segment, offset = 0, 0
+                if params['cursor'] is not None:
+                    cursor = json.loads(base64.urlsafe_b64decode(params['cursor']).decode())
+                    if (not isinstance(cursor, list) or len(cursor) != 3 or cursor[0] != witness
+                            or type(cursor[1]) is not int or type(cursor[2]) is not int or not 0 <= cursor[1] < len(lineage) or not 0 <= cursor[2] <= 1000000): raise ValueError()
+                    _, segment, offset = cursor
+                rows = db.get_messages(lineage[segment], include_compacted=True, limit=25, offset=offset, latest=True)
+                files, seen = [], set()
+                for row in reversed(rows):
+                    if row.get('role') != 'assistant' or row.get('display_kind') == 'hidden' or row.get('_compressed_summary'): continue
+                    for reference in references(visible_text(row, home)):
+                        try:
+                            relative = output_path(home, reference)
+                            item = describe_output(home, relative)
+                            key = (row['id'], str(relative))
+                            if key not in seen:
+                                files.append({**item, 'row_id': row['id'], 'reference': reference_key(reference)})
+                                seen.add(key)
+                        except (ValueError, OSError, UnicodeError): continue
+                offset += len(rows)
+                if len(rows) < 25: segment, offset = segment + 1, 0
+                next_cursor = base64.urlsafe_b64encode(json.dumps([witness, segment, offset]).encode()).decode() if segment < len(lineage) else None
+                after = os.stat(path, follow_symlinks=False)
+                if (identity(home) != stamp or [after.st_dev, after.st_ino] != [database.st_dev, database.st_ino]
+                        or server._sessions.get(params['session_id']) is not session
+                        or Path(session.get('profile_home') or launch).resolve() != home.resolve()
+                        or (hasattr(server, '_submit_row_target_key') and server._submit_row_target_key(session) not in lineage)):
+                    raise ValueError()
+                return server._ok(rid, {'files': files, 'next': next_cursor})
+            finally: db.close()
+        except Exception:
+            return server._err(rid, 5082, 'Library changed or is unavailable. Refresh it to try again.')
+    server.method('bot_web.media.list')(catalog)

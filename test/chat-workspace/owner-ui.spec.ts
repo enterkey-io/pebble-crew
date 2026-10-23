@@ -122,14 +122,14 @@ test('only closed header chevron nudges; Files uses a delayed loading bar withou
     await route.fallback();
   });
   try {
-    await page.getByRole('tab', { name: 'Files', exact: true }).click();
-    await expect(page.getByRole('progressbar', { name: 'Loading files' })).toBeVisible();
-    await expect(page.locator('.details-panel')).not.toContainText(/Loading files/);
+    await page.getByRole('tab', { name: 'Library', exact: true }).click();
+    await expect(page.getByRole('progressbar', { name: 'Loading Library' })).toBeVisible();
+    await expect(page.locator('.details-panel')).not.toContainText(/Loading Library/);
     await page.screenshot({ animations: 'disabled', path: 'test-results/owner-files-loading.png' });
   } finally {
     release();
   }
-  await expect(page.getByRole('progressbar', { name: 'Loading files' })).toHaveCount(0);
+  await expect(page.getByRole('progressbar', { name: 'Loading Library' })).toHaveCount(0);
 });
 
 test('existing agents get identity, appearance and role setup before native enrollment and introduction', async ({

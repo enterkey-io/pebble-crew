@@ -47,6 +47,13 @@ class WorkspaceStore:
             CREATE TABLE IF NOT EXISTS native_approval_notifications(
                 id TEXT PRIMARY KEY, actor_identity TEXT NOT NULL,
                 state TEXT NOT NULL, recipient_identity TEXT);
+            CREATE TABLE IF NOT EXISTS request_context(request TEXT PRIMARY KEY REFERENCES requests(id), basis TEXT NOT NULL, approved TEXT);
+            CREATE TABLE IF NOT EXISTS request_clock(id INTEGER PRIMARY KEY CHECK(id=1), generation INTEGER NOT NULL);
+            INSERT OR IGNORE INTO request_clock VALUES(1,0);
+            CREATE TRIGGER IF NOT EXISTS request_insert_clock AFTER INSERT ON requests BEGIN UPDATE request_clock SET generation=generation+1 WHERE id=1; END;
+            CREATE TRIGGER IF NOT EXISTS request_update_clock AFTER UPDATE ON requests BEGIN UPDATE request_clock SET generation=generation+1 WHERE id=1; END;
+            CREATE TRIGGER IF NOT EXISTS request_delete_clock AFTER DELETE ON requests BEGIN UPDATE request_clock SET generation=generation+1 WHERE id=1; END;
+            CREATE INDEX IF NOT EXISTS request_pending ON requests(state,created,id);
             CREATE TABLE IF NOT EXISTS voice_credential(id INTEGER PRIMARY KEY CHECK(id=1), profile TEXT NOT NULL, fingerprint TEXT NOT NULL);
         ''')
         from .presentation import init_store
@@ -84,18 +91,79 @@ class WorkspaceStore:
             ident = str(uuid.uuid4())
             inserted = self.db.execute('INSERT OR IGNORE INTO requests VALUES(?,?,?,?,?,?,NULL,?)', (ident, actor, action, raw, fingerprint, 'pending', time.time())).rowcount
             state = self.read()
+            if inserted:
+                from .request_review import basis
+                self.db.execute('INSERT INTO request_context(request,basis) VALUES(?,?)', (ident, json.dumps(basis(state, actor, action, spec))))
             bot = state['bots'].get(actor)
             if inserted and bot and actor != state.get('orchestrator'):
                 self.db.execute('INSERT INTO request_notifications VALUES(?,?,?,NULL)', (ident, bot['id'], 'pending'))
         return self.db.execute('SELECT id,state FROM requests WHERE actor=? AND fingerprint=?', (actor, fingerprint)).fetchone()
 
-    def requests(self):
-        return [{'id': row[0], 'actor': row[1], 'action': row[2], 'spec': json.loads(row[3]), 'fingerprint': row[4], 'state': row[5], 'result': json.loads(row[6]) if row[6] else None, 'created': row[7]}
-                for row in self.db.execute('SELECT id,actor,action,spec,fingerprint,state,result,created FROM requests ORDER BY created DESC, rowid DESC LIMIT 100')]
+    @staticmethod
+    def receipt(result):
+        if result is None: return None
+        if len(json.dumps(result)) <= 8000: return result
+        keys = {'state', 'profile', 'id', 'stage', 'created', 'canonical', 'runtime', 'provider', 'error', 'reason', 'code', 'deleted', 'quarantined'}
+        return {key: value[:2000] if isinstance(value, str) else value for key, value in result.items()
+                if key in keys and (value is None or type(value) in (str, bool, int, float))}
 
-    def incomplete_creations(self):
-        return {json.loads(row[0]).get('name') for row in self.db.execute(
-            "SELECT spec FROM requests WHERE action='agent.create' AND state IN ('executing','partial','uncertain')")}
+    @staticmethod
+    def decode_request(row):
+        try:
+            spec = json.loads(row[3])
+            result = json.loads(row[6]) if row[6] else None
+            if not isinstance(spec, dict) or (result is not None and not isinstance(result, dict)) or not isinstance(row[7], (int, float)):
+                raise ValueError()
+            return dict(zip(('id', 'actor', 'action', 'spec', 'fingerprint', 'state', 'result', 'created'),
+                            (row[0], row[1], row[2], spec, row[4], row[5], WorkspaceStore.receipt(result), row[7])))
+        except (ValueError, TypeError):
+            return {'id': row[0], 'actor': row[1], 'state': row[5], 'unreadable': True}
+
+    def request_by_id(self, request_id):
+        row = self.db.execute('SELECT id,actor,action,spec,fingerprint,state,result,created FROM requests WHERE id=?', (identifier(request_id),)).fetchone()
+        return self.decode_request(row) if row else None
+
+    def request_generation(self):
+        return self.db.execute('SELECT generation FROM request_clock WHERE id=1').fetchone()[0]
+
+    def request_page(self, view, cursor):
+        if view not in {'pending', 'recent'}:
+            raise InvalidOperation('Invalid request view')
+        with self.db:
+            generation = self.request_generation()
+            before = None
+            if cursor is not None:
+                try:
+                    saved = json.loads(base64.urlsafe_b64decode(cursor).decode())
+                    if set(saved) != {'generation', 'before', 'view'} or saved['view'] != view or type(saved['before']) is not int:
+                        raise ValueError()
+                    if saved['generation'] != generation:
+                        return {'restart': True, 'generation': generation, 'requests': [], 'next': None}
+                    before = saved['before']
+                except (ValueError, TypeError, UnicodeError):
+                    raise InvalidOperation('Invalid request cursor')
+            predicate = "state='pending'" if view == 'pending' else "state!='pending'"
+            query = 'SELECT rowid,id,actor,action,spec,fingerprint,state,result,created FROM requests WHERE ' + predicate
+            rows = self.db.execute(query + (' AND rowid<?' if before is not None else '') + ' ORDER BY rowid DESC LIMIT 26', (before,) if before is not None else ()).fetchall()
+            if self.request_generation() != generation:
+                return {'restart': True, 'generation': self.request_generation(), 'requests': [], 'next': None}
+            next_cursor = base64.urlsafe_b64encode(json.dumps({'generation': generation, 'before': rows[24][0], 'view': view}).encode()).decode() if len(rows) > 25 else None
+            return {'generation': generation, 'requests': [self.decode_request(row[1:]) for row in rows[:25]], 'next': next_cursor, 'restart': False}
+
+    def requests(self):
+        # Native context includes every pending decision, independently of recent history.
+        return [self.decode_request(row) for row in self.db.execute("SELECT id,actor,action,spec,fingerprint,state,result,created FROM requests WHERE state='pending' UNION ALL SELECT * FROM (SELECT id,actor,action,spec,fingerprint,state,result,created FROM requests WHERE state!='pending' ORDER BY created DESC,rowid DESC LIMIT 100)")]
+
+    def incomplete_creations(self, exclude=None):
+        names = set()
+        for (raw,) in self.db.execute("SELECT spec FROM requests WHERE action='agent.create' AND state IN ('executing','partial','uncertain') AND id!=?", (exclude or '',)):
+            try:
+                spec = json.loads(raw)
+                name = spec.get('name') if isinstance(spec, dict) else None
+                names.add(name if isinstance(name, str) else None)
+            except (ValueError, TypeError):
+                names.add(None)
+        return names
 
     def resolve_creation(self, profile, identity):
         if self.read()['bots'].get(profile, {}).get('id') != identity:
@@ -154,9 +222,9 @@ def normalize_photo(data):
 
 
 class WorkspaceService:
-    METHODS = {'exchange.references', 'exchange.read', 'reporting.describe', 'bots.profile.update', 'agent.onboard', 'agent.welcome', 'organization.get', 'organization.save', 'organization.chat', 'crews.save', 'workspace.snapshot', 'presentation.read', 'presentation.order', 'agent.pin', 'agent.hide', 'agent.delete', 'agent.propose', 'room.send', 'room.log', 'room.react', 'agent.enable', 'workspace.describe', 'workspace.detect_primary', 'workspace.initialize', 'workspace.welcome', 'workspace.set_orchestrator',
+    METHODS = {'room.create', 'exchange.references', 'exchange.read', 'reporting.describe', 'bots.profile.update', 'agent.onboard', 'agent.welcome', 'organization.get', 'organization.save', 'organization.chat', 'crews.save', 'workspace.snapshot', 'presentation.read', 'presentation.order', 'agent.pin', 'agent.hide', 'agent.delete', 'agent.propose', 'room.send', 'room.log', 'room.react', 'agent.enable', 'workspace.describe', 'workspace.detect_primary', 'workspace.initialize', 'workspace.welcome', 'workspace.set_orchestrator',
         'bots.update_handle', 'bots.appearance.get', 'bots.appearance.update', 'roles.update', 'teams.save',
-        'models.describe', 'agent.model', 'agent.create', 'agent.update', 'agent.attach', 'requests.reconcile', 'requests.list', 'requests.approve', 'requests.deny',
+        'models.describe', 'agent.model', 'agent.create', 'agent.update', 'agent.attach', 'requests.reconcile', 'requests.get', 'requests.review', 'requests.list', 'requests.approve', 'requests.deny',
         'connections.add', 'connections.permissions', 'connections.set_key', 'connections.list', 'connections.test', 'services.catalog', 'agent.capabilities'}
 
     def __init__(self, ops, store, primary=None):
@@ -273,14 +341,29 @@ class WorkspaceService:
 
     async def _invoke(self, operation, params):
         from . import presentation
+        if operation == 'room.create':
+            # Serialize room creation with snapshots, including uncertain native outcomes.
+            self._snapshot = None
+            try:
+                return await self.ops.invoke(operation, params)
+            finally:
+                self._snapshot = None
         if operation in {'exchange.references','exchange.read'}:
             from .exchanges import invoke
             return await invoke(self,operation,params)
         if operation == 'workspace.snapshot':
             fields(params, [])
             return await presentation.snapshot(self)
+        if operation == 'requests.list':
+            if not params:
+                return {'requests': self.store.requests()}
+            fields(params, ['view', 'cursor'])
+            return self.store.request_page(params['view'], params['cursor'])
+        if operation == 'requests.get':
+            fields(params, ['id'])
+            return {'request': self.store.request_by_id(params['id'])}
         self._snapshot = None
-        snapshot, profiles = await self.sync(include_model=operation in {'workspace.describe', 'workspace.detect_primary', 'models.describe', 'agent.model', 'agent.create'})
+        snapshot, profiles = await self.sync(include_model=operation in {'workspace.describe', 'workspace.detect_primary', 'models.describe', 'agent.model', 'agent.create', 'requests.review', 'requests.approve'})
         state = self.store.read()
         if operation == 'reporting.describe':
             from .reporting import receipts
@@ -337,7 +420,7 @@ class WorkspaceService:
             return {'outcome': 'detected', 'complete': True, 'profile': chosen, 'evidence': evidence, 'revision': state['revision'], 'bot': {**state['bots'][chosen], **self.ops.summary(row)}}
         if operation == 'requests.reconcile':
             fields(params, ['id'])
-            request = next((r for r in self.store.requests() if r['id'] == params['id']), None)
+            request = self.store.request_by_id(params['id'])
             if not request or request['action'] != 'agent.delete' or request['state'] not in {'executing', 'partial', 'uncertain'}:
                 raise InvalidOperation('No uncertain deletion to inspect')
             target = state['bots'].get(request['spec']['profile'])
@@ -346,34 +429,59 @@ class WorkspaceService:
             same = target and target['id'] == request['spec']['id'] and target.get('available')
             return {'state': request['state'], 'target_present': bool(same),
                 'message': 'Original profile is still present; inspect native lifecycle status in Hermes.' if same else 'Original profile is absent. Native identity settlement may still need attention in Hermes. Deletion has not been replayed.'}
-        if operation == 'requests.list':
-            fields(params, [])
-            return {'requests': self.store.requests()}
+        if operation == 'requests.review':
+            fields(params, ['id'])
+            from .request_review import review
+            return review(self.store, self.store.request_by_id(params['id']), state)
         if operation in {'requests.approve', 'requests.deny'}:
-            request = next((r for r in self.store.requests() if r['id'] == params.get('id')), None)
-            fields(params, ['id', 'fingerprint', *(['confirmation'] if request and request['action'] == 'agent.delete' and operation == 'requests.approve' else [])])
-            if not request or request['state'] != 'pending' or request['fingerprint'] != params['fingerprint']:
-                raise InvalidOperation('Request changed or is no longer pending')
-            if request['action'] == 'agent.delete' and operation.endswith('approve') and params.get('confirmation') != request['spec']['profile']:
-                raise InvalidOperation('Type the exact profile name to confirm deletion')
-            status = 'denied' if operation.endswith('deny') else 'executing'
+            request = self.store.request_by_id(params.get('id'))
+            approving = operation.endswith('approve')
+            allowed = ['id', 'fingerprint']
+            if approving and 'review_digest' in params:
+                allowed.append('review_digest')
+            if request and request.get('action') == 'agent.delete' and approving:
+                allowed.append('confirmation')
+            fields(params, allowed)
+            if not request or request.get('unreadable') or request['fingerprint'] != params['fingerprint']:
+                raise InvalidOperation('Request cannot be read or its identity changed')
+            if request['state'] != 'pending':
+                raise InvalidOperation('Request already handled; read its recorded outcome')
+            execution = request['spec']
+            if approving:
+                from .request_review import review
+                current_review = review(self.store, request, state)
+                if current_review['kind'] != 'ready':
+                    return {'state': 'pending', 'result': {'code': 'REVIEW_BLOCKED', 'error': current_review['reason']}}
+                # Older clients may decide unchanged, captured proposals. Legacy/rebased
+                # creation requires the current review to have been displayed explicitly.
+                supplied = params.get('review_digest')
+                if supplied != current_review['digest'] and (supplied is not None or current_review['current_context']):
+                    return {'state': 'pending', 'result': {'code': 'REVIEW_CHANGED', 'error': 'Review the current request before approving.'}}
+                if request['action'] == 'agent.delete' and params.get('confirmation') != execution['profile']:
+                    raise InvalidOperation('Type the exact profile name to confirm deletion')
+                if request['action'] == 'agent.create':
+                    execution = {**execution, 'expected_revision': state['revision']}
+            status = 'executing' if approving else 'denied'
             with self.store.db:
-                changed = self.store.db.execute('UPDATE requests SET state=? WHERE id=? AND state=?', (status, request['id'], 'pending')).rowcount
+                changed = self.store.db.execute('UPDATE requests SET state=? WHERE id=? AND state=? AND (SELECT revision FROM workspace WHERE id=1)=?', (status, request['id'], 'pending', state['revision'])).rowcount
                 if changed != 1:
-                    raise InvalidOperation('Request already handled')
+                    return {'state': 'pending', 'result': {'code': 'REVIEW_CHANGED', 'error': 'The request changed before dispatch. Check its current status.'}}
+                if approving:
+                    approved = json.dumps({key: current_review.get(key) for key in ('digest', 'manager', 'manager_identity', 'legacy')})
+                    self.store.db.execute('INSERT INTO request_context(request,basis,approved) VALUES(?,?,?) ON CONFLICT(request) DO UPDATE SET approved=excluded.approved', (request['id'], 'null', approved))
             if status == 'denied':
                 return {'state': status}
-            # Mark before dispatch: a crash cannot cause a duplicate automatic native mutation.
             try:
                 if request['action'] == 'agent.delete':
-                    self._approved_delete = request['spec']['id']
+                    self._approved_delete = execution['id']
                 self._creation_request = request['id'] if request['action'] == 'agent.create' else None
-                result = await self._invoke(request['action'], request['spec'])
+                result = await self._invoke(request['action'], execution)
                 status = result.get('state', 'completed')
                 if status == 'blocked':
                     status = 'pending'
             except InvalidOperation as error:
-                result, status = {'error': str(error), 'code': error.code}, 'failed'
+                # No dispatch occurred: retain the original request for explicit review.
+                result, status = {'error': str(error), 'code': error.code}, 'pending' if request['action'] == 'agent.create' else 'failed'
             except NativeError:
                 result, status = {'error': 'Native result needs reconciliation. Do not resubmit creation.'}, 'uncertain'
             finally:
@@ -381,7 +489,7 @@ class WorkspaceService:
                 self._creation_request = None
             with self.store.db:
                 self.store.db.execute('UPDATE requests SET state=?,result=? WHERE id=?', (status, json.dumps(result), request['id']))
-            return {'state': status, 'result': result}
+            return {'state': status, 'result': self.store.receipt(result)}
         if operation == 'workspace.initialize':
             fields(params, ['profile', 'handle', 'appearance', 'photo', 'expected_revision'])
             if state['initialized']:

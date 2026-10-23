@@ -274,3 +274,61 @@ test('group reactions persist through polling and distinguish each reacting pebb
   await expect(page.getByRole('button', { name: '👍 · Arlo and Mica', exact: true })).toBeVisible();
   await page.screenshot({ path: info.outputPath('group-reactions.png'), animations: 'disabled' });
 });
+
+test('an older roster response cannot remove a newly created group or its draft', async ({
+  page,
+  context,
+}, info) => {
+  await installFixture(context);
+  await page.addInitScript(() => {
+    const original = window.fetch;
+    let hold = false,
+      reads = 0;
+    Reflect.set(window, '__holdRosterRead', () => (hold = true));
+    Reflect.set(window, '__rosterReads', () => reads);
+    window.fetch = async (input, init) => {
+      if (String(input).endsWith('/v1/rpc') && typeof init?.body === 'string') {
+        const body = JSON.parse(init.body);
+        if (body.operation === 'workspace.snapshot') {
+          reads++;
+          const captured = await original(input, init);
+          if (hold) {
+            hold = false;
+            await new Promise<void>((resolve) => {
+              Reflect.set(window, '__releaseRosterRead', resolve);
+            });
+          }
+          return captured;
+        }
+      }
+      return original(input, init);
+    };
+  });
+  await page.goto('/');
+  const field = page.getByLabel('Message', { exact: true });
+  await expect(field).toBeEnabled();
+  await page.evaluate(() => Reflect.get(window, '__holdRosterRead')());
+  await page.evaluate(() => window.dispatchEvent(new Event('focus')));
+  await expect
+    .poll(() => page.evaluate(() => typeof Reflect.get(window, '__releaseRosterRead')))
+    .toBe('function');
+  const previousReads = await page.evaluate(() => Reflect.get(window, '__rosterReads')());
+  const dialog = await newConversation(page, 'New group chat');
+  await dialog.getByLabel('Name', { exact: true }).fill('Planning discussion');
+  for (const name of ['Arlo', 'Mica'])
+    await dialog.getByRole('checkbox', { name, exact: true }).check();
+  await dialog.getByRole('button', { name: 'Create', exact: true }).click();
+  await expect(page.locator('.chat-title')).toContainText('Planning discussion');
+  await field.fill('Keep the new conversation and this draft');
+  await page.evaluate(() => Reflect.get(window, '__releaseRosterRead')());
+  await expect
+    .poll(() => page.evaluate(() => Reflect.get(window, '__rosterReads')()))
+    .toBeGreaterThan(previousReads);
+  await expect(page.locator('.chat-title')).toContainText('Planning discussion');
+  await expect(field).toHaveValue('Keep the new conversation and this draft');
+  await expect(page.locator('.banner[role="alert"]')).toHaveCount(0);
+  await page.screenshot({
+    path: info.outputPath('new-group-after-old-snapshot.png'),
+    animations: 'disabled',
+  });
+});

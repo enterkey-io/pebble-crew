@@ -157,8 +157,9 @@ test('invalid catalog data keeps a compact error and navigation, without automat
   await expect(recovery).toBeVisible();
   await expect(recovery).toHaveAttribute('data-error-code', 'INVALID_RESPONSE');
   await expect(recovery).toContainText('Hermes returned board data this app couldn’t read.');
+  const readsAtFailure = reads;
   await page.clock.runFor(6000);
-  expect(reads).toBe(1);
+  expect(reads).toBe(readsAtFailure);
   await page.screenshot({ path: info.outputPath('catalog-failure.png'), animations: 'disabled' });
   if (info.project.use.isMobile)
     await page.getByRole('button', { name: 'Toggle navigation', exact: true }).click();

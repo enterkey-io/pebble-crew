@@ -6,6 +6,7 @@ export type TranscriptCard = {
   id: string;
   createdAt?: number | undefined;
   content: ReactNode;
+  needsInput?: boolean;
 };
 type PositionedCard = { index: number; card: TranscriptCard };
 type CardAnchor = { kind: 'before' | 'after'; key: string } | { kind: 'start' };

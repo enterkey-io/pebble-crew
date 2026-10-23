@@ -1,3 +1,4 @@
+import { RequestDomain, type ManagementReview } from '@hermes-client/protocol';
 import { useRecoveryRevision } from './connection/recovery-context';
 import { usePageTitle } from './ui/page-title';
 import { Label } from './components/ui/label';
@@ -163,23 +164,18 @@ export function NewPebble({
       throw new Error('The creation result could not be verified.');
     return { profile: receipt.profile as string, id: receipt.id };
   }
-  async function checkRequest(decision?: boolean) {
+  async function checkRequest(decision?: boolean, review?: ManagementReview) {
     if (busy || !request) return;
     setBusy(true);
     setError('');
     try {
-      const list = (await client.invoke('requests.list', {})) as { requests: Row[] };
-      let saved = list.requests.find(
-        (r) => r.id === request.id && r.fingerprint === request.fingerprint,
-      );
-      if (!saved) throw new Error('The creation request is unavailable.');
-      if (saved.state === 'pending' && decision !== undefined) {
-        const result = (await client.invoke(decision ? 'requests.approve' : 'requests.deny', {
-          id: saved.id,
-          fingerprint: saved.fingerprint,
-        })) as Row;
-        saved = { ...saved, ...result };
-      }
+      const domain = new RequestDomain(client);
+      if (typeof request.id !== 'string') return;
+      let saved = await domain.get(request.id);
+      if (!saved || saved.fingerprint !== request.fingerprint)
+        throw new Error('The creation request could not be confirmed.');
+      if (saved.state === 'pending' && decision !== undefined)
+        saved = { ...saved, ...(await domain.decide(saved, decision, undefined, review)) };
       setRequestIssue(undefined);
       setRequest(saved);
       if (saved.state === 'completed') await finishProfile(creationIdentity(saved));
@@ -220,16 +216,16 @@ export function NewPebble({
           action: 'agent.create',
           spec,
         })) as Row;
-        const list = (await client.invoke('requests.list', {})) as { requests: Row[] };
-        const exact = list.requests.find((r) => r.id === proposed.request_id);
-        if (!exact || exact.action !== 'agent.create' || typeof exact.fingerprint !== 'string')
+        const domain = new RequestDomain(client);
+        if (typeof proposed.request_id !== 'string')
+          throw new Error('The creation request could not be confirmed.');
+        const exact = await domain.get(proposed.request_id);
+        if (!exact || exact.action !== 'agent.create')
           throw new Error('The creation request changed.');
         setRequest(exact);
         deciding = true;
-        const approved = (await client.invoke('requests.approve', {
-          id: exact.id,
-          fingerprint: exact.fingerprint,
-        })) as Row;
+        const context = await domain.review(exact.id);
+        const approved = await domain.decide(exact, true, undefined, context);
         deciding = false;
         setRequestIssue(undefined);
         setRequest({ ...exact, ...approved });
@@ -336,10 +332,13 @@ export function NewPebble({
             {request && !createdIdentity && !busy ? (
               <div>
                 <RequestReview
+                  client={client}
                   request={request}
                   decisionIssue={requestIssue}
                   busy={busy}
-                  onDecision={(approve) => void checkRequest(approve)}
+                  onDecision={(approve, _confirmation, context) =>
+                    void checkRequest(approve, context)
+                  }
                   onInspect={() => void checkRequest()}
                   onCheck={() => void checkRequest()}
                 />

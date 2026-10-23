@@ -19,7 +19,6 @@ import type { VoiceSettings, VoiceSettingsRequest } from './decode';
 import { VoiceLiveSession } from './live-session';
 import { DelegationReceipts, delegationPrompt } from './delegations';
 import type { Completion } from './delegations';
-import { SecretCard } from '../components/ai-elements/secret-card';
 
 export type VoiceChatHandle = { open: () => void; event: (event: BridgeEvent) => void };
 export const VoiceChat = forwardRef<
@@ -28,6 +27,7 @@ export const VoiceChat = forwardRef<
     client: SessionClient;
     sessionId: string;
     running: boolean;
+    inputBlocked?: boolean;
     onAccepted: (message: ChatMessage) => void;
     onOpenSettings?: (request: VoiceSettingsRequest) => void;
     settingsRequest?: VoiceSettingsRequest | undefined;
@@ -47,6 +47,7 @@ export const VoiceChat = forwardRef<
     client,
     sessionId,
     running,
+    inputBlocked = false,
     onAccepted,
     onOpenSettings,
     settingsRequest,
@@ -79,7 +80,6 @@ export const VoiceChat = forwardRef<
   const [error, setError] = useState('');
   const [showTranscript, setShowTranscript] = useState(false);
   const [captions, setCaptions] = useState<{ speaker: 'user' | 'assistant'; text: string }[]>([]);
-  const [secret, setSecret] = useState<{ id: string; label: string; prompt: string }>();
   const live = useRef<VoiceLiveSession | undefined>(undefined),
     generation = useRef(0),
     mounted = useRef(true);
@@ -88,7 +88,7 @@ export const VoiceChat = forwardRef<
   const active = useRef(false),
     queue = useRef<{ id: string; text: string; context: string }[]>([]);
   const busy = useRef(running);
-  busy.current = running;
+  busy.current = running || inputBlocked;
   const previewTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const setupTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const rpc = async (operation: string, params: Record<string, unknown> = {}) => {
@@ -117,6 +117,7 @@ export const VoiceChat = forwardRef<
     return value;
   }
   async function open() {
+    if (inputBlocked && mode === 'chat') return;
     setVisible(true);
     if (mode === 'chat' && (state !== 'idle' || opening)) return;
     if (mode === 'settings') end();
@@ -159,22 +160,6 @@ export const VoiceChat = forwardRef<
     onActiveChange?.(state !== 'idle');
     return () => onActiveChange?.(false);
   }, [state, onActiveChange]);
-  async function loadSecret() {
-    const data = record(await rpc('secrets.pending'));
-    const first = Array.isArray(data.requests) ? data.requests[0] : undefined;
-    if (!first) {
-      if (mounted.current) setSecret(undefined);
-      return;
-    }
-    const row = record(first);
-    if (
-      typeof row.id === 'string' &&
-      typeof row.label === 'string' &&
-      typeof row.prompt === 'string' &&
-      mounted.current
-    )
-      setSecret({ id: row.id, label: row.label, prompt: row.prompt });
-  }
   function end() {
     generation.current++;
     clearTimeout(previewTimer.current);
@@ -273,7 +258,6 @@ export const VoiceChat = forwardRef<
   });
   useEffect(() => {
     mounted.current = true;
-    if (mode === 'chat' && client.supportsSecrets) void loadSecret().catch(() => undefined);
     const timer = setInterval(() => {
       void drain();
     }, 500);
@@ -302,12 +286,12 @@ export const VoiceChat = forwardRef<
           kind: event.payload?.replace_key === true ? 'replace-key' : 'settings',
         });
       }
-      if (event.type === 'secret.changed') void loadSecret().catch(() => undefined);
       const result = receipts.current.observe(event);
       if (result) void finish(result);
     },
   }));
   async function start(preview: boolean, selection = value) {
+    if (inputBlocked && !preview) return;
     end();
     const epoch = generation.current;
     const reportFailure = (message: string, keyRejected = false) => {
@@ -433,26 +417,8 @@ export const VoiceChat = forwardRef<
       }
     }
   }
-  const secretCard = secret && (
-    <SecretCard
-      key={secret.id}
-      title="Secret requested"
-      label={secret.label}
-      description={secret.prompt}
-      onSkip={() => {
-        void rpc('secrets.respond', { id: secret.id, value: '' })
-          .then(loadSecret)
-          .catch(() => setError('This request is no longer available.'));
-      }}
-      onSubmit={async (value) => {
-        await rpc('secrets.respond', { id: secret.id, value });
-        await loadSecret();
-      }}
-    />
-  );
   return (
     <>
-      {secretCard}
       {mode === 'chat' && visible && state === 'idle' && !opening && error && (
         <Alert>
           <AlertDescription>{error}</AlertDescription>

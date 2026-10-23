@@ -2,7 +2,11 @@
  * any older in-flight snapshot; a superseded connection cannot share that flight. */
 export class RosterLoader {
   private flight: { key: object; promise: Promise<void>; dirty: boolean } | undefined;
-  load(key: object, read: () => Promise<void>, invalidate = false): Promise<void> {
+  load(
+    key: object,
+    read: (isCurrent: () => boolean) => Promise<void>,
+    invalidate = false,
+  ): Promise<void> {
     if (this.flight?.key === key) {
       this.flight.dirty ||= invalidate;
       return this.flight.promise;
@@ -12,7 +16,7 @@ export class RosterLoader {
     flight.promise = (async () => {
       do {
         flight.dirty = false;
-        await read();
+        await read(() => this.flight === flight && !flight.dirty);
       } while (flight.dirty && this.flight === flight);
     })().finally(() => {
       if (this.flight === flight) this.flight = undefined;

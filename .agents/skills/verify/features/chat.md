@@ -55,14 +55,11 @@ reduced motion in both themes. It runs on desktop, iPhone and Android. Geometry
 reads for animated drawers must compare elements in the same frame or wait for
 the settled relation; separate bounding-box reads can sample different frames.
 
-`conversation-cards.spec.ts` checks native approvals in the transcript, Main
-notifications linking to the exact originating request, fingerprint preservation
-and native structured question answers. `scripts/fixture/conversation_cards_smoke.py`
-exercises real clarify and approval tools plus one Main notification per request
-on both pinned builds, using disposable homes and a deterministic loopback model.
-The older build requires its native clarify toolset enabled in the synthetic CLI
-configuration. Do not confuse a missing toolset with a transport failure, and do
-not change an owner's tool configuration as part of acceptance.
+`conversation-cards.spec.ts` checks the fixed composer queue described below.
+Native review receipts last for the signed-in app session; the owner-local
+management journal supplies durable management receipts. The older pinned native
+build requires its native clarify toolset enabled in the synthetic CLI setup.
+Do not confuse a missing toolset with transport failure or alter an owner's tools.
 
 `crew-chats.spec.ts` creates and edits a crew with description and members, enforces the native 2–6 member bound, checks fixed header/field visibility after scrolling to the last choice, and opens a native conversation with member-only @handle suggestions and small speaker avatars. Its Group chat journey verifies no crew/placement write. Group reactions preserve per-agent identities through polling and reload. Run the phone wrapper, scope selectors to the visible navigation drawer, and allow subpixel geometry rounding. Reactions align right for owner messages and left for agent messages. The native reaction smoke covers public-handle routing, agent group reactions, owner feedback and reaction-only group turns on both pinned builds. Capability probes are not inference requests and must not mutate the deterministic model's tool-turn state.
 
@@ -112,3 +109,24 @@ merely to prove that event recovery happened.
 snapshots and target-only rebinding after a native restart on both pinned builds.
 It uses a disposable home and asserts zero model turns. This complements the
 native owner browser and exact-package gates.
+
+
+## Fixed owner input queue and Library
+
+`conversation-cards.spec.ts` drives pending management/native approvals, questions
+and secret prompts in the fixed composer dock. Check 1 of N, previous/next,
+Read more, preserved chat/form drafts, scrolling, reconnect, owner-originated
+requests, complete external question settlement and malformed exact-row recovery.
+No pending controls belong in transcript history. Terminal receipts remain there.
+Legacy creation review shows the current binding and requires its checkbox;
+acknowledgment is bound to the displayed review digest.
+
+`agent-media.spec.ts` and `details-navigation.spec.ts` verify Library in the actual
+inspector, including media beyond the first native history page and independent
+upload/media capabilities. Open a photo in the shared viewer and Markdown in the
+document reader. Run both phone wrappers and inspect settled captures.
+The native owner journey verifies agent media in Library. `media_smoke.py` checks
+paged native history, canonical-row ownership, safe paths and database replacement
+on both pinned builds with zero model turns. `conversation_cards_smoke.py` also
+verifies same-ID legacy creation after an unrelated edit; the native owner browser
+performs that approval through the actual UI and reads back its manager and Bot Chat.
