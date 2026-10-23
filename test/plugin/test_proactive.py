@@ -31,6 +31,13 @@ class ProactiveBehaviorTests(unittest.IsolatedAsyncioTestCase):
         self.ledger = WorkStore(self.path.with_name('work.sqlite')); self.jobs = NativeJobs()
         self.subject = Proactive(self.store, self.ledger, lambda profile: self.jobs)
         self.main = self.store.read()['bots']['default']; self.main['native_incarnation'] = 'a' * 64
+        state = self.store.read(); state['bots']['default']['native_incarnation'] = self.main['native_incarnation']; self.store.save(state, state['revision'])
+        from unittest.mock import patch
+        from types import ModuleType
+        import sys
+        profiles = ModuleType('hermes_cli.profiles'); profiles.get_profile_dir = lambda profile: self.path.parent
+        modules = patch.dict(sys.modules, {'hermes_cli.profiles': profiles}); modules.start(); self.addCleanup(modules.stop)
+        physical = patch('bot_web.search_native.identity', return_value=self.main['native_incarnation']); physical.start(); self.addCleanup(physical.stop)
         self.subject.main = lambda: (self.store.read(), self.main)
         self.workspace = self.store.read()['id']
     async def asyncTearDown(self):

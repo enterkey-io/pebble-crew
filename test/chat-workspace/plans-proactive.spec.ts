@@ -165,6 +165,7 @@ test('Plans and project goals use shared editors and preserve owner choices acro
     .fill('Reach 100 customers with a useful product.');
   await dialog.getByLabel('Details', { exact: true }).fill('Review progress every week.');
   await dialog.getByRole('checkbox', { name: 'Product launch', exact: true }).check();
+  await expect(dialog.getByRole('heading', { name: 'New plan', exact: true })).toBeInViewport();
   await page.screenshot({ path: info.outputPath('plan-editor.png'), animations: 'disabled' });
   expect((await new AxeBuilder({ page }).include('[role="dialog"]').analyze()).violations).toEqual(
     [],
