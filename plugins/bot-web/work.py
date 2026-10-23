@@ -113,7 +113,7 @@ class WorkService:
                 'description': (project.get('description') if linked else board.get('description')) or '',
                 'mapping': mapping, 'count': int(board.get('total', 0)),
                 'revision': fingerprint(project if linked else {k: board.get(k) for k in ('slug', 'name', 'description', 'project_id')})})
-        return {'workspace_id': state['id'], 'capabilities': {'edit_details': native.edit_details, 'plans': True, 'proactive': True},
+        return {'workspace_id': state['id'], 'capabilities': {'edit_details': native.edit_details, 'plans': state.get('features', {}).get('tasks') is not False, 'proactive': True},
             'boards': items, 'unlinked_projects': [
                 {'id': p['id'], 'name': p['name']} for p in projects
                 if not any(b['project_id'] == p['id'] and b['mapping'] == 'linked' for b in items)]}
@@ -382,7 +382,7 @@ def register_runtime(ctx):
             if store:
                 store.db.close()
     ctx.register_tool(name='workspace_work', toolset='workspace',
-        description='Use native project boards, tasks and owner-local Plans/outcomes. work.plans reads strategic goals; work.plan.save and work.board.outcome.save require the current Main identity. Ask before unsolicited goal changes; a clear owner request authorizes them. Saving goals never starts tasks. Describe first. Each project gets its own board; General tasks is for unfiled work. Tasks default to Triage. Explicit creation status or work.task.move to todo/ready queues assigned work with the native dispatcher. Read native events, comments and worker reports for progress.',
+        description='Use native project boards, tasks and owner-local Plans/outcomes. When the owner disables Tasks, Plans/goals are unavailable; native Kanban continues to work. work.plans reads strategic goals; work.plan.save and work.board.outcome.save require the current Main identity. Ask before unsolicited goal changes; a clear owner request authorizes them. Saving goals never starts tasks. Describe first. Each project gets its own board; General tasks is for unfiled work. Tasks default to Triage. Explicit creation status or work.task.move to todo/ready queues assigned work with the native dispatcher. Read native events, comments and worker reports for progress.',
         schema={'name': 'workspace_work', 'description': 'Read bot-web:manage-work. work.describe provides workspace and explicit board references. Use a stable UUID operation_id for retries. Confirm completion from a receipt, never from a queued or uncertain response. Only explicit creation status or work.task.move to todo/ready starts the native queue. Comments @mention enrolled handles to notify their existing conversation.',
             'parameters': {'type': 'object', 'additionalProperties': False, 'required': ['operation', 'params'],
                 'properties': {'operation': {'type': 'string', 'enum': sorted(OPERATIONS - PROACTIVE_OPERATIONS)},

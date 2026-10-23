@@ -893,6 +893,13 @@
         "rpc"
       ],
       "effect": "read"
+    },
+    "workspace.features.set": {
+      "preferred": "rpc",
+      "accepted": [
+        "rpc"
+      ],
+      "effect": "write"
     }
   }
 }

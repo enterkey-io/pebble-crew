@@ -7,6 +7,11 @@ from .operations import InvalidOperation, fields
 from .work_store import operation_id
 
 PLAN_OPERATIONS = {'work.plans', 'work.plan.save', 'work.board.outcome.save'}
+def require_tasks(state):
+    if state.get('features', {}).get('tasks') is False:
+        raise InvalidOperation('Tasks and goals are off. The owner can enable Tasks in General settings.', 'REQUIRES_SETUP')
+
+
 STATUSES = {'active', 'paused', 'completed', 'archived'}
 
 
@@ -55,6 +60,7 @@ class Plans:
 
     def invoke(self, operation, params, actor):
         state = self.workspace.read()
+        require_tasks(state)
         if params.get('workspace_id') != state['id']:
             raise InvalidOperation('Choose this workspace')
         if operation == 'work.plans':
@@ -66,6 +72,7 @@ class Plans:
         with self.workspace.db:
             self.workspace.db.execute('BEGIN IMMEDIATE')
             state = self.workspace.read()
+            require_tasks(state)
             main = state['bots'].get(state.get('orchestrator'))
             if actor != 'owner' and (not main or actor != main['id'] or not main.get('enrolled') or not main.get('available', True)):
                 raise InvalidOperation('Only the current Main Pebble can manage Plans for the owner')
@@ -149,6 +156,7 @@ def runtime_snapshot(workspace, params):
     state = workspace.read()
     if params['workspace_id'] != state['id']:
         raise InvalidOperation('Choose this workspace')
+    require_tasks(state)
     data = saved_plans(workspace, state)
     if 'plan_id' in params:
         ident = operation_id(params['plan_id'])

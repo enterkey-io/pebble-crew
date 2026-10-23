@@ -240,3 +240,25 @@ No owner installation, credential, persona or service is used for these checks.
 Related reports PC-134/135/136 add stable focus restoration, authenticated upload
 presentation (without changing model input/history), and a shared bounded Crew
 portrait with up to five actual faces and one animated foreground avatar.
+
+## Optional Tasks
+
+General settings has an installation-wide Tasks switch, stored in the owner’s
+workspace SQLite database. Tasks is on by default for existing installations.
+Turning it off hides Tasks, Plans, boards, and task/project creation. Saved boards,
+tasks, Plans and project outcomes remain intact. Native Hermes Kanban and its
+workers continue running; this setting does not pause or cancel native work.
+Chats, Crew leadership, reporting relationships and routines are independent.
+
+When Tasks is off, the current coordination projection omits saved goals and
+project outcomes from owner chat, Crew chat, peer conversations, live voice and
+native workers. Plan reads and mutations are unavailable until the owner turns
+Tasks back on. This changes future context; it does not erase goals already
+mentioned in conversation history. Re-enabling restores the saved records.
+
+`workspace.features.set` is an authenticated owner-interface operation with an
+absolute `tasks` boolean and `expected_revision`. It validates and serializes the
+workspace update, invalidates the cached snapshot, and never calls a model or
+changes a persona. Native agent tools do not expose this setting. A lost browser
+response is reconciled by reading the current workspace before offering a retry.
+Older bridges keep existing Tasks behavior and do not show the unsupported switch.

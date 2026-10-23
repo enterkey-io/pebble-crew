@@ -104,7 +104,8 @@ def compact_context(data):
     for field in ('other_crews', 'project_outcomes', 'goals'):
         while data['coordination'].get(field) and len(json.dumps(data, ensure_ascii=False)) > 5200:
             data['coordination'][field].pop()
-    data['coordination']['goals_more'] = data['coordination']['goal_count'] > len(data['coordination']['goals'])
+    if data['coordination']['tasks_enabled']:
+        data['coordination']['goals_more'] = data['coordination']['goal_count'] > len(data['coordination']['goals'])
     return data
 
 

@@ -196,6 +196,7 @@ export function Rail({
   onNewProject: () => void;
   onNewTask: () => void;
 }) {
+  const tasksEnabled = workspace?.features?.tasks !== false;
   const [hidden, setHidden] = useState(false),
     [editor, setEditor] = useState<OrganizationEditor | null>(null);
   const reduced = useReducedMotion();
@@ -310,7 +311,7 @@ export function Rail({
             { label: 'New crew', action: () => setEditor({ kind: 'new-crew' }) },
             { label: 'New group chat', action: () => setEditor({ kind: 'new-group-chat' }) },
             { label: 'New section', action: () => setEditor({ kind: 'new-section' }) },
-            ...(client.supportsProjects
+            ...(tasksEnabled && client.supportsProjects
               ? [
                   { label: 'New task', action: onNewTask, disabled: !catalog },
                   { label: 'New project board', action: onNewProject, disabled: !catalog },
@@ -329,7 +330,7 @@ export function Rail({
           />
         )}
       </div>
-      {client.supportsProjects && (
+      {tasksEnabled && client.supportsProjects && (
         <ToggleGroup
           type="single"
           className="pc-area-switch w-auto"

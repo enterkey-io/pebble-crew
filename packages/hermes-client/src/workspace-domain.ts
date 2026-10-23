@@ -86,6 +86,24 @@ export class WorkspaceDomain {
     return decodeWorkspaceSnapshot(await this.bridge.invoke('workspace.describe', {}));
   }
 
+  async setTasksEnabled(enabled: boolean, expectedRevision: number) {
+    const data = record(
+      await this.bridge.invoke('workspace.features.set', {
+        tasks: enabled,
+        expected_revision: expectedRevision,
+      }),
+    );
+    const features = record(data.features);
+    if (
+      features.tasks !== enabled ||
+      typeof data.revision !== 'number' ||
+      !Number.isSafeInteger(data.revision) ||
+      data.revision < expectedRevision
+    )
+      throw new ClientError('INVALID_RESPONSE');
+    return { features: { tasks: enabled }, revision: data.revision };
+  }
+
   async describeAgentCapabilities(profile: string) {
     return decodeAgentCapabilities(await this.bridge.invoke('agent.capabilities', { profile }));
   }

@@ -137,7 +137,9 @@ export function App({ owner }: { owner?: OwnerConnection }) {
   const [settings, setSettings] = useState(false);
   const [proactiveOpen, setProactiveOpen] = useState(false);
   const [orgOpen, setOrgOpen] = useState(false);
-  const [area, setArea] = useState<'chat' | 'tasks'>('chat');
+  const [selectedArea, setArea] = useState<'chat' | 'tasks'>('chat');
+  const tasksEnabled = workspace?.features?.tasks !== false;
+  const area = tasksEnabled ? selectedArea : 'chat';
   const [workBoard, setWorkBoard] = useState('default');
   const [workDialog, setWorkDialog] = useState<WorkDialogTarget>();
   const [workRevision, setWorkRevision] = useState(0);
@@ -2034,6 +2036,7 @@ export function App({ owner }: { owner?: OwnerConnection }) {
       catalog={work.catalog}
       selectedBoard={workBoard}
       onArea={(area) =>
+        tasksEnabled &&
         navigate(() => {
           setArea(area);
           setOrgOpen(false);
@@ -2042,6 +2045,7 @@ export function App({ owner }: { owner?: OwnerConnection }) {
         })
       }
       onBoard={(board) =>
+        tasksEnabled &&
         navigate(() => {
           setWorkBoard(board);
           setArea('tasks');
@@ -2051,12 +2055,14 @@ export function App({ owner }: { owner?: OwnerConnection }) {
         })
       }
       onNewProject={() =>
+        tasksEnabled &&
         navigate(() => {
           setWorkDialog({ kind: 'new-project' });
           setNav(false);
         })
       }
       onNewTask={() =>
+        tasksEnabled &&
         navigate(() => {
           setWorkDialog({
             kind: 'new-task',
@@ -2206,8 +2212,13 @@ export function App({ owner }: { owner?: OwnerConnection }) {
             state.revision < workspaceRef.current.revision
           )
             return;
+          if (workspaceRef.current?.features?.tasks !== state.features?.tasks) work.reload();
           workspaceRef.current = state;
           setWorkspace(state);
+          if (state.features?.tasks === false) {
+            setArea('chat');
+            setWorkDialog(undefined);
+          }
           void loadRoster(client, true).catch(fail);
         }}
         onClose={() => setSettings(false)}
@@ -2922,7 +2933,7 @@ export function App({ owner }: { owner?: OwnerConnection }) {
               )}
             </DetailsDock>
           </WorkspacePanels>
-          {workDialog && work.catalog && workspace && (
+          {tasksEnabled && workDialog && work.catalog && workspace && (
             <Drawer
               title={
                 workDialog.kind === 'task' || workDialog.kind === 'new-task'

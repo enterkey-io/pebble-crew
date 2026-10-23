@@ -19,7 +19,11 @@ def context(store, profile, board=None):
     data = {'workspace_id': state['id'], 'crew_revision': crews['revision'], 'crews': [{**c, 'member_count': len(c['member_ids']), 'member_ids': c['member_ids'][:6], 'more_members': len(c['member_ids']) > 6} for c in own],
         'other_crews': [{'id': c['id'], 'name': c['name'], 'manager': c['manager']} for c in other[:8]],
         'other_crew_count': len(other),
+        'tasks_enabled': state.get('features', {}).get('tasks') is not False,
         'policy': 'Crew managers coordinate the Crew purpose. This never changes reporting, permissions or owner authority. Goals guide work; they never authorize starting tasks, spending money or external actions. Read workspace_agents describe for full Crew details and workspace_work work.plans for full Plans/outcomes.'}
+    if not data['tasks_enabled']:
+        data['policy'] = 'Crew managers coordinate the Crew purpose without changing reporting, permissions or owner authority. Tasks and goals are off: do not read, manage or use saved Plans or project outcomes. Native Kanban remains available for background work. Read workspace_agents describe for full Crew details.'
+        return data
     graph = saved_plans(store, state)
     own_ids = {c['id'] for c in own}
     is_main = profile == state.get('orchestrator')
@@ -127,6 +131,6 @@ def worker_context():
             meta = native.kanban.read_board_metadata(slug)
             project = native.project(meta['project_id']) if meta.get('project_id') else None
             ref = {'catalog_id': catalog['id'], 'project_id': project['id'], 'slug': slug} if project and project.get('board_slug') == slug else None
-        return '\nCurrent Crew and project goals: ' + json.dumps(context(store, profile, ref), ensure_ascii=False)
+        return '\nCurrent Crew coordination: ' + json.dumps(context(store, profile, ref), ensure_ascii=False)
     finally:
         store.db.close()

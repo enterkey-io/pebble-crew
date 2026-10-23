@@ -913,3 +913,36 @@ test('existing legacy creation survives another approval and completes once thro
     animations: 'disabled',
   });
 });
+
+test('owner-wide Tasks setting survives native reload and restores the existing boards', async ({
+  page,
+  context,
+}) => {
+  await context.addCookies(ownerCookies);
+  await page.goto('/');
+  await expect(page.getByLabel('Message', { exact: true })).toBeEnabled({ timeout: 30000 });
+  const signals = observeOwner(page);
+  async function general() {
+    await page.getByRole('button', { name: 'Your account', exact: true }).click();
+    await page.getByRole('menuitem', { name: 'Settings', exact: true }).click();
+  }
+  await general();
+  const setting = page.getByRole('switch', { name: 'Tasks', exact: true });
+  await expect(setting).toBeChecked();
+  await setting.click();
+  await expect(setting).not.toBeChecked();
+  await expect(setting).toBeEnabled();
+  await page.reload();
+  await expect(page.getByLabel('Message', { exact: true })).toBeEnabled({ timeout: 30000 });
+  await expect(page.getByRole('radiogroup', { name: 'App area' })).toHaveCount(0);
+  await general();
+  await expect(setting).not.toBeChecked();
+  await setting.click();
+  await expect(setting).toBeChecked();
+  await page.getByRole('button', { name: 'Close Settings', exact: true }).click();
+  await page.getByRole('radio', { name: 'Tasks', exact: true }).click();
+  await expect(page.getByRole('navigation', { name: 'Project boards' })).toContainText(
+    'General tasks',
+  );
+  expectNoChatSends(signals);
+});
