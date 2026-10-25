@@ -22,16 +22,25 @@ export function useConversationRequests({
   const requests = management.requests
     .slice()
     .sort((a, b) => (a.createdAt ?? 0) - (b.createdAt ?? 0));
+  const available = new Set<string | null>(
+    workspace.bots
+      .filter((bot) => bot.managed && !bot.hidden && !bot.deleted && bot.available !== false)
+      .map((bot) => bot.profile),
+  );
   const own = requests.filter(
     (request) =>
       request.actor === profile ||
-      (request.actor === 'owner' && profile === workspace.orchestrator),
+      (profile === workspace.orchestrator &&
+        (request.actor === 'owner' || !available.has(request.actor))),
   );
   const waiting =
     profile === workspace.orchestrator
       ? requests.filter(
           (request) =>
-            request.actor !== 'owner' && request.actor !== profile && request.state === 'pending',
+            request.actor !== 'owner' &&
+            request.actor !== profile &&
+            request.state === 'pending' &&
+            available.has(request.actor),
         )
       : [];
   return [

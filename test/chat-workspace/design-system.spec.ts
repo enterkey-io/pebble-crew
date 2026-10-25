@@ -56,8 +56,7 @@ test('shared design system: account settings, connections, requests, editor and 
   await page.getByRole('tab', { name: 'Connections', exact: true }).click();
   await expect(page.getByText('No connections', { exact: true })).toBeVisible();
   await accessible(page);
-  await page.getByRole('tab', { name: 'Requests', exact: true }).click();
-  await expect(page.getByRole('heading', { name: 'No requests' })).toBeVisible();
+  await expect(page.getByRole('tab', { name: 'Requests', exact: true })).toHaveCount(0);
   await page.getByRole('button', { name: 'Close Settings', exact: true }).click();
   await openSidebarMenu(page, 'Mica');
   await page.getByRole('menuitem', { name: 'Edit pebble', exact: true }).click();

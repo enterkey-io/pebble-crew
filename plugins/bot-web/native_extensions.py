@@ -108,6 +108,8 @@ def register(source):
         result = server._live_session_payload(sid, session)
         with session['history_lock']:
             turn = session.get('inflight_turn') or {}
+            prefix = {row.get('_row_id') for row in [*(session.get('display_history_prefix') or []), *(session.get('history') or [])]
+                      if isinstance(row, dict) and type(row.get('_row_id')) is int and row['_row_id'] > 0}
             result['snapshot_consistent'] = (result.get('turn_started_at') == turn.get('started_at')
                 if session.get('running') else not result.get('running'))
             if result['snapshot_consistent']:
@@ -118,7 +120,8 @@ def register(source):
                     {'text': server._inflight_text(envelope.get('text')),
                      'row_id': (envelope.get('_submit_user_row') or {}).get('_row_id')}
                     for envelope in envelopes
-                    if owner_input({'display_kind': envelope.get('_queued_display_kind') or (envelope.get('_submit_user_row') or {}).get('display_kind')})]
+                    if (envelope.get('_submit_user_row') or {}).get('_row_id') not in prefix
+                    and owner_input({'display_kind': envelope.get('_queued_display_kind') or (envelope.get('_submit_user_row') or {}).get('display_kind')})]
             agent = session.get('agent')
             messages = getattr(agent, '_session_messages', None)
             start = getattr(agent, '_persist_user_message_idx', None)
@@ -130,15 +133,12 @@ def register(source):
             corrections = live.get('corrections') or []
             offsets = live.get('correction_offsets') or []
             result.pop('correction_row_ids', None)
+            result.pop('active_user_row_id', None)
+            result['live_assistant_row_ids'] = []
             if result.get('inflight') is not None:
                 result['inflight'] = {**live, 'corrections': [], 'correction_offsets': []}
-            if isinstance(candidate, dict) and not owner_input(candidate):
-                # A native notification starts a model turn, not an owner turn.
-                result.pop('active_user_row_id', None)
             # A structural native cursor selects the row. Text only verifies
             # that cursor, and a row in the pre-turn prefix cannot be current.
-            prefix = {row.get('_row_id') for row in session.get('history', [])
-                      if isinstance(row, dict)}
             if (result.get('running') and session.get('running')
                     and result['snapshot_consistent']
                     and isinstance(candidate, dict)
@@ -152,11 +152,15 @@ def register(source):
                     anchor = next((index for index, row in enumerate(messages)
                                    if row.get('_row_id') == candidate['_row_id']), None)
                     if anchor is not None:
+                        result['live_assistant_row_ids'] = [
+                            row['_row_id'] for row in messages[anchor + 1:]
+                            if row.get('role') == 'assistant' and type(row.get('_row_id')) is int
+                            and row['_row_id'] > 0 and row['_row_id'] not in prefix]
                         users = [row for row in messages[anchor + 1:] if row.get('role') == 'user']
                         if len(users) == len(corrections) and all(
                                 server._inflight_text(row.get('content')) == corrections[index]
                                 for index, row in enumerate(users)):
-                            admitted = [(index, row) for index, row in enumerate(users) if owner_input(row)]
+                            admitted = [(index, row) for index, row in enumerate(users) if owner_input(row) and row.get('_row_id') not in prefix]
                             live = result.get('inflight') or {}
                             result['inflight'] = {**live,
                                 'corrections': [corrections[index] for index, _ in admitted],

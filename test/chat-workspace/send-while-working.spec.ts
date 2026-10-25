@@ -118,6 +118,7 @@ test('native anchored live correction restores without duplicate partial replies
             session_id: 'session-arlo',
             running: true,
             active_user_row_id: 31,
+            live_assistant_row_ids: [32],
             correction_row_ids: [33],
             messages: [
               { row_id: 31, role: 'user', text: 'Start the work', timestamp: 1700000000 },

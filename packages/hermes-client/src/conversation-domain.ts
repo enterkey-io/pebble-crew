@@ -304,9 +304,11 @@ export type ApprovalTarget =
       executionGeneration: number;
       requestId: string;
     };
+export type ApprovalChoice = 'once' | 'session' | 'always' | 'deny';
 export type ConversationApproval = {
   readonly target: ApprovalTarget;
   readonly description: string;
+  readonly choices?: readonly ApprovalChoice[];
 };
 export function decodeApprovals(
   value: unknown,
@@ -320,8 +322,21 @@ export function decodeApprovals(
     const description =
       boundedText(data.command ?? data.description ?? details?.command, 16000) ||
       'Hermes requested permission.';
-    if (scope.kind === 'chat')
-      return { target: { kind: 'chat', sessionId: scope.sessionId, requestId }, description };
+    const offered = Array.isArray(data.choices)
+      ? data.choices
+      : Array.isArray(details?.choices)
+        ? details.choices
+        : ['once', 'deny'];
+    const choices: ApprovalChoice[] = ['once', 'deny'];
+    if (scope.kind === 'chat') {
+      if (offered.includes('session')) choices.splice(1, 0, 'session');
+      if (offered.includes('always')) choices.splice(choices.length - 1, 0, 'always');
+      return {
+        target: { kind: 'chat', sessionId: scope.sessionId, requestId },
+        description,
+        choices: choices.filter((choice) => offered.includes(choice)),
+      };
+    }
     const memberId = identity(data.member_id),
       taskId = identity(data.task_id);
     if (
@@ -342,6 +357,7 @@ export function decodeApprovals(
         requestId,
       },
       description,
+      choices: ['once', 'deny'],
     };
   });
 }
@@ -514,7 +530,7 @@ export class ConversationDomain {
     });
     return { id: eventId, reactions: decodeMessageReactions(data.reactions), state };
   }
-  async decide(target: ApprovalTarget, choice: 'once' | 'deny') {
+  async decide(target: ApprovalTarget, choice: ApprovalChoice) {
     const result = record(
       await (target.kind === 'chat'
         ? this.bridge.invoke('chat.approve', {
@@ -551,6 +567,7 @@ export type BotConversation = {
   readonly inflight: string;
   readonly corrections: readonly LiveCorrection[];
   readonly activeUserId: string | undefined;
+  readonly liveAssistantIds?: readonly string[] | undefined;
   readonly streamPosition: StreamPosition | undefined;
   readonly deferred: readonly { text: string; rowId: string | undefined }[];
 };
@@ -591,6 +608,14 @@ export function decodeBotConversation(value: unknown): BotConversation {
       rowId: identity(correctionIds[index]),
     })),
     activeUserId: identity(data.active_user_row_id),
+    liveAssistantIds:
+      data.live_assistant_row_ids === undefined
+        ? undefined
+        : rows(data.live_assistant_row_ids).map((value) => {
+            const id = identity(value);
+            if (!id) throw new ClientError('INVALID_RESPONSE');
+            return id;
+          }),
     streamPosition: decodeStreamPosition(data.stream_position),
     deferred: Array.isArray(data.deferred_prompts)
       ? rows(data.deferred_prompts)

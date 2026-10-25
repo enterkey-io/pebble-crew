@@ -9,5 +9,6 @@ await build({
   platform: 'node',
   format: 'esm',
   packages: 'external',
+  loader: { '.sql': 'text' },
   outfile: output,
 });

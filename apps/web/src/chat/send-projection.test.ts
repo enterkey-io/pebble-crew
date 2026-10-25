@@ -153,6 +153,7 @@ it('restores only an anchored native live span and does not infer identity from 
   const restored = view.restore({
     history,
     activeUserId: '3',
+    liveAssistantIds: ['4'],
     running: true,
     inflight: 'A😀B',
     corrections: [{ text: 'Change', offset: 3, rowId: '5' }],
@@ -198,7 +199,7 @@ it('retains accepted follow-ups when the native snapshot cannot anchor the live 
   expect(messages).toContainEqual(expect.objectContaining({ id: 'local' }));
 });
 
-it('keeps un-covered native user rows after the restored live reply', () => {
+it('keeps explicitly deferred native user rows after the restored live reply', () => {
   const view = new SendProjection();
   const restored = view.restore({
     history: {
@@ -210,6 +211,8 @@ it('keeps un-covered native user rows after the restored live reply', () => {
       ],
     },
     activeUserId: '1',
+    liveAssistantIds: ['2'],
+    deferred: [{ rowId: '4', text: 'Native deferred fallback' }],
     running: true,
     inflight: 'AB',
     corrections: [{ text: 'Redirect', offset: 1, rowId: '3' }],
@@ -286,4 +289,81 @@ it('removes only a proven undispatched optimistic row while preserving the prior
     { id: 'old', role: 'assistant', text: 'existing' },
   ]);
   expect(view.cancelUnsent('not-sent').map((row) => row.id)).toEqual(['old']);
+});
+
+it('never removes committed replies or moves old user rows when a running snapshot spans other turns', () => {
+  const view = new SendProjection();
+  const messages: ChatMessage[] = [
+    { id: '1', role: 'user', text: 'Four days ago', timestamp: '2026-10-21T12:00:00Z' },
+    { id: '2', role: 'assistant', text: 'Old answer' },
+    { id: '3', role: 'user', text: 'Today' },
+    { id: '4', role: 'assistant', text: 'Newer answer' },
+    { id: '5', role: 'user', text: 'Make the photo' },
+  ];
+  const restored = view.restore({
+    history: { messages },
+    activeUserId: '1',
+    running: true,
+    inflight: 'Preparing a photo',
+    corrections: [],
+  });
+  expect(view.display(restored.messages, restored.stream).messages.slice(0, 5)).toEqual(messages);
+});
+
+it('does not retain the prior turn deferred tail after a new anchored snapshot consumes it', () => {
+  const view = new SendProjection();
+  const history: { messages: ChatMessage[] } = {
+    messages: [{ id: '1', role: 'user', text: 'First task' }],
+  };
+  view.restore({
+    history,
+    running: true,
+    activeUserId: '1',
+    inflight: 'First reply',
+    corrections: [],
+    deferred: [{ rowId: '3', text: 'Next task' }],
+  });
+  const next: ChatMessage[] = [
+    ...history.messages,
+    { id: '2', role: 'assistant', text: 'First reply' },
+    { id: '3', role: 'user', text: 'Next task' },
+  ];
+  const restored = view.restore({
+    history: { messages: next },
+    running: true,
+    activeUserId: '3',
+    inflight: 'Next reply',
+    corrections: [],
+    deferred: [],
+  });
+  expect(view.display(restored.messages, restored.stream).messages.map((row) => row.text)).toEqual([
+    'First task',
+    'First reply',
+    'Next task',
+    'Next reply',
+  ]);
+});
+
+it('keeps a receipted deferred send after the live reply while preserving its local render identity', () => {
+  const view = new SendProjection();
+  const start: ChatMessage = { id: '1', role: 'user', text: 'Start' };
+  view.beginReply();
+  view.begin(
+    { id: 'local-followup', renderKey: 'local-followup', role: 'user', text: 'Later' },
+    [start],
+    'Work',
+  );
+  view.acknowledge(3, 'local-followup', true);
+  const restored = view.restore({
+    history: { messages: [start, { id: '3', role: 'user', text: 'Later' }] },
+    running: true,
+    activeUserId: '1',
+    liveAssistantIds: [],
+    inflight: 'Work',
+    corrections: [],
+    deferred: [{ rowId: '3', text: 'Later' }],
+  });
+  const rows = view.display(restored.messages, restored.stream).messages;
+  expect(rows.map((row) => row.text)).toEqual(['Start', 'Work', 'Later']);
+  expect(rows.at(-1)?.renderKey).toBe('local-followup');
 });

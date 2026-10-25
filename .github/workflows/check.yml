@@ -114,6 +114,7 @@ jobs:
       - run: npm run test:owner-browser
       - run: python scripts/fixture/reactions_smoke.py
       - run: python scripts/fixture/busy_send_smoke.py
+      - run: python scripts/fixture/approval_scopes_smoke.py
       - run: python scripts/fixture/media_smoke.py
       - run: python scripts/fixture/documents_smoke.py
       - run: python scripts/fixture/projects_smoke.py
@@ -163,6 +164,7 @@ jobs:
       - run: '"$RUNNER_TEMP/hermes-legacy-env/bin/python" scripts/fixture/attribution_smoke.py'
       - run: '"$RUNNER_TEMP/hermes-legacy-env/bin/python" scripts/fixture/reactions_smoke.py'
       - run: '"$RUNNER_TEMP/hermes-legacy-env/bin/python" scripts/fixture/busy_send_smoke.py'
+      - run: '"$RUNNER_TEMP/hermes-legacy-env/bin/python" scripts/fixture/approval_scopes_smoke.py'
       - run: '"$RUNNER_TEMP/hermes-legacy-env/bin/python" scripts/fixture/media_smoke.py'
       - run: '"$RUNNER_TEMP/hermes-legacy-env/bin/python" scripts/fixture/documents_smoke.py'
       - run: '"$RUNNER_TEMP/hermes-legacy-env/bin/python" scripts/fixture/workspace_smoke.py'

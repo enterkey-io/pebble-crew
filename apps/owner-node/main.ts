@@ -9,6 +9,7 @@ import { createOwnerService, digest } from '../../packages/owner-service/src/ser
 import { ownerBodyLimit } from '../../packages/owner-service/src/photo';
 import type { OwnerSettings } from '../../packages/owner-service/src/service';
 import { proxyBridge, proxyBridgeUpgrade } from '../../packages/owner-service/src/bridge-proxy';
+import ownerSchema from '../../packages/owner-service/src/schema.sql';
 
 const command = process.argv[2];
 function flag(name: string) {
@@ -72,6 +73,7 @@ db.exec(
   ),
 );
 const store = new NodeOwnerDatabase(db);
+db.exec(ownerSchema);
 if (command === 'init' || command === 'recover') {
   const code = randomBytes(32).toString('base64url');
   const statements =
@@ -96,7 +98,6 @@ if (command === 'init' || command === 'recover') {
   );
   db.close();
 } else if (command === 'serve') {
-  const service = createOwnerService(db, store, settings);
   const origin = new URL(settings.origin);
   const bridgePort = flag('--bridge-port') ? Number(flag('--bridge-port')) : undefined;
   if (
@@ -107,6 +108,10 @@ if (command === 'init' || command === 'recover') {
       settings.bridgeUrl !== settings.origin)
   )
     throw new Error('Combined hosting requires a valid loopback bridge port and one public origin');
+  const service = createOwnerService(db, store, {
+    ...settings,
+    nativeDevices: bridgePort !== undefined,
+  });
   const headerText = await readFile(resolve(root, '_headers'), 'utf8');
   const headers = Object.fromEntries(
     headerText
@@ -159,7 +164,14 @@ if (command === 'init' || command === 'recover') {
         }
       const url = new URL(req.url, origin);
       if (bridgePort !== undefined && url.pathname.startsWith('/v1/')) {
-        proxyBridge(req, res, settings.origin, bridgePort);
+        const device = await service.bridgeDevice(
+          String(req.headers.authorization ?? '').replace(/^Bearer /, ''),
+        );
+        if (device === false) {
+          res.writeHead(401).end();
+          return;
+        }
+        proxyBridge(req, res, settings.origin, bridgePort, device ?? undefined);
         return;
       }
       if (

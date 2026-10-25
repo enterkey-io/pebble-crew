@@ -1,4 +1,4 @@
-<!doctype html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="referrer" content="no-referrer"><title>Install Pebble Crew</title><link rel="stylesheet" href="/install.css"></head><body><header><a href="/">← Back to app</a></header><main><section class="owner-note"><p class="eyebrow">FOR THE OWNER</p><h1>Give this page to your Hermes agent.</h1><p>Your agent installs the plugin on your Hermes host, sets up reliable startup and a private web address, then gives you one private setup link. Open it to create your administrator login and bring in your existing primary agent.</p><p>The plugin includes the web app. Your conversations, memory, service credentials and login stay on your infrastructure. No pairing conversation is needed.</p><a href="/install.md">Read or copy the plain-text instructions ↗</a></section><nav aria-label="Installer downloads"><a href="https://github.com/enterkey-io/pebble-crew/releases/download/v0.7.13-preview.1/workspace-manifest.json">Package manifest</a><a href="https://github.com/enterkey-io/pebble-crew/releases/download/v0.7.13-preview.1/workspace-plugin-preview.zip">Complete plugin</a><a href="https://github.com/enterkey-io/pebble-crew/releases/download/v0.7.13-preview.1/workspace-source-preview.zip">Source code</a></nav><article><h1>Install Pebble Crew</h1>
+<!doctype html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="referrer" content="no-referrer"><title>Install Pebble Crew</title><link rel="stylesheet" href="/install.css"></head><body><header><a href="/">← Back to app</a></header><main><section class="owner-note"><p class="eyebrow">FOR THE OWNER</p><h1>Give this page to your Hermes agent.</h1><p>Your agent installs the plugin on your Hermes host, sets up reliable startup and a private web address, then gives you one private setup link. Open it to create your administrator login and bring in your existing primary agent.</p><p>The plugin includes the web app. Your conversations, memory, service credentials and login stay on your infrastructure. No pairing conversation is needed.</p><a href="/install.md">Read or copy the plain-text instructions ↗</a></section><nav aria-label="Installer downloads"><a href="https://github.com/enterkey-io/pebble-crew/releases/download/v0.7.14-preview.1/workspace-manifest.json">Package manifest</a><a href="https://github.com/enterkey-io/pebble-crew/releases/download/v0.7.14-preview.1/workspace-plugin-preview.zip">Complete plugin</a><a href="https://github.com/enterkey-io/pebble-crew/releases/download/v0.7.14-preview.1/workspace-source-preview.zip">Source code</a></nav><article><h1>Install Pebble Crew</h1>
 <p>For the owner&#x27;s Hermes installation agent: install the <strong>combined plugin</strong> on the</p>
 <p>owner&#x27;s Hermes host. It includes the web app, owner login and native Bot Mode</p>
 <p>integration. Finish supervision and HTTPS verification, then give the owner **one</p>
@@ -58,12 +58,12 @@
 <p>requirement before promising a URL. A terminal or <code>nohup</code> process is not a finished</p>
 <p>installation.</p>
 <h2>3. Obtain the immutable combined release</h2>
-<p>Candidate: <code>v0.7.13-preview.1</code>. If these assets are not published, stop and report</p>
+<p>Candidate: <code>v0.7.14-preview.1</code>. If these assets are not published, stop and report</p>
 <p>that the candidate is unavailable. Do not substitute main or an API-only package.</p>
-<p class="bullet">• <a href="https://github.com/enterkey-io/pebble-crew/releases/download/v0.7.13-preview.1/workspace-manifest.json" rel="noreferrer">Manifest</a></p>
-<p class="bullet">• <a href="https://github.com/enterkey-io/pebble-crew/releases/download/v0.7.13-preview.1/SHA256SUMS" rel="noreferrer">SHA256SUMS</a></p>
-<p class="bullet">• <a href="https://github.com/enterkey-io/pebble-crew/releases/download/v0.7.13-preview.1/workspace-plugin-preview.zip" rel="noreferrer">Complete plugin</a></p>
-<p class="bullet">• <a href="https://github.com/enterkey-io/pebble-crew/releases/download/v0.7.13-preview.1/workspace-source-preview.zip" rel="noreferrer">Source</a></p>
+<p class="bullet">• <a href="https://github.com/enterkey-io/pebble-crew/releases/download/v0.7.14-preview.1/workspace-manifest.json" rel="noreferrer">Manifest</a></p>
+<p class="bullet">• <a href="https://github.com/enterkey-io/pebble-crew/releases/download/v0.7.14-preview.1/SHA256SUMS" rel="noreferrer">SHA256SUMS</a></p>
+<p class="bullet">• <a href="https://github.com/enterkey-io/pebble-crew/releases/download/v0.7.14-preview.1/workspace-plugin-preview.zip" rel="noreferrer">Complete plugin</a></p>
+<p class="bullet">• <a href="https://github.com/enterkey-io/pebble-crew/releases/download/v0.7.14-preview.1/workspace-source-preview.zip" rel="noreferrer">Source</a></p>
 <p>Verify size and SHA-256 against both manifest and checksum file. Reject absolute</p>
 <p>archive paths, traversal, symlinks and entries escaping private staging. The</p>
 <p>installable directory is <code>bot-web/</code>, including <code>web-runtime/</code>. The repository root</p>
@@ -163,7 +163,7 @@ hermes bot-web verify --public</code></pre>
 <p><code>setup-link</code> returns <code>expires</code> (Unix epoch milliseconds) and <code>expires_in</code> (whole</p>
 <p>remaining seconds). Its output contains the private file path, never the secret.</p>
 <p>Event parsing and legacy access controls are specified in</p>
-<p><a href="https://github.com/enterkey-io/pebble-crew/blob/v0.7.13-preview.1/docs/WIRE_PROTOCOL.md" rel="noreferrer">the wire protocol</a>.</p>
+<p><a href="https://github.com/enterkey-io/pebble-crew/blob/v0.7.14-preview.1/docs/WIRE_PROTOCOL.md" rel="noreferrer">the wire protocol</a>.</p>
 <p>Never use global revocation for diagnostic cleanup: use DELETE <code>/v1/connect</code></p>
 <p>with the probe&#x27;s own lease. Global revocation now requires `hermes bot-web revoke</p>
 <p>--all<code> or the operator-only HTTP body </code>{&quot;all&quot;:true}`.</p>
@@ -298,4 +298,18 @@ hermes bot-web verify --public</code></pre>
 <p>start only on the owner&#x27;s action. No Grok live provider is offered: this Hermes</p>
 <p>build&#x27;s separate xAI transcription/speech output is not a live conversation mode.</p>
 <h2>Native chat commands</h2>
-<p>Typing <code>/</code> offers session-scoped Hermes completions for browser-supported commands. <code>/model &lt;name&gt;</code> executes Hermes&#x27;s native command worker; it is never sent as a model prompt. Terminal-only, destructive lifecycle and unsupported command responses stay in Hermes. The removed Model editor tab only copied the primary model authorization; it was not a model picker.</p></article></main><footer>This page contains installation instructions and public software packages. No owner credentials are requested here.</footer></body></html>
+<p>Typing <code>/</code> offers session-scoped Hermes completions for browser-supported commands. <code>/model &lt;name&gt;</code> executes Hermes&#x27;s native command worker; it is never sent as a model prompt. Terminal-only, destructive lifecycle and unsupported command responses stay in Hermes. The removed Model editor tab only copied the primary model authorization; it was not a model picker.</p>
+<h2>Connect the native Mac or phone app</h2>
+<p>Version 0.7.14 adds <strong>Settings → Devices → Add a device</strong> to the combined web app.</p>
+<p>Upgrade and verify the public route before asking the owner to use this screen.</p>
+<p>An older installed page cannot create invitations. Preserve the existing login;</p>
+<p>this does not require a new setup link or a browser-access reset.</p>
+<p>The signed-in owner creates a five-minute, single-use QR code. On the phone, open</p>
+<p>Pebble Crew and tap <strong>Scan QR code</strong>. On the same Mac, choose **Connect Pebble Crew</p>
+<p>on this Mac**, or copy the fallback link into the native app. The connection dialog</p>
+<p>shows <strong>Connecting…</strong> after redemption and closes only after the native app has</p>
+<p>successfully connected to Hermes. The device then appears in Devices and can be</p>
+<p>revoked independently. No second login or approval is needed.</p>
+<p>The native credential stays in device Keychain; its hash stays on the owner&#x27;s host.</p>
+<p>Use <a href="https://github.com/enterkey-io/pebble-crew/blob/v0.7.14-preview.1/docs/NATIVE_DEVICE_ENROLLMENT.md" rel="noreferrer">the device contract</a> for protocol and acceptance</p>
+<p>details. Never paste an invitation or permanent device credential into chat or logs.</p></article></main><footer>This page contains installation instructions and public software packages. No owner credentials are requested here.</footer></body></html>

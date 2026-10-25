@@ -2,6 +2,7 @@ import { request } from 'node:http';
 import { createHash } from 'node:crypto';
 import { bridgeRoute } from '@hermes-client/core';
 import type { IncomingMessage, ServerResponse } from 'node:http';
+import type { DeviceBridgeGuard } from './devices';
 
 /** Fixed loopback destination and narrow protocol routes; never a general proxy. */
 export function proxyBridge(
@@ -9,6 +10,7 @@ export function proxyBridge(
   outgoing: ServerResponse,
   origin: string,
   port: number,
+  device?: DeviceBridgeGuard,
 ) {
   const url = new URL(incoming.url!, origin);
   const callback = url.pathname === '/v1/oauth/callback';
@@ -48,7 +50,42 @@ export function proxyBridge(
       path: url.pathname + url.search,
       headers,
     },
-    (response) => {
+    async (response) => {
+      let handshake: Buffer | undefined;
+      if (
+        device &&
+        incoming.method === 'POST' &&
+        url.pathname === '/v1/connect' &&
+        response.statusCode === 200
+      ) {
+        try {
+          const chunks: Buffer[] = [];
+          let size = 0;
+          for await (const chunk of response) {
+            const bytes = Buffer.from(chunk);
+            size += bytes.length;
+            if (size > 128 * 1024) throw Error('Oversized handshake');
+            chunks.push(bytes);
+          }
+          handshake = Buffer.concat(chunks);
+          const value: unknown = JSON.parse(handshake.toString('utf8'));
+          if (
+            !value ||
+            typeof value !== 'object' ||
+            !('protocol' in value) ||
+            value.protocol !== 'hermes-bot-web.v1' ||
+            !('connection' in value) ||
+            typeof value.connection !== 'string' ||
+            !value.connection
+          )
+            throw Error('Invalid handshake');
+          await device.connected();
+        } catch {
+          response.destroy();
+          outgoing.writeHead(502).end();
+          return;
+        }
+      }
       // The integration cannot set owner-login cookies or replace security headers.
       const responseHeaders: Record<string, string | string[]> = {};
       for (const name of ['content-type', 'content-disposition', 'location', 'retry-after']) {
@@ -58,12 +95,33 @@ export function proxyBridge(
       responseHeaders['cache-control'] = 'no-store, no-transform';
       responseHeaders['x-accel-buffering'] = 'no';
       outgoing.writeHead(response.statusCode ?? 502, responseHeaders);
+      if (handshake) {
+        outgoing.end(handshake);
+        return;
+      }
       outgoing.flushHeaders();
       response.on('error', () => outgoing.end());
       response.pipe(outgoing);
       outgoing.on('close', () => response.destroy());
     },
   );
+  const revocation = device
+    ? setInterval(() => {
+        void device
+          .alive()
+          .then((alive) => {
+            if (!alive) {
+              upstream.destroy();
+              outgoing.end();
+            }
+          })
+          .catch(() => {
+            upstream.destroy();
+            outgoing.end();
+          });
+      }, 2000)
+    : undefined;
+  outgoing.on('close', () => clearInterval(revocation));
   upstream.setTimeout(45000, () => upstream.destroy());
   upstream.on('error', () => {
     if (!outgoing.headersSent) outgoing.writeHead(503, { 'Retry-After': '2' });

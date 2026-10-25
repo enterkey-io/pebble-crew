@@ -421,3 +421,21 @@ changed history requires a fresh scan. Existing `media.read` independently
 revalidates every actual file read. Remote links, user/private message references
 and unsafe paths are excluded. `files.list` remains the separate owner-upload
 catalog; failure of one Library source does not discard the other.
+
+### Live snapshot row provenance (0.7.14)
+
+`bot.open` and `chat.snapshot` may include `live_assistant_row_ids`, an array of
+persisted native assistant row IDs proven to belong to the current live turn.
+`active_user_row_id` alone does not authorize discarding later stored replies.
+Clients preserve other canonical history rows in native order. Older servers
+without this additive field cannot establish that overlap. Archived display
+lineage is excluded when validating current-turn and deferred owner row IDs.
+
+### Native tool approval scopes (0.7.14)
+
+`chat.approvals` returns native `choices` for each pending request. `chat.approve`
+accepts `once`, `session`, `always` or `deny` only when currently permitted for
+that exact request; native smart-denial and session/permanent restrictions take
+precedence. The native policy engine owns scope and pattern persistence.
+`room.approve` remains limited to `once` or `deny` on the supported Hermes builds.
+These scopes do not apply to `requests.approve` agent-management proposals.

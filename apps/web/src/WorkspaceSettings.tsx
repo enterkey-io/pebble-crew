@@ -1,23 +1,17 @@
 import { usePageTitle } from './ui/page-title';
 import { TabbedEditor } from './ui/EditorSurface';
-import { LoadingBar } from './components/ui/loading-bar';
-import { Button } from './components/ui/button';
-import { safeError } from '@hermes-client/core';
-import { useEffect, useRef, useState } from 'react';
-import type { ManagementRequests } from './chat/useManagementRequests';
-import type { SessionClient, WorkspaceRequest } from '@hermes-client/protocol';
-import { decodeWorkspaceSnapshot } from '@hermes-client/protocol';
+import { useRef, useState } from 'react';
+import type { SessionClient } from '@hermes-client/protocol';
 import type { WorkspaceSnapshot as WorkspaceState, WorkspaceBot } from '@hermes-client/protocol';
 import { OwnerAccount } from './OwnerAccount';
 import { GeneralSettings } from './GeneralSettings';
+import { DeviceSettings } from './DeviceSettings';
 import { ConnectionsPanel } from './connections/ConnectionsPanel';
-import { RequestReview } from './chat/RequestReview';
 import { PebbleEditor } from './PebbleEditor';
 import { PageHeader, Notice } from './ui/primitives';
-type Row = Record<string, unknown>;
+export type SettingsTab = 'agents' | 'connections' | 'account' | 'general' | 'devices';
 export function WorkspaceSettings({
   client,
-  management,
   state,
   onChange,
   onClose,
@@ -42,9 +36,8 @@ export function WorkspaceSettings({
   closeOnSave?: boolean;
   onNavigate: (action: () => void) => void;
   owner?: boolean;
-  initialTab?: 'agents' | 'requests' | 'connections' | 'account' | 'general';
+  initialTab?: SettingsTab;
   initialProfile?: string | undefined;
-  management: ManagementRequests;
   client: SessionClient;
   state: WorkspaceState;
   onChange: (s: WorkspaceState) => void;
@@ -56,7 +49,7 @@ export function WorkspaceSettings({
   const [tab, setTab] = useState(
     initialTab === 'agents'
       ? 'agents'
-      : !owner && initialTab === 'account'
+      : !owner && (initialTab === 'account' || initialTab === 'devices')
         ? 'connections'
         : initialTab,
   );
@@ -67,42 +60,12 @@ export function WorkspaceSettings({
           general: 'General settings',
           account: 'Account settings',
           connections: 'Connections',
-          requests: 'Requests',
+          devices: 'Devices',
         }[tab],
   );
   const [profile, setProfile] = useState(
     initialProfile ?? state.orchestrator ?? state.bots[0]?.profile ?? '',
   );
-  const [error, setError] = useState(''),
-    [notice, setNotice] = useState('');
-  const { requests, busy, issueFor, checkStatus, loading } = management;
-  useEffect(() => {
-    setError('');
-    setNotice('');
-  }, [tab, profile]);
-  async function decide(
-    r: WorkspaceRequest,
-    approve: boolean,
-    confirmation?: string,
-    context?: import('@hermes-client/protocol').ManagementReview,
-  ) {
-    setError('');
-    setNotice('');
-    const result = await management.decide(r, approve, confirmation, context);
-    if (!result) return;
-    setNotice(
-      result.state === 'completed'
-        ? 'Change completed.'
-        : result.state === 'denied'
-          ? 'Request denied.'
-          : '',
-    );
-    try {
-      onChange(decodeWorkspaceSnapshot(await client.invoke('workspace.describe', {})));
-    } catch {
-      /* The saved decision remains authoritative while the roster recovers. */
-    }
-  }
   if (tab === 'agents') {
     const current = state.bots.find((b) => b.profile === profile);
     const retired =
@@ -143,64 +106,23 @@ export function WorkspaceSettings({
       header={<PageHeader title="Settings" onClose={() => onNavigate(onClose)} />}
       tabs={[
         { id: 'general', label: 'General' },
-        ...(owner ? [{ id: 'account', label: 'Account' }] : []),
+        ...(owner
+          ? [
+              { id: 'account', label: 'Account' },
+              { id: 'devices', label: 'Devices' },
+            ]
+          : []),
         { id: 'connections', label: 'Connections' },
-        { id: 'requests', label: 'Requests' },
       ]}
       value={tab}
-      onChange={(id) => onNavigate(() => setTab(id as typeof tab))}
+      onChange={(id) => {
+        if (id === 'general' || id === 'account' || id === 'devices' || id === 'connections')
+          onNavigate(() => setTab(id));
+      }}
     >
-      {(error || management.loadError) && (
-        <Notice error>
-          {error || 'Requests could not be loaded.'}{' '}
-          <Button variant="ghost" className="text-button" onClick={management.refresh}>
-            Try again
-          </Button>
-        </Notice>
-      )}
-      {notice && <Notice>{notice}</Notice>}
-      {!!management.faults.length && (
-        <Notice>
-          Some requests could not be read.{' '}
-          <Button variant="quiet" onClick={management.refresh}>
-            Try again
-          </Button>
-        </Notice>
-      )}
-      <LoadingBar active={loading} label="Loading Settings" />
       {tab === 'general' && <GeneralSettings onProactive={onProactive} />}
       {tab === 'account' && owner && <OwnerAccount />}
-      {tab === 'requests' && !loading && (
-        <>
-          {!requests.length && !error && !management.loadError && !management.faults.length && (
-            <div className="ui-empty">
-              <h2>No requests</h2>
-              <p>Changes proposed by your pebbles appear here.</p>
-            </div>
-          )}
-          <div className="request-list">
-            {requests.map((r) => (
-              <RequestReview
-                key={String(r.id)}
-                client={client}
-                draft={management.reviewDraftFor(r)}
-                onDraft={(value) => management.setReviewDraft(r, value)}
-                request={r}
-                busy={busy === r.id}
-                decisionIssue={issueFor(r)}
-                onCheck={() => void checkStatus(r)}
-                onDecision={(a, c, context) => void decide(r, a, c, context)}
-                onInspect={() => {
-                  void client
-                    .invoke('requests.reconcile', { id: r.id })
-                    .then((value) => setNotice(String((value as Row).message)))
-                    .catch((e) => setError(safeError(e).message));
-                }}
-              />
-            ))}
-          </div>
-        </>
-      )}
+      {tab === 'devices' && owner && <DeviceSettings />}
       {tab === 'connections' &&
         (connectionProfile ? (
           <ConnectionsPanel

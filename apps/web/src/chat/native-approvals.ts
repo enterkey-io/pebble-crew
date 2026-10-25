@@ -1,6 +1,11 @@
-import { approvalKey, type ConversationApproval } from '@hermes-client/protocol';
+import {
+  approvalKey,
+  type ConversationApproval,
+  type ApprovalChoice,
+} from '@hermes-client/protocol';
 
 export type NativeApprovalReview = ConversationApproval & {
+  readonly decision?: ApprovalChoice;
   readonly state: 'pending' | 'approved' | 'denied' | 'inactive' | 'uncertain';
 };
 
