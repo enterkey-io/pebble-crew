@@ -16,7 +16,11 @@ let front,
   child,
   browser,
   page,
-  diagnostic = '';
+  diagnostic = '',
+  connectionMetadata,
+  connects = 0,
+  eventStreams = 0,
+  handshakeReadErrors = 0;
 async function freePort() {
   const server = netServer();
   await new Promise((r) => server.listen(0, '127.0.0.1', r));
@@ -124,6 +128,22 @@ try {
           headers: incoming.headers,
         },
         (response) => {
+          const path = new URL(incoming.url, 'https://fixture.invalid').pathname;
+          if (incoming.headers.cookie && response.statusCode === 200) {
+            if (path === '/v1/connect' && incoming.method === 'POST') {
+              connects++;
+              const chunks = [];
+              response.on('data', (chunk) => chunks.push(Buffer.from(chunk)));
+              response.once('end', () => {
+                try {
+                  connectionMetadata = JSON.parse(Buffer.concat(chunks).toString('utf8'));
+                } catch {
+                  handshakeReadErrors++;
+                }
+              });
+            }
+            if (path === '/v1/events') eventStreams++;
+          }
           outgoing.writeHead(response.statusCode, response.headers);
           outgoing.flushHeaders();
           response.on('error', () => outgoing.end());
@@ -193,10 +213,7 @@ try {
   page = await context.newPage();
   const origins = new Set(),
     errors = [];
-  let connects = 0,
-    eventStreams = 0,
-    recoverableOwner = false,
-    connectionMetadata;
+  let recoverableOwner = false;
   const traffic = [];
   page.on('response', (response) => {
     const path = new URL(response.url()).pathname;
@@ -205,17 +222,6 @@ try {
       traffic.push({ path, method, status: response.status() });
       if (traffic.length > 128) traffic.shift();
     }
-    if (response.status() === 200 && path === '/v1/connect' && method === 'POST') {
-      connects++;
-      // A retired startup request can lose its body; require a parsed successful handshake.
-      void response
-        .json()
-        .then((metadata) => {
-          connectionMetadata = metadata;
-        })
-        .catch(() => undefined);
-    }
-    if (response.status() === 200 && path === '/v1/events') eventStreams++;
   });
   page.on('request', (r) => origins.add(new URL(r.url()).origin));
   page.on('pageerror', (e) => errors.push(e.message));
@@ -513,6 +519,7 @@ try {
 } catch (error) {
   console.error(error.message);
   console.error('Completed checks:', checks);
+  console.error('HTTPS transport evidence:', { connects, eventStreams, handshakeReadErrors });
   if (page) {
     console.error('Visible headings:', await page.locator('h1').allTextContents());
     await page
