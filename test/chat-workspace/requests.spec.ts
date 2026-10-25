@@ -269,6 +269,12 @@ test('background request failures keep the composer, draft and focus until disco
   }
   const status = page.getByRole('status', { name: 'Request updates', exact: true });
   await expect(status).toBeVisible();
+  const alignment = await status.evaluate((element) => {
+    const text = element.querySelector('[data-slot="alert-description"]')!.getBoundingClientRect();
+    const button = element.querySelector('button')!.getBoundingClientRect();
+    return Math.abs(text.top + text.height / 2 - button.top - button.height / 2);
+  });
+  expect(alignment).toBeLessThan(1);
   await field.pressSequentially(' and keep typing');
   await expect(field).toHaveValue('Keep this unsent draft and keep typing');
   await page.screenshot({

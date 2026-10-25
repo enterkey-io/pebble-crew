@@ -125,7 +125,9 @@ export function RequestDiscoveryStatus({ management }: { management: ManagementR
       aria-label="Request updates"
       className="pc-composer-width border-0 bg-transparent text-muted-foreground shadow-none"
     >
-      <AlertDescription>Request updates are delayed.</AlertDescription>
+      <AlertDescription className="flex min-h-8 items-center pointer-coarse:min-h-11">
+        Request updates are delayed.
+      </AlertDescription>
       <AlertAction>
         <Button variant="quiet" size="sm" onClick={management.refresh}>
           Retry
