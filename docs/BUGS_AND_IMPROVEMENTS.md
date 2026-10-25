@@ -430,3 +430,35 @@ automatically replay deletion. No owner's agents have been deleted by this work.
 The 0.5.0 release is a development preview. No remote owner installation has been
 updated by this work. Local evidence is recorded in
 [the 0.5.0 verification report](compatibility/preview-0.5.0-local.json).
+
+## 2026-10-25 — Device enrollment and inline requests
+
+- Integrate the native enrollment implementation into the current combined plugin,
+  preserving the separate Apple checkout. Verify QR → Connecting → native
+  handshake → device list, expiry, single-use races, restart and revocation.
+- Remove the legacy Requests settings page and its navigation fallbacks. Keep
+  pending cards and compact receipts inline, including unavailable-agent requests
+  in the Main Pebble chat.
+- Release candidate: 0.7.14-preview.1. Owner-host installation is a separate
+  upgrade after publication and package acceptance.
+
+### Background-photo transcript regression
+
+Reproduced the failed premise in SendProjection: an active user anchor does not
+prove every later stored assistant reply belongs to that live turn. The previous
+projection removed those replies and moved unrelated user rows behind the stream.
+The client now suppresses only explicitly addressed live assistant rows and moves
+only native deferred/correction rows. The bridge includes archived display lineage
+in its pre-turn exclusion set and rejects stale queued rows from that prefix.
+Unit and production desktop/phone recovery checks cover multi-day history while
+background photo work is running. Exact owner trigger remains unobserved locally.
+
+### Native approval scope choices
+
+Direct tool approvals expose only the once/session/always/deny choices offered
+by the current native pending request. The bridge rechecks request identity and
+allowed scope at submission. Smart-denied and once-only requests cannot gain
+broader permissions through the interface. Crew native approvals remain once or
+deny, as required by the pinned Hermes room service. Agent-management proposals
+remain individually bound to their proposed change. Real-Hermes acceptance uses
+separate disposable profiles and the deterministic local model for both scopes.

@@ -128,6 +128,7 @@ describe('conversation presentation boundary', () => {
     );
     expect(approval).toEqual({
       description: 'read notes',
+      choices: ['once', 'deny'],
       target: {
         kind: 'room',
         roomId: 'room-1',
@@ -383,4 +384,16 @@ it('does not turn queued or live machinery inputs into restored owner correction
   expect(value.corrections).toEqual([]);
   expect(value.deferred).toEqual([{ text: 'Actual queued owner message', rowId: '8' }]);
   expect(JSON.stringify(value)).not.toContain('PRIVATE_');
+});
+
+it('decodes live assistant row provenance and rejects invalid row references', () => {
+  const snapshot = {
+    session_id: 'chat',
+    running: true,
+    messages: [],
+    live_assistant_row_ids: [4, 8],
+  };
+  expect(decodeBotConversation(snapshot).liveAssistantIds).toEqual(['4', '8']);
+  for (const value of [[null], [0], [{}]])
+    expect(() => decodeBotConversation({ ...snapshot, live_assistant_row_ids: value })).toThrow();
 });

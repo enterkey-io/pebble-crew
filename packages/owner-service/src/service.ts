@@ -5,6 +5,7 @@ import { hashPassword } from 'better-auth/crypto';
 import { importJWK, SignJWT } from 'jose';
 import type { JWK } from 'jose';
 import { ownerBodyLimit, photoPixels, encodeOwnerPhoto, ownerPhotoValue } from './photo';
+import { createDeviceService } from './devices';
 
 export type Statement = { sql: string; values?: (string | number | null)[] };
 export interface OwnerDatabase {
@@ -19,6 +20,7 @@ export interface OwnerSettings {
   authSecret: string;
   signingKey: JWK;
   development?: boolean;
+  nativeDevices?: boolean;
 }
 export function authOptions(database: BetterAuthOptions['database'], settings: OwnerSettings) {
   return {
@@ -109,7 +111,9 @@ export function createOwnerService(
     ]);
     return !!row && row.count <= max;
   }
+  const devices = createDeviceService(store, settings, digest, limited);
   return {
+    bridgeDevice: (token: string) => devices.bridge(token),
     async fetch(request: Request): Promise<Response> {
       try {
         const url = new URL(request.url);
@@ -253,9 +257,17 @@ export function createOwnerService(
           headers.set('Cache-Control', 'no-store');
           return new Response(result.body, { status: result.status, headers });
         }
+        if (settings.nativeDevices && claimed) {
+          const result = await devices.public(request, claimed.user_id);
+          if (result) return result;
+        }
         const session = await auth.api.getSession({ headers: request.headers });
         if (!claimed || !session || session.user.id !== claimed.user_id)
           return json({ error: 'Sign in to your workspace.' }, 401);
+        if (settings.nativeDevices) {
+          const result = await devices.owner(request, claimed.user_id);
+          if (result) return result;
+        }
         if (url.pathname === '/api/owner/photo' && request.method === 'POST') {
           if (request.headers.get('Content-Type')?.split(';')[0] !== 'application/json')
             return json({ error: 'Choose a photo.' }, 400);

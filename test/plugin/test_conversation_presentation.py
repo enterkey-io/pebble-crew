@@ -86,3 +86,36 @@ class ConversationPresentationTests(unittest.TestCase):
             self.assertEqual(result['inflight'], {'assistant': 'Visible reply', 'corrections': [], 'correction_offsets': []})
             self.assertNotIn('correction_row_ids', result)
             self.assertEqual(native['inflight']['corrections'], ['PRIVATE_REDIRECT'])
+
+    def test_archived_lineage_and_stale_queued_rows_cannot_be_current_turn(self):
+        import importlib.util
+        import sys
+        from pathlib import Path
+        from threading import RLock
+        from types import SimpleNamespace
+        from unittest.mock import patch
+        from bot_web import conversation_presentation
+        spec = importlib.util.spec_from_file_location('archived_presentation', Path(test_security.ROOT) / 'plugins/bot-web/native_extensions.py')
+        with patch.dict(sys.modules, {'conversation_presentation': conversation_presentation}):
+            extension = importlib.util.module_from_spec(spec); spec.loader.exec_module(extension)
+        old = {'role': 'user', '_row_id': 1, 'content': 'Make the photo'}
+        old_reply = {'role': 'assistant', '_row_id': 2, 'content': 'Four-day-old reply'}
+        newer = {'role': 'user', '_row_id': 10, 'content': 'Today'}
+        handlers = {}
+        session = {'running': True, 'history_lock': RLock(), 'history': [newer],
+                   'display_history_prefix': [old, old_reply],
+                   'agent': SimpleNamespace(_session_messages=[old, old_reply, newer], _persist_user_message_idx=0),
+                   'inflight_turn': {'started_at': 7, 'user': 'Make the photo'},
+                   'queued_prompts': [{'text': 'Make the photo', '_submit_user_row': old}]}
+        server = SimpleNamespace(method=lambda name: lambda fn: handlers.setdefault(name, fn),
+            _sess_nowait=lambda *_: (session, None),
+            _live_session_payload=lambda *_: {'running': True, 'turn_started_at': 7},
+            _inflight_snapshot=lambda _: {'assistant': 'Working on a photo'},
+            _queued_prompt_snapshot=lambda _: None,
+            _inflight_text=lambda value: str(value or ''), _ok=lambda _rid, value: value)
+        with patch.dict(sys.modules, {'tui_gateway': SimpleNamespace(server=server)}):
+            extension.register(Path(test_security.ROOT) / 'plugins/bot-web')
+            snapshot = handlers['bot_web.conversation.snapshot'](1, {'session_id': 'synthetic'})
+        self.assertNotIn('active_user_row_id', snapshot)
+        self.assertEqual(snapshot['live_assistant_row_ids'], [])
+        self.assertEqual(snapshot['deferred_prompts'], [])

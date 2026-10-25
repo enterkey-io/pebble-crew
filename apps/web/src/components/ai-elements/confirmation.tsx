@@ -1,3 +1,10 @@
+import { ButtonGroup } from '../ui/button-group';
+import {
+  DropdownMenu,
+  DropdownMenuTrigger,
+  DropdownMenuContent,
+  DropdownMenuItem,
+} from '../ui/dropdown-menu';
 import type { ReactNode } from 'react';
 import { ShieldCheck } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
@@ -6,10 +13,16 @@ import { Item, ItemContent, ItemTitle, ItemDescription, ItemActions } from '../u
 import { LoadingBar } from '../ui/loading-bar';
 import { Disclosure } from '../ui/disclosure';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '../ui/collapsible';
-import { ChevronRight } from 'lucide-react';
+import { ChevronRight, ChevronDown } from 'lucide-react';
 
+type ConfirmationChoice = 'once' | 'session' | 'always' | 'deny';
 export type ConfirmationValue =
-  | { kind: 'pending'; disabled?: boolean; onDecision: (decision: 'once' | 'deny') => void }
+  | {
+      kind: 'pending';
+      disabled?: boolean;
+      choices?: readonly ConfirmationChoice[] | undefined;
+      onDecision: (decision: ConfirmationChoice) => void;
+    }
   | {
       kind:
         'submitting' | 'approved' | 'denied' | 'expired' | 'superseded' | 'failed' | 'uncertain';
@@ -90,9 +103,38 @@ export function Confirmation({
           >
             Deny
           </Button>
-          <Button disabled={value.disabled ?? false} onClick={() => value.onDecision('once')}>
-            Allow once
-          </Button>
+          <ButtonGroup>
+            {(value.choices ?? ['once', 'deny']).includes('once') && (
+              <Button disabled={value.disabled ?? false} onClick={() => value.onDecision('once')}>
+                Allow once
+              </Button>
+            )}
+            {value.choices?.some((choice) => choice === 'session' || choice === 'always') && (
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button
+                    size="icon"
+                    disabled={value.disabled ?? false}
+                    aria-label="More approval options"
+                  >
+                    <ChevronDown className="size-4" aria-hidden="true" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end">
+                  {value.choices.includes('session') && (
+                    <DropdownMenuItem onSelect={() => value.onDecision('session')}>
+                      Allow for this session
+                    </DropdownMenuItem>
+                  )}
+                  {value.choices.includes('always') && (
+                    <DropdownMenuItem onSelect={() => value.onDecision('always')}>
+                      Always allow this action
+                    </DropdownMenuItem>
+                  )}
+                </DropdownMenuContent>
+              </DropdownMenu>
+            )}
+          </ButtonGroup>
         </ItemActions>
       ) : (
         <div className="grid gap-2">

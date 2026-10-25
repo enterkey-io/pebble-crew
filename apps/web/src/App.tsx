@@ -1,3 +1,4 @@
+import type { ApprovalChoice } from '@hermes-client/protocol';
 import { ProactiveSetup } from './proactive/ProactiveSetup';
 import { PlansArea, BoardOutcome } from './work/PlansArea';
 import type { AttentionNavigation } from './chat/ConversationAttention';
@@ -144,9 +145,8 @@ export function App({ owner }: { owner?: OwnerConnection }) {
   const [workBoard, setWorkBoard] = useState('default');
   const [workDialog, setWorkDialog] = useState<WorkDialogTarget>();
   const [workRevision, setWorkRevision] = useState(0);
-  const [settingsTab, setSettingsTab] = useState<
-    'agents' | 'requests' | 'account' | 'connections' | 'general'
-  >('general');
+  const [settingsTab, setSettingsTab] =
+    useState<import('./WorkspaceSettings').SettingsTab>('general');
   const [agentStates, setAgentStates] = useState<Record<string, Activity>>({});
   const sessionProfiles = useRef(new Map<string, string>());
   const session = useRef<OwnerSession | undefined>(undefined);
@@ -404,8 +404,11 @@ export function App({ owner }: { owner?: OwnerConnection }) {
         setRequestFocus(requestId);
         void open(bot);
       } else {
-        setSettingsTab('requests');
-        setSettings(true);
+        const main = bots.find((bot) => bot.profile === workspace?.orchestrator);
+        if (main) {
+          setRequestFocus(requestId);
+          void open(main);
+        }
       }
     },
   });
@@ -1711,18 +1714,24 @@ export function App({ owner }: { owner?: OwnerConnection }) {
       }
     }
   }
-  function settleApproval(approval: ConversationApproval, state: NativeApprovalReview['state']) {
+  function settleApproval(
+    approval: ConversationApproval,
+    state: NativeApprovalReview['state'],
+    decision?: ApprovalChoice,
+  ) {
     const scope =
       approval.target.kind === 'chat'
         ? approval.target.sessionId
         : 'room:' + approval.target.roomId;
     const rows = (approvalHistory.current.get(scope) ?? []).map((row) =>
-      approvalKey(row.target) === approvalKey(approval.target) ? { ...row, state } : row,
+      approvalKey(row.target) === approvalKey(approval.target)
+        ? { ...row, state, ...(decision ? { decision } : {}) }
+        : row,
     );
     approvalHistory.current.set(scope, rows);
     setApprovals(rows);
   }
-  async function approve(approval: NativeApprovalReview, choice: 'once' | 'deny') {
+  async function approve(approval: NativeApprovalReview, choice: ApprovalChoice) {
     if (!client || !selection || blocked || approval.state !== 'pending') return;
     const requestKey = approvalKey(approval.target);
     if (approvalFlights.current.has(requestKey)) return;
@@ -1736,7 +1745,8 @@ export function App({ owner }: { owner?: OwnerConnection }) {
       if (current.current === connection && selected.current === target)
         settleApproval(
           approval,
-          receipt === 'expired' ? 'inactive' : choice === 'once' ? 'approved' : 'denied',
+          receipt === 'expired' ? 'inactive' : choice === 'deny' ? 'denied' : 'approved',
+          choice,
         );
     } catch {
       if (current.current === connection && selected.current === target) {
@@ -2108,7 +2118,6 @@ export function App({ owner }: { owner?: OwnerConnection }) {
   const settingsContent = workspace ? (
     <Suspense fallback={<LoadingBar active label="Loading Settings" />}>
       <WorkspaceSettings
-        management={management}
         onProactive={
           work.catalog?.capabilities.proactive ? () => setProactiveOpen(true) : undefined
         }
@@ -2165,6 +2174,7 @@ export function App({ owner }: { owner?: OwnerConnection }) {
             : approval.state === 'pending'
               ? {
                   kind: 'pending',
+                  choices: approval.choices,
                   disabled: blocked,
                   onDecision: (choice) => void approve(approval, choice),
                 }
@@ -2172,7 +2182,11 @@ export function App({ owner }: { owner?: OwnerConnection }) {
                   kind: approval.state === 'inactive' ? 'expired' : approval.state,
                   message:
                     approval.state === 'approved'
-                      ? 'Tool action approved'
+                      ? approval.decision === 'session'
+                        ? 'Allowed for this session'
+                        : approval.decision === 'always'
+                          ? 'Always allowed for this action'
+                          : 'Tool action approved'
                       : approval.state === 'denied'
                         ? 'Tool action denied'
                         : approval.state === 'inactive'
@@ -2387,8 +2401,17 @@ export function App({ owner }: { owner?: OwnerConnection }) {
                                     setArea('chat');
                                     void open(bot);
                                   } else {
-                                    setSettingsTab('requests');
-                                    setSettings(true);
+                                    const main = bots.find(
+                                      (bot) => bot.profile === workspace?.orchestrator,
+                                    );
+                                    const pending = requests.find(
+                                      (request) => request.state === 'pending',
+                                    );
+                                    if (main && pending) {
+                                      setRequestFocus(pending.id);
+                                      setArea('chat');
+                                      void open(main);
+                                    }
                                   }
                                 })
                                 .catch(fail);

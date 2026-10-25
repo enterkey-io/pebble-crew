@@ -22,4 +22,4 @@ const server = createServer(
     incoming.pipe(upstream);
   },
 );
-server.listen(5445, '127.0.0.1');
+server.listen(Number(process.argv[5] ?? 5445), '127.0.0.1');

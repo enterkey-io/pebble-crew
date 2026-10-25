@@ -42,7 +42,7 @@ class Native:
         if method == "session.resume":
             return {"session_id": "live-alpha", "messages": []}
         if method == "approval.pending":
-            return {"approvals": [{"request_id": "alpha-request"}]}
+            return {"approvals": [{"request_id": "alpha-request", "choices": ["once", "deny"]}]}
         return {}
 
 
@@ -269,3 +269,32 @@ class RuntimeAdmissionTests(unittest.IsolatedAsyncioTestCase):
         methods=[method for method,_ in self.native.calls]
         self.assertEqual(methods.count('bot_web.runtime.prepare'),1)
         self.assertNotIn('prompt.submit',methods)
+
+class ApprovalScopeTests(unittest.IsolatedAsyncioTestCase):
+    async def test_native_offered_scopes_are_forwarded_for_the_exact_pending_request(self):
+        class ScopedNative(Native):
+            async def call(self, method, params):
+                if method == 'approval.pending':
+                    return {'approvals': [{'request_id': 'alpha-request', **self.policy}]}
+                return await super().call(method, params)
+        for policy, allowed in [({}, ['once', 'session', 'always', 'deny']),
+                ({'allow_permanent': False}, ['once', 'session', 'deny']),
+                ({'allow_session': False}, ['once', 'deny']),
+                ({'smart_denied': True, 'choices': ['once', 'session', 'always', 'deny']}, ['once', 'deny']),
+                ({'choices': ['once', 'deny']}, ['once', 'deny'])]:
+            gateway = ScopedNative(); gateway.policy = policy
+            ops = BotOperations(gateway)
+            await ops.invoke('bot.open', {'profile': 'alpha'})
+            displayed = await ops.invoke('chat.approvals', {'session_id': 'live-alpha'})
+            self.assertEqual(displayed['approvals'][0]['choices'], allowed)
+            for choice in ['once', 'session', 'always', 'deny']:
+                edit = {'session_id': 'live-alpha', 'request_id': 'alpha-request', 'choice': choice}
+                if choice in allowed:
+                    await ops.invoke('chat.approve', edit)
+                    self.assertIn(('approval.respond', edit), gateway.calls)
+                else:
+                    before = list(gateway.calls)
+                    with self.assertRaises(InvalidOperation):
+                        await ops.invoke('chat.approve', edit)
+                    self.assertEqual([call for call in gateway.calls if call[0]=='approval.respond'],
+                        [call for call in before if call[0]=='approval.respond'])

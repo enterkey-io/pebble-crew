@@ -384,6 +384,46 @@ try {
     console.log('Actual previous-release to candidate host-first upgrade passed.');
     await exerciseRestarts(true);
   }
+  // A native client redeems once, then proves the actual packaged Hermes handshake.
+  // Owner cookies authorize invitation management, never bridge access.
+  async function ownerDevice(path, data) {
+    const response = await page.request.post(origin + path, { headers: { Origin: origin }, data });
+    expect(response.ok()).toBe(true);
+    return response.json();
+  }
+  const invitation = await ownerDevice('/api/devices/invitation', {});
+  const enrollment = {
+    invitation: new URLSearchParams(new URL(invitation.link).hash.slice(1)).get('invitation'),
+    id: crypto.randomUUID(),
+    credential: Buffer.from(crypto.getRandomValues(new Uint8Array(32))).toString('base64url'),
+    name: 'Acceptance Mac',
+  };
+  const nativeContext = await browser.newContext({ ignoreHTTPSErrors: true });
+  async function nativePost(path, data, ticket) {
+    return nativeContext.request.post(origin + path, {
+      headers: { Origin: origin, ...(ticket ? { Authorization: 'Bearer ' + ticket } : {}) },
+      data,
+    });
+  }
+  expect((await nativePost('/api/devices/redeem', enrollment)).status()).toBe(201);
+  expect((await nativePost('/api/devices/redeem', enrollment)).status()).toBe(201);
+  expect((await ownerDevice('/api/devices/invitation/status', { id: invitation.id })).state).toBe(
+    'connecting',
+  );
+  const ticketResponse = await nativePost('/api/devices/ticket', {}, enrollment.credential);
+  expect(ticketResponse.status()).toBe(200);
+  const nativeTicket = (await ticketResponse.json()).ticket;
+  expect((await ownerDevice('/api/devices/invitation/status', { id: invitation.id })).state).toBe(
+    'connecting',
+  );
+  const connectedResponse = await nativePost('/v1/connect', {}, nativeTicket);
+  expect(connectedResponse.status()).toBe(200);
+  const nativeConnection = (await connectedResponse.json()).connection;
+  expect(typeof nativeConnection).toBe('string');
+  expect((await ownerDevice('/api/devices/invitation/status', { id: invitation.id })).state).toBe(
+    'connected',
+  );
+  checks.device_enrollment_waits_for_real_native_handshake = true;
   await message.fill('Unsent native owner draft\nkept after refreshing');
   await page.reload();
   await expect(message).toBeEnabled();
@@ -410,6 +450,16 @@ try {
     accountImage,
   );
   checks.rollback_preserves_account_photo = true;
+  const renewedTicketResponse = await nativePost('/api/devices/ticket', {}, enrollment.credential);
+  expect(renewedTicketResponse.status()).toBe(200);
+  const renewedTicket = (await renewedTicketResponse.json()).ticket;
+  expect((await nativePost('/v1/connect', {}, renewedTicket)).status()).toBe(200);
+  checks.native_device_grant_survives_update_restart_and_rollback = true;
+  await ownerDevice('/api/devices/revoke', { id: enrollment.id });
+  expect((await nativePost('/api/devices/ticket', {}, enrollment.credential)).status()).toBe(401);
+  expect((await nativePost('/v1/connect', {}, renewedTicket)).status()).toBe(401);
+  checks.native_device_revocation_rejects_issued_tickets = true;
+  await nativeContext.close();
   console.log('Installed update and explicit rollback passed; testing failed activation.');
   await control('failed-update');
   await page.reload();

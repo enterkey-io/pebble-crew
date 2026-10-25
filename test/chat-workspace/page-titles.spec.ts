@@ -18,6 +18,7 @@ test('document titles follow the visible page and restore the conversation after
   context,
 }) => {
   await installWorkFixture(context);
+  await page.route('**/api/devices', (route) => route.fulfill({ json: { devices: [] } }));
   await page.goto('/');
   await expect(page.getByLabel('Message', { exact: true })).toBeEnabled();
   await expect(page).toHaveTitle('Arlo — Pebble Crew');
@@ -32,8 +33,9 @@ test('document titles follow the visible page and restore the conversation after
   await expect(page).toHaveTitle('General settings — Pebble Crew');
   await page.getByRole('tab', { name: 'Connections', exact: true }).click();
   await expect(page).toHaveTitle('Connections — Pebble Crew');
-  await page.getByRole('tab', { name: 'Requests', exact: true }).click();
-  await expect(page).toHaveTitle('Requests — Pebble Crew');
+  await expect(page.getByRole('tab', { name: 'Requests', exact: true })).toHaveCount(0);
+  await page.getByRole('tab', { name: 'Devices', exact: true }).click();
+  await expect(page).toHaveTitle('Devices — Pebble Crew');
   await page.getByRole('button', { name: 'Close Settings', exact: true }).click();
   await expect(page).toHaveTitle('Mica — Pebble Crew');
   await account(page, 'Org chart');

@@ -72,13 +72,13 @@ installation.
 
 ## 3. Obtain the immutable combined release
 
-Candidate: `v0.7.13-preview.1`. If these assets are not published, stop and report
+Candidate: `v0.7.14-preview.1`. If these assets are not published, stop and report
 that the candidate is unavailable. Do not substitute main or an API-only package.
 
-- [Manifest](https://github.com/enterkey-io/pebble-crew/releases/download/v0.7.13-preview.1/workspace-manifest.json)
-- [SHA256SUMS](https://github.com/enterkey-io/pebble-crew/releases/download/v0.7.13-preview.1/SHA256SUMS)
-- [Complete plugin](https://github.com/enterkey-io/pebble-crew/releases/download/v0.7.13-preview.1/workspace-plugin-preview.zip)
-- [Source](https://github.com/enterkey-io/pebble-crew/releases/download/v0.7.13-preview.1/workspace-source-preview.zip)
+- [Manifest](https://github.com/enterkey-io/pebble-crew/releases/download/v0.7.14-preview.1/workspace-manifest.json)
+- [SHA256SUMS](https://github.com/enterkey-io/pebble-crew/releases/download/v0.7.14-preview.1/SHA256SUMS)
+- [Complete plugin](https://github.com/enterkey-io/pebble-crew/releases/download/v0.7.14-preview.1/workspace-plugin-preview.zip)
+- [Source](https://github.com/enterkey-io/pebble-crew/releases/download/v0.7.14-preview.1/workspace-source-preview.zip)
 
 Verify size and SHA-256 against both manifest and checksum file. Reject absolute
 archive paths, traversal, symlinks and entries escaping private staging. The
@@ -215,7 +215,7 @@ with `hermes bot-web setup-link` (use `--renew-setup` only if it expired).
 remaining seconds). Its output contains the private file path, never the secret.
 
 Event parsing and legacy access controls are specified in
-[the wire protocol](https://github.com/enterkey-io/pebble-crew/blob/v0.7.13-preview.1/docs/WIRE_PROTOCOL.md).
+[the wire protocol](https://github.com/enterkey-io/pebble-crew/blob/v0.7.14-preview.1/docs/WIRE_PROTOCOL.md).
 Never use global revocation for diagnostic cleanup: use DELETE `/v1/connect`
 with the probe's own lease. Global revocation now requires `hermes bot-web revoke
 --all` or the operator-only HTTP body `{"all":true}`.
@@ -386,3 +386,21 @@ build's separate xAI transcription/speech output is not a live conversation mode
 ## Native chat commands
 
 Typing `/` offers session-scoped Hermes completions for browser-supported commands. `/model <name>` executes Hermes's native command worker; it is never sent as a model prompt. Terminal-only, destructive lifecycle and unsupported command responses stay in Hermes. The removed Model editor tab only copied the primary model authorization; it was not a model picker.
+
+## Connect the native Mac or phone app
+
+Version 0.7.14 adds **Settings → Devices → Add a device** to the combined web app.
+Upgrade and verify the public route before asking the owner to use this screen.
+An older installed page cannot create invitations. Preserve the existing login;
+this does not require a new setup link or a browser-access reset.
+
+The signed-in owner creates a five-minute, single-use QR code. On the phone, open
+Pebble Crew and tap **Scan QR code**. On the same Mac, choose **Connect Pebble Crew
+on this Mac**, or copy the fallback link into the native app. The connection dialog
+shows **Connecting…** after redemption and closes only after the native app has
+successfully connected to Hermes. The device then appears in Devices and can be
+revoked independently. No second login or approval is needed.
+
+The native credential stays in device Keychain; its hash stays on the owner's host.
+Use [the device contract](https://github.com/enterkey-io/pebble-crew/blob/v0.7.14-preview.1/docs/NATIVE_DEVICE_ENROLLMENT.md) for protocol and acceptance
+details. Never paste an invitation or permanent device credential into chat or logs.

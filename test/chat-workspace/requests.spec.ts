@@ -24,6 +24,7 @@ test('request review fits phones, keeps fields readable and confirms the exact d
             requests: [
               {
                 id: 'delete-long-profile',
+                actor: 'retired-agent',
                 fingerprint: 'delete-exact-profile',
                 action: 'agent.delete',
                 state,
@@ -70,14 +71,12 @@ test('request review fits phones, keeps fields readable and confirms the exact d
 
   const phone =
     testInfo.project.name.includes('iphone') || testInfo.project.name.includes('android');
-  if (phone) await page.getByRole('button', { name: 'Toggle navigation', exact: true }).click();
-  await page.getByRole('button', { name: 'Your account', exact: true }).click();
-  await page.getByRole('menuitem', { name: 'Settings', exact: true }).click();
-  await page.getByRole('tab', { name: 'Requests', exact: true }).click();
+  await indicator.click();
   const card = page.locator('.request-card').first();
   await expect(card.getByRole('heading', { name: 'Delete pebble', exact: true })).toBeVisible();
   await page.screenshot({ path: testInfo.outputPath('requests.png'), animations: 'disabled' });
-  const panel = page.getByRole('tabpanel', { name: 'Requests', exact: true });
+  const panel = page.locator('[aria-label="Conversation"]');
+  await card.getByRole('button', { name: 'Read more', exact: true }).click();
   const geometry = await panel.evaluate((element) => ({
     width: element.clientWidth,
     scrollWidth: element.scrollWidth,
@@ -127,7 +126,7 @@ test('request review fits phones, keeps fields readable and confirms the exact d
     animations: 'disabled',
   });
   const a11y = await new AxeBuilder({ page })
-    .include('.settings-panel')
+    .include('.request-card')
     .withTags(['wcag2a', 'wcag2aa', 'wcag21aa'])
     .analyze();
   expect(a11y.violations).toEqual([]);
@@ -136,7 +135,9 @@ test('request review fits phones, keeps fields readable and confirms the exact d
     0,
   );
   expect(confirmed).toBe(profile);
-  await expect(page.getByText('Change completed.', { exact: true })).toBeVisible();
+  await expect(
+    page.locator('[data-slot="approval-receipt"]').filter({ hasText: profile }),
+  ).toContainText('Approved');
 });
 
 test('pending requests use a quiet header icon and respect reduced motion', async ({
@@ -182,10 +183,7 @@ test('pending requests use a quiet header icon and respect reduced motion', asyn
     .poll(() => indicator.evaluate((button) => getComputedStyle(button, '::after').animationName))
     .toBe('none');
   await indicator.click();
-  await expect(page.getByRole('tab', { name: 'Requests', exact: true })).toHaveAttribute(
-    'aria-selected',
-    'true',
-  );
+  await expect(page.getByRole('tab', { name: 'Requests', exact: true })).toHaveCount(0);
   await expect(
     page.getByRole('heading', { name: 'Change tools and skills', exact: true }),
   ).toBeVisible();

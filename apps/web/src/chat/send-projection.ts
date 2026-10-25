@@ -116,7 +116,16 @@ export class SendProjection {
       }
     }
     for (const id of this.tail)
-      if (!this.pending.has(id) && !incoming.some((row) => row.id === id)) this.tail.delete(id);
+      if (
+        !this.pending.has(id) &&
+        !incoming.some(
+          (row) =>
+            (row.renderKey ??
+              (row.id ? this.aliases.get(row.id)?.renderKey : undefined) ??
+              row.id) === id,
+        )
+      )
+        this.tail.delete(id);
     return rows.map((m) => {
       const alias = m.id ? this.aliases.get(m.id) : undefined;
       return alias
@@ -130,6 +139,7 @@ export class SendProjection {
     corrections,
     inflight: assistant,
     activeUserId,
+    liveAssistantIds,
     running,
     deferred = [],
   }: {
@@ -137,16 +147,18 @@ export class SendProjection {
     corrections: readonly LiveCorrection[];
     inflight: string;
     activeUserId: string | undefined;
+    liveAssistantIds?: readonly string[] | undefined;
     running: boolean;
     deferred?: readonly { text: string; rowId: string | undefined }[];
   }) {
     this.replying = running;
+    this.tail = new Set([...this.tail].filter((id) => this.pending.get(id)?.deferred));
     const waiting = deferred.map((prompt, index): LocalMessage => {
       const id = prompt.rowId ?? `native-waiting-${this.reply.renderKey}-${index}`;
       return {
         ...history.messages.find((row) => row.id === prompt.rowId),
         id,
-        renderKey: id,
+        renderKey: this.aliases.get(id)?.renderKey ?? id,
         role: 'user',
         text: prompt.text,
       };
@@ -168,6 +180,7 @@ export class SendProjection {
         )
       : -1;
     if (anchor < 0) {
+      if (liveAssistantIds !== undefined) this.cuts = [];
       // Without a native row anchor, keep stored history authoritative. Do not
       // subtract a same-text user row from a different turn to infer overlap.
       for (const row of waiting) this.tail.add(row.renderKey);
@@ -200,13 +213,17 @@ export class SendProjection {
     const covered = new Set(
       corrections.flatMap((correction) => (correction.rowId ? [correction.rowId] : [])),
     );
+    const liveRows = new Set(liveAssistantIds ?? []);
     const later = nativeMessages
       .slice(anchor + 1)
       .filter(
         (message) =>
-          message.role === 'tool' || (message.role === 'user' && !covered.has(message.id ?? '')),
+          !(message.role === 'assistant' && message.id && liveRows.has(message.id)) &&
+          !(message.role === 'user' && covered.has(message.id ?? '')),
       );
-    for (const row of later) if (row.role === 'user' && row.id) this.tail.add(row.id);
+    for (const row of waiting)
+      if (row.id && !history.messages.slice(0, anchor + 1).some((saved) => saved.id === row.id))
+        this.tail.add(row.renderKey);
     const base = [...history.messages.slice(0, anchor + 1), ...later];
     return { messages: this.project(base), stream: assistant };
   }

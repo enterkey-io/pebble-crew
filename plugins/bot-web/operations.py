@@ -23,6 +23,16 @@ def identifier(value):
     return value
 
 
+def approval_choices(request):
+    allowed = ['once', 'deny']
+    if not request.get('smart_denied') and request.get('allow_session') is not False:
+        allowed.insert(1, 'session')
+        if request.get('allow_permanent') is not False:
+            allowed.insert(-1, 'always')
+    offered = request.get('choices')
+    return [choice for choice in allowed if offered is None or (isinstance(offered, list) and choice in offered)]
+
+
 class BotOperations:
     def __init__(self, gateway):
         self.gateway = gateway
@@ -166,6 +176,7 @@ class BotOperations:
                         "canonical_id": canonical["id"], "messages": live.get("messages", []),
                         "inflight": live.get("inflight"), "running": live.get("running") is True,
                         "active_user_row_id": live.get('active_user_row_id'),
+                        "live_assistant_row_ids": live.get('live_assistant_row_ids', []),
                         "correction_row_ids": live.get('correction_row_ids'),
                         "deferred_prompts": live.get('deferred_prompts', []),
                         "stream_position": live.get('stream_position')}
@@ -211,19 +222,25 @@ class BotOperations:
                     raise InvalidOperation("Invalid message")
                 native_params["text"] = text
             if operation == "chat.approve":
-                if params["choice"] not in {"once", "deny"}:
+                if params["choice"] not in {"once", "session", "always", "deny"}:
                     raise InvalidOperation("Invalid approval choice")
                 pending = await self.gateway.call("approval.pending", native_params)
                 request_id = identifier(params["request_id"])
-                if not any(a.get("request_id") == request_id for a in pending["approvals"]):
+                request = next((a for a in pending["approvals"] if a.get("request_id") == request_id), None)
+                if request is None:
                     raise InvalidOperation("Approval is no longer pending for this bot")
+                if params["choice"] not in approval_choices(request):
+                    raise InvalidOperation("Hermes does not allow this approval scope")
                 native_params.update(request_id=request_id, choice=params["choice"])
             if operation == "chat.replay":
                 cursor = params["last_seen"]
                 if type(cursor) is not int or cursor < 0:
                     raise InvalidOperation("Invalid cursor")
                 native_params["last_seen"] = cursor
-            return await self.gateway.call(method, native_params)
+            result = await self.gateway.call(method, native_params)
+            if operation == "chat.approvals":
+                result = {**result, "approvals": [{**row, "choices": approval_choices(row)} for row in result["approvals"]]}
+            return result
         if operation == "routines.list":
             fields(params, ["profile"])
             await self.bot(params["profile"])
