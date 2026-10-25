@@ -30,7 +30,8 @@ function decodeRequest(value: unknown) {
 }
 export type WorkspaceRequest = ReturnType<typeof decodeRequest>;
 export type RequestFault = { id: string | null; message: string };
-export type RequestRead = { requests: WorkspaceRequest[]; faults: RequestFault[] };
+type RequestRows = { requests: WorkspaceRequest[]; faults: RequestFault[] };
+export type RequestRead = RequestRows & { historyUnavailable: boolean };
 export type ManagementReview =
   | {
       kind: 'ready';
@@ -42,7 +43,7 @@ export type ManagementReview =
     }
   | { kind: 'blocked'; reason: string }
   | { kind: 'outcome' };
-function decodeRows(values: unknown): RequestRead {
+function decodeRows(values: unknown): RequestRows {
   if (!Array.isArray(values) || values.length > 100) throw new ClientError('INVALID_RESPONSE');
   const requests: WorkspaceRequest[] = [],
     faults: RequestFault[] = [];
@@ -116,12 +117,23 @@ export class RequestDomain {
         await Promise.resolve();
       } while (cursor !== null);
       if (restart) continue;
-      const recent = record(
-        await this.bridge.invoke('requests.list', { view: 'recent', cursor: null }),
-      );
-      const history = decodeRows(recent.requests);
-      const byId = new Map([...history.requests, ...requests].map((row) => [row.id, row]));
-      return { requests: [...byId.values()], faults: [...faults, ...history.faults] };
+      // Pending decisions are authoritative independently of optional recent receipts.
+      // A failed history read must never discard newly discovered approvals.
+      try {
+        const recent = record(
+          await this.bridge.invoke('requests.list', { view: 'recent', cursor: null }),
+        );
+        if (recent.restart === true) throw new ClientError('INVALID_RESPONSE');
+        const history = decodeRows(recent.requests);
+        const byId = new Map([...history.requests, ...requests].map((row) => [row.id, row]));
+        return {
+          requests: [...byId.values()],
+          faults,
+          historyUnavailable: history.faults.length > 0,
+        };
+      } catch {
+        return { requests, faults, historyUnavailable: true };
+      }
     }
     throw new ClientError('INVALID_RESPONSE');
   }

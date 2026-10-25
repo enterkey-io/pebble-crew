@@ -28,7 +28,12 @@ export function useManagementRequests({
   observed.current = batch;
   const reviewDrafts = useRef(new Map<string, RequestReviewDraft>());
   const [, redraw] = useState(0);
-  const [loadError, setLoadError] = useState(false);
+  const [discovery, setDiscovery] = useState<{
+    scope: string;
+    state: 'current' | 'retrying' | 'unavailable';
+  }>();
+  const failures = useRef({ scope: '', count: 0 });
+  const pendingRead = useRef<Promise<void> | undefined>(undefined);
   const [busy, setBusy] = useState<string>();
   const [issues, setIssues] = useState<Record<string, string>>({});
   const current = useRef({ client, scope });
@@ -44,21 +49,34 @@ export function useManagementRequests({
       workspaceId = scope;
     let active = true,
       timer: ReturnType<typeof setTimeout>;
-    async function load() {
+    function recordRead(failed: boolean) {
+      if (failures.current.scope !== workspaceId)
+        failures.current = { scope: workspaceId, count: 0 };
+      failures.current.count = failed ? failures.current.count + 1 : 0;
+      const state = !failed ? 'current' : failures.current.count >= 3 ? 'unavailable' : 'retrying';
+      setDiscovery((previous) =>
+        previous?.scope === workspaceId && previous.state === state
+          ? previous
+          : { scope: workspaceId, state },
+      );
+    }
+    async function read() {
       const started = generation.current;
       try {
         const domain = new RequestDomain(connection),
           result = await domain.read();
+        if (!active) return;
         const previous = observed.current;
         if (previous?.scope === workspaceId)
           for (const row of previous.requests) {
+            if (!active) return;
             if (row.state !== 'pending' || result.requests.some((next) => next.id === row.id))
               continue;
             let exact: WorkspaceRequest | null = null;
             try {
               exact = await domain.get(row.id);
             } catch {
-              /* One unreadable old row cannot suppress a healthy new decision. */
+              /* Preserve this exact request until its outcome can be confirmed. */
             }
             if (exact && exact.fingerprint === row.fingerprint) result.requests.push(exact);
             else
@@ -68,13 +86,13 @@ export function useManagementRequests({
               });
           }
         if (active && started === generation.current) {
-          setLoadError(false);
+          recordRead(result.historyUnavailable);
           setBatch((previous) => {
             const next = new Map(result.requests.map((row) => [row.id, row]));
             // Omission from recent history or an incomplete read never revokes consent.
             if (previous?.scope === workspaceId)
               for (const row of previous.requests) if (!next.has(row.id)) next.set(row.id, row);
-            return {
+            const batch = {
               scope: workspaceId,
               faults: result.faults,
               requests: [...next.values()].map((row) => {
@@ -84,16 +102,37 @@ export function useManagementRequests({
                   : row;
               }),
             };
+            return JSON.stringify(previous) === JSON.stringify(batch) ? previous : batch;
           });
         }
       } catch {
-        if (active && started === generation.current) setLoadError(true);
-      } finally {
-        if (active) timer = setTimeout(() => void load(), 5000);
+        if (active && started === generation.current) recordRead(true);
       }
     }
+    async function load() {
+      // Event-driven invalidation waits for an older scan instead of filling RPC slots.
+      await pendingRead.current;
+      if (!active) return;
+      const flight = read();
+      pendingRead.current = flight;
+      try {
+        await flight;
+      } finally {
+        if (pendingRead.current === flight) pendingRead.current = undefined;
+        if (active)
+          timer = setTimeout(
+            () => void load(),
+            document.visibilityState === 'hidden' ? 30000 : 5000,
+          );
+      }
+    }
+    const resume = () => {
+      if (document.visibilityState === 'visible') setRevision((n) => n + 1);
+    };
+    document.addEventListener('visibilitychange', resume);
     void load();
     return () => {
+      document.removeEventListener('visibilitychange', resume);
       active = false;
       clearTimeout(timer);
     };
@@ -202,8 +241,7 @@ export function useManagementRequests({
   return {
     requests: batch && batch.scope === scope ? batch.requests : [],
     faults: batch && batch.scope === scope ? batch.faults : [],
-    loading: Boolean(client && batch?.scope !== scope && !loadError),
-    loadError,
+    discovery: discovery && discovery.scope === scope ? discovery.state : 'loading',
     busy,
     issueFor: (request: WorkspaceRequest) =>
       issues[key(request)] ??

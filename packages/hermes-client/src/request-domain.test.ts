@@ -194,3 +194,34 @@ describe('complete approval discovery', () => {
     expect(invoke).toHaveBeenLastCalledWith('requests.get', { id: 'old' });
   });
 });
+
+describe('independent pending discovery and recent receipts', () => {
+  const request = {
+    id: 'new-approval',
+    actor: 'aurora',
+    action: 'agent.attach',
+    state: 'pending',
+    fingerprint: 'current',
+    spec: { profile: 'ron' },
+  };
+  it.each(['failure', 'restart', 'malformed'] as const)(
+    'retains new approvals when recent history has a %s',
+    async (reason) => {
+      const invoke = vi.fn(async (_operation: string, params: Record<string, unknown>) => {
+        if (params.view === 'pending') return { generation: 1, requests: [request], next: null };
+        if (reason === 'failure') throw new Error('Transient history failure');
+        if (reason === 'restart') return { restart: true };
+        return { requests: [{ ...request, state: 'completed', spec: [] }] };
+      });
+      const result = await new RequestDomain({ invoke }).read();
+      expect(result.requests).toEqual([expect.objectContaining(request)]);
+      expect(result.faults).toEqual([]);
+      expect(result.historyUnavailable).toBe(true);
+    },
+  );
+  it('does not claim discovery succeeded when the pending scan fails', async () => {
+    const invoke = vi.fn().mockRejectedValue(new Error('Pending scan unavailable'));
+    await expect(new RequestDomain({ invoke }).read()).rejects.toThrow('Pending scan unavailable');
+    expect(invoke).toHaveBeenCalledTimes(1);
+  });
+});

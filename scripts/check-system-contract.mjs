@@ -16,7 +16,12 @@ const migrated = [
   ['chat/RequestReview.tsx', '../components/ui/disclosure', ['Disclosure']],
   ['connections/ConnectionDetail.tsx', '../components/ui/disclosure', ['Disclosure']],
   ['App.tsx', './components/ai-elements/chat', ['Chat', 'ChatViewport']],
-  ['App.tsx', './components/ai-elements/prompt-input', ['PromptInputFrame', 'PromptInputField']],
+  [
+    'chat/ConversationInput.tsx',
+    '../components/ai-elements/prompt-input',
+    ['PromptInputFrame', 'PromptInputField'],
+  ],
+  ['App.tsx', './chat/ConversationInput', ['ConversationInput']],
   ['App.tsx', './components/ai-elements/confirmation', ['Confirmation']],
   ['chat/Transcript.tsx', '../components/ai-elements/message', ['Message']],
   ['chat/Transcript.tsx', '../components/ai-elements/tool', ['Tool']],
