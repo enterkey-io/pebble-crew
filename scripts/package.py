@@ -6,6 +6,8 @@ import shutil
 import subprocess
 from zipfile import ZipFile, ZipInfo, ZIP_DEFLATED
 import os
+import re
+import runpy
 from html.parser import HTMLParser
 from urllib.parse import urlsplit
 
@@ -14,10 +16,17 @@ release = json.loads((root / "release.json").read_text())
 destination = root / "artifacts/packages"
 tracked = set(subprocess.check_output(
     ['git', 'ls-files', '-z'], cwd=root).decode().split('\0')) if (root / '.git').exists() else None
-destination.mkdir(parents=True, exist_ok=True)
 build = Path(os.environ['WORKSPACE_BUILD_ROOT']).resolve() if os.environ.get('WORKSPACE_BUILD_ROOT') else None
 web_root = build / 'web' if build else root / 'apps/web/dist'
 owner_bundle = build / 'owner/main.mjs' if build else root / 'apps/owner-node/dist/main.mjs'
+
+plugin_version = runpy.run_path(str(root / 'plugins/bot-web/version.py'))['VERSION']
+metadata_version = re.search(r'^version: (.+)$', (root / 'plugins/bot-web/plugin.yaml').read_text(), re.M)
+if plugin_version != release['bridge_version'] or not metadata_version or metadata_version[1] != release['bridge_version']:
+    raise ValueError('Plugin release versions disagree with release.json; update version.py and plugin.yaml')
+if json.loads((web_root / 'version.json').read_text()) != release:
+    raise ValueError('Built UI release differs from release.json; rebuild before packaging')
+destination.mkdir(parents=True, exist_ok=True)
 
 
 def archive(name, files):
@@ -84,7 +93,6 @@ for example in (root / "deploy").glob("*.example"):
     owner.append((example, str(example.relative_to(root))))
 archive("workspace-owner-preview.zip", owner)
 
-import runpy
 payload_paths = runpy.run_path(str(root / "plugins/bot-web/payload.py"))["payload_paths"]
 plugin = [(path, "bot-web/" + str(path.relative_to(root / "plugins/bot-web")))
           for path in payload_paths(root / "plugins/bot-web")]
