@@ -67,10 +67,12 @@ async function measureTyping(
         const event = (type: string, payload = {}) =>
           receive({ type, payload, session_id: 'session-arlo' });
         event('message.start');
+        Object.assign(window, { __inputStreamChunks: 0 });
         let emitted = 0;
         const timer = setInterval(() => {
           event('message.delta', { text: 'The next step is to review the project. ' });
-          if (++emitted === 20) clearInterval(timer);
+          Object.assign(window, { __inputStreamChunks: ++emitted });
+          if (emitted === 20) clearInterval(timer);
         }, 100);
       });
     const before = await cdp.send('Performance.getMetrics');
@@ -79,6 +81,18 @@ async function measureTyping(
     await field.pressSequentially(value, { delay: options.streaming ? 20 : 0 });
     await expect(field).toHaveValue(value);
     const elapsed = performance.now() - started;
+    if (options.streaming) {
+      await expect
+        .poll(() =>
+          page.evaluate(
+            () => (window as unknown as { __inputStreamChunks: number }).__inputStreamChunks,
+          ),
+        )
+        .toBe(20);
+      await expect(page.locator('[data-message-phase="live"] .message-body')).toHaveText(
+        'The next step is to review the project. '.repeat(20).trim(),
+      );
+    }
     await page.evaluate(
       () =>
         new Promise<void>((resolve) =>

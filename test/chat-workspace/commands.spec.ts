@@ -55,13 +55,21 @@ test('native slash suggestions use the open conversation and commands never beco
   await expect(page.getByRole('option', { name: '/model Change model' })).toBeVisible();
   const suggestions = page.locator('[data-slot="command"][aria-label="Hermes commands"]');
   const assertAnchored = async () => {
-    const menu = await suggestions.boundingBox();
-    const composer = await page.locator('[data-slot="prompt-input"]').boundingBox();
-    expect(menu).not.toBeNull();
-    expect(composer).not.toBeNull();
-    expect(Math.abs(menu!.x - composer!.x)).toBeLessThan(1);
-    expect(Math.abs(menu!.width - composer!.width)).toBeLessThan(1);
-    expect(composer!.y - menu!.y - menu!.height).toBeCloseTo(8, 0);
+    // The dock resizes both surfaces; compare geometry from the same frame.
+    const geometry = await suggestions.evaluate((menu) => {
+      const composer = menu.closest('.composer-wrap')?.querySelector('[data-slot="prompt-input"]');
+      if (!composer) throw new Error('The command menu lost its composer');
+      const popup = menu.getBoundingClientRect(),
+        input = composer.getBoundingClientRect();
+      return {
+        left: popup.left - input.left,
+        width: popup.width - input.width,
+        gap: input.top - popup.bottom,
+      };
+    });
+    expect(Math.abs(geometry.left)).toBeLessThan(1);
+    expect(Math.abs(geometry.width)).toBeLessThan(1);
+    expect(geometry.gap).toBeCloseTo(8, 0);
   };
   await assertAnchored();
   if (!page.viewportSize() || page.viewportSize()!.width > 767) {
