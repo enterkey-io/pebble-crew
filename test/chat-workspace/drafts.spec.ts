@@ -46,8 +46,24 @@ test('sending and signing out clear saved drafts without retaining submitted tex
   const input = page.getByLabel('Message', { exact: true });
   await expect(input).toBeEnabled();
   await input.fill('Send this once');
+  const accepted = page.waitForResponse(
+    (response) =>
+      response.request().method() === 'POST' &&
+      response.request().postDataJSON()?.operation === 'chat.send',
+  );
   await page.getByRole('button', { name: 'Send message', exact: true }).click();
   await expect(input).toHaveValue('');
+  expect((await (await accepted).json()).result.state).toBe('accepted');
+  await expect
+    .poll(() =>
+      page.evaluate(
+        () =>
+          Object.entries(localStorage).filter(
+            ([key, value]) => key.startsWith('pebblecrew.draft.') && value === 'Send this once',
+          ).length,
+      ),
+    )
+    .toBe(0);
   await page.reload();
   await expect(input).toBeEnabled();
   await expect(input).toHaveValue('');
@@ -62,4 +78,40 @@ test('sending and signing out clear saved drafts without retaining submitted tex
       Object.keys(localStorage).filter((key) => key.startsWith('pebblecrew.draft.')),
     ),
   ).toEqual([]);
+});
+
+test('reloading before a send receipt restores an editable tracked draft', async ({
+  page,
+  context,
+}) => {
+  await installFixture(context);
+  let release!: () => void;
+  const barrier = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  await context.route('https://hermes.fixture.invalid/v1/rpc', async (route) => {
+    if (route.request().postDataJSON().operation !== 'chat.send') return route.fallback();
+    await barrier;
+    // The old document may have retired while its response was held.
+    try {
+      await route.fulfill({ json: { result: { state: 'accepted' } } });
+    } catch {
+      /* Navigation retired this fixture request. */
+    }
+  });
+  try {
+    await page.goto('/');
+    const input = page.getByLabel('Message', { exact: true });
+    await expect(input).toBeEnabled();
+    await input.fill('Keep this until Hermes confirms it');
+    await page.getByRole('button', { name: 'Send message', exact: true }).click();
+    await expect(input).toHaveValue('');
+    await page.reload();
+    await expect(input).toHaveValue('Keep this until Hermes confirms it');
+    await expect(page.getByRole('button', { name: 'Send message', exact: true })).toBeEnabled();
+    await input.fill('Revised draft after reloading');
+    await expect(input).toHaveValue('Revised draft after reloading');
+  } finally {
+    release();
+  }
 });

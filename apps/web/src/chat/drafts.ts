@@ -17,6 +17,7 @@ export function clearSavedDrafts() {
 export class ConversationDrafts {
   private scope = '';
   private values = new Map<string, string>();
+  private edits = new Map<string, symbol>();
 
   bind(workspaceId: string | undefined) {
     if (!workspaceId) return;
@@ -24,6 +25,7 @@ export class ConversationDrafts {
     if (next === this.scope) return;
     this.scope = next;
     this.values.clear();
+    this.edits.clear();
   }
 
   get(conversation: string): string | undefined {
@@ -39,6 +41,7 @@ export class ConversationDrafts {
   set(conversation: string, text: string) {
     if (!text) return this.delete(conversation);
     this.values.set(conversation, text);
+    this.edits.set(conversation, Symbol());
     if (!this.scope) return;
     try {
       localStorage.setItem(this.scope + encodeURIComponent(conversation), text);
@@ -47,8 +50,22 @@ export class ConversationDrafts {
     }
   }
 
+  /** A receipt clears only this submission, even after navigation or an identical later edit. */
+  submission(conversation: string) {
+    const scope = this.scope,
+      edit = Symbol();
+    this.edits.set(conversation, edit);
+    return {
+      confirm: () => {
+        if (this.scope === scope && this.edits.get(conversation) === edit)
+          this.delete(conversation);
+      },
+    };
+  }
+
   delete(conversation: string) {
     this.values.delete(conversation);
+    this.edits.delete(conversation);
     if (!this.scope) return;
     try {
       localStorage.removeItem(this.scope + encodeURIComponent(conversation));
@@ -59,6 +76,7 @@ export class ConversationDrafts {
 
   clear() {
     this.values.clear();
+    this.edits.clear();
     if (this.scope) removeSavedDrafts(this.scope);
   }
 }

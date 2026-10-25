@@ -71,3 +71,34 @@ it('keeps editing usable when browser storage is blocked', () => {
   drafts.delete('bot:one');
   expect(drafts.get('bot:one')).toBeUndefined();
 });
+
+it('retains an unconfirmed send across reload, then clears it on confirmation after navigation', () => {
+  storage();
+  const drafts = new ConversationDrafts();
+  drafts.bind('owner');
+  drafts.set('bot:one', 'Unconfirmed send');
+  const submission = drafts.submission('bot:one');
+  const reloaded = new ConversationDrafts();
+  reloaded.bind('owner');
+  expect(reloaded.get('bot:one')).toBe('Unconfirmed send');
+  drafts.set('bot:two', 'Another conversation');
+  submission.confirm();
+  expect(drafts.get('bot:one')).toBeUndefined();
+  expect(drafts.get('bot:two')).toBe('Another conversation');
+});
+
+it('an older receipt cannot erase an identical newer draft or a different workspace', () => {
+  storage();
+  const drafts = new ConversationDrafts();
+  drafts.bind('owner');
+  drafts.set('bot:one', 'Same text');
+  const first = drafts.submission('bot:one');
+  drafts.set('bot:one', 'Same text');
+  first.confirm();
+  expect(drafts.get('bot:one')).toBe('Same text');
+  const second = drafts.submission('bot:one');
+  drafts.bind('other');
+  drafts.set('bot:one', 'Other owner draft');
+  second.confirm();
+  expect(drafts.get('bot:one')).toBe('Other owner draft');
+});

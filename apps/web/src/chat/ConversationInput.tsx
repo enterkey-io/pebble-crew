@@ -107,6 +107,7 @@ export function ConversationInput({
       <MentionSuggestions suggestions={mentions} className="pc-composer-width mb-2" />
       <PromptInputFrame
         className="pc-composer pc-composer-row pc-composer-width"
+        autoComplete="off"
         onSubmit={(e) => {
           e.preventDefault();
           onSend();
@@ -121,6 +122,7 @@ export function ConversationInput({
           ref={field}
           rows={1}
           aria-label="Message"
+          autoComplete="off"
           placeholder={target ? `Message ${title}` : 'Choose a conversation'}
           value={value}
           {...mentions.inputProps}
