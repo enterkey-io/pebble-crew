@@ -12,6 +12,7 @@ const directory = await mkdtemp(join(tmpdir(), 'workspace-plugin-installed-'));
 const source = process.env.HERMES_NATIVE_ROOT ?? '/private/tmp/hermes-af0-source';
 const python = process.env.HERMES_NATIVE_PYTHON ?? '/private/tmp/hermes-af0-py314/bin/python';
 const checks = {};
+const handshakeObservations = [];
 let front,
   child,
   browser,
@@ -129,9 +130,17 @@ try {
         },
         (response) => {
           const path = new URL(incoming.url, 'https://fixture.invalid').pathname;
-          if (incoming.headers.cookie && response.statusCode === 200) {
+          if (path === '/v1/connect' && handshakeObservations.length < 8)
+            handshakeObservations.push({
+              method: incoming.method,
+              status: response.statusCode,
+              browserFetch: incoming.headers['sec-fetch-site'] ?? 'none',
+              encoding: response.headers['content-encoding'] ?? 'identity',
+            });
+          if (incoming.headers['sec-fetch-site'] === 'same-origin' && response.statusCode === 200) {
             if (path === '/v1/connect' && incoming.method === 'POST') {
               connects++;
+              if (connects === 1) console.log('Browser handshake observed at HTTPS proxy.');
               const chunks = [];
               response.on('data', (chunk) => chunks.push(Buffer.from(chunk)));
               response.once('end', () => {
@@ -519,7 +528,12 @@ try {
 } catch (error) {
   console.error(error.message);
   console.error('Completed checks:', checks);
-  console.error('HTTPS transport evidence:', { connects, eventStreams, handshakeReadErrors });
+  console.error('HTTPS transport evidence:', {
+    connects,
+    eventStreams,
+    handshakeReadErrors,
+    handshakeObservations,
+  });
   if (page) {
     console.error('Visible headings:', await page.locator('h1').allTextContents());
     await page
