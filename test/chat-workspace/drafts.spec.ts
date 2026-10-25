@@ -57,10 +57,7 @@ test('sending and signing out clear saved drafts without retaining submitted tex
   await expect
     .poll(() =>
       page.evaluate(
-        () =>
-          Object.entries(localStorage).filter(
-            ([key, value]) => key.startsWith('pebblecrew.draft.') && value === 'Send this once',
-          ).length,
+        () => Object.keys(localStorage).filter((key) => key.startsWith('pebblecrew.draft.')).length,
       ),
     )
     .toBe(0);
@@ -113,5 +110,89 @@ test('reloading before a send receipt restores an editable tracked draft', async
     await expect(input).toHaveValue('Revised draft after reloading');
   } finally {
     release();
+  }
+});
+
+for (const revise of [false, true]) {
+  test(
+    revise
+      ? 'an old receipt preserves edits made after returning to the conversation'
+      : 'a receipt clears a restored submission after navigating away and back',
+    async ({ page, context }) => {
+      await installFixture(context);
+      let release!: () => void;
+      let held = false;
+      const barrier = new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      await context.route('https://hermes.fixture.invalid/v1/rpc', async (route) => {
+        if (route.request().postDataJSON().operation !== 'chat.send') return route.fallback();
+        held = true;
+        await barrier;
+        await route.fulfill({ json: { result: { state: 'accepted' } } });
+      });
+      async function select(name: string) {
+        const row = page.getByRole('button', { name: new RegExp(`^${name} .*Bot Chat$`) });
+        if (!(await row.isVisible()))
+          await page.getByRole('button', { name: 'Toggle navigation', exact: true }).click();
+        await row.click();
+        await expect(page.getByLabel('Message', { exact: true })).toBeEditable();
+      }
+      try {
+        await page.goto('/');
+        const input = page.getByLabel('Message', { exact: true });
+        await expect(input).toBeEnabled();
+        await input.fill('A submission awaiting its receipt');
+        await page.getByRole('button', { name: 'Send message', exact: true }).click();
+        await expect.poll(() => held).toBe(true);
+        await select('Mica');
+        await select('Arlo');
+        await expect(input).toHaveValue('A submission awaiting its receipt');
+        if (revise) await input.fill('My next message, not the submitted one');
+        release();
+        await expect(input).toHaveValue(revise ? 'My next message, not the submitted one' : '');
+      } finally {
+        release();
+      }
+    },
+  );
+}
+
+test('a late send receipt preserves the newer draft in another browser tab', async ({
+  page,
+  context,
+}) => {
+  await installFixture(context, { attachments: true });
+  let release!: () => void;
+  let held = false;
+  const barrier = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  await context.route('https://hermes.fixture.invalid/v1/rpc', async (route) => {
+    if (route.request().postDataJSON().operation !== 'chat.send') return route.fallback();
+    held = true;
+    await barrier;
+    await route.fulfill({ json: { result: { state: 'accepted' } } });
+  });
+  const other = await context.newPage();
+  try {
+    await page.goto('/');
+    const input = page.getByLabel('Message', { exact: true });
+    await expect(input).toBeEnabled();
+    await input.fill('Submission from the first browser tab');
+    await page.getByRole('button', { name: 'Send message', exact: true }).click();
+    await expect.poll(() => held).toBe(true);
+    await expect(page.getByRole('button', { name: 'Add attachment', exact: true })).toBeDisabled();
+    await other.goto('/');
+    const otherInput = other.getByLabel('Message', { exact: true });
+    await expect(otherInput).toBeEnabled();
+    await otherInput.fill('A newer draft in the second browser tab');
+    release();
+    await expect(page.getByRole('button', { name: 'Add attachment', exact: true })).toBeEnabled();
+    await other.reload();
+    await expect(otherInput).toHaveValue('A newer draft in the second browser tab');
+  } finally {
+    release();
+    await other.close();
   }
 });

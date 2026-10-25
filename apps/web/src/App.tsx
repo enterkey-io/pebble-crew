@@ -1554,6 +1554,17 @@ export function App({ owner }: { owner?: OwnerConnection }) {
     const generation = selectGeneration.current;
     const edit = draftEdits.current;
     const draftSubmission = drafts.current.submission(draftKey(target));
+    function confirmSubmittedDraft() {
+      const unchanged = draftSubmission.confirm();
+      const active = selected.current;
+      if (
+        unchanged &&
+        active &&
+        draftKey(active) === draftKey(target) &&
+        inputDraft.current.get() === draft
+      )
+        setDraft('');
+    }
     const owns = () =>
       current.current === connection &&
       selected.current === target &&
@@ -1570,14 +1581,11 @@ export function App({ owner }: { owner?: OwnerConnection }) {
       const command = commandOverride ?? draft;
       try {
         const output = await new ConversationDomain(client).command(target.sessionId, command);
-        draftSubmission.confirm();
+        confirmSubmittedDraft();
         if (owns()) {
           setCommandResult({ sessionId: target.sessionId, command, output });
           followLatest.current = true;
           setShowLatest(false);
-          if (edit === draftEdits.current) {
-            setDraft('');
-          }
         }
       } catch (cause) {
         if (owns()) fail(cause);
@@ -1650,7 +1658,7 @@ export function App({ owner }: { owner?: OwnerConnection }) {
         });
         if (owns()) setMessages(sendProjection.current.acknowledge(receipt, pendingId));
       }
-      draftSubmission.confirm();
+      confirmSubmittedDraft();
       if (owns()) {
         uploads.sent(draftKey(target), fileIds);
         if (fileIds.length) setFilesVersion((v) => v + 1);

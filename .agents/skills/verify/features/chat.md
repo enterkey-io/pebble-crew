@@ -141,3 +141,8 @@ keyboard input. The optional profiling journey records local CPU profiles and
 input-to-next-frame samples; these are not physical-device INP measurements.
 Set `PEBBLE_INPUT_MEASURE=local` and optionally `PEBBLE_INPUT_PROFILE=1` or
 `PEBBLE_INPUT_STREAM=1`, then run that spec with the desktop configuration.
+
+Draft receipt checks also navigate away and back before confirmation, retain edits
+made after returning, and reload a second browser tab after the first tab receives
+its receipt. Draft unit checks retain legacy text and bound stored edits during
+continued typing.
