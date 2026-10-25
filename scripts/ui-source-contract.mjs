@@ -28,6 +28,25 @@ export function sourceContract(source) {
     ts.forEachChild(node, visit);
   }
   visit(file);
+  const memoViews = new Map();
+  for (const statement of file.statements) {
+    if (!ts.isVariableStatement(statement)) continue;
+    for (const declaration of statement.declarationList.declarations) {
+      const call = declaration.initializer;
+      if (
+        !ts.isIdentifier(declaration.name) ||
+        !call ||
+        !ts.isCallExpression(call) ||
+        !ts.isIdentifier(call.expression) ||
+        imports.get(call.expression.text)?.source !== 'react' ||
+        imports.get(call.expression.text)?.exported !== 'memo'
+      )
+        continue;
+      const view = call.arguments[0];
+      if (view && (ts.isFunctionExpression(view) || ts.isArrowFunction(view)))
+        memoViews.set(declaration.name.text, view);
+    }
+  }
   for (const statement of file.statements) {
     if (
       !ts.isFunctionDeclaration(statement) ||
@@ -35,7 +54,8 @@ export function sourceContract(source) {
     )
       continue;
     const values = new Map(),
-      resolved = new Set();
+      resolved = new Set(),
+      renderedViews = new Set();
     function declarations(node) {
       if (node !== statement && ts.isFunctionLike(node)) return;
       if (ts.isVariableDeclaration(node) && ts.isIdentifier(node.name) && node.initializer)
@@ -47,8 +67,20 @@ export function sourceContract(source) {
       if (
         (ts.isJsxOpeningElement(child) || ts.isJsxSelfClosingElement(child)) &&
         ts.isIdentifier(child.tagName)
-      )
+      ) {
         jsx.add(child.tagName.text);
+        const view = memoViews.get(child.tagName.text);
+        if (view && !renderedViews.has(child.tagName.text)) {
+          renderedViews.add(child.tagName.text);
+          function returns(node) {
+            if (node !== view && ts.isFunctionLike(node)) return;
+            if (ts.isReturnStatement(node) && node.expression) render(node.expression);
+            ts.forEachChild(node, returns);
+          }
+          if (ts.isBlock(view.body)) returns(view);
+          else render(view.body);
+        }
+      }
       if (ts.isIdentifier(child) && values.has(child.text) && !resolved.has(child.text)) {
         resolved.add(child.text);
         render(values.get(child.text));

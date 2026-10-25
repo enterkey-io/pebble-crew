@@ -4,6 +4,7 @@ import type { ManagementRequests } from './useManagementRequests';
 import { RequestReview } from './RequestReview';
 import { ApprovalSurface } from '../components/ai-elements/confirmation';
 import { Button } from '../components/ui/button';
+import { Alert, AlertDescription, AlertAction } from '../components/ui/alert';
 
 export function useConversationRequests({
   client,
@@ -95,7 +96,7 @@ export function useConversationRequests({
         ),
       };
     }),
-    ...(management.loadError || management.faults.length
+    ...(management.faults.length
       ? [
           {
             id: 'request-read-issue',
@@ -103,11 +104,7 @@ export function useConversationRequests({
             content: (
               <ApprovalSurface
                 title="Requests need checking"
-                description={
-                  management.loadError
-                    ? 'Pending requests could not be loaded.'
-                    : 'A request could not be read. Other requests are still available.'
-                }
+                description="A request could not be read. Other requests are still available."
               >
                 <Button variant="secondary" onClick={management.refresh}>
                   Try again
@@ -118,4 +115,24 @@ export function useConversationRequests({
         ]
       : []),
   ];
+}
+
+export function RequestDiscoveryStatus({ management }: { management: ManagementRequests }) {
+  if (management.discovery !== 'unavailable') return null;
+  return (
+    <Alert
+      role="status"
+      aria-label="Request updates"
+      className="pc-composer-width border-0 bg-transparent text-muted-foreground shadow-none"
+    >
+      <AlertDescription className="flex min-h-8 items-center pointer-coarse:min-h-11">
+        Request updates are delayed.
+      </AlertDescription>
+      <AlertAction>
+        <Button variant="quiet" size="sm" onClick={management.refresh}>
+          Retry
+        </Button>
+      </AlertAction>
+    </Alert>
+  );
 }

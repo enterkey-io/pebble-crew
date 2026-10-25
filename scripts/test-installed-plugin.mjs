@@ -12,11 +12,16 @@ const directory = await mkdtemp(join(tmpdir(), 'workspace-plugin-installed-'));
 const source = process.env.HERMES_NATIVE_ROOT ?? '/private/tmp/hermes-af0-source';
 const python = process.env.HERMES_NATIVE_PYTHON ?? '/private/tmp/hermes-af0-py314/bin/python';
 const checks = {};
+const handshakeObservations = [];
 let front,
   child,
   browser,
   page,
-  diagnostic = '';
+  diagnostic = '',
+  connectionMetadata,
+  connects = 0,
+  eventStreams = 0,
+  handshakeReadErrors = 0;
 async function freePort() {
   const server = netServer();
   await new Promise((r) => server.listen(0, '127.0.0.1', r));
@@ -124,6 +129,30 @@ try {
           headers: incoming.headers,
         },
         (response) => {
+          const path = new URL(incoming.url, 'https://fixture.invalid').pathname;
+          if (path === '/v1/connect' && handshakeObservations.length < 8)
+            handshakeObservations.push({
+              method: incoming.method,
+              status: response.statusCode,
+              browserFetch: incoming.headers['sec-fetch-site'] ?? 'none',
+              encoding: response.headers['content-encoding'] ?? 'identity',
+            });
+          if (incoming.headers['sec-fetch-site'] === 'same-origin' && response.statusCode === 200) {
+            if (path === '/v1/connect' && incoming.method === 'POST') {
+              connects++;
+              if (connects === 1) console.log('Browser handshake observed at HTTPS proxy.');
+              const chunks = [];
+              response.on('data', (chunk) => chunks.push(Buffer.from(chunk)));
+              response.once('end', () => {
+                try {
+                  connectionMetadata = JSON.parse(Buffer.concat(chunks).toString('utf8'));
+                } catch {
+                  handshakeReadErrors++;
+                }
+              });
+            }
+            if (path === '/v1/events') eventStreams++;
+          }
           outgoing.writeHead(response.statusCode, response.headers);
           outgoing.flushHeaders();
           response.on('error', () => outgoing.end());
@@ -193,10 +222,7 @@ try {
   page = await context.newPage();
   const origins = new Set(),
     errors = [];
-  let connects = 0,
-    eventStreams = 0,
-    recoverableOwner = false,
-    firstConnectionMetadata;
+  let recoverableOwner = false;
   const traffic = [];
   page.on('response', (response) => {
     const path = new URL(response.url()).pathname;
@@ -205,11 +231,6 @@ try {
       traffic.push({ path, method, status: response.status() });
       if (traffic.length > 128) traffic.shift();
     }
-    if (response.status() === 200 && path === '/v1/connect' && method === 'POST') {
-      connects++;
-      firstConnectionMetadata ??= response.json().catch(() => null);
-    }
-    if (response.status() === 200 && path === '/v1/events') eventStreams++;
   });
   page.on('request', (r) => origins.add(new URL(r.url()).origin));
   page.on('pageerror', (e) => errors.push(e.message));
@@ -261,7 +282,7 @@ try {
   await page.getByRole('button', { name: 'Start chatting', exact: true }).click();
   const message = page.getByLabel('Message', { exact: true });
   await expect(message).toBeEnabled();
-  const initialHandshake = await firstConnectionMetadata;
+  const initialHandshake = await connectionMetadata;
   expect(initialHandshake).toBeTruthy();
   recoverableOwner = initialHandshake.capabilities?.connection_recovery === 1;
   await message.fill('/');
@@ -507,6 +528,12 @@ try {
 } catch (error) {
   console.error(error.message);
   console.error('Completed checks:', checks);
+  console.error('HTTPS transport evidence:', {
+    connects,
+    eventStreams,
+    handshakeReadErrors,
+    handshakeObservations,
+  });
   if (page) {
     console.error('Visible headings:', await page.locator('h1').allTextContents());
     await page

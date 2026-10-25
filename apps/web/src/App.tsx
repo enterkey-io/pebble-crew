@@ -9,10 +9,7 @@ import type { TranscriptCard } from './chat/presentation';
 import type { SessionClient } from '@hermes-client/protocol';
 import { usePageTitle } from './ui/page-title';
 import { DiscardChanges } from './ui/DiscardChanges';
-import { useComposerSize } from './chat/use-composer-size';
-import { CommandSuggestions } from './chat/CommandSuggestions';
-import { MentionSuggestions, useMentionSuggestions } from './chat/MentionSuggestions';
-import type { CommandSuggestionsHandle } from './chat/CommandSuggestions';
+import { ConversationInput, ComposerDraft } from './chat/ConversationInput';
 import { reconcileNativeApprovals, type NativeApprovalReview } from './chat/native-approvals';
 import { Confirmation } from './components/ai-elements/confirmation';
 import { Tool } from './components/ai-elements/tool';
@@ -25,7 +22,6 @@ import {
   AttachmentActions,
   AttachmentAction,
 } from './components/ui/attachment';
-import { PromptInputFrame, PromptInputField } from './components/ai-elements/prompt-input';
 import { conversationCapabilities } from './chat/capability-ledger';
 import { useEffect, useLayoutEffect, useRef, useState, useCallback } from 'react';
 import { safeError } from '@hermes-client/core';
@@ -56,7 +52,6 @@ import type { ChatBot as Bot } from './chat/Rail';
 import { useAgentExchanges } from './chat/AgentExchanges';
 import { Transcript } from './chat/Transcript';
 import { Chat, ChatViewport } from './components/ai-elements/chat';
-import { ComposerAction } from './chat/ComposerAction';
 import { Inspector } from './chat/Inspector';
 import { Icon } from './chat/Icon';
 import { Drawer } from './chat/Drawer';
@@ -93,7 +88,7 @@ import { ConversationFeed } from './connection/conversation-feed';
 import type { SessionTicket } from './connection/session';
 import { OrgChart } from './OrgChart';
 import { RequestDomain } from '@hermes-client/protocol';
-import { useConversationRequests } from './chat/ConversationRequests';
+import { useConversationRequests, RequestDiscoveryStatus } from './chat/ConversationRequests';
 import { useQuestionCards } from './chat/QuestionCards';
 import { useWorkCatalog } from './work/use-work';
 import { WorkReadError } from './work/WorkReadError';
@@ -126,7 +121,6 @@ function text(value: unknown): string {
 export function App({ owner }: { owner?: OwnerConnection }) {
   const ownerRef = useRef(owner);
   ownerRef.current = owner;
-  const commandSuggestions = useRef<CommandSuggestionsHandle>(null);
   const [commandResult, setCommandResult] = useState<{
     sessionId: string;
     command: string;
@@ -206,11 +200,10 @@ export function App({ owner }: { owner?: OwnerConnection }) {
   }
   const approvalFlights = useRef(new Set<string>());
   const [approvalSubmitting, setApprovalSubmitting] = useState<Record<string, boolean>>({});
-  const [draft, setDraft] = useState('');
+  const inputDraft = useRef(new ComposerDraft());
+  const setDraft = (value: string) => inputDraft.current.set(value);
   const draftEdits = useRef(0);
   const attachmentDraft = useRef<{ conversation: string; edit: number } | undefined>(undefined);
-  const currentDraft = useRef(draft);
-  currentDraft.current = draft;
   const [stream, setStream] = useState('');
   const [activity, setActivity] = useState('Ready');
   const [running, setRunning] = useState(false);
@@ -428,29 +421,32 @@ export function App({ owner }: { owner?: OwnerConnection }) {
   const [pickingAgents, setPickingAgents] = useState(false);
   const transcriptPane = useRef<HTMLDivElement>(null);
   const composer = useRef<HTMLTextAreaElement>(null);
+  const authorBot = useCallback(
+    (name: string) =>
+      workspace?.bots.find(
+        (bot) =>
+          bot.profile === name ||
+          bot.handle === name.replace('@', '') ||
+          (name === 'hermes' && bot.profile === 'default'),
+      ),
+    [workspace],
+  );
+  const authorName = useCallback((name: string) => authorBot(name)?.name ?? name, [authorBot]);
+  const authorAvatar = useCallback(
+    (name: string) => {
+      const bot = authorBot(name);
+      return (
+        bot &&
+        client && <PebbleAvatar bot={bot} workspace={workspace} client={client} mainBadge={false} />
+      );
+    },
+    [authorBot, workspace, client],
+  );
 
   const followLatest = useRef(true);
   const focusOnReady = useRef(false);
   const drafts = useRef(new ConversationDrafts());
   drafts.current.bind(workspace?.id);
-  const [mentionCaret, setMentionCaret] = useState(0);
-  const mentionSuggestions = useMentionSuggestions({
-    value: draft,
-    caret: mentionCaret,
-    input: composer,
-    bots:
-      selection?.kind === 'room'
-        ? (workspace?.bots.filter((bot) =>
-            rows(selection.room.members).some((member) => member.profile === bot.profile),
-          ) ?? [])
-        : [],
-    onChoose(value, position) {
-      draftEdits.current++;
-      setDraft(value);
-      setMentionCaret(position);
-      if (selected.current) drafts.current.set(draftKey(selected.current), value);
-    },
-  });
   const [showLatest, setShowLatest] = useState(false);
   const displayedRead = useRef<{ key: string; cursor: number } | undefined>(undefined);
   const acknowledgedRead = useRef(new Map<string, number>());
@@ -717,12 +713,6 @@ export function App({ owner }: { owner?: OwnerConnection }) {
       transcriptFollow.current?.dispose();
     };
   }, []);
-  useComposerSize(
-    composer,
-    draft,
-    selection ? draftKey(selection) : '',
-    !pickingAgents && !starting && (!settings || settingsTab === 'agents'),
-  );
 
   useLayoutEffect(() => {
     if (
@@ -1067,7 +1057,7 @@ export function App({ owner }: { owner?: OwnerConnection }) {
             setBusy(false);
             selected.current = undefined;
             setSelection(undefined);
-            setRemovedDraft(currentDraft.current);
+            setRemovedDraft(inputDraft.current.get());
             setDraft('');
             sendProjection.current = new SendProjection();
             setMessages([]);
@@ -1547,6 +1537,7 @@ export function App({ owner }: { owner?: OwnerConnection }) {
   }, [client, selection]);
 
   async function send(commandOverride?: string) {
+    const draft = inputDraft.current.get();
     if (
       !client ||
       !selection ||
@@ -1562,6 +1553,18 @@ export function App({ owner }: { owner?: OwnerConnection }) {
     const target = selection;
     const generation = selectGeneration.current;
     const edit = draftEdits.current;
+    const draftSubmission = drafts.current.submission(draftKey(target));
+    function confirmSubmittedDraft() {
+      const unchanged = draftSubmission.confirm();
+      const active = selected.current;
+      if (
+        unchanged &&
+        active &&
+        draftKey(active) === draftKey(target) &&
+        inputDraft.current.get() === draft
+      )
+        setDraft('');
+    }
     const owns = () =>
       current.current === connection &&
       selected.current === target &&
@@ -1578,14 +1581,11 @@ export function App({ owner }: { owner?: OwnerConnection }) {
       const command = commandOverride ?? draft;
       try {
         const output = await new ConversationDomain(client).command(target.sessionId, command);
+        confirmSubmittedDraft();
         if (owns()) {
           setCommandResult({ sessionId: target.sessionId, command, output });
           followLatest.current = true;
           setShowLatest(false);
-          if (edit === draftEdits.current) {
-            setDraft('');
-            drafts.current.delete(draftKey(target));
-          }
         }
       } catch (cause) {
         if (owns()) fail(cause);
@@ -1627,7 +1627,6 @@ export function App({ owner }: { owner?: OwnerConnection }) {
       ),
     );
     setDraft('');
-    drafts.current.delete(draftKey(target));
     if (target.kind === 'bot') {
       setRunning(true);
       setActivity('Working');
@@ -1659,6 +1658,7 @@ export function App({ owner }: { owner?: OwnerConnection }) {
         });
         if (owns()) setMessages(sendProjection.current.acknowledge(receipt, pendingId));
       }
+      confirmSubmittedDraft();
       if (owns()) {
         uploads.sent(draftKey(target), fileIds);
         if (fileIds.length) setFilesVersion((v) => v + 1);
@@ -1867,12 +1867,6 @@ export function App({ owner }: { owner?: OwnerConnection }) {
     }
   }
   const capabilities = conversationCapabilities(client, selection?.kind ?? 'none');
-  const voiceAction =
-    !running &&
-    !draft.trim() &&
-    !uploads.files.length &&
-    selection?.kind === 'bot' &&
-    capabilities.voice;
   const detailsContent = client && (
     <Inspector
       bot={selection?.kind === 'bot' ? selection.bot : undefined}
@@ -2203,7 +2197,6 @@ export function App({ owner }: { owner?: OwnerConnection }) {
   const awaitingInput = attentionItems.length > 0;
   const actionBlocked =
     blocked || !connectionAvailable || (selection?.kind === 'bot' && !chatBound) || awaitingInput;
-  const hasMessage = !!draft.trim() || uploads.files.length > 0;
   return (
     <ConnectionRecovery.Provider value={recovery}>
       <DocumentActions.Provider
@@ -2603,32 +2596,8 @@ export function App({ owner }: { owner?: OwnerConnection }) {
                         crew={selection?.kind === 'room'}
                         running={running}
                         activity={running && stopping ? 'Stopping' : activity}
-                        authorName={(name) =>
-                          workspace?.bots.find(
-                            (b) =>
-                              b.profile === name ||
-                              b.handle === name.replace('@', '') ||
-                              (name === 'hermes' && b.profile === 'default'),
-                          )?.name ?? name
-                        }
-                        authorAvatar={(name) => {
-                          const bot = workspace?.bots.find(
-                            (b) =>
-                              b.profile === name ||
-                              b.handle === name.replace('@', '') ||
-                              (name === 'hermes' && b.profile === 'default'),
-                          );
-                          return (
-                            bot && (
-                              <PebbleAvatar
-                                bot={bot}
-                                workspace={workspace}
-                                client={client}
-                                mainBadge={false}
-                              />
-                            )
-                          );
-                        }}
+                        authorName={authorName}
+                        authorAvatar={authorAvatar}
                       >
                         {!selection && !switching && (
                           <div className="welcome">
@@ -2674,6 +2643,7 @@ export function App({ owner }: { owner?: OwnerConnection }) {
                             ↓ Latest messages
                           </Button>
                         )}
+                        <RequestDiscoveryStatus management={management} />
                         {awaitingInput && (
                           <div className="pc-composer-wrap composer-wrap">
                             <ConversationAttention
@@ -2759,35 +2729,45 @@ export function App({ owner }: { owner?: OwnerConnection }) {
                             </ul>
                           )}
 
-                          {selection?.kind === 'bot' && (
-                            <CommandSuggestions
-                              ref={commandSuggestions}
-                              client={client}
-                              enabled={!actionBlocked && !busy}
-                              sessionId={selection.sessionId}
-                              text={draft}
-                              onChoose={(text, execute) => {
-                                draftEdits.current++;
-                                setDraft(text);
-                                drafts.current.set(draftKey(selection), text);
-                                composer.current?.focus();
-                                if (execute) void send(text);
-                              }}
-                            />
-                          )}
-                          <MentionSuggestions
-                            suggestions={mentionSuggestions}
-                            className="pc-composer-width mb-2"
-                          />
-                          <PromptInputFrame
-                            className="pc-composer pc-composer-row pc-composer-width"
-                            onSubmit={(e) => {
-                              e.preventDefault();
-                              void send();
+                          <ConversationInput
+                            draft={inputDraft.current}
+                            field={composer}
+                            client={client}
+                            conversation={selection ? draftKey(selection) : ''}
+                            active={
+                              !pickingAgents && !starting && (!settings || settingsTab === 'agents')
+                            }
+                            target={
+                              selection?.kind === 'bot'
+                                ? { kind: 'bot', sessionId: selection.sessionId }
+                                : selection?.kind === 'room'
+                                  ? {
+                                      kind: 'room',
+                                      bots:
+                                        workspace?.bots.filter((bot) =>
+                                          rows(selection.room.members).some(
+                                            (member) => member.profile === bot.profile,
+                                          ),
+                                        ) ?? [],
+                                    }
+                                  : undefined
+                            }
+                            title={title}
+                            busy={busy}
+                            blocked={actionBlocked}
+                            switching={switching}
+                            running={running}
+                            stopping={stopping}
+                            uploads={uploads}
+                            voice={capabilities.voice}
+                            onEdit={(value) => {
+                              draftEdits.current++;
+                              if (selected.current)
+                                drafts.current.set(draftKey(selected.current), value);
                             }}
-                            onClick={(e) => {
-                              if (e.target === e.currentTarget) composer.current?.focus();
-                            }}
+                            onSend={(command) => void send(command)}
+                            onStop={() => void stop()}
+                            onVoice={() => voicePanel.current?.open()}
                           >
                             {capabilities.attachments && selection?.kind === 'bot' && (
                               <>
@@ -2835,85 +2815,7 @@ export function App({ owner }: { owner?: OwnerConnection }) {
                                 </Menu>
                               </>
                             )}
-                            <PromptInputField
-                              sizing="fixed"
-                              ref={composer}
-                              rows={1}
-                              aria-label="Message"
-                              placeholder={selection ? `Message ${title}` : 'Choose a conversation'}
-                              value={draft}
-                              {...mentionSuggestions.inputProps}
-                              disabled={!selection}
-                              readOnly={switching}
-                              maxLength={16000}
-                              onPaste={(e) => {
-                                if (
-                                  !blocked &&
-                                  !busy &&
-                                  client.supportsAttachments &&
-                                  selection?.kind === 'bot' &&
-                                  e.clipboardData.files.length
-                                ) {
-                                  e.preventDefault();
-                                  uploads.add([...e.clipboardData.files]);
-                                }
-                              }}
-                              onChange={(e) => {
-                                draftEdits.current++;
-                                setDraft(e.target.value);
-                                setMentionCaret(e.target.selectionStart);
-                                if (selected.current)
-                                  drafts.current.set(draftKey(selected.current), e.target.value);
-                              }}
-                              onSelect={(e) => setMentionCaret(e.currentTarget.selectionStart)}
-                              onKeyDown={(e) => {
-                                if (!e.nativeEvent.isComposing && mentionSuggestions.key(e.key)) {
-                                  e.preventDefault();
-                                  return;
-                                }
-                                if (
-                                  !e.nativeEvent.isComposing &&
-                                  commandSuggestions.current?.key(e.key)
-                                ) {
-                                  e.preventDefault();
-                                  return;
-                                }
-                                if (
-                                  e.key === 'Enter' &&
-                                  !e.shiftKey &&
-                                  !e.nativeEvent.isComposing
-                                ) {
-                                  e.preventDefault();
-                                  void send();
-                                }
-                              }}
-                            />
-                            <ComposerAction
-                              mode={
-                                running && !hasMessage
-                                  ? stopping
-                                    ? 'stopping'
-                                    : 'stop'
-                                  : voiceAction
-                                    ? 'voice'
-                                    : 'send'
-                              }
-                              disabled={
-                                running && !hasMessage
-                                  ? stopping || actionBlocked
-                                  : !selection ||
-                                    (!voiceAction && !draft.trim() && !uploads.files.length) ||
-                                    !uploads.ready ||
-                                    busy ||
-                                    actionBlocked
-                              }
-                              onStop={() => void stop()}
-                              onVoice={() => voicePanel.current?.open()}
-                              separateStop={running && hasMessage}
-                              stopDisabled={stopping || actionBlocked}
-                              stopping={stopping}
-                            />
-                          </PromptInputFrame>
+                          </ConversationInput>
                         </div>
                       </div>
                     )}

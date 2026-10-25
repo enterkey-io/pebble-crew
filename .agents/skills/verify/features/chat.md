@@ -110,7 +110,6 @@ snapshots and target-only rebinding after a native restart on both pinned builds
 It uses a disposable home and asserts zero model turns. This complements the
 native owner browser and exact-package gates.
 
-
 ## Fixed owner input queue and Library
 
 `conversation-cards.spec.ts` drives pending management/native approvals, questions
@@ -130,3 +129,20 @@ paged native history, canonical-row ownership, safe paths and database replaceme
 on both pinned builds with zero model turns. `conversation_cards_smoke.py` also
 verifies same-ID legacy creation after an unrelated edit; the native owner browser
 performs that approval through the actual UI and reads back its manager and Bot Chat.
+
+Request recovery: `requests.spec.ts` retains new approvals when optional recent
+history fails. Its recovery journey fails three background reads and checks
+composer identity, focus and draft retention, followed by successful retry. It
+runs on desktop and both phone projects.
+
+Typing: `input-performance.spec.ts` uses the production app with 28- and
+300-message histories. Five interleaved pairs compare script work for identical
+keyboard input. The optional profiling journey records local CPU profiles and
+input-to-next-frame samples; these are not physical-device INP measurements.
+Set `PEBBLE_INPUT_MEASURE=local` and optionally `PEBBLE_INPUT_PROFILE=1` or
+`PEBBLE_INPUT_STREAM=1`, then run that spec with the desktop configuration.
+
+Draft receipt checks also navigate away and back before confirmation, retain edits
+made after returning, and reload a second browser tab after the first tab receives
+its receipt. Draft unit checks retain legacy text and bound stored edits during
+continued typing.

@@ -1,6 +1,6 @@
 import { test, expect } from '@playwright/test';
 import AxeBuilder from '@axe-core/playwright';
-import { installFixture } from './fixtures';
+import { installFixture, emit } from './fixtures';
 
 test.use({ serviceWorkers: 'block' });
 
@@ -187,4 +187,170 @@ test('pending requests use a quiet header icon and respect reduced motion', asyn
   await expect(
     page.getByRole('heading', { name: 'Change tools and skills', exact: true }),
   ).toBeVisible();
+});
+
+test('new pending approvals remain visible when optional receipt history fails', async ({
+  page,
+  context,
+}) => {
+  await installFixture(context);
+  await context.route('https://hermes.fixture.invalid/v1/rpc', async (route) => {
+    const { operation, params } = route.request().postDataJSON();
+    if (operation !== 'requests.list') return route.fallback();
+    if (params.view === 'recent')
+      return route.fulfill({ status: 503, json: { code: 'RPC_FAILED' } });
+    return route.fulfill({
+      json: {
+        result: {
+          generation: 1,
+          next: null,
+          requests: [
+            {
+              id: 'pending-without-history',
+              actor: 'arlo',
+              action: 'agent.attach',
+              state: 'pending',
+              fingerprint: 'native-request',
+              spec: { profile: 'mica', toolsets: ['browser'] },
+            },
+          ],
+        },
+      },
+    });
+  });
+  await page.goto('/');
+  await expect(page.locator('[data-request-id="pending-without-history"]')).toBeVisible();
+  await expect(
+    page.getByRole('heading', { name: 'Change tools and skills', exact: true }),
+  ).toBeVisible();
+  await expect(
+    page.getByText('Pending requests could not be loaded.', { exact: true }),
+  ).toHaveCount(0);
+});
+
+test('background request failures keep the composer, draft and focus until discovery recovers', async ({
+  page,
+  context,
+}, testInfo) => {
+  await page.clock.install();
+  await installFixture(context);
+  let failing = false,
+    failures = 0,
+    receipts = 0;
+  await context.route('https://hermes.fixture.invalid/v1/rpc', async (route) => {
+    const { operation, params } = route.request().postDataJSON();
+    if (operation !== 'requests.list') return route.fallback();
+    if (failing) {
+      failures++;
+      return route.fulfill({ status: 503, json: { code: 'RPC_FAILED' } });
+    }
+    if (params.view === 'recent') receipts++;
+    return route.fallback();
+  });
+  await page.goto('/');
+  const field = page.getByLabel('Message', { exact: true });
+  await expect(field).toBeEnabled();
+  await expect.poll(() => receipts).toBeGreaterThan(0);
+  await field.fill('Keep this unsent draft');
+  const element = await field.elementHandle();
+  failing = true;
+  for (let attempt = 1; attempt <= 3; attempt++) {
+    await page.clock.fastForward(5500);
+    await expect.poll(() => failures).toBe(attempt);
+    await expect(field).toBeVisible();
+    await expect(field).toBeFocused();
+    await expect(field).toHaveValue('Keep this unsent draft');
+    await expect(page.getByRole('region', { name: 'Waiting for your input' })).toHaveCount(0);
+    expect(await field.evaluate((node, previous) => node === previous, element)).toBe(true);
+    if (attempt < 3)
+      await expect(page.getByRole('status', { name: 'Request updates', exact: true })).toHaveCount(
+        0,
+      );
+  }
+  const status = page.getByRole('status', { name: 'Request updates', exact: true });
+  await expect(status).toBeVisible();
+  const alignment = await status.evaluate((element) => {
+    const text = element.querySelector('[data-slot="alert-description"]')!.getBoundingClientRect();
+    const button = element.querySelector('button')!.getBoundingClientRect();
+    return Math.abs(text.top + text.height / 2 - button.top - button.height / 2);
+  });
+  expect(alignment).toBeLessThan(1);
+  await field.pressSequentially(' and keep typing');
+  await expect(field).toHaveValue('Keep this unsent draft and keep typing');
+  await page.screenshot({
+    path: testInfo.outputPath('request-recovery.png'),
+    animations: 'disabled',
+  });
+  failing = false;
+  await status.getByRole('button', { name: 'Retry', exact: true }).click();
+  await expect(status).toHaveCount(0);
+  await expect(field).toHaveValue('Keep this unsent draft and keep typing');
+});
+
+test('request changes wait for one active scan and then discover the newest approval', async ({
+  page,
+  context,
+}) => {
+  await installFixture(context);
+  let hold = false,
+    held = false,
+    active = 0,
+    maximum = 0,
+    snapshots = 0;
+  let requests: Record<string, unknown>[] = [];
+  let release!: () => void;
+  const barrier = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  await context.route('https://hermes.fixture.invalid/v1/rpc', async (route) => {
+    const { operation, params } = route.request().postDataJSON();
+    if (operation === 'workspace.snapshot') snapshots++;
+    if (operation !== 'requests.list') return route.fallback();
+    const rows = params.view === 'pending' ? structuredClone(requests) : [];
+    active++;
+    maximum = Math.max(maximum, active);
+    try {
+      if (hold && !held && params.view === 'pending') {
+        held = true;
+        await barrier;
+      }
+      return await route.fulfill({
+        json: { result: { generation: 1, next: null, requests: rows } },
+      });
+    } finally {
+      active--;
+    }
+  });
+  await page.goto('/');
+  await expect(page.getByLabel('Message', { exact: true })).toBeEnabled();
+  hold = true;
+  await emit(page, 'requests.changed');
+  await expect.poll(() => held).toBe(true);
+  requests = [
+    {
+      id: 'newest-approval',
+      actor: 'arlo',
+      action: 'agent.attach',
+      state: 'pending',
+      fingerprint: 'newest',
+      spec: { profile: 'mica', toolsets: ['browser'] },
+    },
+  ];
+  try {
+    for (let i = 0; i < 4; i++) {
+      const before = snapshots;
+      await emit(page, 'requests.changed');
+      await expect.poll(() => snapshots).toBeGreaterThan(before);
+      await page.evaluate(
+        () =>
+          new Promise<void>((resolve) =>
+            requestAnimationFrame(() => requestAnimationFrame(() => resolve())),
+          ),
+      );
+    }
+  } finally {
+    release();
+  }
+  await expect(page.locator('[data-request-id="newest-approval"]')).toBeVisible();
+  expect(maximum).toBe(1);
 });

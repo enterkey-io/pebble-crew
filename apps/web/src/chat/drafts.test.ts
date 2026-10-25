@@ -71,3 +71,77 @@ it('keeps editing usable when browser storage is blocked', () => {
   drafts.delete('bot:one');
   expect(drafts.get('bot:one')).toBeUndefined();
 });
+
+it('retains an unconfirmed send across reload, then clears it on confirmation after navigation', () => {
+  storage();
+  const drafts = new ConversationDrafts();
+  drafts.bind('owner');
+  drafts.set('bot:one', 'Unconfirmed send');
+  const submission = drafts.submission('bot:one');
+  const reloaded = new ConversationDrafts();
+  reloaded.bind('owner');
+  expect(reloaded.get('bot:one')).toBe('Unconfirmed send');
+  drafts.set('bot:two', 'Another conversation');
+  submission.confirm();
+  expect(drafts.get('bot:one')).toBeUndefined();
+  expect(drafts.get('bot:two')).toBe('Another conversation');
+});
+
+it('an older receipt cannot erase an identical newer draft or a different workspace', () => {
+  storage();
+  const drafts = new ConversationDrafts();
+  drafts.bind('owner');
+  drafts.set('bot:one', 'Same text');
+  const first = drafts.submission('bot:one');
+  drafts.set('bot:one', 'Same text');
+  first.confirm();
+  expect(drafts.get('bot:one')).toBe('Same text');
+  const second = drafts.submission('bot:one');
+  drafts.bind('other');
+  drafts.set('bot:one', 'Other owner draft');
+  second.confirm();
+  expect(drafts.get('bot:one')).toBe('Other owner draft');
+});
+
+it('a late receipt never erases a newer draft from another tab', () => {
+  storage();
+  const first = new ConversationDrafts();
+  first.bind('owner');
+  first.set('bot:one', 'Sending from the first tab');
+  const submission = first.submission('bot:one');
+  const second = new ConversationDrafts();
+  second.bind('owner');
+  second.set('bot:one', 'A newer unsent draft in the other tab');
+  submission.confirm();
+  const reopened = new ConversationDrafts();
+  reopened.bind('owner');
+  expect(reopened.get('bot:one')).toBe('A newer unsent draft in the other tab');
+});
+
+it('restores legacy text verbatim and replaces only its own cached record', () => {
+  const values = storage();
+  values.set('pebblecrew.draft.v1.owner.bot%3Aone', '{"text":"literal JSON in my draft"}');
+  const drafts = new ConversationDrafts();
+  drafts.bind('owner');
+  expect(drafts.get('bot:one')).toBe('{"text":"literal JSON in my draft"}');
+  for (let i = 0; i < 100; i++) drafts.set('bot:one', `Editing ${i}`);
+  expect(values.size).toBe(1);
+  const reopened = new ConversationDrafts();
+  reopened.bind('owner');
+  expect(reopened.get('bot:one')).toBe('Editing 99');
+  expect(reopened.submission('bot:one').confirm()).toBe(true);
+  expect(values.size).toBe(0);
+});
+
+it('does not mix conversation or workspace names containing storage separators', () => {
+  storage();
+  const drafts = new ConversationDrafts();
+  drafts.bind('owner');
+  drafts.set('bot:one.suffix', 'A different conversation');
+  const reopened = new ConversationDrafts();
+  reopened.bind('owner');
+  expect(reopened.get('bot:one')).toBeUndefined();
+  drafts.bind('owner.foo');
+  drafts.set('bot:one', 'Another workspace');
+  expect(reopened.get('foo.bot:one')).toBeUndefined();
+});

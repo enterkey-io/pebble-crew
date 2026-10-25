@@ -44,3 +44,23 @@ it('rejects an unused helper, namespace internal import and fake reducer owner',
     ).ownsProfileSession(),
   ).toBe(false);
 });
+
+it('follows a rendered React memo view without accepting unused or fake memo helpers', () => {
+  const component =
+    "import { Message } from './message'; const Row = memo(function Row() { return <Message />; });";
+  expect(
+    sourceContract(
+      "import { memo } from 'react';" + component + 'export function Screen() { return <Row />; }',
+    ).renders('Message', './message'),
+  ).toBe(true);
+  expect(
+    sourceContract(
+      "import { memo } from 'react';" + component + 'export function Screen() { return <div />; }',
+    ).renders('Message', './message'),
+  ).toBe(false);
+  expect(
+    sourceContract(
+      "import { memo } from './fake';" + component + 'export function Screen() { return <Row />; }',
+    ).renders('Message', './message'),
+  ).toBe(false);
+});

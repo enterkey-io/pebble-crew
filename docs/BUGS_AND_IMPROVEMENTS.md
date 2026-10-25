@@ -462,3 +462,21 @@ broader permissions through the interface. Crew native approvals remain once or
 deny, as required by the pinned Hermes room service. Agent-management proposals
 remain individually bound to their proposed change. Real-Hermes acceptance uses
 separate disposable profiles and the deterministic local model for both scopes.
+
+## Request discovery and typing responsiveness — 0.7.15-preview.1
+
+- Reproduced: one background request read failure replaced the composer with a
+  false approval card. Known pending decisions now remain visible while the
+  input and draft survive transient discovery failures.
+- Reproduced: failure of optional recent history discarded healthy new pending
+  approvals. Pending discovery and receipt history now have independent results.
+- Reproduced in production-browser CPU profiles: every keystroke rebuilt the
+  transcript and sidebar; each streamed chunk rebuilt historical controls.
+  Composer state and memoized message rows now own those updates separately.
+- Regression coverage includes three failed background reads, successful retry,
+  serialized invalidations, preserved approval discovery, and five paired
+  short/long-history typing measurements. The old production build fails the
+  discovery and typing checks.
+- A reported stalled reply is consistent with a completed
+  reaction-only turn. Live native state was not established by the agent's
+  diagnostic; no owner turn was resent or cancelled.
