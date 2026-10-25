@@ -196,7 +196,7 @@ try {
   let connects = 0,
     eventStreams = 0,
     recoverableOwner = false,
-    firstConnectionMetadata;
+    connectionMetadata;
   const traffic = [];
   page.on('response', (response) => {
     const path = new URL(response.url()).pathname;
@@ -207,7 +207,13 @@ try {
     }
     if (response.status() === 200 && path === '/v1/connect' && method === 'POST') {
       connects++;
-      firstConnectionMetadata ??= response.json().catch(() => null);
+      // A retired startup request can lose its body; require a parsed successful handshake.
+      void response
+        .json()
+        .then((metadata) => {
+          connectionMetadata = metadata;
+        })
+        .catch(() => undefined);
     }
     if (response.status() === 200 && path === '/v1/events') eventStreams++;
   });
@@ -261,7 +267,7 @@ try {
   await page.getByRole('button', { name: 'Start chatting', exact: true }).click();
   const message = page.getByLabel('Message', { exact: true });
   await expect(message).toBeEnabled();
-  const initialHandshake = await firstConnectionMetadata;
+  const initialHandshake = await connectionMetadata;
   expect(initialHandshake).toBeTruthy();
   recoverableOwner = initialHandshake.capabilities?.connection_recovery === 1;
   await message.fill('/');
