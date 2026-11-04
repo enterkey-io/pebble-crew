@@ -39,7 +39,7 @@ export function ConversationIdentity({
         )}
         <ItemContent className="gap-0">
           <ItemTitle id={`${id}-title`}>
-            <h1 className="text-[15px] leading-5 font-medium">{title}</h1>
+            <h1 className="text-[15px] leading-5 font-medium max-md:text-base">{title}</h1>
           </ItemTitle>{' '}
           {description && (
             <ItemDescription id={`${id}-role`} className="text-xs leading-[18px]">

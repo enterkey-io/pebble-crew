@@ -44,7 +44,7 @@
 }
 .pc-details .identity-summary .handle {
   color: var(--muted-foreground);
-  font-size: 12px;
+  font-size: var(--text-caption);
   margin-top: 3px;
 }
 .pc-details .inspector-body {
@@ -52,11 +52,11 @@
 }
 .pc-details .role-description {
   margin-top: 28px;
-  font-size: 13px;
+  font-size: var(--text-meta);
 }
 .pc-details .role-description h3 {
   color: var(--muted-foreground);
-  font-size: 12px;
+  font-size: var(--text-caption);
   margin-bottom: 8px;
 }
 .pc-details .role-description p {
@@ -95,10 +95,10 @@
   justify-content: center;
   gap: 8px;
   color: var(--muted-foreground);
-  font-size: 12px;
+  font-size: var(--text-caption);
 }
 .activity-group {
-  font-size: 12px;
+  font-size: var(--text-caption);
   color: var(--muted-foreground);
   max-width: 88%;
 }
@@ -144,7 +144,7 @@
   border-radius: 20px;
   padding: 8px 14px;
   background: var(--popover);
-  font-size: 12px;
+  font-size: var(--text-caption);
   box-shadow: 0 4px 20px #0005;
 }
 
@@ -154,12 +154,12 @@
 }
 .text-button {
   color: var(--ring);
-  font-size: 12px;
+  font-size: var(--text-caption);
 }
 .field-hint,
 .empty-note,
 .empty-chat {
-  font-size: 12px;
+  font-size: var(--text-caption);
   color: var(--muted-foreground);
 }
 .empty-chat,
@@ -197,7 +197,7 @@
   letter-spacing: -0.5px;
 }
 .page-header p {
-  font-size: 12px;
+  font-size: var(--text-caption);
   color: var(--muted-foreground);
   margin-top: 4px;
 }
@@ -212,7 +212,7 @@
 }
 .entity-page [data-slot='tabs-trigger'] {
   flex: 0 0 auto;
-  font-size: 13px;
+  font-size: var(--text-meta);
 }
 .entity-page .ui-tab-panel {
   overflow: auto;
@@ -230,7 +230,7 @@
   font-weight: 550;
 }
 .form-section-heading p {
-  font-size: 12px;
+  font-size: var(--text-caption);
   color: var(--muted-foreground);
   margin-top: 6px;
 }
@@ -273,7 +273,7 @@
   min-height: 44px;
   margin-top: 4px;
   padding: 0;
-  font-size: 12px;
+  font-size: var(--text-caption);
   color: var(--muted-foreground);
   transition: color var(--motion-hover);
 }
@@ -283,7 +283,7 @@
 }
 .startup-error {
   margin-top: 16px;
-  font-size: 13px;
+  font-size: var(--text-meta);
   color: var(--muted-foreground);
 }
 .startup-error button {
@@ -296,7 +296,7 @@
   letter-spacing: -0.7px;
 }
 .owner-card p {
-  font-size: 12px;
+  font-size: var(--text-caption);
   color: var(--muted-foreground);
   line-height: 1.6;
 }
@@ -321,7 +321,7 @@
 }
 .setup-intro p {
   color: var(--muted-foreground);
-  font-size: 13px;
+  font-size: var(--text-meta);
   margin-top: 8px;
 }
 .appearance-picker {
@@ -363,12 +363,12 @@
 .request-review,
 .approval {
   padding: 16px 0;
-  font-size: 13px;
+  font-size: var(--text-meta);
 }
 .request-review p,
 .approval p {
   color: var(--muted-foreground);
-  font-size: 12px;
+  font-size: var(--text-caption);
   margin: 8px 0;
   overflow-wrap: anywhere;
 }
@@ -394,7 +394,7 @@
   align-items: center;
   gap: 12px;
   color: var(--muted-foreground);
-  font-size: 12px;
+  font-size: var(--text-caption);
 }
 .connections-scope [data-slot='select-trigger'] {
   width: min(100%, 280px);
@@ -421,7 +421,7 @@
   align-self: flex-start;
   height: 28px;
   padding: 0;
-  font-size: 12px;
+  font-size: var(--text-caption);
 }
 .connection-list,
 .connection-catalog {
@@ -431,14 +431,14 @@
 }
 .connection-tool strong {
   display: block;
-  font-size: 14px;
+  font-size: var(--text-ui);
   font-weight: 500;
   overflow-wrap: anywhere;
 }
 .connection-added,
 .connection-status-text {
   color: var(--muted-foreground);
-  font-size: 12px;
+  font-size: var(--text-caption);
 }
 .connection-status-text[data-connected='true'] {
   color: var(--success);
@@ -446,7 +446,7 @@
 .connections-empty {
   padding: 20px 0;
   color: var(--muted-foreground);
-  font-size: 13px;
+  font-size: var(--text-meta);
 }
 .connection-detail {
   display: flex;
@@ -477,7 +477,7 @@
   gap: 14px;
 }
 .connection-section h3 {
-  font-size: 14px;
+  font-size: var(--text-ui);
   font-weight: 500;
 }
 .connection-detail-actions,
@@ -496,16 +496,16 @@
 .connection-credential > [data-slot='button'] {
   padding: 0;
   height: 28px;
-  font-size: 12px;
+  font-size: var(--text-caption);
 }
 .connection-credential label {
-  font-size: 12px;
+  font-size: var(--text-caption);
 }
 .connection-tools p,
 .connection-tool small,
 .connection-tool code {
   display: block;
-  font-size: 12px;
+  font-size: var(--text-caption);
   color: var(--muted-foreground);
   margin-top: 4px;
   overflow-wrap: anywhere;
@@ -651,7 +651,7 @@
   display: flex;
   flex-direction: column;
   gap: 8px;
-  font-size: 12px;
+  font-size: var(--text-caption);
 }
 .account-devices {
   display: flex;
@@ -661,11 +661,11 @@
   margin-top: 40px;
 }
 .account-devices h2 {
-  font-size: 14px;
+  font-size: var(--text-ui);
   margin-bottom: 6px;
 }
 .account-devices p {
-  font-size: 12px;
+  font-size: var(--text-caption);
   color: var(--muted-foreground);
 }
 .form-actions {
@@ -674,7 +674,7 @@
 .search-status {
   padding: 24px;
   color: var(--muted-foreground);
-  font-size: 13px;
+  font-size: var(--text-meta);
 }
 .search-status.error {
   color: var(--destructive);
@@ -726,19 +726,19 @@
   align-items: flex-start;
   gap: 12px;
   padding: 12px 0;
-  font-size: 13px;
+  font-size: var(--text-meta);
 }
 .selection-row > input {
   margin-top: 3px;
 }
 .selection-row strong {
-  font-size: 13px;
+  font-size: var(--text-meta);
   font-weight: 500;
 }
 .selection-row small {
   display: block;
   color: var(--muted-foreground);
-  font-size: 12px;
+  font-size: var(--text-caption);
   margin-top: 4px;
 }
 .entity-page fieldset {
@@ -747,7 +747,7 @@
   padding: 0;
 }
 .entity-page legend {
-  font-size: 13px;
+  font-size: var(--text-meta);
   font-weight: 550;
   margin-bottom: 6px;
 }
@@ -762,7 +762,7 @@
   overflow: auto;
   min-height: 0;
   flex: 1;
-  font-size: 14px;
+  font-size: var(--text-ui);
   line-height: 1.6;
 }
 .product-dialog.search-result {
@@ -798,7 +798,7 @@
 .first-hero p,
 .pair-card p,
 .first-footer {
-  font-size: 13px;
+  font-size: var(--text-meta);
   line-height: 1.6;
   color: var(--muted-foreground);
 }
@@ -816,7 +816,7 @@
   display: flex;
   flex-direction: column;
   gap: 8px;
-  font-size: 13px;
+  font-size: var(--text-meta);
 }
 .pair-code {
   font:
@@ -852,7 +852,7 @@
   flex-shrink: 0;
   gap: 20px;
   padding: 20px;
-  font-size: 13px;
+  font-size: var(--text-meta);
   line-height: 1.6;
   overflow-wrap: anywhere;
 }
@@ -870,7 +870,7 @@
   min-width: 0;
   gap: 16px;
   margin: 0;
-  font-size: 12px;
+  font-size: var(--text-caption);
 }
 .request-fields > div {
   display: grid;
@@ -891,7 +891,7 @@
   max-height: 240px;
   overflow: auto;
   white-space: pre-wrap;
-  font-size: 12px;
+  font-size: var(--text-caption);
 }
 .request-actions {
   display: flex;
@@ -964,7 +964,7 @@
   display: flex;
   align-items: center;
   gap: 8px;
-  font-size: 12px;
+  font-size: var(--text-caption);
   color: var(--muted-foreground);
 }
 .pebble-profile-fields {
@@ -1072,6 +1072,6 @@
   scrollbar-gutter: stable;
 }
 .pc-document-scroll .message-body {
-  font-size: 14px;
+  font-size: var(--text-ui);
   line-height: 1.8;
 }
