@@ -30,6 +30,13 @@ async function measureTyping(
       })),
     });
     const page = await context.newPage();
+    let pageErrors = 0,
+      failedBridgeResponses = 0;
+    page.on('pageerror', () => pageErrors++);
+    page.on('response', (response) => {
+      if (new URL(response.url()).pathname.startsWith('/v1/') && !response.ok())
+        failedBridgeResponses++;
+    });
     await page.goto(options.url);
     const field = page.getByLabel('Message', { exact: true });
     await expect(field).toBeEnabled();
@@ -65,6 +72,7 @@ async function measureTyping(
     const streamChunks = Number(process.env.PEBBLE_INPUT_STREAM_CHUNKS ?? 20);
     const streamIntervalMs = Number(process.env.PEBBLE_INPUT_STREAM_INTERVAL ?? 100);
     const before = await cdp.send('Performance.getMetrics');
+    const runStarted = performance.now();
     if (options.streaming)
       await page.evaluate(
         ({ chunks, interval }) => {
@@ -108,6 +116,7 @@ async function measureTyping(
           requestAnimationFrame(() => requestAnimationFrame(() => resolve())),
         ),
     );
+    const measuredElapsedMs = performance.now() - runStarted;
     const after = await cdp.send('Performance.getMetrics');
     const paints = await page.evaluate(
       () => (window as unknown as { __inputPaints: number[] }).__inputPaints,
@@ -131,7 +140,12 @@ async function measureTyping(
       retained.metrics.filter((m) => resources.includes(m.name)).map((m) => [m.name, m.value]),
     );
     expect(paints).toHaveLength(options.typing === false ? 0 : value.length);
+    expect(pageErrors).toBe(0);
+    expect(failedBridgeResponses).toBe(0);
     const result = {
+      pageErrors,
+      failedBridgeResponses,
+      measuredElapsedMs,
       scriptMs: metrics.ScriptDuration * 1000,
       count,
       streaming: !!options.streaming,
