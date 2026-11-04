@@ -11,7 +11,7 @@ test('regular and pinned pebbles open the shared menu on press-and-hold without 
   await page.goto('/');
   await expect(page.getByLabel('Message', { exact: true })).toBeEnabled();
   await page.getByRole('button', { name: 'Toggle navigation', exact: true }).tap();
-  const navigation = page.getByRole('dialog', { name: 'navigation', exact: true });
+  const navigation = page.getByRole('region', { name: 'navigation', exact: true });
   await expectPinnedLayout(navigation.locator('.pinned-tile'));
   await page.screenshot({
     animations: 'disabled',
@@ -22,10 +22,11 @@ test('regular and pinned pebbles open the shared menu on press-and-hold without 
     Math.min(360, page.viewportSize()!.width - 24) - 0.25,
   );
   const add = (await navigation.getByRole('button', { name: 'New', exact: true }).boundingBox())!;
-  const close = (await navigation
-    .getByRole('button', { name: 'Close navigation', exact: true })
+  const account = (await navigation
+    .getByRole('button', { name: 'Your account', exact: true })
     .boundingBox())!;
-  expect(close.x - (add.x + add.width)).toBeGreaterThanOrEqual(7.75);
+  expect(add.x - (account.x + account.width)).toBeGreaterThan(100);
+  expect((await navigation.boundingBox())!.width).toBe(page.viewportSize()!.width);
   for (const name of ['Rowan', 'Arlo']) {
     const item = sidebarItem(page, name);
     const trigger = item.getByRole('button', { includeHidden: true }).first();

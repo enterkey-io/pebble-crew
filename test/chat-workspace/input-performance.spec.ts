@@ -1,4 +1,4 @@
-import { test, expect } from '@playwright/test';
+import { test, expect, devices } from '@playwright/test';
 import type { Browser } from '@playwright/test';
 import { writeFile, mkdir } from 'node:fs/promises';
 import { installFixture, history } from './fixtures';
@@ -11,11 +11,13 @@ async function measureTyping(
     label?: string;
     profile?: boolean;
     streaming?: boolean;
+    mobile?: boolean;
+    typing?: boolean;
     screenshot?: string;
   },
 ) {
   const context = await browser.newContext({
-    viewport: { width: 1440, height: 900 },
+    ...(options.mobile ? devices['Pixel 7'] : { viewport: { width: 1440, height: 900 } }),
     colorScheme: 'dark',
     serviceWorkers: 'block',
   });
@@ -78,8 +80,10 @@ async function measureTyping(
     const before = await cdp.send('Performance.getMetrics');
     const value = 'Please review this project and explain the next steps.';
     const started = performance.now();
-    await field.pressSequentially(value, { delay: options.streaming ? 20 : 0 });
-    await expect(field).toHaveValue(value);
+    if (options.typing !== false) {
+      await field.pressSequentially(value, { delay: options.streaming ? 20 : 0 });
+      await expect(field).toHaveValue(value);
+    }
     const elapsed = performance.now() - started;
     if (options.streaming) {
       await expect
@@ -112,12 +116,24 @@ async function measureTyping(
     );
     if (metrics.ScriptDuration === undefined)
       throw new Error('Browser did not report script duration');
-    expect(paints).toHaveLength(value.length);
+    await cdp.send('HeapProfiler.collectGarbage');
+    const retained = await cdp.send('Performance.getMetrics');
+    const resources = ['JSEventListeners', 'Nodes', 'JSHeapUsedSize'];
+    const beforeResources = Object.fromEntries(
+      before.metrics.filter((m) => resources.includes(m.name)).map((m) => [m.name, m.value]),
+    );
+    const retainedResources = Object.fromEntries(
+      retained.metrics.filter((m) => resources.includes(m.name)).map((m) => [m.name, m.value]),
+    );
+    expect(paints).toHaveLength(options.typing === false ? 0 : value.length);
     const result = {
       scriptMs: metrics.ScriptDuration * 1000,
       count,
       streaming: !!options.streaming,
-      characters: value.length,
+      typing: options.typing !== false,
+      characters: options.typing === false ? 0 : value.length,
+      beforeResources,
+      retainedResources,
       elapsed,
       paints: paints.length,
       medianPaint: paints[Math.floor(paints.length / 2)],
@@ -187,6 +203,8 @@ test('measures typing work in a production conversation', async ({ browser }, te
         label,
         profile: !!process.env.PEBBLE_INPUT_PROFILE,
         streaming: !!process.env.PEBBLE_INPUT_STREAM,
+        mobile: !!process.env.PEBBLE_INPUT_MOBILE,
+        typing: !process.env.PEBBLE_INPUT_NO_TYPING,
         screenshot: testInfo.outputPath(`${label}.png`),
       });
       console.log(JSON.stringify({ label, ...result }));

@@ -111,6 +111,38 @@ async function start(credential?: string) {
 }
 
 describe('OwnerSession lifecycle', () => {
+  it('suspends pagehide without deleting the lease and resumes the same client after a long absence', async () => {
+    const browser = new EventTarget();
+    const document = Object.assign(new EventTarget(), { visibilityState: 'visible' });
+    vi.stubGlobal('window', browser);
+    vi.stubGlobal('document', document);
+    try {
+      const h = await start();
+      const client = h.session.client;
+      const calls = h.fetcher.mock.calls.length;
+      document.visibilityState = 'hidden';
+      document.dispatchEvent(new Event('visibilitychange'));
+      browser.dispatchEvent(Object.assign(new Event('pagehide'), { persisted: false }));
+      await vi.advanceTimersByTimeAsync(10 * 60_000);
+      expect(h.session.getSnapshot().kind).not.toBe('closed');
+      expect(h.fetcher.mock.calls.some(([, init]) => init?.method === 'DELETE')).toBe(false);
+      expect(h.fetcher.mock.calls.length).toBe(calls);
+      document.visibilityState = 'visible';
+      document.dispatchEvent(new Event('visibilitychange'));
+      browser.dispatchEvent(new Event('pageshow'));
+      await vi.advanceTimersByTimeAsync(10);
+      expect(h.session.client).toBe(client);
+      expect(h.session.getSnapshot().kind).toBe('available');
+      expect(h.leases()).toBe(1);
+      expect(h.ticket).toHaveBeenCalledTimes(2);
+      expect(h.eventCalls()).toBe(2);
+      expect(h.resource).toHaveBeenCalled();
+      h.session.close();
+      expect(h.fetcher.mock.calls.some(([, init]) => init?.method === 'DELETE')).toBe(true);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
   it('preserves feature cancellation through the stable media port', async () => {
     const h = await start();
     const controller = new AbortController();

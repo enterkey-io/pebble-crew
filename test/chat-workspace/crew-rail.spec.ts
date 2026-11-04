@@ -302,7 +302,7 @@ for (const theme of ['dark', 'light'] as const)
     await expect(page.getByLabel('Message', { exact: true })).toBeEnabled();
     await showRail(page);
     const rail = info.project.use.isMobile
-      ? page.getByRole('dialog', { name: 'navigation', exact: true })
+      ? page.getByRole('region', { name: 'navigation', exact: true })
       : page.getByRole('complementary', { name: 'Pebbles and crews', exact: true });
     await expect(rail).toHaveCSS(
       'background-color',
@@ -312,8 +312,7 @@ for (const theme of ['dark', 'light'] as const)
       path: info.outputPath(`sidebar-${theme}.png`),
       animations: 'disabled',
     });
-    if (info.project.use.isMobile)
-      await page.getByRole('button', { name: 'Close navigation', exact: true }).click();
+    if (info.project.use.isMobile) await page.goBack();
     await page.locator('.chat-title').click();
     const details = page.locator('.pc-details').filter({ visible: true });
     await expect(details).toHaveCSS(

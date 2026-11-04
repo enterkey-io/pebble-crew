@@ -140,7 +140,8 @@ for (const theme of ['dark', 'light'] as const)
       animations: 'disabled',
     });
     await first.getByRole('button', { name: 'Approve exact request' }).click();
-    await expect(queue).toContainText('1 of 1');
+    await expect(queue).toBeVisible();
+    await expect(queue).not.toContainText('1 of 1');
     await expect(page.getByRole('log').locator('[data-request-id="first"]')).toContainText(
       'Approved',
     );
@@ -250,7 +251,8 @@ test('native approvals use the fixed queue, reject stale snapshots and leave rec
     animations: 'disabled',
   });
   await dock(page).getByRole('button', { name: 'Deny', exact: true }).click();
-  await expect(dock(page)).toContainText('1 of 1');
+  await expect(dock(page)).toBeVisible();
+  await expect(dock(page)).not.toContainText('1 of 1');
   await expect(page.getByRole('log')).toContainText('Tool action denied');
   fixture.setApprovals([]);
   await emit(page, 'approval.request');
@@ -351,7 +353,23 @@ test('question drafts and secret forms survive queue switching, navigation and r
   );
   await dock(page).getByRole('button', { name: 'Submit', exact: true }).click();
   await expect.poll(() => secretValue).toBe('synthetic-secret-do-not-record');
-  await expect(dock(page)).toContainText('1 of 1');
+  await expect(dock(page)).toBeVisible();
+  await expect(dock(page)).not.toContainText('1 of 1');
+  const actions = dock(page).locator('[data-slot="questionnaire-actions"]');
+  await expect(actions).toBeVisible();
+  await expect(actions.getByRole('button', { name: 'Skip', exact: true })).toBeVisible();
+  const actionBox = (await actions.boundingBox())!;
+  const skipBox = (await actions.getByRole('button', { name: 'Skip', exact: true }).boundingBox())!;
+  const submitBox = (await actions
+    .getByRole('button', { name: 'Submit', exact: true })
+    .boundingBox())!;
+  expect(Math.abs(skipBox.x - actionBox.x)).toBeLessThanOrEqual(1);
+  expect(
+    Math.abs(submitBox.x + submitBox.width - actionBox.x - actionBox.width),
+  ).toBeLessThanOrEqual(1);
+  await expect(dock(page).getByRole('button', { name: 'Next request', exact: true })).toHaveCount(
+    0,
+  );
   await page.screenshot({
     path: info.outputPath('question-input-queue.png'),
     animations: 'disabled',
@@ -378,7 +396,8 @@ for (const fault of ['corruptOld', 'failOld'] as const)
     const requests = [proposal('old')];
     const { control } = await journal(page, requests);
     await page.goto('/');
-    await expect(dock(page)).toContainText('1 of 1');
+    await expect(dock(page)).toBeVisible();
+    await expect(dock(page)).not.toContainText('1 of 1');
     requests.push(proposal('new-ron'));
     control[fault] = true;
     await emit(page, 'requests.changed');

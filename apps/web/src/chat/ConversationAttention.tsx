@@ -46,32 +46,34 @@ export function ConversationAttention({
       role="region"
       aria-label="Waiting for your input"
       data-slot="conversation-attention"
-      className="pc-composer-width min-w-0 rounded-2xl bg-card text-card-foreground shadow-sm"
+      className="pc-composer-width min-w-0 text-card-foreground"
     >
-      <div className="flex items-center gap-2 px-4 pt-3 pb-1 text-xs text-muted-foreground">
-        <span className="mr-auto">Your input</span>
-        <span aria-live="polite" className="tabular-nums">
-          {index + 1} of {items.length}
-        </span>
-        <Button
-          variant="quiet"
-          size="icon-sm"
-          aria-label="Previous request"
-          disabled={index === 0}
-          onClick={() => choose(items[index - 1]?.id ?? '')}
-        >
-          <ChevronLeft />
-        </Button>
-        <Button
-          variant="quiet"
-          size="icon-sm"
-          aria-label="Next request"
-          disabled={index === items.length - 1}
-          onClick={() => choose(items[index + 1]?.id ?? '')}
-        >
-          <ChevronRight />
-        </Button>
-      </div>
+      {items.length > 1 && (
+        <div className="flex items-center gap-2 px-4 pt-3 pb-1 text-xs text-muted-foreground">
+          <span className="mr-auto">Your input</span>
+          <span aria-live="polite" className="tabular-nums">
+            {index + 1} of {items.length}
+          </span>
+          <Button
+            variant="quiet"
+            size="icon-sm"
+            aria-label="Previous request"
+            disabled={index === 0}
+            onClick={() => choose(items[index - 1]?.id ?? '')}
+          >
+            <ChevronLeft />
+          </Button>
+          <Button
+            variant="quiet"
+            size="icon-sm"
+            aria-label="Next request"
+            disabled={index === items.length - 1}
+            onClick={() => choose(items[index + 1]?.id ?? '')}
+          >
+            <ChevronRight />
+          </Button>
+        </div>
+      )}
       <div className="max-h-[min(66dvh,36rem)] overflow-y-auto overscroll-contain px-1 pb-1">
         {items.map((item, i) => (
           <div key={item.id} hidden={i !== index} inert={i !== index} data-attention-id={item.id}>

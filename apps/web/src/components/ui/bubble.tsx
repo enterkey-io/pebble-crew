@@ -14,7 +14,7 @@ function BubbleGroup({ className, ...props }: React.ComponentProps<'div'>) {
 }
 
 const bubbleVariants = cva(
-  'group/bubble relative flex w-fit max-w-[80%] min-w-0 flex-col gap-1 group-data-[align=end]/message:self-end data-[align=end]:self-end data-[variant=ghost]:max-w-full has-data-[slot=bubble-reactions]:*:data-[slot=bubble-content]:w-full has-[[data-slot=bubble-reactions][data-side=bottom]]:*:data-[slot=bubble-content]:pb-6 has-[[data-slot=bubble-reactions][data-side=top]]:*:data-[slot=bubble-content]:pt-6',
+  'group/bubble relative flex w-fit max-w-[80%] max-md:data-[align=end]:max-w-[85%] min-w-0 flex-col gap-1 group-data-[align=end]/message:self-end data-[align=end]:self-end data-[variant=ghost]:max-w-full has-data-[slot=bubble-reactions]:*:data-[slot=bubble-content]:w-full has-[[data-slot=bubble-reactions][data-side=bottom]]:*:data-[slot=bubble-content]:pb-6 has-[[data-slot=bubble-reactions][data-side=top]]:*:data-[slot=bubble-content]:pt-6',
   {
     variants: {
       variant: {

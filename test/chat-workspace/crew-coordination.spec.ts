@@ -1,3 +1,4 @@
+import { submitMessage } from '../composer';
 import { test, expect } from '@playwright/test';
 import { installFixture, emit } from './fixtures';
 import type { OrganizationState } from '../../apps/web/src/ui/organization';
@@ -40,9 +41,16 @@ test('Pins, normal shortcuts and compact manager-first Crew rows share one ident
   const crew = page.locator('[data-crew-id=studio]').filter({ visible: true });
   await expect(crew.getByRole('img', { name: 'Crew manager', exact: true })).toHaveCount(1);
   expect(
-    await crew
-      .locator('.pc-crew-member button')
-      .evaluateAll((nodes) => nodes.map((node) => node.textContent?.trim())),
+    await crew.locator('.pc-crew-member button').evaluateAll((nodes) =>
+      nodes.map((node) =>
+        node instanceof HTMLElement
+          ? node.innerText
+              .trim()
+              .replace(/\s*·\s*/g, ' ')
+              .replace(/\s+/g, ' ')
+          : '',
+      ),
+    ),
   ).toEqual(['Rowan Operations', 'Arlo Team lead', 'Mica Executive assistant']);
   const member = crew
     .locator('.pc-crew-member')
@@ -277,7 +285,7 @@ test('private replies push into the existing history link and open viewer withou
   ).toBeVisible();
   await expect(reference).toHaveAttribute('data-original-reference', 'true');
   await field.fill('A later owner message');
-  await field.press('Enter');
+  await submitMessage(page);
   await expect(page.getByText('A later owner message', { exact: true })).toBeVisible();
   await expect(reference).toHaveCount(1);
   await page.reload();

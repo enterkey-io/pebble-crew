@@ -1,3 +1,4 @@
+import { submitMessage } from '../composer';
 import { test, expect } from '@playwright/test';
 import { installFixture, emit } from './fixtures';
 
@@ -46,7 +47,7 @@ test('new user messages and first reply text move the viewport through intermedi
   await page.evaluate(() => document.fonts.ready);
   await input.fill('A longer new message that should enter gently. '.repeat(8));
   await recordFrames(page);
-  await input.press('Enter');
+  await submitMessage(page);
   const user = await readFrames(page);
   expect(new Set(user.map((frame) => Math.round(frame.top))).size).toBeGreaterThan(3);
   await expect(page.locator('[data-message-role="user"]').last()).toContainText(
@@ -109,7 +110,7 @@ test('reduced motion settles at the latest message without an entrance', async (
   const input = page.getByLabel('Message', { exact: true });
   await expect(input).toBeEnabled();
   await input.fill('A reduced motion message. '.repeat(10));
-  await input.press('Enter');
+  await submitMessage(page);
   await expect(page.locator('[data-message-role="user"]').last()).toHaveCSS('opacity', '1');
   const distance = await page
     .getByRole('log')

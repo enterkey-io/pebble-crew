@@ -64,6 +64,7 @@ test('completion settles activity without moving the lane and stops its shimmer 
   await expect(page.locator('[data-message-phase="live"]')).toContainText('I found the answer.');
   await expect(page.locator('.pc-activity')).toHaveCount(0);
   await expect(page.locator('.pc-activity-lane [role="status"]')).toBeEmpty();
+  await page.getByLabel('Message', { exact: true }).blur();
   await expect(page.getByRole('button', { name: 'Stop', exact: true })).toBeEnabled();
   await page.screenshot({
     path: test.info().outputPath('reply-without-redundant-status.png'),
@@ -124,6 +125,7 @@ test('the composer action changes meaning immediately and crossfades only its gl
   await installFixture(context, { messages: [], voice: true });
   await page.goto('/');
   await expect(page.getByLabel('Message', { exact: true })).toBeEnabled();
+  await page.getByLabel('Message', { exact: true }).blur();
   const send = page.getByRole('button', { name: 'Voice chat', exact: true });
   await expect(send).toBeEnabled();
   await send.focus();
@@ -162,7 +164,8 @@ test('the composer action changes meaning immediately and crossfades only its gl
   });
   await stop.click();
   await page.getByLabel('Message', { exact: true }).fill('A draft to preserve');
-  await expect(page.getByRole('button', { name: 'Stopping', exact: true })).toBeDisabled();
+  await expect(page.getByRole('button', { name: 'Send message', exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Stop', exact: true })).toHaveCount(0);
   await expect(page.locator('.pc-activity')).toHaveText('Stopping');
   expect(await button.textContent()).toBe('');
   await expect(page.getByLabel('Message', { exact: true })).toHaveValue('A draft to preserve');
@@ -253,7 +256,8 @@ test('a held send gesture still sends once when a run starts and never turns int
       await page.mouse.down();
     } else await page.keyboard.down(gesture);
     await emit(page, 'message.start');
-    await expect(page.getByRole('button', { name: 'Stop', exact: true })).toBeEnabled();
+    await expect(page.getByRole('button', { name: 'Send message', exact: true })).toBeEnabled();
+    await expect(page.getByRole('button', { name: 'Stop', exact: true })).toHaveCount(0);
     if (gesture === 'pointer') await page.mouse.up();
     else await page.keyboard.up(gesture);
     await page.waitForTimeout(100);
@@ -285,6 +289,7 @@ test('a new run interrupts settlement and a failed stop restores its actual acti
     if (route.request().postDataJSON().operation !== 'chat.stop') return route.fallback();
     await route.fulfill({ status: 500, json: { code: 'REQUEST_FAILED' } });
   });
+  await page.getByLabel('Message', { exact: true }).blur();
   await page.getByRole('button', { name: 'Stop', exact: true }).click();
   await expect(page.getByRole('button', { name: 'Stop', exact: true })).toBeEnabled();
   await expect(page.locator('.pc-activity')).toHaveText('Running a command');

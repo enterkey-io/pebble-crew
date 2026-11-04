@@ -1,3 +1,4 @@
+import { submitMessage } from '../composer';
 import { execFileSync } from 'node:child_process';
 import { openSidebarMenu } from '../sidebar-menu';
 import { test, expect } from '@playwright/test';
@@ -296,7 +297,7 @@ test('native Crews, group chats, avatar switching and role persistence', async (
   await groupField.fill('@');
   await page.getByRole('option', { name: 'Alpha @alpha', exact: true }).click();
   await groupField.fill('@alpha Hello from the crew');
-  await groupField.press('Enter');
+  await submitMessage(page);
   const groupMessage = page
     .locator('[data-message-role="user"]')
     .filter({ hasText: '@alpha Hello from the crew' });
@@ -729,7 +730,7 @@ test('ordinary Send redirects the real native turn on phone and survives reload'
   const input = page.getByLabel('Message', { exact: true });
   await input.fill('nativeworking');
   await expect(page.getByRole('button', { name: 'Send message', exact: true })).toBeEnabled();
-  await input.press('Enter');
+  await submitMessage(page);
   await expect
     .poll(
       async () => {
@@ -743,12 +744,12 @@ test('ordinary Send redirects the real native turn on phone and survives reload'
     .toBe(true);
   await input.fill('nativecorrection');
   await expect(page.getByRole('button', { name: 'Send message', exact: true })).toBeEnabled();
-  await expect(page.getByRole('button', { name: 'Stop', exact: true })).toBeEnabled();
+  await expect(page.getByRole('button', { name: 'Stop', exact: true })).toHaveCount(0);
   await page.screenshot({
     path: 'test-results/native-send-working-phone.png',
     animations: 'disabled',
   });
-  await input.press('Enter');
+  await submitMessage(page);
   await expect(page.getByRole('log')).toContainText('Native redirected reply', { timeout: 30000 });
   await expect(
     page.locator('[data-message-role="user"]').filter({ hasText: /^nativecorrection/ }),
@@ -878,7 +879,8 @@ test('existing legacy creation survives another approval and completes once thro
   await expect(queue.locator('[data-request-id="' + seeded.id + '"]')).toBeVisible();
   await queue.getByRole('button', { name: 'Next request', exact: true }).click();
   await queue.getByRole('button', { name: 'Approve exact request' }).click();
-  await expect(queue).toContainText('1 of 1');
+  await expect(queue.getByRole('button', { name: 'Next request', exact: true })).toHaveCount(0);
+  await expect(queue).not.toContainText('1 of 1');
   await expect(queue).toContainText('Older request');
   await expect(queue.getByRole('button', { name: 'Approve exact request' })).toBeDisabled();
   await queue.getByRole('checkbox', { name: 'Use this current setup', exact: true }).check();

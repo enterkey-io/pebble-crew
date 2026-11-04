@@ -1,3 +1,4 @@
+import { submitMessage } from '../composer';
 import { openSidebarMenu } from '../sidebar-menu';
 import { test, expect } from '@playwright/test';
 import { mkdir, writeFile } from 'node:fs/promises';
@@ -92,8 +93,9 @@ test('populated production workspace: layout, drafts, scroll, crew authors and r
     );
     await expect(input).toBeVisible();
     await page.getByRole('button', { name: 'Toggle navigation' }).click();
-    const drawer = page.getByRole('dialog', { name: 'navigation' });
+    const drawer = page.getByRole('region', { name: 'navigation' });
     await expect(drawer).toBeVisible();
+    await expect.poll(async () => (await drawer.boundingBox())!.x).toBe(0);
     await page.screenshot({ path: `test-results/workspace-rail-${width}.png` });
     await page.keyboard.press('Escape');
     await expect(page.getByRole('button', { name: 'Toggle navigation' })).toBeFocused();
@@ -161,12 +163,13 @@ test('streaming, stop, IME and reconnection preserve drafts without submitting t
   await input.fill('Hello');
   await input.dispatchEvent('keydown', { key: 'Enter', isComposing: true });
   expect(sends).toBe(0);
-  await input.press('Enter');
+  await submitMessage(page);
   await expect.poll(() => sends).toBe(1);
   await expect(input).toHaveValue('');
   await emit(page, 'message.start');
   await emit(page, 'message.delta', { text: 'A live reply' });
   await expect(page.getByRole('log')).toContainText('A live reply');
+  await input.blur();
   await page.getByRole('button', { name: 'Stop', exact: true }).click();
   await expect(page.getByRole('button', { name: 'Stopping', exact: true })).toBeDisabled();
   await emit(page, 'message.complete', { status: 'interrupted' });

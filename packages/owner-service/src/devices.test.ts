@@ -105,25 +105,22 @@ describe('native owner device access', () => {
   it('consumes an invitation once and safely recovers a lost enrollment response', async () => {
     const code = await invitation(),
       body = enrollment(code);
-    const responses = await Promise.all([
-      service.fetch(req('/api/devices/redeem', body)),
-      service.fetch(
-        req('/api/devices/redeem', {
-          ...body,
-          id: crypto.randomUUID(),
-          credential: 'E'.repeat(43),
-        }),
-      ),
-    ]);
+    const contenders = [body, { ...body, id: crypto.randomUUID(), credential: 'E'.repeat(43) }];
+    const responses = await Promise.all(
+      contenders.map((contender) => service.fetch(req('/api/devices/redeem', contender))),
+    );
     expect(responses.map((r) => r.status).sort()).toEqual([201, 410]);
-    expect((await service.fetch(req('/api/devices/redeem', body))).status).toBe(201);
+    const winner = contenders[responses.findIndex((response) => response.status === 201)]!;
+    const loser = contenders[responses.findIndex((response) => response.status === 410)]!;
+    expect((await service.fetch(req('/api/devices/redeem', winner))).status).toBe(201);
+    expect((await service.fetch(req('/api/devices/redeem', loser))).status).toBe(410);
     expect(db.prepare('SELECT count(*) n FROM owner_device').get()?.n).toBe(1);
     expect(db.prepare('SELECT count(*) n FROM owner_device_invitation').get()?.n).toBe(0);
     expect(db.prepare('SELECT credential_hash FROM owner_device').get()?.credential_hash).toBe(
-      await digest(body.credential),
+      await digest(winner.credential),
     );
     expect(JSON.stringify(db.prepare('SELECT * FROM owner_device').get())).not.toContain(
-      body.credential,
+      winner.credential,
     );
   });
   it('rejects expired invitations and does not allow a revoked enrollment to return', async () => {

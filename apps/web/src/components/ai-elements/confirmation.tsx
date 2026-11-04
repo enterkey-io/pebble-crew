@@ -95,7 +95,7 @@ export function Confirmation({
         details
       )}
       {value.kind === 'pending' ? (
-        <ItemActions className="justify-end">
+        <ItemActions className="w-full justify-between">
           <Button
             disabled={value.disabled ?? false}
             variant="quiet"

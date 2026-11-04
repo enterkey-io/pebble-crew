@@ -29,6 +29,7 @@ export class OwnerSession {
   #capabilities: BotBridgeClient | undefined;
   #epoch = 0;
   #closed = false;
+  #paused = false;
   #started = false;
   #status: SessionStatus = { kind: 'starting' };
   #listeners = new Set<(notice: SessionNotice) => void>();
@@ -151,22 +152,34 @@ export class OwnerSession {
     if (this.#started || this.#closed) return;
     this.#started = true;
     if (typeof window !== 'undefined') {
+      const pause = () => {
+        this.#paused = true;
+        clearTimeout(this.#timer);
+        const stream = this.#stream;
+        this.#stream = undefined;
+        this.#streamReady = false;
+        stream?.abort();
+      };
       const wake = () => {
-        if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return;
+        if (document.visibilityState === 'hidden') return;
+        this.#paused = false;
         this.retry();
+      };
+      const visibility = () => {
+        if (document.visibilityState === 'hidden') pause();
+        else wake();
       };
       for (const event of ['online', 'offline', 'focus', 'pageshow'])
         window.addEventListener(event, wake);
-      const hide = (event: PageTransitionEvent) => {
-        if (!event.persisted) this.close();
-      };
-      window.addEventListener('pagehide', hide);
-      document.addEventListener('visibilitychange', wake);
+      // Page lifecycle events suspend the transport, never its feature state or authority.
+      window.addEventListener('pagehide', pause);
+      document.addEventListener('visibilitychange', visibility);
+      this.#paused = document.visibilityState === 'hidden';
       this.#removeLifecycle = () => {
         for (const event of ['online', 'offline', 'focus', 'pageshow'])
           window.removeEventListener(event, wake);
-        document.removeEventListener('visibilitychange', wake);
-        window.removeEventListener('pagehide', hide);
+        document.removeEventListener('visibilitychange', visibility);
+        window.removeEventListener('pagehide', pause);
       };
     }
     this.#schedule(0);
@@ -228,7 +241,7 @@ export class OwnerSession {
     );
   }
   #schedule(delay: number) {
-    if (this.#closed || !this.#started) return;
+    if (this.#closed || this.#paused || !this.#started) return;
     if (this.#driving) {
       this.#again = true;
       return;
@@ -501,13 +514,13 @@ export class OwnerSession {
     }
   }
   async #drive() {
-    if (this.#closed) return;
+    if (this.#closed || this.#paused) return;
     this.#driving = true;
     this.#again = false;
     try {
       if (!this.#wire && performance.now() >= this.#leaseDue) await this.#connect();
       const wire = this.#wire;
-      if (!wire || this.#closed) return;
+      if (!wire || this.#closed || this.#paused) return;
       if (performance.now() >= this.#renewDue && this.#renewing?.wire !== wire) {
         void this.#renew()
           .catch((error: unknown) => {
@@ -523,10 +536,10 @@ export class OwnerSession {
           })
           .finally(() => this.#schedule(0));
       }
-      if (this.#wire !== wire || this.#closed) return;
+      if (this.#wire !== wire || this.#closed || this.#paused) return;
       if (performance.now() >= this.#healthDue && this.#checking !== wire)
         void this.#checkHealth(wire);
-      if (this.#wire !== wire || this.#closed) return;
+      if (this.#wire !== wire || this.#closed || this.#paused) return;
       if (!this.#stream && performance.now() >= this.#streamDue) this.#startStream(wire);
       if (!this.#restoring && performance.now() >= this.#resourceDue) {
         if (this.#settled === this.#dirty) this.#dirty++;

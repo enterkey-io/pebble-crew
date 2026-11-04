@@ -7,6 +7,7 @@ import type { CommandSuggestionsHandle } from './CommandSuggestions';
 import { MentionSuggestions, useMentionSuggestions } from './MentionSuggestions';
 import { ComposerAction } from './ComposerAction';
 import { useComposerSize } from './use-composer-size';
+import { useMedia } from '../ui/motion';
 import type { useUploads } from './uploads';
 
 /** The input owns keystroke renders; navigation and send receipts can still restore its draft. */
@@ -69,7 +70,9 @@ export function ConversationInput({
   children: ReactNode;
 }) {
   const value = useSyncExternalStore(draft.subscribe, draft.get);
+  const touchKeyboard = useMedia('(pointer: coarse)');
   const [caret, setCaret] = useState(0);
+  const [focused, setFocused] = useState(false);
   const commands = useRef<CommandSuggestionsHandle>(null);
   function edit(text: string) {
     draft.set(text);
@@ -87,6 +90,7 @@ export function ConversationInput({
   });
   useComposerSize(field, value, conversation, active);
   const hasMessage = !!value.trim() || uploads.files.length > 0;
+  const composing = focused || hasMessage;
   const voiceAction = !running && !hasMessage && target?.kind === 'bot' && voice;
   return (
     <>
@@ -122,6 +126,7 @@ export function ConversationInput({
           ref={field}
           rows={1}
           aria-label="Message"
+          enterKeyHint={touchKeyboard ? 'enter' : 'send'}
           autoComplete="off"
           placeholder={target ? `Message ${title}` : 'Choose a conversation'}
           value={value}
@@ -145,8 +150,11 @@ export function ConversationInput({
             edit(e.target.value);
             setCaret(e.target.selectionStart);
           }}
+          onFocus={() => setFocused(true)}
+          onBlur={() => setFocused(false)}
           onSelect={(e) => setCaret(e.currentTarget.selectionStart)}
           onKeyDown={(e) => {
+            if (touchKeyboard && e.key === 'Enter') return;
             if (
               !e.nativeEvent.isComposing &&
               (mentions.key(e.key) || commands.current?.key(e.key))
@@ -162,7 +170,7 @@ export function ConversationInput({
         />
         <ComposerAction
           mode={
-            running && !hasMessage
+            running && !composing
               ? stopping
                 ? 'stopping'
                 : 'stop'
@@ -171,15 +179,12 @@ export function ConversationInput({
                 : 'send'
           }
           disabled={
-            running && !hasMessage
+            running && !composing
               ? stopping || blocked
               : !target || (!voiceAction && !hasMessage) || !uploads.ready || busy || blocked
           }
           onStop={onStop}
           onVoice={onVoice}
-          separateStop={running && hasMessage}
-          stopDisabled={stopping || blocked}
-          stopping={stopping}
         />
       </PromptInputFrame>
     </>

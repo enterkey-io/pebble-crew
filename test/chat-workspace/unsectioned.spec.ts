@@ -34,7 +34,7 @@ test('default pebbles are a flat list even when their old section was collapsed'
   const phone = page.viewportSize()!.width < 768;
   if (phone) await page.getByRole('button', { name: 'Toggle navigation', exact: true }).click();
   const rail = phone
-    ? page.getByRole('dialog', { name: 'navigation' })
+    ? page.getByRole('region', { name: 'navigation' })
     : page.getByRole('complementary', { name: 'Pebbles and crews' });
   const list = rail.getByRole('group', { name: 'Unsectioned pebbles', exact: true });
   await expect(list.getByRole('button', { name: /^Rowan .*Bot Chat$/ })).toBeVisible();
@@ -53,7 +53,7 @@ test('custom sections are optional and None returns a pebble to the plain list',
   const phone = page.viewportSize()!.width < 768;
   if (phone) await page.getByRole('button', { name: 'Toggle navigation', exact: true }).click();
   const rail = phone
-    ? page.getByRole('dialog', { name: 'navigation' })
+    ? page.getByRole('region', { name: 'navigation' })
     : page.getByRole('complementary', { name: 'Pebbles and crews' });
   await rail.getByRole('button', { name: 'New', exact: true }).click();
   await page.getByRole('menuitem', { name: 'New section', exact: true }).click();

@@ -103,6 +103,7 @@ test('reaction picker supports keyboard selection, Escape and focus return', asy
   await trigger.focus();
   await trigger.press('Enter');
   const heart = page.getByRole('menuitem', { name: 'React with heart', exact: true });
+  await expect(page.getByRole('menuitem').first()).toBeFocused();
   await page.keyboard.press('ArrowDown');
   await expect(heart).toBeFocused();
   await page.keyboard.press('Enter');
