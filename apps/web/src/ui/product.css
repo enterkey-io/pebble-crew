@@ -594,6 +594,9 @@
   .pc-composer-wrap {
     padding: 10px 12px max(14px, env(safe-area-inset-bottom));
   }
+  :root[data-keyboard-visible] .pc-composer-wrap {
+    padding-bottom: 14px;
+  }
 }
 .owner-account h2 {
   font-size: 16px;

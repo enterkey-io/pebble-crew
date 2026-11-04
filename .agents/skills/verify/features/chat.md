@@ -10,6 +10,9 @@ Choose a pebble or Crew from the rail. Type into Message. Use the message reacti
 
 ## Driving it with Playwright
 
+For the phone app frame, run `CI=1 npx playwright test --config playwright.mobile.config.ts keyboard.spec.ts pwa-viewport.spec.ts composer-entry.spec.ts pwa.spec.ts`.
+`pwa-viewport.spec.ts` models a standalone WebKit visual viewport missing the status-bar height, keyboard resize/pan, stale measurements after blur, rotation, resume, and preserved drafts. Assert the composer reaches the CSS canvas bottom with only its safe-area padding. Inspect the iPhone and Android captures in both themes. These modeled viewport events do not certify a physical iOS PWA or software keyboard.
+
 Run `CI=1 npx playwright test --config playwright.chat.config.ts live-feedback.spec.ts reactions.spec.ts setup-continuity.spec.ts message-motion.spec.ts`. For touch geometry and stable completion controls, run the relevant keyboard/reaction specs with `playwright.mobile.config.ts`. Verify the addressed message, stable DOM/timestamp and draft, not just the presence of response text. Inspect normal, selected and hovered emoji styling and the settled phone screenshots.
 
 `interaction-feedback.spec.ts` samples activity settlement and send/stop glyph
