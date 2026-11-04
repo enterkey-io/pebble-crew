@@ -527,7 +527,7 @@ export function Rail({
                   <NavigationItem
                     className="pc-crew"
                     key={String(r.room_id)}
-                    aria-label={r.name ? `${String(r.name)} Group chat` : 'Group chat'}
+                    aria-label={`${String(r.name ?? 'Group chat')} ${String(r.preview ?? 'Group conversation')} Open chat`}
                     disabled={!online}
                     onClick={() => onRoom(r)}
                     media={

@@ -196,7 +196,10 @@ test('ad hoc group creation leaves crew membership and sidebar placement unchang
   await expect(
     rail
       .getByRole('navigation', { name: 'Group chats', exact: true })
-      .getByRole('button', { name: 'Planning discussion Group chat', exact: true }),
+      .getByRole('button', {
+        name: 'Planning discussion Group conversation Open chat',
+        exact: true,
+      }),
   ).toBeVisible();
   await page.screenshot({
     path: info.outputPath('ad-hoc-group-navigation.png'),

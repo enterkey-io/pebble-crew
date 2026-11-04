@@ -326,7 +326,10 @@ test('native Crews, group chats, avatar switching and role persistence', async (
   await groupDialog.getByRole('button', { name: 'Create', exact: true }).click();
   await expect(page.locator('.chat-title')).toContainText('Quick discussion');
   await expect(
-    page.getByRole('button', { name: 'Quick discussion Group chat', exact: true }),
+    page.getByRole('button', {
+      name: 'Quick discussion Group conversation Open chat',
+      exact: true,
+    }),
   ).toBeVisible();
   await expect(page.getByRole('button', { name: /^Research .*Open chat$/ })).toBeVisible();
   await openSidebarMenu(page, 'Alpha');
