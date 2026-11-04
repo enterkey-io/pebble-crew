@@ -62,22 +62,27 @@ async function measureTyping(
       await cdp.send('Profiler.enable');
       await cdp.send('Profiler.start');
     }
-    if (options.streaming)
-      await page.evaluate(() => {
-        const receive = (window as unknown as { __chatEvent: (event: unknown) => void })
-          .__chatEvent;
-        const event = (type: string, payload = {}) =>
-          receive({ type, payload, session_id: 'session-arlo' });
-        event('message.start');
-        Object.assign(window, { __inputStreamChunks: 0 });
-        let emitted = 0;
-        const timer = setInterval(() => {
-          event('message.delta', { text: 'The next step is to review the project. ' });
-          Object.assign(window, { __inputStreamChunks: ++emitted });
-          if (emitted === 20) clearInterval(timer);
-        }, 100);
-      });
+    const streamChunks = Number(process.env.PEBBLE_INPUT_STREAM_CHUNKS ?? 20);
+    const streamIntervalMs = Number(process.env.PEBBLE_INPUT_STREAM_INTERVAL ?? 100);
     const before = await cdp.send('Performance.getMetrics');
+    if (options.streaming)
+      await page.evaluate(
+        ({ chunks, interval }) => {
+          const receive = (window as unknown as { __chatEvent: (event: unknown) => void })
+            .__chatEvent;
+          const event = (type: string, payload = {}) =>
+            receive({ type, payload, session_id: 'session-arlo' });
+          event('message.start');
+          Object.assign(window, { __inputStreamChunks: 0 });
+          let emitted = 0;
+          const timer = setInterval(() => {
+            event('message.delta', { text: 'The next step is to review the project. ' });
+            Object.assign(window, { __inputStreamChunks: ++emitted });
+            if (emitted === chunks) clearInterval(timer);
+          }, interval);
+        },
+        { chunks: streamChunks, interval: streamIntervalMs },
+      );
     const value = 'Please review this project and explain the next steps.';
     const started = performance.now();
     if (options.typing !== false) {
@@ -92,9 +97,9 @@ async function measureTyping(
             () => (window as unknown as { __inputStreamChunks: number }).__inputStreamChunks,
           ),
         )
-        .toBe(20);
+        .toBe(streamChunks);
       await expect(page.locator('[data-message-phase="live"] .message-body')).toHaveText(
-        'The next step is to review the project. '.repeat(20).trim(),
+        'The next step is to review the project. '.repeat(streamChunks).trim(),
       );
     }
     await page.evaluate(
@@ -130,6 +135,11 @@ async function measureTyping(
       scriptMs: metrics.ScriptDuration * 1000,
       count,
       streaming: !!options.streaming,
+      streamChunks: options.streaming ? streamChunks : 0,
+      streamIntervalMs: options.streaming ? streamIntervalMs : undefined,
+      replyCharacters: options.streaming
+        ? 'The next step is to review the project. '.length * streamChunks
+        : 0,
       typing: options.typing !== false,
       characters: options.typing === false ? 0 : value.length,
       beforeResources,
@@ -142,7 +152,7 @@ async function measureTyping(
       metrics,
     };
     if (options.label) {
-      const directory = '.audit/request-input';
+      const directory = process.env.PEBBLE_INPUT_OUTPUT ?? '.audit/request-input';
       await mkdir(directory, { recursive: true });
       if (options.profile) {
         const { profile } = await cdp.send('Profiler.stop');

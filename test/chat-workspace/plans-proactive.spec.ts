@@ -166,6 +166,14 @@ test('Plans and project goals use shared editors and preserve owner choices acro
   await dialog.getByLabel('Details', { exact: true }).fill('Review progress every week.');
   await dialog.getByRole('checkbox', { name: 'Product launch', exact: true }).check();
   await expect(dialog.getByRole('heading', { name: 'New plan', exact: true })).toBeInViewport();
+  const save = dialog.getByRole('button', { name: 'Save plan', exact: true });
+  await save.scrollIntoViewIfNeeded();
+  const primary = (await save.boundingBox())!;
+  const secondary = (await dialog
+    .getByRole('button', { name: 'Cancel', exact: true })
+    .boundingBox())!;
+  expect(Math.abs(primary.y - secondary.y)).toBeLessThan(1);
+  expect(primary.x).toBeGreaterThan(secondary.x + secondary.width);
   await page.screenshot({ path: info.outputPath('plan-editor.png'), animations: 'disabled' });
   expect((await new AxeBuilder({ page }).include('[role="dialog"]').analyze()).violations).toEqual(
     [],

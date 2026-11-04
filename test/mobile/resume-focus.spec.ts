@@ -72,3 +72,23 @@ test('a send receipt received in the background never schedules mobile composer 
   });
   await expect(field).not.toBeFocused();
 });
+
+test('Latest messages scrolls without opening the mobile keyboard', async ({ page, context }) => {
+  await installFixture(context);
+  await page.goto('/');
+  const field = page.getByLabel('Message', { exact: true });
+  await expect(field).toBeEnabled();
+  const log = page.getByRole('log');
+  await log.evaluate((node) => {
+    node.scrollTop = 0;
+    node.dispatchEvent(new Event('scroll'));
+  });
+  const latest = page.getByRole('button', { name: '↓ Latest messages', exact: true });
+  await expect(latest).toBeVisible();
+  await latest.tap();
+  await expect(latest).not.toBeVisible();
+  await expect(field).not.toBeFocused();
+  expect(
+    await log.evaluate((node) => node.scrollHeight - node.scrollTop - node.clientHeight),
+  ).toBeLessThan(2);
+});

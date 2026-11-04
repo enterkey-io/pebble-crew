@@ -194,12 +194,10 @@ test('ad hoc group creation leaves crew membership and sidebar placement unchang
   await expect(rail.locator('.pinned-tile strong')).toHaveText(['Arlo', 'Mica']);
   await expect(page.getByRole('heading', { name: 'Group chats', exact: true })).toHaveCount(0);
   await expect(
-    rail
-      .getByRole('navigation', { name: 'Group chats', exact: true })
-      .getByRole('button', {
-        name: 'Planning discussion Group conversation Open chat',
-        exact: true,
-      }),
+    rail.getByRole('navigation', { name: 'Group chats', exact: true }).getByRole('button', {
+      name: 'Planning discussion Group conversation Open chat',
+      exact: true,
+    }),
   ).toBeVisible();
   await page.screenshot({
     path: info.outputPath('ad-hoc-group-navigation.png'),

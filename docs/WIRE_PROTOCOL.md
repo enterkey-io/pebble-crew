@@ -339,7 +339,10 @@ age_ms: number}`. This is dispatcher evidence, separate from stream heartbeats.
   `CONVERSATION_CHANGED`; reopen that target without replacing a valid lease.
 - `LEASE_GONE` explicitly identifies an absent or idle lease. Generic validation
   errors never identify lease loss. `CAPACITY` returns HTTP 429 with `Retry-After`
-  when eight valid leases are in use. `NATIVE_UNAVAILABLE` can reject a request
+  when eight valid leases remain in use after bounded reclamation. At capacity,
+  only the same principal's oldest ended, request-idle stream can be reclaimed
+  after a full heartbeat interval, with no request in flight. Active or polling
+  tabs and other principals are preserved. `NATIVE_UNAVAILABLE` can reject a request
   before native dispatch. These codes are allowlisted and contain no private text.
 - A new authenticated event stream replaces the previous subscription on that
   lease. Old stream cleanup cannot close the replacement. Unrelated native events

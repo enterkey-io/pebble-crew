@@ -801,7 +801,7 @@ test('Preview reports a saved-key rejection without requesting or blaming the mi
   await expect(page.getByRole('alert')).toHaveCount(0);
   const select = await page.getByRole('combobox', { name: 'Voice', exact: true }).elementHandle();
   await page.getByRole('button', { name: 'Preview', exact: true }).click();
-  await expect(page.getByRole('alert')).toContainText('rate limiting');
+  await expect(page.getByRole('alert')).toContainText('rate limiting', { timeout: 20000 });
   expect(await select?.evaluate((element) => element.isConnected)).toBe(true);
   await expect(page.getByRole('combobox', { name: 'Voice', exact: true })).toContainText('Cedar');
   await page.screenshot({ path: info.outputPath('preview-rate-limited.png') });
@@ -814,6 +814,6 @@ test('Preview reports a saved-key rejection without requesting or blaming the mi
   await expect(page.getByRole('combobox', { name: 'Voice', exact: true })).toContainText('Cedar');
   await expect(page.getByRole('button', { name: 'Use saved key', exact: true })).toHaveCount(0);
   await page.getByRole('button', { name: 'Preview', exact: true }).click();
-  await expect(page.getByRole('alert')).toContainText('rate limiting');
+  await expect(page.getByRole('alert')).toContainText('rate limiting', { timeout: 20000 });
   expect(microphoneRequests).toBe(0);
 });

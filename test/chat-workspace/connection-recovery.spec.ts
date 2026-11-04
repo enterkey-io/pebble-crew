@@ -128,7 +128,9 @@ test('reconnecting keeps composer controls, typography, focus and the editable d
     await expect(send).toBeDisabled();
     await page.keyboard.type(' offline');
     await expect(field).toHaveValue('Draft offline');
-    await submitMessage(page);
+    // Attempt the disabled touch action without waiting for reconnection to enable it.
+    if (info.project.use.isMobile) await send.click({ force: true });
+    else await submitMessage(page);
     expect(sends).toBe(0);
     const disconnected = await measure();
     expect(disconnected.fontSize).toBe(before.fontSize);

@@ -220,7 +220,10 @@ for (const theme of ['light', 'dark'] as const) {
     }, theme);
     await navigation(page, info);
     const toggle = page.getByRole('radiogroup', { name: 'App area' });
-    await expect(page.locator('.pc-rail-header:visible')).toHaveCSS('padding-left', '24px');
+    await expect(page.locator('.pc-rail-header:visible')).toHaveCSS(
+      'padding-left',
+      phone(info) ? '16px' : '24px',
+    );
     await expect(toggle.getByRole('radio', { name: 'Chat', exact: true })).toBeChecked();
     const colors = await toggle.evaluate((element) =>
       [...element.querySelectorAll('[role=radio]')].map(

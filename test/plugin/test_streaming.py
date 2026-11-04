@@ -184,6 +184,80 @@ class StreamTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(denied.json()['code'], 'CAPACITY')
         self.assertEqual((await self.http.post('/v1/renew', headers=self.headers)).status_code, 200)
 
+    async def test_a_discarded_page_does_not_hold_browser_capacity_until_ticket_expiry(self):
+        import time
+        _, task = await self.stream()
+        task.cancel()
+        with suppress(asyncio.CancelledError):
+            await task
+        for _ in range(7):
+            self.assertEqual((await self.http.post('/v1/connect', headers=self.headers)).status_code, 200)
+        # A short suspension stays resumable even under capacity pressure.
+        self.assertEqual((await self.http.post('/v1/connect', headers=self.headers)).status_code, 429)
+        with patch('bot_web.server.time.monotonic', return_value=time.monotonic() + 16):
+            replacement = await self.http.post('/v1/connect', headers=self.headers)
+            self.assertEqual(replacement.status_code, 200)
+            self.assertEqual((await self.http.post('/v1/renew', headers=self.headers)).json()['code'], 'LEASE_GONE')
+            fresh = {**self.headers, 'X-Bot-Connection': replacement.json()['connection']}
+            self.assertEqual((await self.http.post('/v1/renew', headers=fresh)).status_code, 200)
+
+    async def test_polling_tabs_are_not_discarded_when_the_stream_is_temporarily_down(self):
+        import time
+        _, task = await self.stream()
+        task.cancel()
+        with suppress(asyncio.CancelledError):
+            await task
+        for _ in range(7):
+            await self.http.post('/v1/connect', headers=self.headers)
+        with patch('bot_web.server.time.monotonic', return_value=time.monotonic() + 16):
+            self.assertEqual((await self.http.post('/v1/renew', headers=self.headers)).status_code, 200)
+            self.assertEqual((await self.http.post('/v1/connect', headers=self.headers)).status_code, 429)
+            self.assertEqual((await self.http.post('/v1/renew', headers=self.headers)).status_code, 200)
+
+    async def test_an_inflight_request_survives_discarded_page_admission(self):
+        import time
+        entered, finish = asyncio.Event(), asyncio.Event()
+        async def call(*_args, **_kwargs):
+            entered.set()
+            await finish.wait()
+            return {'profiles': []}
+        self.native.call = call
+        _, task = await self.stream()
+        task.cancel()
+        with suppress(asyncio.CancelledError):
+            await task
+        for _ in range(7):
+            await self.http.post('/v1/connect', headers=self.headers)
+        pending = asyncio.create_task(self.http.post('/v1/rpc', headers=self.headers,
+            json={'operation': 'bots.list', 'params': {}}))
+        self.tasks.append(pending)
+        await asyncio.wait_for(entered.wait(), 1)
+        with patch('bot_web.server.time.monotonic', return_value=time.monotonic() + 16):
+            self.assertEqual((await self.http.post('/v1/connect', headers=self.headers)).status_code, 429)
+        finish.set()
+        await asyncio.wait_for(pending, 1)
+        self.assertEqual((await self.http.post('/v1/renew', headers=self.headers)).status_code, 200)
+
+    async def test_another_principal_cannot_reclaim_a_discarded_browser(self):
+        import hashlib
+        import time
+        verifier = 'v' * 43
+        pending = (await self.http.post('/v1/pairing/request', headers={'Origin': ORIGIN},
+            json={'challenge': hashlib.sha256(verifier.encode()).hexdigest()})).json()
+        await self.http.post('/v1/pairing/approve', headers=self.headers, json={'code': pending['code']})
+        grant = (await self.http.post('/v1/pairing/claim', headers={'Origin': ORIGIN},
+            json={'request_id': pending['request_id'], 'verifier': verifier})).json()
+        _, task = await self.stream()
+        task.cancel()
+        with suppress(asyncio.CancelledError):
+            await task
+        for _ in range(7):
+            await self.http.post('/v1/connect', headers=self.headers)
+        other = {'Origin': ORIGIN, 'Authorization': 'Bearer ' + grant['credential']}
+        with patch('bot_web.server.time.monotonic', return_value=time.monotonic() + 16):
+            self.assertEqual((await self.http.post('/v1/connect', headers=other)).status_code, 429)
+            self.assertEqual((await self.http.post('/v1/renew', headers=self.headers)).status_code, 200)
+
     async def test_native_health_and_admission_do_not_confuse_heartbeats_with_responsiveness(self):
         self.native.healthy = False
         status = await self.http.get('/v1/status', headers=self.headers)

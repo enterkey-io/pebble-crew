@@ -431,15 +431,8 @@ export function App({ owner }: { owner?: OwnerConnection }) {
       : navigationWasOpen.current
         ? '.pc-chat-header [aria-label="Toggle navigation"]'
         : null;
-    const frame = target
-      ? requestAnimationFrame(() =>
-          document.querySelector<HTMLElement>(target)?.focus({ preventScroll: true }),
-        )
-      : undefined;
+    if (target) document.querySelector<HTMLElement>(target)?.focus({ preventScroll: true });
     navigationWasOpen.current = nav;
-    return () => {
-      if (frame !== undefined) cancelAnimationFrame(frame);
-    };
   }, [nav, phone]);
   const closeReview = useCallback(() => setReview(undefined), []);
   const [pickingAgents, setPickingAgents] = useState(false);
@@ -887,7 +880,7 @@ export function App({ owner }: { owner?: OwnerConnection }) {
         followLatest.current = true;
         setShowLatest(false);
         acknowledgeRead();
-        composer.current?.focus({ preventScroll: true });
+        if (matchMedia('(pointer: fine)').matches) composer.current?.focus({ preventScroll: true });
       },
       () => {
         scrollAnimating.current = false;

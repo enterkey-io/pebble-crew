@@ -42,8 +42,9 @@ test('installed chat uses standard user bubbles, unboxed replies and separate ac
   await expect(user.locator('[data-slot="bubble-content"] time')).toHaveCount(0);
   const surface = (await user.locator('[data-slot="bubble-content"]').boundingBox())!;
   const frame = (await user.locator('[data-slot="message-content"]').boundingBox())!;
-  expect(surface.width / frame.width).toBeGreaterThan(0.79);
-  expect(surface.width / frame.width).toBeLessThan(0.81);
+  const maximum = page.viewportSize()!.width < 768 ? 0.85 : 0.8;
+  expect(surface.width / frame.width).toBeGreaterThan(maximum - 0.01);
+  expect(surface.width / frame.width).toBeLessThan(maximum + 0.01);
   for (const row of [user, agent]) {
     const content = (await row.locator('[data-slot="bubble-content"]').boundingBox())!;
     const footer = row.locator('[data-slot="message-footer"]');

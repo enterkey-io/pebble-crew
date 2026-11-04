@@ -41,8 +41,10 @@ The temporary stream retry implementation is not retained beside this controller
   native probe can report `unconfirmed`; an event heartbeat alone does not prove
   the native dispatcher is responsive.
 - Browser focus, visibility and network events request a check. They are not proof
-  of availability. Page unload releases only that tab's lease. Persisted browser
-  pages recover on return.
+  of availability. Visibility loss and page-hide suspend transport while retaining
+  authority, the stable client, feature state and dispatched mutation receipts.
+  Returning resumes that owner; only explicit disposal closes it. A browser process
+  discard creates a new document and connection without caching private responses.
 - The owner login shell handles an expired login by returning to sign-in. It does
   not convert cookie authority into operator access.
 
@@ -77,9 +79,14 @@ baselines without changing client identity or clearing unsaved edits.
 ## Plugin guarantees
 
 Each tab owns a lease. Another tab cannot reclaim it because its stream recently
-closed. Reclamation requires idle or expired authority and no in-flight work.
-Authenticated ticket expiry only advances for the same principal; a delayed old
-bearer cannot shorten a renewed lease.
+closed. Normal reclamation requires idle or expired authority and no in-flight
+work. At the eight-lease limit, admission can reclaim the oldest ended stream
+for the same authenticated principal only after both that stream and its latest
+request have been quiet for more than one heartbeat interval. Active streams,
+polling tabs, recent suspensions, other principals and in-flight operations stay
+owned. A suspended tab whose lease was reclaimed recovers through `LEASE_GONE`;
+this does not revoke login or conversation state. Authenticated ticket expiry
+only advances for the same principal; a delayed old bearer cannot shorten it.
 
 A subscription has an identity. Replacement wakes the old generator, and the old
 cleanup cannot clear its successor. The plugin admits bound-session events and

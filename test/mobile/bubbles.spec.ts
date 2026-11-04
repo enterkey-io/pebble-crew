@@ -36,8 +36,8 @@ test('owner bubbles use the phone width while short messages stay compact', asyn
       .locator('[data-message-role="user"] [data-slot="bubble"]')
       .last()
       .boundingBox())!;
-    expect(long.width / available).toBeGreaterThan(0.79);
-    expect(long.width / available).toBeLessThan(0.81);
+    expect(long.width / available).toBeGreaterThan(0.84);
+    expect(long.width / available).toBeLessThan(0.86);
     expect(short.width).toBeLessThan(available * 0.6);
     expect(Math.abs(long.x + long.width - short.x - short.width)).toBeLessThan(1);
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(
