@@ -33,6 +33,9 @@ try:
         path = home / 'SOUL.md' if main == 'default' else home / 'profiles' / main / 'SOUL.md'
         native = yaml.safe_load((home / ('profile.yaml' if main == 'default' else 'profiles/' + main + '/profile.yaml')).read_text()) or {}
         print(json.dumps({'id': ident, 'fingerprint': fingerprint, 'update': update, 'main': main, 'name': (native.get('ui_meta', {}).get('hermes-bots') or {}).get('title') or main, 'revision': state['revision']}))
+    elif sys.argv[2] == 'pending':
+        request = store.request_by_id(ident)
+        print(json.dumps({'state': request['state'], 'fingerprint': request['fingerprint']}))
     else:
         request = store.request_by_id(ident)
         assert request['state'] == 'completed', request

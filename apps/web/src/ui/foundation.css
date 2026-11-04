@@ -57,6 +57,8 @@
   --text-chat: 14px;
   --text-field: 13px;
   --text-composer: 14px;
+  --app-safe-top: env(safe-area-inset-top, 0px);
+  --app-safe-bottom: env(safe-area-inset-bottom, 0px);
   --chart-1: #a89cbe;
   --chart-2: #94a68c;
   --chart-3: #c2a184;

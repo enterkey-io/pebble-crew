@@ -3,7 +3,7 @@ import { ProactiveSetup } from './proactive/ProactiveSetup';
 import { PlansArea, BoardOutcome } from './work/PlansArea';
 import type { AttentionNavigation } from './chat/ConversationAttention';
 import { useSecretCards } from './chat/SecretCards';
-import { ConversationAttention } from './chat/ConversationAttention';
+import { ConversationAttention, useAttentionDocks } from './chat/ConversationAttention';
 import { useManagementRequests } from './chat/useManagementRequests';
 import type { TranscriptCard } from './chat/presentation';
 import type { SessionClient } from '@hermes-client/protocol';
@@ -378,7 +378,12 @@ export function App({ owner }: { owner?: OwnerConnection }) {
   const [reviewBusy, setReviewBusy] = useState(false);
   const [cardsVersion, setCardsVersion] = useState(0);
   const attentionNavigations = useRef(new Map<string, AttentionNavigation>());
-  const [requestFocus, setRequestFocus] = useState<string>();
+  const attentionDocks = useAttentionDocks();
+  const [requestFocus, updateRequestFocus] = useState<string>();
+  function setRequestFocus(id: string) {
+    attentionDocks.focus(id);
+    updateRequestFocus(id);
+  }
   const management = useManagementRequests({
     client: workspace ? client : undefined,
     scope: workspace?.id,
@@ -2249,7 +2254,8 @@ export function App({ owner }: { owner?: OwnerConnection }) {
   const attentionItems = [...requestCards, ...questionCards, ...nativeCards, ...secretCards].filter(
     (card) => card.needsInput,
   );
-  const awaitingInput = attentionItems.length > 0;
+  const inputMinimized = attentionDocks.isMinimized(attentionKey, attentionItems);
+  const awaitingInput = attentionItems.length > 0 && !inputMinimized;
   const actionBlocked =
     blocked || !connectionAvailable || (selection?.kind === 'bot' && !chatBound) || awaitingInput;
   return (
@@ -2702,13 +2708,21 @@ export function App({ owner }: { owner?: OwnerConnection }) {
                           </Button>
                         )}
                         <RequestDiscoveryStatus management={management} />
-                        {awaitingInput && (
-                          <div className="pc-composer-wrap composer-wrap">
+                        {attentionItems.length > 0 && (
+                          <div
+                            className="pc-composer-wrap composer-wrap"
+                            style={inputMinimized ? { paddingBottom: 0 } : undefined}
+                          >
                             <ConversationAttention
                               key={selection ? draftKey(selection) : ''}
                               navigation={attentionNavigation}
                               items={attentionItems}
                               focusId={requestFocus}
+                              minimized={inputMinimized}
+                              onMinimize={() =>
+                                attentionDocks.minimize(attentionKey, attentionItems)
+                              }
+                              onExpand={() => attentionDocks.expand(attentionKey)}
                             />
                           </div>
                         )}

@@ -110,3 +110,38 @@ test('standalone keyboard uses its visible area, then releases stale height and 
   await viewport(page, height - 62);
   await expect.poll(async () => (await shell.boundingBox())!.height).toBe(height);
 });
+
+test('standalone chat and navigation leave space inside the iOS safe areas', async ({
+  page,
+}, info) => {
+  await page.evaluate(() => {
+    document.documentElement.style.setProperty('--app-safe-top', '59px');
+    document.documentElement.style.setProperty('--app-safe-bottom', '34px');
+  });
+  const back = page.getByRole('button', { name: 'Toggle navigation', exact: true });
+  await expect.poll(async () => (await back.boundingBox())!.y).toBeGreaterThanOrEqual(59 + 8);
+  await expect.poll(() => bottomGap(page)).toBe(34 + 14);
+  await page.screenshot({ animations: 'disabled', path: info.outputPath('pwa-safe-areas.png') });
+  const input = page.getByLabel('Message', { exact: true });
+  await input.fill('Retain this draft');
+  const height = await page.evaluate(() => innerHeight);
+  await viewport(page, height - 300);
+  await expect
+    .poll(() =>
+      page.locator('.pc-composer-wrap').evaluate((node) => getComputedStyle(node).paddingBottom),
+    )
+    .toBe('14px');
+  await input.blur();
+  await expect.poll(() => bottomGap(page)).toBe(34 + 14);
+  await back.click();
+  const account = page.getByRole('button', { name: 'Your account', exact: true });
+  await expect.poll(async () => (await account.boundingBox())!.y).toBeGreaterThanOrEqual(59 + 8);
+  const search = page.getByRole('button', { name: 'Search Pebble Crew', exact: true });
+  await expect
+    .poll(() => search.evaluate((node) => innerHeight - node.getBoundingClientRect().bottom))
+    .toBeGreaterThanOrEqual(34 + 14);
+  await page.screenshot({
+    animations: 'disabled',
+    path: info.outputPath('pwa-list-safe-areas.png'),
+  });
+});

@@ -880,6 +880,14 @@ test('existing legacy creation survives another approval and completes once thro
   const queue = page.getByRole('region', { name: 'Waiting for your input', exact: true });
   await expect(queue).toContainText('1 of 2');
   await expect(queue.locator('[data-request-id="' + seeded.id + '"]')).toBeVisible();
+  await queue.getByRole('button', { name: 'Minimize request', exact: true }).click();
+  const composer = page.getByLabel('Message', { exact: true });
+  await expect(composer).toBeEnabled();
+  await composer.fill('Unsent note while reviewing');
+  expect(fixture('pending')).toEqual({ state: 'pending', fingerprint: seeded.fingerprint });
+  await queue.getByRole('button', { name: /Review pending requests$/ }).click();
+  await expect(queue.locator('[data-request-id="' + seeded.id + '"]')).toBeVisible();
+
   await queue.getByRole('button', { name: 'Next request', exact: true }).click();
   await queue.getByRole('button', { name: 'Approve exact request' }).click();
   await expect(queue.getByRole('button', { name: 'Next request', exact: true })).toHaveCount(0);

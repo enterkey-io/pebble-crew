@@ -1,4 +1,5 @@
 import { test, expect, type Page } from '@playwright/test';
+import AxeBuilder from '@axe-core/playwright';
 import { installFixture, emit } from './fixtures';
 
 test.use({ serviceWorkers: 'block' });
@@ -27,6 +28,7 @@ async function journal(page: Page, requests: Request[]) {
     fail: false,
     corrupt: false,
     lost: false,
+    blockedReview: false,
     corruptOld: false,
     failOld: false,
     reads: 0,
@@ -65,6 +67,16 @@ async function journal(page: Page, requests: Request[]) {
     if (operation === 'requests.get')
       return route.fulfill({
         json: { result: { request: requests.find((row) => row.id === params.id) ?? null } },
+      });
+    if (operation === 'requests.review' && control.blockedReview)
+      return route.fulfill({
+        json: {
+          result: {
+            kind: 'blocked',
+            reason:
+              'The affected setup needs a fresh proposal. This request has not been executed.',
+          },
+        },
       });
     if (operation === 'requests.approve' || operation === 'requests.deny') {
       decisions.push(params);
@@ -551,4 +563,71 @@ test('an older native approval response cannot replace a newer queue snapshot', 
   } finally {
     release();
   }
+});
+
+test('a blocked approval can be minimized to chat, survives reconnect and reopens without a decision', async ({
+  page,
+  context,
+}, info) => {
+  await installFixture(context);
+  const requests = [proposal('blocked')];
+  const { decisions, control } = await journal(page, requests);
+  control.blockedReview = true;
+  const sends: string[] = [];
+  await page.route('**/v1/rpc', async (route) => {
+    const { operation, params } = route.request().postDataJSON();
+    if (operation === 'chat.send') sends.push(params.text);
+    await route.fallback();
+  });
+  await page.goto('/');
+  const queue = dock(page);
+  const field = page.getByLabel('Message', { exact: true });
+  await expect(queue).toContainText('needs a fresh proposal');
+  await expect(queue.getByRole('button', { name: 'Approve exact request' })).toBeDisabled();
+  await queue.getByRole('button', { name: 'Minimize request', exact: true }).click();
+  await expect(field).toBeEnabled();
+  await expect(queue.getByRole('button', { name: /Review pending requests$/ })).toBeVisible();
+  expect((await new AxeBuilder({ page }).analyze()).violations).toEqual([]);
+  await field.fill('The approval needs a fresh proposal. Please help.');
+  await page.getByRole('button', { name: 'Send message', exact: true }).click();
+  await expect.poll(() => sends.length).toBe(1);
+  expect(sends).toEqual(['The approval needs a fresh proposal. Please help.']);
+  await field.fill('Keep my next draft');
+  await page.evaluate(() => (window as unknown as { __breakStream: () => void }).__breakStream());
+  await emit(page, 'requests.changed');
+  await expect(queue.getByRole('button', { name: /Review pending requests$/ })).toBeVisible();
+  await expect(field).toHaveValue('Keep my next draft');
+  await page.screenshot({
+    animations: 'disabled',
+    path: info.outputPath('minimized-approval-composer.png'),
+  });
+  await queue.getByRole('button', { name: /Review pending requests$/ }).click();
+  await expect(queue).toContainText('needs a fresh proposal');
+  await expect(field).toBeHidden();
+  expect(requests[0]!.state).toBe('pending');
+  expect(decisions).toHaveLength(0);
+  await page.screenshot({
+    animations: 'disabled',
+    path: info.outputPath('reopened-blocked-approval.png'),
+  });
+});
+
+test('minimizing a queue preserves each request and a new request still opens for review', async ({
+  page,
+  context,
+}) => {
+  await installFixture(context);
+  const requests = [proposal('one'), proposal('two')];
+  const { decisions } = await journal(page, requests);
+  await page.goto('/');
+  await expect(dock(page)).toContainText('1 of 2');
+  await dock(page).getByRole('button', { name: 'Minimize request' }).click();
+  await expect(page.getByLabel('Message', { exact: true })).toBeVisible();
+  await expect(dock(page)).toContainText('2 requests pending');
+  requests.push(proposal('three'));
+  await emit(page, 'requests.changed');
+  await expect(dock(page)).toContainText('1 of 3');
+  await expect(page.getByLabel('Message', { exact: true })).toBeHidden();
+  expect(decisions).toHaveLength(0);
+  expect(requests.every((row) => row.state === 'pending')).toBe(true);
 });

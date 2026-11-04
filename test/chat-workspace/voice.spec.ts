@@ -160,10 +160,26 @@ test('private voice setup, Snow and selected-Pebble message colors', async ({
   const card = page.getByRole('form', { name: 'OpenAI API key' });
   const field = card.getByLabel('API key', { exact: true });
   await expect(field).toHaveAttribute('type', 'password');
-  await expect(card).toBeInViewport({ ratio: 1 });
-  await expect(card.getByRole('button', { name: 'Submit', exact: true })).toBeInViewport({
-    ratio: 1,
-  });
+  // WebKit's intersection ratio rounds fractional CSS edges down by less than
+  // a device pixel. Check actual containment as well as near-total intersection.
+  for (const element of [card, card.getByRole('button', { name: 'Submit', exact: true })]) {
+    await expect(element).toBeInViewport({ ratio: 0.999 });
+    const bounds = await element.evaluate((node) => {
+      const rect = node.getBoundingClientRect();
+      return {
+        left: rect.left,
+        top: rect.top,
+        right: rect.right,
+        bottom: rect.bottom,
+        width: innerWidth,
+        height: innerHeight,
+      };
+    });
+    expect(bounds.left).toBeGreaterThanOrEqual(0);
+    expect(bounds.top).toBeGreaterThanOrEqual(0);
+    expect(bounds.right).toBeLessThanOrEqual(bounds.width);
+    expect(bounds.bottom).toBeLessThanOrEqual(bounds.height);
+  }
   await page.screenshot({ path: info.outputPath('voice-secret-card.png') });
   await field.fill('synthetic-private-voice-key');
   await card.getByRole('button', { name: 'Submit', exact: true }).click();

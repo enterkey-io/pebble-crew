@@ -43,8 +43,8 @@
   transition-delay: 0s;
 }
 .pc-mobile-navigation .pc-rail-header {
-  height: calc(72px + env(safe-area-inset-top));
-  padding: env(safe-area-inset-top) 16px 0;
+  height: calc(72px + var(--app-safe-top));
+  padding: var(--app-safe-top) 16px 0;
   justify-content: space-between;
 }
 .pc-mobile-account {
@@ -92,7 +92,7 @@
 }
 .pc-mobile-navigation .pc-rail-footer {
   min-height: 76px;
-  padding: 12px 16px max(14px, env(safe-area-inset-bottom));
+  padding: 12px 16px calc(14px + var(--app-safe-bottom));
 }
 .pc-mobile-search {
   width: 100%;

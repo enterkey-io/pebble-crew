@@ -66,11 +66,11 @@ export function SecretCard({
             <AlertDescription>{error}</AlertDescription>
           </Alert>
         )}
-        <div className="flex flex-wrap items-center justify-end gap-2">
-          <small className="mr-auto flex items-center gap-1.5 text-xs text-muted-foreground">
-            <ShieldCheck className="size-3.5" />
-            Kept out of chat
-          </small>
+        <small className="flex items-center gap-1.5 text-xs text-muted-foreground">
+          <ShieldCheck className="size-3.5" />
+          Kept out of chat
+        </small>
+        <div className="flex items-center justify-between gap-2">
           <Button type="button" variant="quiet" onClick={onSkip} disabled={busy}>
             Skip
           </Button>

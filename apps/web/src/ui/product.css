@@ -583,16 +583,16 @@
     padding: 24px 20px;
   }
   .pc-chat-header {
-    padding: env(safe-area-inset-top) max(16px, env(safe-area-inset-right)) 0
+    padding: calc(8px + var(--app-safe-top)) max(16px, env(safe-area-inset-right)) 0
       max(16px, env(safe-area-inset-left));
-    min-height: calc(64px + env(safe-area-inset-top));
+    min-height: calc(72px + var(--app-safe-top));
   }
   .product-sheet .pc-rail-header {
-    height: calc(64px + env(safe-area-inset-top));
-    padding-top: env(safe-area-inset-top);
+    height: calc(64px + var(--app-safe-top));
+    padding-top: var(--app-safe-top);
   }
   .pc-composer-wrap {
-    padding: 10px 12px max(14px, env(safe-area-inset-bottom));
+    padding: 10px 12px calc(14px + var(--app-safe-bottom));
   }
   :root[data-keyboard-visible] .pc-composer-wrap {
     padding-bottom: 14px;

@@ -149,3 +149,6 @@ Draft receipt checks also navigate away and back before confirmation, retain edi
 made after returning, and reload a second browser tab after the first tab receives
 its receipt. Draft unit checks retain legacy text and bound stored edits during
 continued typing.
+
+- Pending input: `conversation-cards.spec.ts` covers X minimization, usable composer, exact pending-state preservation, reopen, reconnect and new requests. `owner.spec.ts` also checks native pending state/fingerprint while minimized. X never submits a decision.
+- iOS PWA safe areas: `pwa-viewport.spec.ts` models a 59px top and 34px bottom inset, verifies header/composer/navigation controls and keyboard dismissal. Physical installed-iOS behavior remains separate.
