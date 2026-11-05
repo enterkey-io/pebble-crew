@@ -157,6 +157,18 @@ async def exercise(root, home, port):
         snapshot = await service.invoke('workspace.snapshot', {})
         assert any(i['kind'] == 'group' and i['readKey'] == first['room']['read_key'] for s in snapshot['organization']['sections'] for i in s['items'])
         assert (await gateway.call('groups.state', {'room_id': first['room']['room_id']}))['room'] == native_before['room']
+        group_operation = str(uuid.uuid4())
+        state = store.read()
+        group_spec = {'operation_id': group_operation, 'name': 'Agent-started discussion',
+            'expected_revision': state['revision'], 'members': [state['bots'][p]['id'] for p in ('alpha', 'beta')]}
+        assert submit(store, 'beta', 'group.create', group_spec)['state'] == 'queued'
+        await drain(service)
+        group_receipt = receipts(store, 'beta')[0]
+        assert group_receipt['state'] == 'applied', group_receipt
+        assert group_receipt == submit(store, 'beta', 'group.create', group_spec)
+        agent_group = group_receipt['result']['room']
+        log = await gateway.call('groups.log', {'room_id': agent_group['room_id'], 'since_seq': 0})
+        assert not any(row['kind'] == 'message.user' for row in log['events']), 'Agent group creation must never impersonate owner input'
         command = {'action': 'create', 'name': 'Acceptance future routine', 'prompt': 'Send a concise summary to my existing Bot Chat.', 'schedule': '2099-12-01T09:00:00'}
         target = store.read()['bots']['beta']
         submit(store, 'alpha', 'routines.manage', {'operation_id': str(uuid.uuid4()), 'profile': 'beta', 'id': target['id'], 'expected_revision': store.read()['revision'], 'command': command})
