@@ -12,6 +12,7 @@ import urllib.request
 import urllib.error
 import socket
 
+from .native import NativeError
 from .operations import InvalidOperation, fields, identifier
 from .voice_credentials import resolve_source, confirm_source, save_shared_key
 
@@ -193,16 +194,25 @@ class LiveVoice:
         # hold native session/skills locks over provider I/O.
         history = []
         if operation == 'voice.session' and params.get('preview') is False:
-            saved = await self.ops.invoke('chat.history', {'session_id': sid})
-            budget = 6000
-            for row in reversed(saved.get('messages', [])):
-                text = str(row.get('text') or '').strip()[:1200]
-                if row.get('role') not in {'user', 'assistant'} or not text or row.get('display_kind') == 'hidden':
-                    continue
-                if len(history) >= 24 or len(text) > budget:
+            budget, before, visited, complete = 6000, None, set(), False
+            while not complete:
+                saved = await self.ops.invoke('chat.history', {'session_id': sid,
+                    **({'before': before} if before is not None else {})})
+                for row in reversed(saved.get('messages', [])):
+                    text = str(row.get('text') or '').strip()[:1200]
+                    if row.get('role') not in {'user', 'assistant'} or not text or row.get('display_kind') == 'hidden':
+                        continue
+                    if len(history) >= 24 or len(text) > budget:
+                        complete = True
+                        break
+                    budget -= len(text)
+                    history.insert(0, {'type': 'message', 'role': row['role'], 'content': [{'type': 'output_text' if row['role'] == 'assistant' else 'input_text', 'text': text}]})
+                before = (saved.get('history_page') or {}).get('older')
+                if not before:
                     break
-                budget -= len(text)
-                history.insert(0, {'type': 'message', 'role': row['role'], 'content': [{'type': 'output_text' if row['role'] == 'assistant' else 'input_text', 'text': text}]})
+                if before in visited:
+                    raise NativeError('Voice context history did not advance')
+                visited.add(before)
         bot = await self.ops.bot(profile)
         name = self.ops.summary(bot)['name']
         from .coordination import voice_context

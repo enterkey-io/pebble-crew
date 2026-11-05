@@ -15,6 +15,7 @@ type Options = {
   client: Pick<SessionClient, 'invoke' | 'supportsConnectionRecovery'>;
   target: () => Target | undefined;
   receive: (event: BridgeEvent) => Promise<void>;
+  history?: () => BotConversation['history']['messages'];
   apply: (snapshot: BotConversation, identity: object) => void;
 };
 
@@ -70,8 +71,8 @@ export class ConversationFeed {
         (leaseChanged && !target.bound) ||
         this.#bindingLost ||
         !this.options.client.supportsConnectionRecovery
-          ? await domain.open(target.profile)
-          : await domain.snapshot(target.sessionId);
+          ? await domain.open(target.profile, this.options.history?.())
+          : await domain.snapshot(target.sessionId, this.options.history?.());
       const current = this.options.target();
       if (this.#closed) return true;
       if (

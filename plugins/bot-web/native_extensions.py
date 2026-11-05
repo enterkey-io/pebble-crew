@@ -92,6 +92,19 @@ def register(source):
     server.method('bot_web.runtime.verify')(verify_runtime)
 
 
+    def resume(rid, params):
+        if not isinstance(params, dict) or set(params) != {'profile', 'session_id'}:
+            return server._err(rid, -32602, 'Invalid conversation resume')
+        # Use the normal native handler/interactive approval lifecycle. The old
+        # supported Hermes build ignores omit_messages, so compact its result
+        # before stdio serialization too; no native handler is replaced.
+        response = server._methods['session.resume'](rid, {**params, 'omit_messages': True, 'inline_images': False})
+        if isinstance(response.get('result'), dict):
+            return server._ok(rid, {k: v for k, v in response['result'].items()
+                if k in {'session_id', 'pending_clarify', 'open_requests'}})
+        return response
+    server.method('bot_web.conversation.resume')(resume)
+
     def live_snapshot(rid, params):
         """Native display snapshot with a proven current-turn row anchor."""
         if not isinstance(params, dict) or set(params) != {'session_id'}:
@@ -105,7 +118,9 @@ def register(source):
         # Native display reads deliberately keep database I/O outside the
         # history lock. Refresh live text under the lock without requiring the
         # model to stop streaming while the database is read.
-        result = server._live_session_payload(sid, session)
+        result = server._live_session_payload(sid, session, omit_messages=True)
+        from conversation_history import read_page
+        result.update(read_page(server, session))
         with session['history_lock']:
             turn = session.get('inflight_turn') or {}
             prefix = {row.get('_row_id') for row in [*(session.get('display_history_prefix') or []), *(session.get('history') or [])]
@@ -171,3 +186,17 @@ def register(source):
         return server._ok(rid, result)
 
     server.method('bot_web.conversation.snapshot')(live_snapshot)
+
+    def history_page(rid, params):
+        if not isinstance(params, dict) or set(params) - {'session_id', 'before'} or 'session_id' not in params:
+            return server._err(rid, -32602, 'Invalid history page')
+        session, error = server._sess_nowait(params, rid)
+        if error:
+            return error
+        try:
+            from conversation_history import read_page
+            return server._ok(rid, read_page(server, session, params.get('before')))
+        except ValueError:
+            return server._ok(rid, {'history_unavailable': True})
+
+    server.method('bot_web.conversation.history')(history_page)

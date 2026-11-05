@@ -107,3 +107,90 @@ class PlanBehaviorTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(value['board_outcome']['crew_count'], 100)
         self.assertEqual(len(value['board_outcome']['crew_ids']), 6)
         self.assertLess(len(json.dumps(value)), 7500)
+
+    async def test_tasks_toggle_suspends_goals_everywhere_and_preserves_saved_data(self):
+        from bot_web.coordination import context, voice_context
+        from bot_web.plans import runtime_snapshot
+        from bot_web.runtime import live_context
+        self.save(self.draft(), 0)
+        self.plans.invoke('work.board.outcome.save', {'workspace_id': self.state['id'], 'operation_id': str(uuid.uuid4()), 'expected_revision': 1, 'outcome': {'board': self.board, 'outcome': 'Ship a useful product', 'crew_ids': []}}, 'owner')
+        saved = self.plans.read(self.state)
+        before = len(self.native.calls)
+        revision = self.store.read()['revision']
+        receipt = await self.service.invoke('workspace.features.set', {'workspace_id': self.state['id'], 'tasks': False, 'expected_revision': revision})
+        self.assertFalse(receipt['features']['tasks'])
+        self.assertEqual(len(self.native.calls), before, 'Changing Tasks must not call native tools or models')
+        # Repeating a lost-response write is harmless and does not bump the revision.
+        self.assertEqual(await self.service.invoke('workspace.features.set', {'workspace_id': self.state['id'], 'tasks': False, 'expected_revision': revision}), receipt)
+        for profile in ('default', 'amy'):
+            value = context(self.store, profile, self.board)
+            self.assertFalse(value['tasks_enabled'])
+            self.assertNotIn('goals', value)
+            self.assertNotIn('board_outcome', value)
+            self.assertIn('Native Kanban remains available', value['policy'])
+            for text in (voice_context(self.store, profile), live_context(self.store, profile), live_context(self.store, profile, compact=True)):
+                self.assertNotIn('Reach 100 customers', text)
+                self.assertNotIn('Ship a useful product', text)
+        for action in (
+            lambda: self.save(self.draft(), 2),
+            lambda: self.plans.invoke('work.plans', {'workspace_id': self.state['id']}, 'owner'),
+            lambda: runtime_snapshot(self.store, {'workspace_id': self.state['id']}),
+        ):
+            with self.assertRaisesRegex(InvalidOperation, 'Tasks and goals are off'): action()
+        self.assertEqual(self.plans.read(self.state), saved)
+        self.store.db.close()
+        from bot_web.workspace import WorkspaceStore
+        self.store = WorkspaceStore(self.path)
+        self.service.store = self.store
+        self.plans.workspace = self.store
+        self.assertFalse(self.store.read()['features']['tasks'])
+        self.store.set_tasks(True, receipt['revision'], self.state['id'])
+        self.assertEqual(self.plans.invoke('work.plans', {'workspace_id': self.state['id']}, 'owner')['plans'], saved['plans'])
+        self.assertEqual(context(self.store, 'amy', self.board)['board_outcome']['outcome'], 'Ship a useful product')
+
+    async def test_feature_settings_are_validated_and_do_not_overwrite_concurrent_changes(self):
+        state = self.store.read()
+        self.assertTrue(state['features']['tasks'])
+        changed = self.store.save({**state, 'unrelated': 'keep'}, state['revision'])
+        with self.assertRaises(InvalidOperation):
+            self.store.set_tasks(False, state['revision'], self.state['id'])
+        for enabled, revision in [('false', changed['revision']), (False, True), (False, -1)]:
+            with self.assertRaises(InvalidOperation): self.store.set_tasks(enabled, revision, self.state['id'])
+        await self.service.invoke('workspace.features.set', {'workspace_id': self.state['id'], 'tasks': False, 'expected_revision': changed['revision']})
+        self.assertEqual(self.store.read()['unrelated'], 'keep')
+        self.assertTrue(all(bot.get('enrolled') for bot in self.store.read()['bots'].values()))
+
+    async def test_tasks_setting_rejects_another_workspace_before_any_write(self):
+        before = self.store.read()
+        with self.assertRaisesRegex(InvalidOperation, 'Choose this workspace'):
+            await self.service.invoke('workspace.features.set', {'workspace_id': str(uuid.uuid4()), 'tasks': False, 'expected_revision': before['revision']})
+        self.assertEqual(self.store.read(), before)
+
+    async def test_tasks_default_and_write_preserve_other_feature_preferences(self):
+        state = self.store.read()
+        state['features'] = {'future_feature': False}
+        self.store.save(state, state['revision'])
+        current = self.store.read()
+        self.assertTrue(current['features']['tasks'])
+        self.store.set_tasks(False, current['revision'], self.state['id'])
+        self.assertEqual(self.store.read()['features'], {'tasks': False, 'future_feature': False})
+
+    async def test_disabling_tasks_keeps_native_work_catalog_and_board_reads_available(self):
+        from types import SimpleNamespace
+        from unittest.mock import patch
+        from contextlib import nullcontext
+        from bot_web.work import WorkService
+        native = SimpleNamespace(scoped=nullcontext, edit_details=True,
+            list_projects=lambda: [], list_boards=lambda: [{'slug': 'default', 'total': 1}],
+            board=lambda slug: {'columns': [{'name': 'todo', 'tasks': [{'id': 'existing', 'title': 'Background work', 'status': 'todo'}]}]})
+        service = WorkService(self.store, self.path.with_name('native-work.sqlite'))
+        try:
+            self.store.set_tasks(False, self.state['revision'], self.state['id'])
+            with patch.object(service, 'catalog_native', return_value=('stable', native)):
+                catalog = service.invoke('work.describe', {})
+                self.assertFalse(catalog['capabilities']['plans'])
+                self.assertTrue(catalog['capabilities']['proactive'])
+                board = service.invoke('work.board', {'workspace_id': self.state['id'], 'board': 'default'})
+                self.assertEqual(board['columns'][0]['tasks'][0]['title'], 'Background work')
+        finally:
+            service.close()

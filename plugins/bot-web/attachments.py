@@ -144,10 +144,23 @@ class AttachmentStore:
             uncertain = [row[0] for row in self.db.execute("SELECT id FROM files WHERE principal=? AND profile=? AND incarnation=? AND canonical=? AND state='uncertain'", (principal, *target))]
             if not receipts:
                 return {'state': 'clear'}
-            history = await ops.invoke('chat.history', {'session_id': params['session_id']})
-            # Unique native file/image names prove which actual input reached history.
-            seen = '\n'.join(str(m.get('text', '')) for m in history.get('messages', []) if m.get('role') == 'user')
-            accepted = bool(uncertain) and all(file_id in seen for file_id in uncertain)
+            remaining, visited, before = set(uncertain), set(), None
+            # An uncertain delivery may predate the recent display window. Search
+            # bounded pages here without transferring history to the browser.
+            while remaining:
+                history = await ops.invoke('chat.history', {'session_id': params['session_id'],
+                    **({'before': before} if before is not None else {})})
+                for message in history.get('messages', []):
+                    if message.get('role') == 'user':
+                        text = str(message.get('text', ''))
+                        remaining = {file_id for file_id in remaining if file_id not in text}
+                before = (history.get('history_page') or {}).get('older')
+                if not before:
+                    break
+                if before in visited:
+                    raise NativeError('Attachment receipt history did not advance')
+                visited.add(before)
+            accepted = bool(uncertain) and not remaining
             if accepted:
                 with self.db:
                     self.db.execute("UPDATE sends SET state='accepted' WHERE principal=? AND profile=? AND incarnation=? AND canonical=? AND state='uncertain'", (principal, *target))

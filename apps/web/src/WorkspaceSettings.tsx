@@ -120,7 +120,14 @@ export function WorkspaceSettings({
           onNavigate(() => setTab(id));
       }}
     >
-      {tab === 'general' && <GeneralSettings onProactive={onProactive} />}
+      {tab === 'general' && (
+        <GeneralSettings
+          client={client}
+          state={state}
+          onChange={onChange}
+          onProactive={onProactive}
+        />
+      )}
       {tab === 'account' && owner && <OwnerAccount />}
       {tab === 'devices' && owner && <DeviceSettings />}
       {tab === 'connections' &&

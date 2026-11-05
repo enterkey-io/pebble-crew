@@ -180,7 +180,7 @@ test('a restored transcript observes later content growth and follows it', async
   const held = new Promise<void>((resolve) => (release = resolve));
   let waiting = false;
   await page.route('**/v1/rpc', async (route) => {
-    if (route.request().postDataJSON().operation === 'routines.list') {
+    if (route.request().postDataJSON().operation === 'bot.open') {
       waiting = true;
       await held;
     }

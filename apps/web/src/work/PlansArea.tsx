@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Target, Plus, Pencil } from 'lucide-react';
 import type { PlanDraft, SessionClient, WorkspaceSnapshot } from '@hermes-client/protocol';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '../components/ui/card';
@@ -39,6 +39,7 @@ export function PlansArea({
   connected,
   onNavigate,
   onBoard,
+  onEditingChange,
 }: {
   client: SessionClient;
   workspace: WorkspaceSnapshot;
@@ -46,9 +47,14 @@ export function PlansArea({
   connected: boolean;
   onNavigate: () => void;
   onBoard: (slug: string) => void;
+  onEditingChange?: ((open: boolean) => void) | undefined;
 }) {
   const resource = usePlans(client, workspace, connected);
   const [editing, setEditing] = useState<PlanDraft>();
+  useEffect(() => {
+    onEditingChange?.(!!editing);
+  }, [editing, onEditingChange]);
+  useEffect(() => () => onEditingChange?.(false), [onEditingChange]);
   const data = resource.state.value;
   return (
     <section className="pc-work-area" aria-label="Plans">

@@ -25,10 +25,15 @@ export type ConversationMessage = {
   commentary?: string[];
   reactions?: MessageReaction[];
 };
-export type HistoryCoverage = { readonly count: number; readonly maxRow: number };
+export type HistoryCoverage = {
+  readonly count: number;
+  readonly maxRow: number;
+  readonly rowIds?: readonly number[];
+};
 export type ConversationHistory = {
   readonly messages: ConversationMessage[];
   readonly coverage: HistoryCoverage;
+  readonly page?: { readonly older: string | null };
 };
 function optionalRecord(value: unknown): Record<string, unknown> | undefined {
   return value !== null && typeof value === 'object' && !Array.isArray(value)
@@ -253,7 +258,15 @@ export function decodeNativeMessages(value: unknown): ConversationMessage[] {
   return messages;
 }
 export function decodeHistory(value: unknown): ConversationHistory {
-  const source = rows(record(value).messages);
+  const data = record(value);
+  const source = rows(data.messages);
+  const page = data.history_page === undefined ? undefined : record(data.history_page);
+  if (
+    page &&
+    page.older !== null &&
+    (typeof page.older !== 'string' || !page.older || page.older.length > 1024)
+  )
+    throw new ClientError('INVALID_RESPONSE');
   let maxRow = 0;
   for (const item of source) {
     const row = optionalRecord(item);
@@ -265,7 +278,40 @@ export function decodeHistory(value: unknown): ConversationHistory {
     )
       maxRow = row.row_id;
   }
-  return { messages: decodeNativeMessages(source), coverage: { count: source.length, maxRow } };
+  const coverage = page?.coverage === undefined ? undefined : record(page.coverage);
+  if (
+    coverage &&
+    (typeof coverage.count !== 'number' ||
+      !Number.isSafeInteger(coverage.count) ||
+      coverage.count < source.length ||
+      coverage.count > 10000 ||
+      typeof coverage.max_row !== 'number' ||
+      !Number.isSafeInteger(coverage.max_row) ||
+      coverage.max_row < maxRow)
+  )
+    throw new ClientError('INVALID_RESPONSE');
+  return {
+    messages: decodeNativeMessages(source),
+    coverage: {
+      ...(coverage
+        ? { count: Number(coverage.count), maxRow: Number(coverage.max_row) }
+        : { count: source.length, maxRow }),
+      ...(page
+        ? {
+            rowIds: source.flatMap((item) => {
+              const row = optionalRecord(item);
+              return row &&
+                typeof row.row_id === 'number' &&
+                Number.isSafeInteger(row.row_id) &&
+                row.row_id > 0
+                ? [row.row_id]
+                : [];
+            }),
+          }
+        : {}),
+    },
+    ...(page ? { page: { older: page.older === null ? null : String(page.older) } } : {}),
+  };
 }
 export function decodeRoomMessages(value: unknown): ConversationMessage[] {
   const messages: ConversationMessage[] = [];
@@ -481,13 +527,24 @@ export class ConversationDomain {
       throw new ClientError('INVALID_RESPONSE');
     return data.output;
   }
-  async snapshot(sessionId: string): Promise<BotConversation> {
-    return decodeBotConversation(
+  async snapshot(
+    sessionId: string,
+    retained: readonly ConversationMessage[] = [],
+  ): Promise<BotConversation> {
+    const snapshot = decodeBotConversation(
       await this.bridge.invoke('chat.snapshot', { session_id: sessionId }),
     );
+    return { ...snapshot, history: await this.cover(snapshot.history, retained, sessionId) };
   }
-  async open(profile: string): Promise<BotConversation> {
-    return decodeBotConversation(await this.bridge.invoke('bot.open', { profile }));
+  async open(
+    profile: string,
+    retained: readonly ConversationMessage[] = [],
+  ): Promise<BotConversation> {
+    const snapshot = decodeBotConversation(await this.bridge.invoke('bot.open', { profile }));
+    return {
+      ...snapshot,
+      history: await this.cover(snapshot.history, retained, snapshot.sessionId),
+    };
   }
   async createGroup(id: string, name: string, profiles: string[]) {
     await this.bridge.invoke('room.create', { room_id: id, name, profiles });
@@ -502,8 +559,62 @@ export class ConversationDomain {
       throw new ClientError('INVALID_RESPONSE');
     return room;
   }
-  async history(sessionId: string): Promise<ConversationHistory> {
-    return decodeHistory(await this.bridge.invoke('chat.history', { session_id: sessionId }));
+  async history(
+    sessionId: string,
+    retained: readonly ConversationMessage[] = [],
+  ): Promise<ConversationHistory> {
+    return this.cover(
+      decodeHistory(await this.bridge.invoke('chat.history', { session_id: sessionId })),
+      retained,
+      sessionId,
+    );
+  }
+  async older(sessionId: string, before: string): Promise<ConversationHistory> {
+    return decodeHistory(
+      await this.bridge.invoke('chat.history', { session_id: sessionId, before }),
+    );
+  }
+  private async cover(
+    recent: ConversationHistory,
+    retained: readonly ConversationMessage[],
+    sessionId: string,
+  ): Promise<ConversationHistory> {
+    // A fresh open transfers one page. Recovery fills only a missed gap, then
+    // keeps previously loaded rows/identities instead of replacing the window.
+    if (!recent.page || !retained.length) return recent;
+    const known = new Set(retained.flatMap((row) => (row.id ? [row.id] : [])));
+    let messages = recent.messages;
+    let older = recent.page.older;
+    const visited = new Set<string>();
+    while (older && !messages.some((row) => row.id && known.has(row.id))) {
+      if (visited.has(older)) throw new ClientError('INVALID_RESPONSE');
+      visited.add(older);
+      const page = await this.older(sessionId, older);
+      messages = [...page.messages, ...messages];
+      older = page.page?.older ?? null;
+    }
+    const boundary = retained.findIndex(
+      (row) => row.id && messages.some((next) => next.id === row.id),
+    );
+    const prefix = boundary < 0 ? [] : retained.slice(0, boundary);
+    const ids = new Set<string>();
+    return {
+      ...recent,
+      messages: [...prefix, ...messages].filter(
+        (row) => !row.id || (!ids.has(row.id) && !!ids.add(row.id)),
+      ),
+    };
+  }
+  async message(sessionId: string, id: string): Promise<ConversationMessage | undefined> {
+    let page = await this.history(sessionId);
+    const visited = new Set<string>();
+    for (;;) {
+      const row = page.messages.find((row) => row.id === id);
+      if (row || !page.page?.older) return row;
+      if (visited.has(page.page.older)) throw new ClientError('INVALID_RESPONSE');
+      visited.add(page.page.older);
+      page = await this.older(sessionId, page.page.older);
+    }
   }
   async approvals(sessionId: string): Promise<ConversationApproval[]> {
     return decodeApprovals(

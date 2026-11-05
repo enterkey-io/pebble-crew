@@ -67,7 +67,8 @@ class WorkspaceStore:
 
     def read(self):
         revision, data = self.db.execute('SELECT revision,data FROM workspace WHERE id=1').fetchone()
-        return {**json.loads(data), 'revision': revision}
+        value = json.loads(data)
+        return {**value, 'features': {'tasks': True, **value.get('features', {})}, 'revision': revision}
 
     def save(self, value, expected):
         value = deepcopy(value)
@@ -77,6 +78,22 @@ class WorkspaceStore:
             if changed != 1:
                 raise InvalidOperation('Workspace changed; refresh before saving', 'STALE_REVISION')
         return self.read()
+
+    def set_tasks(self, enabled, expected, workspace_id):
+        if type(enabled) is not bool or type(expected) is not int or expected < 0:
+            raise InvalidOperation('Invalid Tasks setting')
+        with self.db:
+            self.db.execute('BEGIN IMMEDIATE')
+            state = self.read()
+            if state['id'] != workspace_id:
+                raise InvalidOperation('Choose this workspace', 'STALE_REVISION')
+            if state['features']['tasks'] == enabled:
+                return {'features': state['features'], 'revision': state['revision']}
+            if state['revision'] != expected:
+                raise InvalidOperation('Settings changed. Review them before trying again.', 'STALE_REVISION')
+            state['features']['tasks'] = enabled
+            saved = self.save(state, expected)
+        return {'features': saved['features'], 'revision': saved['revision']}
 
     def request(self, actor, action, spec):
         if action not in ACTIONS:
@@ -222,7 +239,7 @@ def normalize_photo(data):
 
 
 class WorkspaceService:
-    METHODS = {'room.create', 'exchange.references', 'exchange.read', 'reporting.describe', 'bots.profile.update', 'agent.onboard', 'agent.welcome', 'organization.get', 'organization.save', 'organization.chat', 'crews.save', 'workspace.snapshot', 'presentation.read', 'presentation.order', 'agent.pin', 'agent.hide', 'agent.delete', 'agent.propose', 'room.send', 'room.log', 'room.react', 'agent.enable', 'workspace.describe', 'workspace.detect_primary', 'workspace.initialize', 'workspace.welcome', 'workspace.set_orchestrator',
+    METHODS = {'workspace.features.set', 'room.create', 'exchange.references', 'exchange.read', 'reporting.describe', 'bots.profile.update', 'agent.onboard', 'agent.welcome', 'organization.get', 'organization.save', 'organization.chat', 'crews.save', 'workspace.snapshot', 'presentation.read', 'presentation.order', 'agent.pin', 'agent.hide', 'agent.delete', 'agent.propose', 'room.send', 'room.log', 'room.react', 'agent.enable', 'workspace.describe', 'workspace.detect_primary', 'workspace.initialize', 'workspace.welcome', 'workspace.set_orchestrator',
         'bots.update_handle', 'bots.appearance.get', 'bots.appearance.update', 'roles.update', 'teams.save',
         'models.describe', 'agent.model', 'agent.create', 'agent.update', 'agent.attach', 'requests.reconcile', 'requests.get', 'requests.review', 'requests.list', 'requests.approve', 'requests.deny',
         'connections.add', 'connections.permissions', 'connections.set_key', 'connections.list', 'connections.test', 'services.catalog', 'agent.capabilities'}
@@ -341,6 +358,11 @@ class WorkspaceService:
 
     async def _invoke(self, operation, params):
         from . import presentation
+        if operation == 'workspace.features.set':
+            fields(params, ['workspace_id', 'tasks', 'expected_revision'])
+            result = self.store.set_tasks(params['tasks'], params['expected_revision'], params['workspace_id'])
+            self._snapshot = None
+            return result
         if operation == 'room.create':
             # Serialize room creation with snapshots, including uncertain native outcomes.
             self._snapshot = None

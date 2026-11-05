@@ -152,3 +152,14 @@ continued typing.
 
 - Pending input: `conversation-cards.spec.ts` covers X minimization, usable composer, exact pending-state preservation, reopen, reconnect and new requests. `owner.spec.ts` also checks native pending state/fingerprint while minimized. X never submits a decision.
 - iOS PWA safe areas: `pwa-viewport.spec.ts` models a 59px top and 34px bottom inset, verifies header/composer/navigation controls and keyboard dismissal. Physical installed-iOS behavior remains separate.
+
+- Optional Tasks: `optional-tasks.spec.ts` covers installation-wide visibility, old-host capability fallback, lost/stale receipts, authoritative agent fields and plan drafts retained across another tab disabling Tasks. Native owner acceptance persists the switch across reload while preserving Kanban data; `test_plans.py` verifies text/voice/worker goal suppression with no model/native writes during preference changes.
+
+- Recent-first history: `history-window.spec.ts` checks one 60-row startup copy,
+  lazy Inspector/Library/routines, older paging with exact reader anchoring,
+  failure/retry with pending approvals, active streaming and drafts, a missed-gap
+  recovery without remounting messages, and a saved-session reload. Run on desktop
+  and both phone engines. `scripts/fixture/history_smoke.py` runs model-free against
+  both pinned Hermes builds; `test_transport_frames.py` exercises a real 8 MiB pipe.
+  Physical-phone cold/warm/thermal proof is still pending; use
+  `docs/HISTORY_PERFORMANCE_ACCEPTANCE.md` for that separate gate.

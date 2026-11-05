@@ -63,10 +63,10 @@ class ConversationPresentationTests(unittest.TestCase):
         live = {'assistant': 'Live reply', 'corrections': ['PRIVATE_BACKGROUND'], 'correction_offsets': [3]}
         server = SimpleNamespace(method=lambda name: lambda fn: handlers.setdefault(name, fn),
             _sess_nowait=lambda *_: (session, None),
-            _live_session_payload=lambda *_: {'running': True, 'turn_started_at': 7},
+            _live_session_payload=lambda *_, **_kw: {'running': True, 'turn_started_at': 7},
             _inflight_snapshot=lambda _: dict(live), _queued_prompt_snapshot=lambda _: None,
             _inflight_text=lambda value: str(value or ''), _ok=lambda _rid, value: value)
-        with patch.dict(sys.modules, {'tui_gateway': SimpleNamespace(server=server)}):
+        with patch.dict(sys.modules, {'tui_gateway': SimpleNamespace(server=server), 'conversation_history': SimpleNamespace(read_page=lambda *_: {'messages': []})}):
             extension.register(Path(test_security.ROOT) / 'plugins/bot-web')
             snapshot = handlers['bot_web.conversation.snapshot'](1, {'session_id': 'synthetic'})
             self.assertEqual(snapshot['inflight']['corrections'], [])
@@ -109,11 +109,11 @@ class ConversationPresentationTests(unittest.TestCase):
                    'queued_prompts': [{'text': 'Make the photo', '_submit_user_row': old}]}
         server = SimpleNamespace(method=lambda name: lambda fn: handlers.setdefault(name, fn),
             _sess_nowait=lambda *_: (session, None),
-            _live_session_payload=lambda *_: {'running': True, 'turn_started_at': 7},
+            _live_session_payload=lambda *_, **_kw: {'running': True, 'turn_started_at': 7},
             _inflight_snapshot=lambda _: {'assistant': 'Working on a photo'},
             _queued_prompt_snapshot=lambda _: None,
             _inflight_text=lambda value: str(value or ''), _ok=lambda _rid, value: value)
-        with patch.dict(sys.modules, {'tui_gateway': SimpleNamespace(server=server)}):
+        with patch.dict(sys.modules, {'tui_gateway': SimpleNamespace(server=server), 'conversation_history': SimpleNamespace(read_page=lambda *_: {'messages': []})}):
             extension.register(Path(test_security.ROOT) / 'plugins/bot-web')
             snapshot = handlers['bot_web.conversation.snapshot'](1, {'session_id': 'synthetic'})
         self.assertNotIn('active_user_row_id', snapshot)

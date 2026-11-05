@@ -105,6 +105,9 @@ export class OwnerSession {
       get supportsGeneratedMedia() {
         return capabilities()?.supportsGeneratedMedia ?? false;
       },
+      get supportsWorkspaceSettings() {
+        return capabilities()?.supportsWorkspaceSettings ?? false;
+      },
       get supportsWorkspace() {
         return capabilities()?.supportsWorkspace ?? false;
       },

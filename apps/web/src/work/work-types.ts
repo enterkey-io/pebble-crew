@@ -12,6 +12,7 @@ export type SharedProps = {
   onClose: () => void;
   onSaved: () => void;
   visibleBoard?: string | undefined;
+  showBoardActions?: boolean | undefined;
   onOpenBoard: (board: string) => void;
   onDirtyChange: (dirty: boolean) => void;
   onNavigate: (action: () => void) => void;

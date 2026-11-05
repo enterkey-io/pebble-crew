@@ -69,6 +69,7 @@ export function Transcript({
   cards?: readonly TranscriptCard[];
   suppressedTools?: ReadonlySet<string>;
 }) {
+  const content = useRef<HTMLDivElement>(null);
   const reduced = useReducedMotion();
   const openDocument = useDocumentActions();
   const callbacks = useRef({ onReact, onDownloadFile, openDocument });
@@ -134,11 +135,27 @@ export function Transcript({
   const signature = JSON.stringify(keys);
   const [seen, setSeen] = useState(() => ({ conversationKey, keys: new Set(keys) }));
   useLayoutEffect(() => {
+    // Retain exact measured geometry before deferring browser layout/paint.
+    // Estimated heights move the reader when older pages are prepended.
+    const nodes = [
+      ...(content.current?.querySelectorAll<HTMLElement>('[data-message-phase="committed"]') ?? []),
+    ].filter(
+      (node) =>
+        node.style.contentVisibility !== 'auto' &&
+        !node.querySelector('.message-image,.generated-file,video,img'),
+    );
+    const heights = nodes.map((node) => node.getBoundingClientRect().height);
+    nodes.forEach((node, index) => {
+      node.style.containIntrinsicSize = `auto ${heights[index]}px`;
+      node.style.contentVisibility = 'auto';
+    });
+  }, [signature, conversationKey]);
+  useLayoutEffect(() => {
     setSeen({ conversationKey, keys: new Set<string>(JSON.parse(signature)) });
   }, [conversationKey, signature]);
   let previous = '';
   return (
-    <div className="pc-messages">
+    <div ref={content} className="pc-messages">
       {children}
       {timeline.map((item, i) => {
         if (item.kind === 'activity')

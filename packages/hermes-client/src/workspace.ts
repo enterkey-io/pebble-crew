@@ -149,6 +149,7 @@ export function decodeWorkspaceSnapshot(value: unknown) {
     id: identity(data.id),
     revision: counter(data.revision),
     initialized: boolean(data.initialized),
+    ...optional(data, 'features', (value) => ({ tasks: boolean(record(value).tasks) })),
     orchestrator: reference(data.orchestrator),
     bots,
     teams,

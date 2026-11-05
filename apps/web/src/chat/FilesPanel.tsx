@@ -26,11 +26,13 @@ export function fileSize(size: number) {
       : `${(size / 1024 / 1024).toFixed(1)} MB`;
 }
 export function FilesPanel({
+  active = true,
   client,
   sessionId,
   version,
   focusId,
 }: {
+  active?: boolean;
   client: SessionClient;
   sessionId: string;
   version: number;
@@ -52,6 +54,7 @@ export function FilesPanel({
   }>();
   const generation = useRef(0);
   useEffect(() => {
+    if (!active) return;
     const epoch = ++generation.current,
       domain = new ConversationDomain(client);
     setLoading(true);
@@ -105,7 +108,7 @@ export function FilesPanel({
     return () => {
       generation.current++;
     };
-  }, [client, sessionId, version, retry]);
+  }, [client, sessionId, version, retry, active]);
   useEffect(
     () => () => {
       if (viewer) URL.revokeObjectURL(viewer.url);

@@ -354,7 +354,12 @@ describe('direct Bot Mode bridge', () => {
         Response.json({
           protocol: 'hermes-bot-web.v1',
           connection,
-          capabilities: { workspace: true, attachments: true, generated_media: true },
+          capabilities: {
+            workspace: true,
+            workspace_settings: true,
+            attachments: true,
+            generated_media: true,
+          },
         }),
       )
       .mockImplementationOnce(
@@ -369,11 +374,13 @@ describe('direct Bot Mode bridge', () => {
     expect(client.supportsAttachments).toBe(true);
     expect(client.supportsGeneratedMedia).toBe(true);
     expect(client.supportsWorkspace).toBe(true);
+    expect(client.supportsWorkspaceSettings).toBe(true);
     const pending = client.invoke('chat.send', { session_id: 'live', text: 'Hello' });
     client.disconnect();
     expect(client.supportsAttachments).toBe(true);
     expect(client.supportsGeneratedMedia).toBe(true);
     expect(client.supportsWorkspace).toBe(true);
+    expect(client.supportsWorkspaceSettings).toBe(true);
     resolve(Response.json({ result: { accepted: true } }));
     await expect(pending).rejects.toMatchObject({ code: 'DISCONNECTED' });
     expect(fetcher.mock.calls[2]![1]).toMatchObject({ method: 'DELETE' });
@@ -401,4 +408,28 @@ describe('full-profile photo routing', () => {
       );
     },
   );
+});
+
+describe('large bounded native responses', () => {
+  it('accepts a response above the former 4 MiB limit while retaining the 32 MiB ceiling', async () => {
+    const fetcher = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(connectedResponse())
+      .mockResolvedValueOnce(Response.json({ result: { text: 'x'.repeat(8 * 1024 * 1024) } }))
+      .mockResolvedValueOnce(
+        new Response('{}', {
+          headers: {
+            'content-length': String(32 * 1024 * 1024 + 1),
+            'content-type': 'application/json',
+          },
+        }),
+      );
+    const client = new BotBridgeClient(endpoint, token, fetcher);
+    await client.connect();
+    const result = await client.invoke('chat.history', { session_id: 'synthetic' });
+    expect(result).toHaveProperty('text', 'x'.repeat(8 * 1024 * 1024));
+    await expect(client.invoke('chat.history', { session_id: 'synthetic' })).rejects.toMatchObject({
+      code: 'RESPONSE_TOO_LARGE',
+    });
+  });
 });

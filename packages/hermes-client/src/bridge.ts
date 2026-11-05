@@ -29,6 +29,7 @@ export class BotBridgeClient {
   #connection = '';
   #existingAgents = false;
   #workspace = false;
+  #workspaceSettings = false;
   #reporting = false;
   #projects = false;
   #attachments = false;
@@ -98,6 +99,10 @@ export class BotBridgeClient {
     return this.#generatedMedia;
   }
 
+  get supportsWorkspaceSettings(): boolean {
+    return this.#workspaceSettings;
+  }
+
   get supportsWorkspace(): boolean {
     return this.#workspace;
   }
@@ -137,6 +142,8 @@ export class BotBridgeClient {
     this.#reporting = !!data.capabilities && record(data.capabilities).reporting === 1;
     this.#projects = !!data.capabilities && record(data.capabilities).projects === true;
     this.#workspace = !!data.capabilities && record(data.capabilities).workspace === true;
+    this.#workspaceSettings =
+      !!data.capabilities && record(data.capabilities).workspace_settings === true;
     this.#attachments = !!data.capabilities && record(data.capabilities).attachments === true;
     this.#generatedMedia =
       !!data.capabilities && record(data.capabilities).generated_media === true;
@@ -376,7 +383,7 @@ export class BotBridgeClient {
       const response = await this.#fetch(url, this.#options(controller, method, body, token));
       this.#lifetime.assertCurrent(generation);
       await this.#check(response, url);
-      const data = await readBoundedJson(response, 4 * 1024 * 1024);
+      const data = await readBoundedJson(response, 32 * 1024 * 1024);
       this.#lifetime.assertCurrent(generation);
       return data;
     } catch (error) {

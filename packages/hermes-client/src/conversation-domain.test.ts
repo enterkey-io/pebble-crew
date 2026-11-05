@@ -397,3 +397,90 @@ it('decodes live assistant row provenance and rejects invalid row references', (
   for (const value of [[null], [0], [{}]])
     expect(() => decodeBotConversation({ ...snapshot, live_assistant_row_ids: value })).toThrow();
 });
+
+describe('bounded history recovery', () => {
+  const row = (id: number) => ({ role: 'assistant', row_id: id, text: `Row ${id}` });
+  it('loads one recent page on an empty open, validates its cursor and fetches older only on demand', async () => {
+    const calls: string[] = [];
+    const domain = new ConversationDomain({
+      invoke: async (method) => {
+        calls.push(method);
+        return {
+          session_id: 'native',
+          messages: [row(3), row(4)],
+          history_page: { older: 'older-3' },
+        };
+      },
+    });
+    const opened = await domain.open('alpha');
+    expect(calls).toEqual(['bot.open']);
+    expect(opened.history.page).toEqual({ older: 'older-3' });
+    for (const older of [undefined, '', 0, [], 'x'.repeat(1025)])
+      expect(() => decodeHistory({ messages: [], history_page: { older } })).toThrow();
+  });
+  it('fills only a recovery gap and preserves already loaded rows, IDs and reactions', async () => {
+    const calls: unknown[] = [];
+    const domain = new ConversationDomain({
+      invoke: async (method, params) => {
+        calls.push({ method, params });
+        return method === 'chat.snapshot'
+          ? { session_id: 'native', messages: [row(7), row(8)], history_page: { older: 'older-7' } }
+          : { messages: [row(4), row(5), row(6)], history_page: { older: 'older-4' } };
+      },
+    });
+    const retained = decodeHistory({
+      messages: [
+        row(1),
+        row(2),
+        row(3),
+        { ...row(4), display_metadata: { reactions: [{ emoji: '👍', author: 'user' }] } },
+      ],
+    });
+    const result = await domain.snapshot('native', retained.messages);
+    expect(result.history.messages.map((message) => message.id)).toEqual([
+      '1',
+      '2',
+      '3',
+      '4',
+      '5',
+      '6',
+      '7',
+      '8',
+    ]);
+    expect(calls).toHaveLength(2);
+    expect(result.history.messages[0]).toBe(retained.messages[0]);
+    expect(calls[1]).toEqual({
+      method: 'chat.history',
+      params: { session_id: 'native', before: 'older-7' },
+    });
+  });
+  it('rejects a looping history cursor rather than endlessly downloading the same page', async () => {
+    const domain = new ConversationDomain({
+      invoke: async () => ({
+        session_id: 'native',
+        messages: [row(8)],
+        history_page: { older: 'repeat' },
+      }),
+    });
+    await expect(
+      domain.snapshot('native', decodeHistory({ messages: [row(1)] }).messages),
+    ).rejects.toThrow();
+  });
+});
+
+it('advances aggregate history coverage without projecting hidden native records as messages', () => {
+  const history = decodeHistory({
+    messages: [],
+    history_page: { older: 'older', coverage: { count: 60, max_row: 305 } },
+  });
+  expect(history.messages).toEqual([]);
+  expect(history.coverage).toEqual({ count: 60, maxRow: 305, rowIds: [] });
+  for (const coverage of [
+    { count: -1, max_row: 305 },
+    { count: 60, max_row: -1 },
+    { count: '60', max_row: 305 },
+  ])
+    expect(() =>
+      decodeHistory({ messages: [], history_page: { older: null, coverage } }),
+    ).toThrow();
+});
