@@ -293,15 +293,8 @@ export function Rail({
   return (
     <>
       <div className="pc-rail-header rail-toolbar">
-        {phone ? (
-          <div className="pc-mobile-account">
-            {accountMenu}
-            {connectionStatus}
-          </div>
-        ) : (
-          <span className="pc-wordmark">Pebble Crew</span>
-        )}
-        {!phone && <IconButton label="Search Pebble Crew" icon={Search} onClick={onSearch} />}
+        <span className="pc-wordmark">Pebble Crew</span>
+        <IconButton label="Search Pebble Crew" icon={Search} onClick={onSearch} />
         <Menu
           label="New"
           placement="toolbar"
@@ -552,21 +545,8 @@ export function Rail({
         )}
       </div>
       <footer className="pc-rail-footer">
-        {phone ? (
-          <Button
-            variant="secondary"
-            className="pc-mobile-search h-12 w-full justify-start gap-3 rounded-full px-4 text-muted-foreground"
-            onClick={onSearch}
-            aria-label="Search Pebble Crew"
-          >
-            <Search aria-hidden="true" />
-            <span>Search Pebble Crew</span>
-          </Button>
-        ) : (
-          accountMenu
-        )}
-
-        {!phone && connectionStatus}
+        {accountMenu}
+        {connectionStatus}
       </footer>
       <OrganizationDialog
         editor={editor}

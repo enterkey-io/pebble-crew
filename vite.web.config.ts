@@ -3,10 +3,11 @@ import { resolve } from 'node:path';
 import tailwindcss from '@tailwindcss/vite';
 import { appearancePlugin } from './scripts/appearance-plugin';
 import { imageViewerStylesPlugin } from './scripts/image-viewer-styles-plugin';
+import { webBuildProofPlugin } from './scripts/web-build-proof.mjs';
 
 export default defineConfig({
   root: 'apps/web',
-  plugins: [tailwindcss(), appearancePlugin(), imageViewerStylesPlugin()],
+  plugins: [tailwindcss(), appearancePlugin(), imageViewerStylesPlugin(), webBuildProofPlugin()],
   resolve: {
     alias: {
       '@': new URL('./apps/web/src', import.meta.url).pathname,

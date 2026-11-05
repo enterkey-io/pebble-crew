@@ -1,9 +1,11 @@
 import { readdir, readFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
+import { assertWebBuild } from './web-build-proof.mjs';
 
 const root = process.env.WORKSPACE_BUILD_ROOT
   ? resolve(process.env.WORKSPACE_BUILD_ROOT, 'web')
   : resolve('apps/web/dist');
+if (!process.env.WORKSPACE_BUILD_ROOT) assertWebBuild(root);
 const assets = await readdir(resolve(root, 'assets'));
 for (const name of assets.filter((name) => name.endsWith('.js'))) {
   const source = await readFile(resolve(root, 'assets', name), 'utf8');

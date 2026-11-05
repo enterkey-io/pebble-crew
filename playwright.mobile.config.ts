@@ -17,7 +17,7 @@ export default defineConfig({
     { name: 'android-chromium', use: { ...devices['Pixel 7'], browserName: 'chromium' } },
   ],
   webServer: {
-    command: 'node scripts/serve-static.mjs',
+    command: 'node scripts/serve-verified-web.mjs',
     env: {
       BOT_WEB_STATIC_PORT: '8097',
       BOT_WEB_STATIC_DIRECTORY: resolve(

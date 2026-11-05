@@ -7,6 +7,7 @@ type IconButtonProps = Omit<ComponentProps<typeof Button>, 'children' | 'aria-la
   icon: ComponentType<{ className?: string }>;
   quiet?: boolean;
   tooltip?: boolean;
+  glyphSize?: 'normal' | 'navigation';
 };
 
 export function IconButton({
@@ -14,6 +15,7 @@ export function IconButton({
   icon: Glyph,
   quiet = false,
   tooltip = true,
+  glyphSize = 'normal',
   variant = 'ghost',
   size = 'icon-sm',
   ...props
@@ -26,7 +28,13 @@ export function IconButton({
       aria-label={label}
       {...props}
     >
-      <Glyph />
+      <Glyph
+        className={
+          glyphSize === 'navigation'
+            ? 'size-5 pointer-coarse:size-6'
+            : 'size-4 pointer-coarse:size-5'
+        }
+      />
     </Button>
   );
   return tooltip ? (

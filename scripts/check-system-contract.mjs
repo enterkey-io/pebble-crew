@@ -1,6 +1,7 @@
 import { readdirSync, readFileSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 import { sourceContract } from './ui-source-contract.mjs';
+import { fixedAppRoots } from './mobile-shell-contract.mjs';
 
 const root = 'apps/web/src/';
 const read = (path) => readFileSync(root + path, 'utf8');
@@ -8,7 +9,15 @@ const errors = [];
 const requireRule = (condition, message) => {
   if (!condition) errors.push(message);
 };
+requireRule(
+  fixedAppRoots(
+    ['ui/layout.css', 'ui/mobile.css', 'ui/foundation.css', 'ui/product.css'].map(read).join('\n'),
+  ).length === 0,
+  'The app root must stay in normal document flow. A fixed body, #root or .pc-shell can clip installed iOS PWAs; fixed dialogs remain supported.',
+);
 const migrated = [
+  ['ui/NavigationItem.tsx', './RoleLabel', ['RoleLabel']],
+  ['ui/PebbleTile.tsx', './RoleLabel', ['RoleLabel']],
   ['PebbleEditor.tsx', './components/ui/disclosure', ['Disclosure']],
   ['NewPebble.tsx', './components/ui/disclosure', ['Disclosure']],
   ['OwnerShell.tsx', './components/ui/disclosure', ['Disclosure']],

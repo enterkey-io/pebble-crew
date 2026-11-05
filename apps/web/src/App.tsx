@@ -2522,10 +2522,14 @@ export function App({ owner }: { owner?: OwnerConnection }) {
                     <div className="pointer-events-none absolute inset-x-0 top-0 z-10">
                       <LoadingBar active={switching} label="Opening conversation" />
                     </div>
-                    <header className="pc-chat-header chat-header">
+                    <header
+                      className="pc-chat-header chat-header"
+                      data-has-requests={requestCount > 0}
+                    >
                       <IconButton
                         quiet
                         className="md:hidden"
+                        glyphSize="navigation"
                         label="Toggle navigation"
                         tooltip={false}
                         icon={ArrowLeft}

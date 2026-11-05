@@ -1,6 +1,6 @@
 import type { ComponentProps, ReactNode } from 'react';
 import { cn } from '../lib/utils';
-import { Badge } from '../components/ui/badge';
+import { RoleLabel } from './RoleLabel';
 import {
   Item,
   ItemMedia,
@@ -46,14 +46,7 @@ export function NavigationItem({
         <ItemContent className="gap-1">
           <ItemTitle className="w-full min-w-0 gap-1.5 max-md:text-base">
             <strong className="min-w-0 max-w-full shrink-0 truncate font-medium">{title}</strong>{' '}
-            {label && (
-              <Badge
-                variant="secondary"
-                className="block min-w-0 shrink truncate rounded px-1 py-0 text-xs font-normal max-md:bg-transparent max-md:px-0 max-md:text-sm max-md:before:mr-1 max-md:before:content-['·']"
-              >
-                {label}
-              </Badge>
-            )}
+            {label && <RoleLabel>{label}</RoleLabel>}
           </ItemTitle>{' '}
           {description && (
             <ItemDescription className="line-clamp-1 text-xs max-md:text-[length:var(--text-meta)]">
