@@ -147,6 +147,13 @@ and name the earlier ID when a rule is superseded.
 - Why: Forcing three pins at every width cramped titles and made the light-theme tag compete with the hover surface. This supersedes the three-pins-at-minimum-width rule in UI-compact-pins-circle-photos.
 - Evidence: The [browser checks](../test/chat-workspace/interface-preferences.spec.ts) verify wrapping, three-across at wider widths, and label contrast over the light-mode tile surfaces.
 
+### UI-pin-photo-badge Center status badges on the photo edge
+
+- Date: 2026-11-05
+- Decision: Place the center of the Main Pebble star and unread dot on the lower-right circumference of a pinned photo. Use the same anchor for both so the unread dot replaces the star in place.
+- Why: A circular crop and its rectangular layout box have different edges.
+- Evidence: The [unread browser checks](../test/chat-workspace/unread.spec.ts) measure each badge center against the displayed photo radius in both themes.
+
 ### UI-missing-bot-chat Explain why an existing pebble’s chat cannot open
 
 - Date: 2026-11-05

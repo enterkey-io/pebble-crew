@@ -412,6 +412,16 @@
   font-size: var(--text-meta);
   outline-color: var(--details);
 }
+.pc-pin .avatar-photo {
+  height: auto;
+  aspect-ratio: 1;
+}
+.pc-pin .avatar-photo > :is(.avatar-star, .avatar-unread) {
+  /* Center the badge on the circle at 45 degrees. */
+  right: 14.64466%;
+  bottom: 14.64466%;
+  translate: 50% 50%;
+}
 .pc-pin .avatar-star {
   width: 15px;
   height: 15px;
