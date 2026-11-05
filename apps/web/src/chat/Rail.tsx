@@ -237,7 +237,7 @@ export function Rail({
   const accountMenu = (
     <Menu
       label="Your account"
-      placement={phone ? 'toolbar' : 'account'}
+      placement="account"
       items={[
         { label: 'Org chart', icon: Network, action: onOrgChart },
         { label: 'Settings', icon: Settings2, action: onSettings },
@@ -255,9 +255,7 @@ export function Rail({
   const connectionStatus = (
     <span className="connection-status" data-online={online}>
       <i aria-hidden="true" />
-      <span className={phone ? 'sr-only' : undefined}>
-        {online ? 'Hermes connected' : 'Reconnecting…'}
-      </span>
+      <span>{online ? 'Hermes connected' : 'Reconnecting…'}</span>
     </span>
   );
   const controls = (bot: ChatBot, children: ReactNode, placementId?: string) => {

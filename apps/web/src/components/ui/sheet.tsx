@@ -63,7 +63,7 @@ function SheetContent({
           side === 'bottom' &&
             'inset-x-0 bottom-0 h-auto border-t data-[state=closed]:slide-out-to-bottom data-[state=open]:slide-in-from-bottom',
           (side === 'left' || side === 'right') &&
-            'max-md:top-[var(--app-viewport-top,0px)] max-md:bottom-auto max-md:h-[var(--app-viewport-height,100dvh)]',
+            'max-md:top-[var(--app-viewport-top,0px)] max-md:bottom-auto max-md:h-[var(--app-viewport-height,100dvh)] max-md:pt-[var(--app-safe-top)] max-md:pb-[var(--app-bottom-inset)]',
           size === 'panel' &&
             'w-[min(360px,calc(100vw-24px))] max-w-[calc(100vw-24px)] gap-0 border-0 bg-[var(--rail)] p-0 sm:max-w-[360px]',
           className,

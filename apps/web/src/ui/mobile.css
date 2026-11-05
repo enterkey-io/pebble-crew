@@ -9,6 +9,7 @@
 .pc-mobile-conversation {
   position: absolute;
   inset: 0;
+  padding-block: var(--app-safe-top) var(--app-bottom-inset);
   display: flex;
   flex-direction: column;
   min-height: 0;
@@ -43,8 +44,8 @@
   transition-delay: 0s;
 }
 .pc-mobile-navigation .pc-rail-header {
-  height: calc(72px + var(--app-safe-top));
-  padding: var(--app-safe-top) 16px 0;
+  height: 72px;
+  padding: 0 16px;
   justify-content: space-between;
 }
 .pc-mobile-navigation .pc-rail-scroll {
@@ -77,7 +78,7 @@
 }
 .pc-mobile-navigation .pc-rail-footer {
   min-height: 76px;
-  padding: 12px 16px calc(14px + var(--app-safe-bottom));
+  padding: 12px 16px 14px;
 }
 @media (max-width: 767px) {
   .pc-details-chevron {

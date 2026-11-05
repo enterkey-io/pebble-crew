@@ -45,7 +45,13 @@ test.beforeEach(async ({ page, context }) => {
         get height() {
           return innerHeight - 62;
         },
+        get width() {
+          return innerWidth;
+        },
         offsetTop: 0,
+        offsetLeft: 0,
+        pageTop: 0,
+        pageLeft: 0,
         scale: 1,
       }),
     });
@@ -109,6 +115,7 @@ for (const theme of ['dark', 'light'])
       .locator('.pc-rail-footer')
       .getByRole('button', { name: 'Your account', exact: true });
     await fullyExposed(account);
+    await fullyExposed(navigation.getByText('Hermes connected', { exact: true }));
     const pin = navigation.locator('.pc-pins').getByText('Team lead', { exact: true });
     const row = navigation
       .getByRole('button', { name: /^Sage Researcher/ })
@@ -138,3 +145,71 @@ for (const theme of ['dark', 'light'])
       path: info.outputPath(`installed-navigation-${theme}.png`),
     });
   });
+
+for (const title of ['Settings', 'Org chart']) {
+  test(`the installed ${title} page keeps its title and exit below the phone status area`, async ({
+    page,
+  }, info) => {
+    const composer = page.getByLabel('Message', { exact: true });
+    await composer.fill('Keep this draft when I leave');
+    await composer.blur();
+    await page.getByRole('button', { name: 'Toggle navigation', exact: true }).tap();
+    await page.getByRole('button', { name: 'Your account', exact: true }).tap();
+    await page.getByRole('menuitem', { name: title, exact: true }).press('Enter');
+
+    const heading = page.getByRole('heading', { name: title, exact: true });
+    const close = page.getByRole('button', { name: `Close ${title}`, exact: true });
+    for (const control of [heading, close]) {
+      await expect
+        .poll(async () => (await control.boundingBox())?.y ?? 0, { timeout: 3000 })
+        .toBeGreaterThanOrEqual(62);
+      await fullyExposed(control);
+    }
+    if (title === 'Settings') {
+      await page.getByRole('tab', { name: 'Connections', exact: true }).tap();
+      await expect(page.getByRole('tab', { name: 'Connections', exact: true })).toHaveAttribute(
+        'aria-selected',
+        'true',
+      );
+      await fullyExposed(close);
+    } else {
+      const fit = page.getByRole('button', { name: 'Fit chart', exact: true });
+      await fullyExposed(fit);
+      const bounds = await fit.boundingBox();
+      if (!bounds) throw new Error('The Fit chart control is missing');
+      expect(bounds.y + bounds.height).toBeLessThanOrEqual(956 - 34);
+    }
+    await page.screenshot({
+      animations: 'disabled',
+      path: info.outputPath(`installed-${title.toLowerCase().replace(' ', '-')}.png`),
+    });
+    await close.tap();
+    await expect(composer).toBeEnabled();
+    await expect(composer).toHaveValue('Keep this draft when I leave');
+  });
+}
+
+test('details and the pebble editor keep their close controls in the phone safe area', async ({
+  page,
+}, info) => {
+  await page.getByRole('button', { name: /Show details/ }).tap();
+  const details = page.getByRole('button', { name: 'Close details', exact: true });
+  await fullyExposed(details);
+  const detailBounds = await details.boundingBox();
+  if (!detailBounds) throw new Error('The details close control is missing');
+  expect(detailBounds.y).toBeGreaterThanOrEqual(62);
+  await page.screenshot({ animations: 'disabled', path: info.outputPath('installed-details.png') });
+
+  await page.getByRole('button', { name: 'Edit Arlo', exact: true }).tap();
+  const editor = page.getByRole('dialog', { name: 'Edit pebble', exact: true });
+  const editorClose = editor.getByRole('button', { name: 'Close Edit Arlo', exact: true });
+  await fullyExposed(editorClose);
+  const editorBounds = await editor.boundingBox();
+  if (!editorBounds) throw new Error('The pebble editor is missing');
+  expect(editorBounds.y).toBeGreaterThanOrEqual(62);
+  expect(editorBounds.y + editorBounds.height).toBeLessThanOrEqual(956 - 34);
+  await editorClose.tap();
+  await expect(editor).toHaveCount(0);
+  await details.tap();
+  await expect(page.getByLabel('Message', { exact: true })).toBeEnabled();
+});

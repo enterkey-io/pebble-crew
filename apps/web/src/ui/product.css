@@ -583,19 +583,11 @@
     padding: 24px 20px;
   }
   .pc-chat-header {
-    padding: calc(8px + var(--app-safe-top)) max(16px, env(safe-area-inset-right)) 0
-      max(16px, env(safe-area-inset-left));
-    min-height: calc(72px + var(--app-safe-top));
-  }
-  .product-sheet .pc-rail-header {
-    height: calc(64px + var(--app-safe-top));
-    padding-top: var(--app-safe-top);
+    padding: 8px max(16px, env(safe-area-inset-right)) 0 max(16px, env(safe-area-inset-left));
+    min-height: 72px;
   }
   .pc-composer-wrap {
-    padding: 10px 12px calc(14px + var(--app-safe-bottom));
-  }
-  :root[data-keyboard-visible] .pc-composer-wrap {
-    padding-bottom: 14px;
+    padding: 10px 12px 14px;
   }
 }
 .owner-account h2 {
@@ -1013,7 +1005,7 @@
   background: #9d916c;
 }
 .connection-status[data-online='true'] i {
-  background: #85b89a;
+  background: var(--success);
 }
 .loading-track {
   display: block;
