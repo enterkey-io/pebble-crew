@@ -235,7 +235,8 @@ export function App({ owner }: { owner?: OwnerConnection }) {
   const [running, setRunning] = useState(false);
   const [busy, setBusy] = useState(false);
   const sendFlight = useRef<symbol | null>(null);
-  const [switching, setSwitching] = useState(false);
+  const [openingBot, setOpeningBot] = useState<Bot>();
+  const switching = !!openingBot;
   const [blocked, setBlocked] = useState(false);
   const [streamState, setStreamState] = useState<'opening' | 'live' | 'lost'>('opening');
   const work = useWorkCatalog(
@@ -623,7 +624,7 @@ export function App({ owner }: { owner?: OwnerConnection }) {
     setDraft('');
     setRunning(false);
     setBusy(false);
-    setSwitching(false);
+    setOpeningBot(undefined);
     setBlocked(false);
     setStreamState('opening');
     setError('');
@@ -1183,7 +1184,7 @@ export function App({ owner }: { owner?: OwnerConnection }) {
             ((target.kind === 'bot' && !surviving) || (target.kind === 'room' && !roomSurviving))
           ) {
             selectGeneration.current++;
-            setSwitching(false);
+            setOpeningBot(undefined);
             setBusy(false);
             selected.current = undefined;
             setSelection(undefined);
@@ -1404,7 +1405,7 @@ export function App({ owner }: { owner?: OwnerConnection }) {
     }
     rememberScroll();
     const generation = ++selectGeneration.current;
-    setSwitching(!restore);
+    setOpeningBot(restore ? undefined : bot);
     setError('');
     setBusy(true);
     if (!restore) {
@@ -1456,7 +1457,6 @@ export function App({ owner }: { owner?: OwnerConnection }) {
       selectionConnection.current = client;
       selectionEpoch.current = session.current?.bindingEpoch ?? -1;
       setSelection(target);
-      setSwitching(false);
       const id = workspace?.bots.find((entry) => entry.profile === bot.profile)?.id;
       if (workspace && id) rememberConversation(workspace.id, { kind: 'bot', id });
       setBlocked(false);
@@ -1481,21 +1481,20 @@ export function App({ owner }: { owner?: OwnerConnection }) {
         });
       }
       setAttachmentUncertain(false);
-      if (client.supportsAttachments) {
-        const receipt = (await client.invoke('files.reconcile', {
-          session_id: target.sessionId,
-        })) as { state: string };
-        if (current.current !== client || selected.current !== target) return 'superseded';
-        if (receipt.state === 'uncertain') {
-          setAttachmentUncertain(true);
-          setBlocked(true);
-          setError(
-            'An earlier file send has not been confirmed. Check its outcome before sending again.',
-          );
-        }
-      }
-      await refreshApprovals(client, target);
+      const [receipt] = await Promise.all([
+        client.supportsAttachments
+          ? client.invoke('files.reconcile', { session_id: target.sessionId })
+          : undefined,
+        refreshApprovals(client, target),
+      ]);
       if (current.current !== client || selected.current !== target) return 'superseded';
+      if (receipt && object(receipt).state === 'uncertain') {
+        setAttachmentUncertain(true);
+        setBlocked(true);
+        setError(
+          'An earlier file send has not been confirmed. Check its outcome before sending again.',
+        );
+      }
       if (data.history.page) {
         // The native binding is installed before its snapshot. Buffered events
         // have native stream positions, so a second history transfer is redundant.
@@ -1553,7 +1552,7 @@ export function App({ owner }: { owner?: OwnerConnection }) {
       if (generation === selectGeneration.current) {
         focusOnReady.current = matchMedia('(pointer: fine)').matches;
         setBusy(false);
-        setSwitching(false);
+        setOpeningBot(undefined);
       }
     }
   }
@@ -1588,7 +1587,7 @@ export function App({ owner }: { owner?: OwnerConnection }) {
       setPickingAgents(false);
     }
     selectGeneration.current++;
-    setSwitching(false);
+    setOpeningBot(undefined);
     const target: Selection = { kind: 'room', room };
     if (!restore || !selected.current) setDraft(drafts.current.get(draftKey(target)) ?? '');
     selected.current = target;
@@ -2083,6 +2082,9 @@ export function App({ owner }: { owner?: OwnerConnection }) {
               selection.room.name,
           )
         : 'Chats';
+  const headerBot = openingBot ?? (selection?.kind === 'bot' ? selection.bot : undefined);
+  const headerTitle = openingBot?.name ?? title;
+  const headerProfile = workspace?.bots.find((bot) => bot.profile === headerBot?.profile);
   usePageTitle(
     settings || pickingAgents || workDialog
       ? undefined
@@ -2098,7 +2100,7 @@ export function App({ owner }: { owner?: OwnerConnection }) {
               ? workBoard === '$plans'
                 ? 'Plans'
                 : (work.catalog?.boards.find((board) => board.slug === workBoard)?.name ?? 'Tasks')
-              : title,
+              : headerTitle,
   );
 
   if (!client)
@@ -2160,7 +2162,6 @@ export function App({ owner }: { owner?: OwnerConnection }) {
           setArea(area);
           setOrgOpen(false);
           setSettings(false);
-          setNav(false);
         })
       }
       onBoard={(board) =>
@@ -2268,7 +2269,7 @@ export function App({ owner }: { owner?: OwnerConnection }) {
       onVisibility={(bot, hidden) => void visibility(bot, hidden)}
       onDelete={(bot) => void proposeDelete(bot)}
       onOrder={(ids) =>
-        void presentationAction('presentation.order', {
+        presentationAction('presentation.order', {
           ids,
           expected_revision: preferencesRevision.current,
         })
@@ -2393,7 +2394,7 @@ export function App({ owner }: { owner?: OwnerConnection }) {
             onCloseNavigation={closeNav}
             onOpenNavigation={() => setNav(true)}
             edgeNavigation={
-              area === 'chat' && !settings && !orgOpen && !details && !documentReader.state
+              (nav || area === 'chat') && !settings && !orgOpen && !details && !documentReader.state
             }
           >
             <Chat
@@ -2532,24 +2533,23 @@ export function App({ owner }: { owner?: OwnerConnection }) {
                         onClick={() => setNav(true)}
                       />
                       <ConversationIdentity
-                        title={title}
+                        title={headerTitle}
                         description={
-                          selection?.kind === 'bot'
-                            ? workspace?.bots.find((b) => b.profile === selection.bot.profile)?.role
-                                .title ||
-                              `@${workspace?.bots.find((b) => b.profile === selection.bot.profile)?.handle ?? selection.bot.profile}`
+                          headerBot
+                            ? headerProfile?.role.title ||
+                              `@${headerProfile?.handle ?? headerBot.profile}`
                             : undefined
                         }
-                        expanded={details}
-                        disabled={!selection}
+                        expanded={!switching && details}
+                        disabled={!selection || switching}
                         onClick={() => toggleDetails(!details)}
                         media={
-                          selection?.kind === 'bot' ? (
+                          headerBot ? (
                             <PebbleAvatar
-                              bot={selection.bot}
+                              bot={headerBot}
                               workspace={workspace}
                               client={client}
-                              state={agentStates[selection.bot.profile]}
+                              state={agentStates[headerBot.profile]}
                             />
                           ) : selection?.kind === 'room' ? (
                             <CrewAvatar
@@ -2651,6 +2651,8 @@ export function App({ owner }: { owner?: OwnerConnection }) {
                     )}
                     <ChatViewport
                       ref={transcriptPane}
+                      style={switching ? { visibility: 'hidden' } : undefined}
+                      inert={switching}
                       className={`pc-transcript transcript ${pickingAgents ? 'choosing-agents' : ''}`}
                       role={pickingAgents ? undefined : 'log'}
                       aria-live={pickingAgents ? undefined : 'off'}
@@ -2844,7 +2846,7 @@ export function App({ owner }: { owner?: OwnerConnection }) {
                       </LiveTranscript>
                       {agentExchanges.viewer}
                     </ChatViewport>
-                    {!pickingAgents && (
+                    {!pickingAgents && !switching && (
                       <div className="relative shrink-0">
                         {showLatest && (
                           <Button
@@ -2975,7 +2977,6 @@ export function App({ owner }: { owner?: OwnerConnection }) {
                             title={title}
                             busy={busy}
                             blocked={actionBlocked}
-                            switching={switching}
                             running={running}
                             stopping={stopping}
                             uploads={uploads}

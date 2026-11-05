@@ -570,8 +570,19 @@
   position: absolute;
   right: 0;
   bottom: 8px;
-  font-size: 10px;
-  color: var(--ring);
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--ring);
+}
+.pc-chat-identity .photo-status {
+  left: 14.64466%;
+  right: auto;
+  bottom: 14.64466%;
+  translate: -50% 50%;
+  width: 8px;
+  height: 8px;
+  border: 1px solid var(--background);
 }
 @media (max-width: 767px) {
   .entity-page {

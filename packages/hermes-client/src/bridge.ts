@@ -261,11 +261,12 @@ export class BotBridgeClient {
       throw new ClientError('INVALID_RESPONSE');
     return result as { id: string; name: string; size: number; kind: string; state: string };
   }
-  async downloadFile(sessionId: string, id: string): Promise<Blob> {
+  async downloadFile(sessionId: string, id: string, signal?: AbortSignal): Promise<Blob> {
     const generation = this.#lifetime.capture();
     return this.#withSlot(() => {
       this.#lifetime.assertCurrent(generation);
-      return this.#downloadBinary('files.read', { session_id: sessionId, id }).then(
+      signal?.throwIfAborted();
+      return this.#downloadBinary('files.read', { session_id: sessionId, id }, signal).then(
         (file) => file.blob,
       );
     });

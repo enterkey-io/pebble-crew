@@ -147,9 +147,23 @@ type ImageState =
   | { kind: 'loading'; key: string }
   | { kind: 'error'; key: string }
   | { kind: 'ready'; key: string; file: DownloadedMedia; url: string };
-export function GeneratedImage({ source, alt }: { source: string; alt: string }) {
+export function GeneratedImage({
+  source,
+  alt,
+  upload,
+}: {
+  source: string;
+  alt: string;
+  upload?: { client: SessionClient; sessionId: string };
+}) {
   const media = useContext(MessageMediaContext);
-  const key = `${media?.identity ?? ''}:${source}`;
+  const uploadClient = upload?.client,
+    uploadSession = upload?.sessionId;
+  const key = uploadSession
+    ? `upload:${uploadSession}:${source}`
+    : `${media?.identity ?? ''}:${source}`;
+  const uploaded = !!uploadClient && !!uploadSession;
+  const available = uploaded || media?.kind === 'saved';
   const video = /\.mp4$/i.test(decodeName(source));
   const player = useRef<HTMLVideoElement>(null);
   const playRequested = useRef(false);
@@ -188,15 +202,21 @@ export function GeneratedImage({ source, alt }: { source: string; alt: string })
       setState({ kind: 'idle', key });
       return;
     }
-    if ((!visible && !viewerOpen) || media?.kind !== 'saved') return;
+    if ((!visible && !viewerOpen) || !available) return;
     if (resource.current?.key === key) return;
     const controller = new AbortController();
     setState({ kind: 'loading', key });
-    void referenceKey(source)
-      .then((reference) =>
-        media.client.downloadMedia(media.sessionId, media.rowId, reference, controller.signal),
-      )
-      .then((file) => {
+    const download = uploaded
+      ? uploadClient
+          .downloadFile(uploadSession, source, controller.signal)
+          .then((blob) => ({ blob, name: alt }))
+      : media?.kind === 'saved'
+        ? referenceKey(source).then((reference) =>
+            media.client.downloadMedia(media.sessionId, media.rowId, reference, controller.signal),
+          )
+        : undefined;
+    void download
+      ?.then((file) => {
         if (controller.signal.aborted) return;
         const url = URL.createObjectURL(file.blob);
         resource.current = { key, url };
@@ -208,7 +228,20 @@ export function GeneratedImage({ source, alt }: { source: string; alt: string })
     return () => {
       controller.abort();
     };
-  }, [media, source, visible, viewerOpen, video, attempt, key]);
+  }, [
+    media,
+    source,
+    alt,
+    uploadClient,
+    uploadSession,
+    uploaded,
+    available,
+    visible,
+    viewerOpen,
+    video,
+    attempt,
+    key,
+  ]);
   useEffect(() => {
     if (state.kind === 'ready' && video && playRequested.current) {
       playRequested.current = false;
@@ -343,10 +376,10 @@ export function GeneratedImage({ source, alt }: { source: string; alt: string })
             {alt || decodeName(source)}
           </span>
         </Button>
-      ) : state.kind === 'error' || !media ? (
+      ) : state.kind === 'error' || (!media && !uploaded) ? (
         <span className="message-image-error">
           {video ? 'Video unavailable' : 'Image unavailable'}
-          {media && (
+          {available && (
             <IconButton
               label={video ? 'Retry video' : 'Retry image'}
               icon={RotateCw}

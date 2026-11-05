@@ -7,6 +7,7 @@ async function openTasks(page: Page, info: TestInfo) {
   if (info.project.use.isMobile)
     await page.getByRole('button', { name: 'Toggle navigation', exact: true }).click();
   await page.getByRole('radio', { name: 'Tasks', exact: true }).click();
+  if (info.project.use.isMobile) await page.keyboard.press('Escape');
 }
 
 for (const operation of ['work.describe', 'work.board']) {

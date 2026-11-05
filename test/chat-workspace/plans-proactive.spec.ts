@@ -154,7 +154,6 @@ test('Plans and project goals use shared editors and preserve owner choices acro
   await expect(page.getByLabel('Message', { exact: true })).toBeEnabled();
   await rail(page);
   await page.getByRole('radio', { name: 'Tasks', exact: true }).click();
-  await rail(page);
   await page.getByRole('button', { name: 'Plans', exact: true }).click();
   await expect(page).toHaveTitle('Plans — Pebble Crew');
   await page.getByRole('button', { name: 'New plan', exact: true }).click();
@@ -195,7 +194,6 @@ test('Plans and project goals use shared editors and preserve owner choices acro
   await expect(page.getByLabel('Message', { exact: true })).toBeEnabled();
   await rail(page);
   await page.getByRole('radio', { name: 'Tasks', exact: true }).click();
-  await rail(page);
   await page.getByRole('button', { name: 'Plans', exact: true }).click();
   await page.getByRole('button', { name: 'Edit Company direction', exact: true }).click();
   await expect(page.getByLabel('Goal', { exact: true })).toHaveValue(
@@ -266,7 +264,6 @@ test('Plan conflicts preserve local edits and interrupted saves check the origin
   await expect(page.getByLabel('Message', { exact: true })).toBeEnabled();
   await rail(page);
   await page.getByRole('radio', { name: 'Tasks', exact: true }).click();
-  await rail(page);
   await page.getByRole('button', { name: 'Plans', exact: true }).click();
   await page.getByRole('button', { name: 'Edit Company direction', exact: true }).click();
   const dialog = page.getByRole('dialog');
@@ -341,7 +338,6 @@ test('a stale project goal retry uses a new save identity after receiving the cu
   await expect(page.getByLabel('Message', { exact: true })).toBeEnabled();
   await rail(page);
   await page.getByRole('radio', { name: 'Tasks', exact: true }).click();
-  await rail(page);
   await page.getByRole('button', { name: 'Product launch', exact: true }).click();
   await page.getByRole('button', { name: 'Goal', exact: true }).click();
   const dialog = page.getByRole('dialog', { name: 'Project goal', exact: true });

@@ -84,6 +84,27 @@ and name the earlier ID when a rule is superseded.
 - Why: The desktop resizable panel could scroll the entire sidebar and leave the account controls below the visible window.
 - Evidence: The [sidebar browser checks](../test/chat-workspace/interface-preferences.spec.ts) scroll a long roster in a short viewport and open Settings from the stationary footer.
 
+### UI-installed-sidebar-scroll-to-top Use native status-bar scrolling in the installed iOS sidebar
+
+- Date: 2026-11-05
+- Decision: Let the document own vertical scrolling while the standalone iOS sidebar is open. Dock the header and account footer inside the safe areas. Preserve the sidebar offset when returning to chat and keep the transcript's own scroll position.
+- Why: [WebKit disables native scroll-to-top on nested scroll views](https://github.com/WebKit/WebKit/blob/main/Source/WebKit/UIProcess/RemoteLayerTree/ios/ScrollingTreeScrollingNodeDelegateIOS.mm#L359-L365).
+- Evidence: The [installed-shell browser test](../test/mobile/installed-shell.spec.ts) verifies the document offset, docked controls, and retained draft. Confirm the status-bar tap on an installed iPhone before release.
+
+### UI-sidebar-navigation Keep area switching and reordering in the sidebar
+
+- Date: 2026-11-05
+- Decision: Chat and Tasks switch the contents of the open phone sidebar. Open the conversation or board after selection. Sort active conversations by recency within their own section. Pins use the saved order and preview displacement during manual drag. Persist only on drop.
+- Why: Area switching should leave the next selection in reach. Recency should never change a deliberate pin order.
+- Evidence: [Sidebar order](../test/chat-workspace/sidebar-order.spec.ts) and [area switching](../test/chat-workspace/work.spec.ts) browser checks.
+
+### UI-sent-image-preview Open sent images inside the conversation
+
+- Date: 2026-11-05
+- Decision: Use the same inline image and zoom viewer for supported sent image attachments and agent-shared images. Keep the conversation and its draft when closing the viewer.
+- Why: A generic download can take an installed web app away from the conversation.
+- Evidence: The [attachment browser check](../test/chat-workspace/agent-media.spec.ts) pastes and sends an image, opens it in chat, and verifies the same composer remains after close.
+
 ### UI-connection-label Give the connection dot a visible label
 
 - Date: 2026-11-05
@@ -150,9 +171,16 @@ and name the earlier ID when a rule is superseded.
 ### UI-pin-photo-badge Center status badges on the photo edge
 
 - Date: 2026-11-05
-- Decision: Place the center of the Main Pebble star and unread dot on the lower-right circumference of a pinned photo. Use the same anchor for both so the unread dot replaces the star in place.
+- Decision: Place the center of the Main Pebble star and unread dot on the lower-right circumference of a pinned photo. Use the same anchor for both so the unread dot replaces the star in place. In a chat header, center the activity dot on the lower-left edge of the photo and separate it with a 1 px border.
 - Why: A circular crop and its rectangular layout box have different edges.
 - Evidence: The [unread browser checks](../test/chat-workspace/unread.spec.ts) measure each badge center against the displayed photo radius in both themes.
+
+### UI-conversation-opening Show the requested identity while a conversation opens
+
+- Date: 2026-11-05
+- Decision: Show the requested agent name and the shared loading line during an explicit conversation switch. Hide the previous transcript and composer until the requested conversation can accept input. Preserve the previous draft and restore the previous view on a failed switch.
+- Why: A visible read-only composer for the previous agent invites a tap that cannot open the iOS keyboard.
+- Evidence: The [held-open browser test](../test/chat-workspace/composition-integrity.spec.ts) delays the requested agent and checks its identity, the loading line, and the absence of a composer.
 
 ### UI-missing-bot-chat Explain why an existing pebble’s chat cannot open
 

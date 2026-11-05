@@ -4,7 +4,7 @@ import { installFixture, emit } from './fixtures';
 
 test.use({ serviceWorkers: 'block' });
 
-async function expectOnPhotoEdge(pin: Locator, badge: Locator) {
+async function expectOnPhotoEdge(pin: Locator, badge: Locator, side = 1) {
   const photo = pin.locator('.agent-avatar > img');
   await expect(photo).toBeVisible();
   const { x, y, radius } = await badge.evaluate((element) => {
@@ -16,9 +16,9 @@ async function expectOnPhotoEdge(pin: Locator, badge: Locator) {
       radius: circle.width / 2,
     };
   });
-  expect(x).toBeGreaterThan(0);
+  expect(x * side).toBeGreaterThan(0);
   expect(Math.hypot(x, y)).toBeCloseTo(radius, 0);
-  expect(y).toBeCloseTo(x, 0);
+  expect(y).toBeCloseTo(Math.abs(x), 0);
 }
 
 for (const theme of ['dark', 'light']) {
@@ -102,6 +102,17 @@ for (const theme of ['dark', 'light']) {
     await expect
       .poll(() => fixture.state.bots.find((b) => b.profile === 'mica')!.unread)
       .toBe(false);
+    await emit(page, 'message.start', {}, 'mica');
+    const identity = page.locator('.pc-chat-identity');
+    const activity = identity.getByRole('img', { name: 'thinking', exact: true });
+    await expect(activity).toBeVisible();
+    await expectOnPhotoEdge(identity, activity, -1);
+    await expect(activity).toHaveCSS('border-left-width', '1px');
+    await identity.screenshot({
+      path: info.outputPath(`photo-activity-${theme}.png`),
+      animations: 'disabled',
+    });
+    await emit(page, 'message.complete', { status: 'done' }, 'mica');
     await navigation();
     await expect(pin.getByRole('img', { name: 'Unread messages', exact: true })).toHaveCount(0, {
       timeout: 1500,

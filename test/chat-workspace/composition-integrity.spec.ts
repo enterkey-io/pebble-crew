@@ -131,7 +131,7 @@ test('sidebar row media and two-line identity remain centered and contained', as
   }
 });
 
-test('agent switching retains the current conversation until the replacement is ready', async ({
+test('agent switching shows the new name and waits to show its composer', async ({
   page,
   context,
 }, info) => {
@@ -170,10 +170,10 @@ test('agent switching retains the current conversation until the replacement is 
       await page.getByLabel('Toggle navigation', { exact: true }).click();
     await page.getByRole('button', { name: /^Mica .*Bot Chat$/ }).click();
     await expect.poll(() => waiting).toBe(true);
-    await expect(page.locator('.chat-title')).toContainText('Arlo');
-    await expect(message).toHaveValue('Keep the Arlo draft');
-    await expect(message).toHaveJSProperty('readOnly', true);
-    await expect(page.getByRole('button', { name: 'Send message', exact: true })).toBeDisabled();
+    await expect(page.locator('.chat-title')).toContainText('Mica');
+    await expect(page.getByRole('progressbar', { name: 'Opening conversation' })).toBeVisible();
+    await expect(page.getByRole('log')).toHaveCount(0);
+    await expect(message).toHaveCount(0);
     await expect(
       page.getByRole('heading', { name: 'Choose a conversation', exact: true }),
     ).toHaveCount(0);
@@ -182,6 +182,11 @@ test('agent switching retains the current conversation until the replacement is 
     await expect(message).toBeEnabled();
     await expect(page.locator('.chat-title')).toContainText('Mica');
     await expect(message).toHaveValue('');
+    if (info.project.use.isMobile) {
+      await expect(message).toBeEditable();
+      await message.tap();
+      await expect(message).toBeFocused();
+    }
     expect(
       await page.evaluate(
         () => (window as unknown as { __conversationFlashes: string[] }).__conversationFlashes,

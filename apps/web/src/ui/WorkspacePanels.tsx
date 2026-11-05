@@ -43,6 +43,9 @@ export function WorkspacePanels({
   const width = useRef(initialWidth);
   const panel = usePanelRef();
   const page = useRef<HTMLDivElement>(null);
+  const sidebarScroll = useRef(0);
+  const nativeSidebarScroll =
+    phone && navigationOpen && Reflect.get(navigator, 'standalone') === true;
   useEdgeNavigation(
     page,
     phone && edgeNavigation,
@@ -78,6 +81,19 @@ export function WorkspacePanels({
   useLayoutEffect(() => {
     if (!phone) panel.current?.resize(savedWidth());
   }, [phone, panel]);
+  useLayoutEffect(() => {
+    if (!nativeSidebarScroll || !document.scrollingElement) return;
+    const root = document.scrollingElement;
+    root.scrollTop = sidebarScroll.current;
+    const remember = () => {
+      sidebarScroll.current = root.scrollTop;
+    };
+    document.addEventListener('scroll', remember, { passive: true });
+    return () => {
+      document.removeEventListener('scroll', remember);
+      root.scrollTop = 0;
+    };
+  }, [nativeSidebarScroll]);
   return (
     <ResizablePanelGroup
       elementRef={page}
@@ -85,6 +101,8 @@ export function WorkspacePanels({
       disabled={phone}
       className={phone ? 'pc-phone-pages' : undefined}
       data-navigation-open={phone ? navigationOpen : undefined}
+      data-native-sidebar-scroll={nativeSidebarScroll || undefined}
+      style={nativeSidebarScroll ? { height: 'auto', overflow: 'clip' } : undefined}
       onLayoutChanged={(_layout, meta) => {
         if (!phone && meta.isUserInteraction) rememberWidth(width.current);
       }}

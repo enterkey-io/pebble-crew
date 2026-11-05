@@ -80,6 +80,63 @@ test('the document covers the full PWA canvas and all composer controls are expo
   });
 });
 
+test('the first tap after a cold open focuses the editable message field', async ({ page }) => {
+  const composer = page.getByLabel('Message', { exact: true });
+  await expect(composer).toBeEditable();
+  await expect(composer).not.toBeFocused();
+  await composer.tap();
+  await expect(composer).toBeFocused();
+  await composer.fill('First tap draft');
+  await page.reload();
+  await loaded(page);
+  await expect(composer).toHaveValue('First tap draft');
+  await expect(composer).not.toBeFocused();
+  await composer.tap();
+  await expect(composer).toBeFocused();
+});
+
+test('the installed sidebar follows the document scroll-to-top while the chat keeps its draft', async ({
+  page,
+}, info) => {
+  const composer = page.getByLabel('Message', { exact: true });
+  await composer.fill('Keep this while browsing the roster');
+  await composer.blur();
+  const open = page.getByRole('button', { name: 'Toggle navigation', exact: true });
+  const navigation = page.getByRole('region', { name: 'navigation', exact: true });
+  const account = navigation.getByRole('button', { name: 'Your account', exact: true });
+  const search = navigation.getByRole('button', { name: 'Search Pebble Crew', exact: true });
+  const offset = () => page.evaluate(() => window.scrollY);
+  await open.tap();
+  await fullyExposed(search);
+  await fullyExposed(account);
+  const headerY = (await search.boundingBox())!.y;
+  const footerY = (await account.boundingBox())!.y;
+
+  await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight));
+  await expect.poll(offset).toBeGreaterThan(100);
+  const lastOffset = await offset();
+  await fullyExposed(search);
+  await fullyExposed(account);
+  expect((await search.boundingBox())!.y).toBeCloseTo(headerY, 0);
+  expect((await account.boundingBox())!.y).toBeCloseTo(footerY, 0);
+
+  await page.keyboard.press('Escape');
+  await expect(composer).toHaveValue('Keep this while browsing the roster');
+  await expect.poll(offset).toBe(0);
+  await open.tap();
+  await expect.poll(offset).toBe(lastOffset);
+
+  // Playwright can reset the document offset but cannot tap UIKit's status bar.
+  await page.evaluate(() => window.scrollTo(0, 0));
+  await expect.poll(offset).toBe(0);
+  await fullyExposed(navigation.getByRole('button', { name: /^Arlo .*Bot Chat$/ }));
+  await fullyExposed(account);
+  await page.screenshot({
+    animations: 'disabled',
+    path: info.outputPath('installed-sidebar-after-scroll-to-top.png'),
+  });
+});
+
 test('the phone header is centered and navigation glyphs are readable at every supported phone width', async ({
   page,
 }, info) => {

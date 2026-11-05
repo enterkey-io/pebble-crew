@@ -180,9 +180,7 @@ export function AgentAvatar({
         <>
           <img src={image} alt="" draggable={false} />
           {state !== 'ready' && state !== 'done' && (
-            <span className="photo-status" aria-label={state}>
-              ●
-            </span>
+            <span className="photo-status" role="img" aria-label={state} />
           )}
         </>
       )}

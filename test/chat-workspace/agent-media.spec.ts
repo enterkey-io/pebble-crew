@@ -221,3 +221,59 @@ test('Library bounds the initial scan of a long text-only history and continues 
   expect(catalogs).toBe(4);
   await expect(page.getByRole('alert')).toHaveCount(0);
 });
+
+test('a pasted image opens inside its conversation and closes without a page reload', async ({
+  page,
+  context,
+}) => {
+  const png = await readFile('apps/web/public/icons/pebble-192.png');
+  await installFixture(context, { attachments: true, messages: [] });
+  await page.route('**/v1/files/read', async (route) => {
+    const { operation, params } = route.request().postDataJSON();
+    expect(operation).toBe('files.read');
+    expect(params.session_id).toBe('session-arlo');
+    await route.fulfill({
+      body: png,
+      headers: {
+        'content-type': 'image/png',
+        'content-disposition': "attachment; filename*=UTF-8''pasted-photo.png",
+        'access-control-expose-headers': 'Content-Disposition',
+      },
+    });
+  });
+  await page.goto('/');
+  const input = page.getByLabel('Message', { exact: true });
+  await expect(input).toBeEditable();
+  await input.click();
+  await input.evaluate(
+    (node, bytes) => {
+      const clipboard = new DataTransfer();
+      clipboard.items.add(
+        new File([Uint8Array.from(bytes)], 'pasted-photo.png', { type: 'image/png' }),
+      );
+      node.dispatchEvent(
+        new ClipboardEvent('paste', { clipboardData: clipboard, bubbles: true, cancelable: true }),
+      );
+    },
+    [...png],
+  );
+  await expect(page.getByText('pasted-photo.png', { exact: true })).toBeVisible();
+  await expect(input).toBeFocused();
+  await input.fill('Here is the photo');
+  await page.getByRole('button', { name: 'Send message', exact: true }).click();
+  const view = page.getByRole('button', { name: 'View pasted-photo.png', exact: true });
+  await expect(view).toBeVisible();
+  await input.fill('Keep this draft');
+  const originalField = (await input.elementHandle())!;
+  await view.click();
+  const dialog = page.getByRole('dialog', { name: 'pasted-photo.png', exact: true });
+  await expect(dialog).toBeVisible();
+  await expect
+    .poll(() => dialog.locator('img').evaluate((node: HTMLImageElement) => node.naturalWidth))
+    .toBe(192);
+  await dialog.getByRole('button', { name: /Close/i }).click();
+  await expect(dialog).toHaveCount(0);
+  await expect(input).toHaveValue('Keep this draft');
+  expect(await originalField.evaluate((element) => element.isConnected)).toBe(true);
+  await expect(view).toBeVisible();
+});

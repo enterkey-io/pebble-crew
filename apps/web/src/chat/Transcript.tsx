@@ -30,6 +30,7 @@ import { MessageReactions, ReactionPicker } from './MessageReactions';
 import type { ReactionAction } from './MessageReactions';
 import { ActivityLine } from './ActivityLine';
 import { ownerBubbleStyle } from './bubble-color';
+import { GeneratedImage } from './generated-media';
 export function Transcript({
   conversationKey,
   messages,
@@ -351,33 +352,42 @@ const TranscriptMessage = memo(function TranscriptMessage({
               conversationKey={conversationKey}
             />
           ))}
-        {m.files?.map((file) => (
-          <Attachment key={file.id} className="message-file my-1" size="sm" state="done">
-            <AttachmentMedia>
-              <FileText />
-            </AttachmentMedia>
-            <AttachmentContent>
-              <AttachmentTitle>{file.name}</AttachmentTitle>
-              <AttachmentDescription>{fileSize(file.size)}</AttachmentDescription>
-            </AttachmentContent>
-            {documentFormat(file.name) && openDocument && client && sessionId && (
-              <IconButton
-                label={`View ${file.name}`}
-                icon={Eye}
-                onClick={() =>
-                  openDocument({
-                    name: file.name,
-                    load: () => client.downloadFile(sessionId, file.id),
-                  })
-                }
-              />
-            )}
-            <AttachmentTrigger
-              aria-label={`Download ${file.name}`}
-              onClick={() => onDownloadFile(file)}
+        {m.files?.map((file) =>
+          client && sessionId && /\.(?:png|jpe?g|webp)$/i.test(file.name) ? (
+            <GeneratedImage
+              key={file.id}
+              source={file.id}
+              alt={file.name}
+              upload={{ client, sessionId }}
             />
-          </Attachment>
-        ))}
+          ) : (
+            <Attachment key={file.id} className="message-file my-1" size="sm" state="done">
+              <AttachmentMedia>
+                <FileText />
+              </AttachmentMedia>
+              <AttachmentContent>
+                <AttachmentTitle>{file.name}</AttachmentTitle>
+                <AttachmentDescription>{fileSize(file.size)}</AttachmentDescription>
+              </AttachmentContent>
+              {documentFormat(file.name) && openDocument && client && sessionId && (
+                <IconButton
+                  label={`View ${file.name}`}
+                  icon={Eye}
+                  onClick={() =>
+                    openDocument({
+                      name: file.name,
+                      load: () => client.downloadFile(sessionId, file.id),
+                    })
+                  }
+                />
+              )}
+              <AttachmentTrigger
+                aria-label={`Download ${file.name}`}
+                onClick={() => onDownloadFile(file)}
+              />
+            </Attachment>
+          ),
+        )}
       </Message>
     </motion.div>
   );

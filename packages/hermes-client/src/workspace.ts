@@ -92,6 +92,11 @@ function decodeBot(value: unknown) {
     ...optional(data, 'deleted', boolean),
     ...optional(data, 'preview', (v) => text(v, 500)),
     ...optional(data, 'cursor', counter),
+    ...optional(data, 'last_activity', (v) => {
+      if (typeof v !== 'number' || !Number.isFinite(v) || v < 0)
+        throw new ClientError('INVALID_RESPONSE');
+      return v;
+    }),
     ...optional(data, 'cursor_type', (v) => member(v, ['row', 'count'])),
     ...optional(data, 'read_key', (v) => text(v, 1024, false)),
     ...optional(data, 'conversation_id', (v) => text(v, 128)),
