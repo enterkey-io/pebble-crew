@@ -132,10 +132,12 @@ class BotOperations:
             raise NativeError('Native profile identity unavailable')
         return stamp
 
-    async def bot(self, profile):
+    async def bot(self, profile, *, require_chat=False):
         identifier(profile)
         for bot in await self.roster():
             if bot["name"] == profile:
+                if require_chat and not (bot.get("canonical_session") or {}).get("id"):
+                    raise InvalidOperation("This Hermes profile has no active Bot Chat", "BOT_CHAT_MISSING")
                 return bot
         raise InvalidOperation("Managed bot unavailable")
 
@@ -154,11 +156,8 @@ class BotOperations:
         if operation == "bot.open":
             fields(params, ["profile"])
             async with self.open_lock:
-                bot = await self.bot(params["profile"])
-                canonical = bot.get("canonical_session")
-                if not canonical or not canonical.get("id"):
-                    # Do not resurrect deliberately retired chats or fork a second canonical.
-                    raise InvalidOperation("Open this bot's Bot Chat once in Hermes first")
+                bot = await self.bot(params["profile"], require_chat=True)
+                canonical = bot["canonical_session"]
                 stamp = await self.stamp(bot["name"])
                 live = await self.gateway.call("bot_web.conversation.resume", {"profile": bot["name"],
                     "session_id": canonical["id"]})

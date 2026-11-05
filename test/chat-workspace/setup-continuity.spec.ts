@@ -113,3 +113,57 @@ for (const flow of ['existing', 'new'] as const) {
     });
   });
 }
+
+for (const state of ['missing in the roster', 'lost after the roster loads']) {
+  test(`an active Bot Chat ${state} shows an error without opening setup`, async ({
+    page,
+    context,
+  }, info) => {
+    const fixture = await installFixture(context);
+    const missingInRoster = state === 'missing in the roster';
+    fixture.state.bots[1]!.canonical = !missingInRoster;
+    let chatAttempts = 0;
+    const setupRequests: string[] = [];
+    await page.route('**/v1/rpc', async (route) => {
+      const { operation, params } = route.request().postDataJSON();
+      if (['agent.enable', 'agent.onboard', 'agent.create', 'agent.propose'].includes(operation))
+        setupRequests.push(operation);
+      if (operation === 'bot.open' && params.profile === 'mica') {
+        chatAttempts++;
+        await route.fulfill({ status: 400, json: { code: 'BOT_CHAT_MISSING' } });
+      } else {
+        await route.fallback();
+      }
+    });
+
+    await page.goto('/');
+    const input = page.getByLabel('Message', { exact: true });
+    await expect(input).toBeEnabled();
+    await input.fill('Keep this draft for Arlo.');
+    const phone = page.viewportSize()!.width < 768;
+    if (phone) await page.getByRole('button', { name: 'Toggle navigation', exact: true }).click();
+    await page.getByRole('button', { name: /^Mica .*Bot Chat$/ }).click();
+
+    const alert = page.getByRole('alertdialog', { name: 'Can’t open Mica’s chat' });
+    await expect(alert).toBeVisible();
+    await expect(alert).toContainText('No active Bot Chat in Hermes.');
+    await expect(page.getByRole('dialog', { name: 'New pebble', includeHidden: true })).toHaveCount(
+      0,
+    );
+    expect(chatAttempts).toBe(missingInRoster ? 0 : 1);
+    expect(setupRequests).toEqual([]);
+    await page.screenshot({
+      animations: 'disabled',
+      path: info.outputPath('missing-bot-chat.png'),
+    });
+    if (missingInRoster) await page.keyboard.press('Escape');
+    else await alert.getByRole('button', { name: 'Close', exact: true }).click();
+    await expect(alert).toHaveCount(0);
+    if (phone && missingInRoster) {
+      await expect(page.getByRole('region', { name: 'navigation', exact: true })).toBeVisible();
+      await page.keyboard.press('Escape');
+    }
+    await expect(input).toHaveValue('Keep this draft for Arlo.');
+    await expect(page.locator('.pc-chat-identity')).toContainText('Arlo');
+  });
+}

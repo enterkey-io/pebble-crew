@@ -29,6 +29,7 @@ export const voiceErrors = {
 export type ErrorCode =
   | keyof typeof voiceErrors
   | 'CONVERSATION_CHANGED'
+  | 'BOT_CHAT_MISSING'
   | 'LEASE_GONE'
   | 'STREAM_ACTIVE'
   | 'NATIVE_UNAVAILABLE'
@@ -57,6 +58,7 @@ export type ErrorCode =
 
 const messages: Record<ErrorCode, string> = {
   CONVERSATION_CHANGED: 'This conversation needs to be reopened.',
+  BOT_CHAT_MISSING: 'This Hermes profile has no active Bot Chat.',
   LEASE_GONE: 'The connection needs to be restored.',
   STREAM_ACTIVE: 'Live updates are already connected.',
   NATIVE_UNAVAILABLE: 'Hermes is temporarily unavailable.',

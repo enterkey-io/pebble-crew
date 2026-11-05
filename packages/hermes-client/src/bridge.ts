@@ -432,6 +432,7 @@ export class BotBridgeClient {
       }
       const known = [
         'CONVERSATION_CHANGED',
+        'BOT_CHAT_MISSING',
         'LEASE_GONE',
         'STREAM_ACTIVE',
         'NATIVE_UNAVAILABLE',
