@@ -1,5 +1,4 @@
 import { submitMessage } from '../composer';
-import { openSidebarMenu } from '../sidebar-menu';
 import { test, expect } from '@playwright/test';
 import type { Page } from '@playwright/test';
 import { installFixture } from './fixtures';
@@ -50,7 +49,7 @@ test('replacing a chosen mention before the next paint preserves the replacement
   await expect.poll(() => sends).toEqual(['@aurora please review this']);
 });
 
-async function newConversation(page: Page, kind: 'New crew' | 'New group chat') {
+async function newConversation(page: Page, kind: 'New group chat') {
   if (page.viewportSize()!.width < 768)
     await page.getByRole('button', { name: 'Toggle navigation', exact: true }).click();
   await page.getByRole('button', { name: 'New', exact: true }).click();
@@ -61,26 +60,25 @@ async function newConversation(page: Page, kind: 'New crew' | 'New group chat') 
   });
 }
 
-test('crew creation includes description and members; chat mentions only its members and shows their avatars', async ({
+test('group creation uses explicit participants; mentions and avatars match its native roster', async ({
   page,
   context,
 }, info) => {
   const fixture = await installFixture(context);
   fixture.state.bots[0]!.handle = 'aurora';
-  const saves: Record<string, unknown>[] = [];
+  const creates: Record<string, unknown>[] = [];
   const sends: string[] = [];
   await page.route('**/v1/rpc', async (route) => {
     const { operation, params } = route.request().postDataJSON();
-    if (operation === 'organization.save') saves.push(params.organization);
+    if (operation === 'room.create') creates.push(params);
     if (operation === 'room.send') sends.push(params.text);
     await route.fallback();
   });
   await page.goto('/');
   const field = page.getByLabel('Message', { exact: true });
   await expect(field).toBeEnabled();
-  const dialog = await newConversation(page, 'New crew');
+  const dialog = await newConversation(page, 'New group chat');
   await dialog.getByLabel('Name', { exact: true }).fill('Research desk');
-  await dialog.getByLabel('Purpose', { exact: true }).fill('Review research together.');
   await expect(dialog.getByRole('button', { name: 'Create', exact: true })).toBeDisabled();
   for (const name of ['Arlo', 'Mica'])
     await dialog.getByRole('checkbox', { name, exact: true }).check();
@@ -91,36 +89,19 @@ test('crew creation includes description and members; chat mentions only its mem
     await dialog.getByRole('checkbox', { name, exact: true }).uncheck();
   await dialog.getByRole('checkbox', { name: 'Wren', exact: true }).check();
   await dialog.getByRole('checkbox', { name: 'Wren', exact: true }).uncheck();
-  await expect(dialog.getByRole('heading', { name: 'New crew', exact: true })).toBeInViewport();
+  await expect(
+    dialog.getByRole('heading', { name: 'New group chat', exact: true }),
+  ).toBeInViewport();
   await expect(dialog.getByLabel('Name', { exact: true })).toBeInViewport();
-  await expect(dialog.getByLabel('Purpose', { exact: true })).toBeInViewport();
-  await dialog.getByLabel('Crew members', { exact: true }).evaluate((node) => {
+  await dialog.getByRole('group', { name: 'Group members', exact: true }).evaluate((node) => {
     node.scrollTop = 0;
   });
   await expect(dialog.getByRole('button', { name: 'Create', exact: true })).toBeInViewport();
-  await page.screenshot({ path: info.outputPath('new-crew-members.png'), animations: 'disabled' });
+  await page.screenshot({ path: info.outputPath('new-group-members.png'), animations: 'disabled' });
   await dialog.getByRole('button', { name: 'Create', exact: true }).click();
   await expect(dialog).toHaveCount(0);
-  await expect.poll(() => saves.length).toBeGreaterThan(0);
-  expect(saves.at(-1)).toMatchObject({
-    crews: [
-      {
-        name: 'Research desk',
-        purpose: 'Review research together.',
-        members: ['identity-0', 'identity-1'],
-      },
-    ],
-  });
-  await openSidebarMenu(page, 'Research desk');
-  await page.getByRole('menuitem', { name: 'Crew settings', exact: true }).click();
-  const edit = page.getByRole('dialog', { name: 'Crew settings', exact: true });
-  await expect(edit.getByLabel('Purpose', { exact: true })).toHaveValue(
-    'Review research together.',
-  );
-  for (const name of ['Arlo', 'Mica'])
-    await expect(edit.getByRole('checkbox', { name, exact: true })).toBeChecked();
-  await edit.getByRole('button', { name: 'Cancel', exact: true }).click();
-  await page.getByRole('button', { name: /^Research desk .*Open chat$/ }).click();
+  expect(creates).toHaveLength(1);
+  expect(creates[0]).toMatchObject({ name: 'Research desk', profiles: ['arlo', 'mica'] });
   await expect(page.getByRole('log')).toContainText('I have the notes ready.');
   const header = page.locator('[data-message-id="room-m2"] [data-slot="message-header"]');
   await expect(header).toContainText('Mica');
@@ -158,15 +139,15 @@ test('crew creation includes description and members; chat mentions only its mem
     await route.fallback();
   });
   await expect(
-    page.locator('[data-slot="trace-title"]').filter({ hasText: 'Crew members are working' }),
+    page.locator('[data-slot="trace-title"]').filter({ hasText: 'Group chat members are working' }),
   ).toBeVisible();
   await page.screenshot({
-    path: info.outputPath('crew-conversation-avatar.png'),
+    path: info.outputPath('group-conversation-avatar.png'),
     animations: 'disabled',
   });
 });
 
-test('ad hoc group creation leaves crew membership and sidebar placement unchanged', async ({
+test('ad hoc group creation leaves direct sidebar placements and pins unchanged', async ({
   page,
   context,
 }, info) => {
@@ -194,10 +175,12 @@ test('ad hoc group creation leaves crew membership and sidebar placement unchang
   await expect(rail.locator('.pinned-tile strong')).toHaveText(['Arlo', 'Mica']);
   await expect(page.getByRole('heading', { name: 'Group chats', exact: true })).toHaveCount(0);
   await expect(
-    rail.getByRole('navigation', { name: 'Group chats', exact: true }).getByRole('button', {
-      name: 'Planning discussion Group conversation Open chat',
-      exact: true,
-    }),
+    rail
+      .getByRole('group', { name: 'Unsectioned conversations', exact: true })
+      .getByRole('button', {
+        name: 'Planning discussion Open chat',
+        exact: true,
+      }),
   ).toBeVisible();
   await page.screenshot({
     path: info.outputPath('ad-hoc-group-navigation.png'),

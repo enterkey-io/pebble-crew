@@ -15,7 +15,7 @@ export default defineConfig({
     trace: 'off',
   },
   webServer: {
-    command: 'node scripts/serve-static.mjs',
+    command: 'node scripts/serve-verified-web.mjs',
     env: {
       BOT_WEB_STATIC_PORT: '8092',
       BOT_WEB_STATIC_DIRECTORY: resolve(

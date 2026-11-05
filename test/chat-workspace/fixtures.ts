@@ -125,11 +125,14 @@ export async function installFixture(
         id: 'pebbles',
         name: 'Pebbles',
         collapsed: false,
-        items: state.bots.map((b) => ({ kind: 'pebble', id: b.id })),
+        items: state.bots.map((b) => ({
+          kind: 'pebble',
+          id: b.id,
+          placementId: 'row-' + b.id,
+          shortcut: false,
+        })),
       },
-      { id: 'crews', name: 'Crews', collapsed: false, items: [] },
     ],
-    crews: [],
   };
   let prefs = { revision: 0, pin_order: ['identity-0', 'identity-1'] };
   let requests: Record<string, unknown>[] = [];
@@ -226,8 +229,7 @@ export async function installFixture(
       return original(input, init);
     };
   });
-  const crewRooms: Record<string, unknown>[] = [];
-  const crewChats: Record<string, string> = {};
+  const groupRooms: Record<string, unknown>[] = [];
   const groupMessages = new Map<
     string,
     {
@@ -305,22 +307,25 @@ export async function installFixture(
     if (operation === 'workspace.snapshot') {
       const liveIds = state.bots.filter((b) => b.managed).map((b) => b.id),
         assigned = new Set(
-          organization.sections
-            .flatMap((s) => s.items.filter((i) => i.kind === 'pebble').map((i) => i.id))
-            .concat(organization.crews.flatMap((c) => c.members)),
+          organization.sections.flatMap((s) =>
+            s.items.filter((i) => i.kind === 'pebble').map((i) => i.id),
+          ),
         );
-      organization.sections = organization.sections.map((s) => ({
-        ...s,
-        items: s.items.filter((i) => i.kind === 'crew' || liveIds.includes(i.id)),
-      }));
       organization.sections[0]!.items.push(
-        ...liveIds.filter((id) => !assigned.has(id)).map((id) => ({ kind: 'pebble' as const, id })),
+        ...liveIds
+          .filter((id) => !assigned.has(id))
+          .map((id) => ({
+            kind: 'pebble' as const,
+            id,
+            placementId: 'row-' + id,
+            shortcut: false,
+          })),
       );
       result = {
         workspace: state,
         bots: state.bots.filter((b) => b.managed && !b.hidden),
         rooms: [
-          ...crewRooms,
+          ...groupRooms,
           {
             room_id: 'crew-1',
             name: 'Research crew',
@@ -329,50 +334,49 @@ export async function installFixture(
               .map((b) => ({ profile: b.profile, member_id: b.profile })),
             created_at: 1700000000,
             cursor: 2,
-            read_key: 'crew-read',
+            read_key: 'room:crew-1:1700000000',
           },
         ],
         preferences: prefs,
-        organization,
-        crew_chats: crewChats,
+        organization: { schema: 3, ...organization },
       };
     }
+    if (
+      operation === 'workspace.snapshot' &&
+      result &&
+      typeof result === 'object' &&
+      'rooms' in result &&
+      Array.isArray(result.rooms)
+    ) {
+      const root = organization.sections.find((s) => s.id === 'pebbles')!;
+      for (const room of result.rooms)
+        if (
+          !organization.sections.some((s) =>
+            s.items.some((i) => i.kind === 'group' && i.readKey === room.read_key),
+          )
+        )
+          root.items.push({
+            kind: 'group',
+            id: String(room.room_id),
+            readKey: String(room.read_key),
+            placementId: `room-row-${String(room.room_id)}`,
+          });
+    }
     if (operation === 'reporting.describe') result = { workspace: state, changes: [] };
-    if (operation === 'organization.get') result = organization;
+    if (operation === 'organization.get') result = { schema: 3, ...organization };
     if (operation === 'organization.save') {
       organization = { ...params.organization, revision: organization.revision + 1 };
-      result = organization;
+      result = { schema: 3, ...organization };
     }
     if (operation === 'room.create') {
       const room = {
         room_id: params.room_id,
         name: params.name,
         created_at: 1700000020,
+        read_key: `room:${String(params.room_id)}:1700000020`,
         members: params.profiles.map((profile: string) => ({ profile, member_id: profile })),
       };
-      if (!crewRooms.some((r) => r.room_id === params.room_id)) crewRooms.push(room);
-      result = room;
-    }
-    if (operation === 'organization.chat') {
-      const crew = organization.crews.find((c) => c.id === params.id);
-      if (!crew || params.expected_revision !== organization.revision || crew.members.length < 2) {
-        await route.fulfill({ status: 400, json: { code: 'STALE_REVISION' } });
-        return;
-      }
-      let room = crewRooms.find((r) => r.room_id === crewChats[crew.id]);
-      if (!room) {
-        room = {
-          room_id: 'native-' + crew.id,
-          name: crew.name,
-          created_at: 1700000010,
-          members: crew.members.map((id) => {
-            const b = state.bots.find((b) => b.id === id)!;
-            return { profile: b.profile, member_id: b.profile };
-          }),
-        };
-        crewRooms.push(room);
-        crewChats[crew.id] = String(room.room_id);
-      }
+      if (!groupRooms.some((r) => r.room_id === params.room_id)) groupRooms.push(room);
       result = { state: 'ready', room };
     }
     if (operation === 'search.query') {
@@ -655,7 +659,7 @@ export async function installFixture(
     }
     if (operation === 'room.state')
       result = {
-        room: crewRooms.find((r) => r.room_id === params.room_id),
+        room: groupRooms.find((r) => r.room_id === params.room_id),
         driver_status: { working: false, pending_actions: [] },
       };
     if (operation === 'agent.propose') {

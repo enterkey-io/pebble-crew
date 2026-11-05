@@ -59,6 +59,12 @@
   --text-composer: 14px;
   --app-safe-top: env(safe-area-inset-top, 0px);
   --app-safe-bottom: env(safe-area-inset-bottom, 0px);
+  --app-bottom-inset: var(--app-safe-bottom);
+  --app-usable-top: calc(var(--app-viewport-top, 0px) + var(--app-safe-top));
+  --app-usable-height: calc(
+    var(--app-viewport-height, 100dvh) - var(--app-safe-top) - var(--app-bottom-inset)
+  );
+  --app-usable-center: calc(var(--app-usable-top) + var(--app-usable-height) / 2);
   --chart-1: #a89cbe;
   --chart-2: #94a68c;
   --chart-3: #c2a184;
@@ -72,6 +78,10 @@
   --sidebar-accent-foreground: var(--accent-foreground);
   --sidebar-border: var(--border);
   --sidebar-ring: var(--ring);
+}
+
+:root[data-keyboard-visible] {
+  --app-bottom-inset: 0px;
 }
 
 :root[data-theme='light'] {

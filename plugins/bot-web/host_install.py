@@ -359,8 +359,8 @@ def preflight_organization(source):
     source=Path(source)/'organization.py'
     schema=next((ast.literal_eval(node.value) for node in ast.parse(source.read_text()).body
         if isinstance(node,ast.Assign) and any(isinstance(t,ast.Name) and t.id=='SCHEMA' for t in node.targets)),1) if source.is_file() else 1
-    if schema<2:
-        raise ValueError('This release cannot preserve Crew shortcuts. Use a compatible release; the original sidebar backup is retained for an explicit data restore.')
+    if schema < json.loads(row[0]).get('schema', 1):
+        raise ValueError('This release cannot read the current sidebar format. Use a compatible release; the original sidebar backup is retained for an explicit data restore.')
 
 
 def preflight_runtimes(source):

@@ -69,6 +69,7 @@ import { ConversationIdentity } from './ui/ConversationIdentity';
 import { WorkspacePanels } from './ui/WorkspacePanels';
 import { Menu } from './ui/primitives';
 import { LoadingBar } from './components/ui/loading-bar';
+import { OrganizationDomain, retainPartialGroups } from '@hermes-client/protocol';
 import { organizationState } from './ui/organization';
 import type { Organization, OrganizationState } from './ui/organization';
 import type { SetStateAction } from 'react';
@@ -175,11 +176,8 @@ export function App({ owner }: { owner?: OwnerConnection }) {
   const historyGeneration = useRef(0);
   const [bots, setBots] = useState<Bot[]>([]);
   const [rooms, setRooms] = useState<Row[]>([]);
-  const [crewChats, setCrewChats] = useState<Record<string, string>>({});
   const roomsRef = useRef(rooms);
   roomsRef.current = rooms;
-  const crewChatsRef = useRef(crewChats);
-  crewChatsRef.current = crewChats;
   const roomReactions = useRef(new RoomReactionProjection());
   const [selection, setSelection] = useState<Selection>();
   const [starting, setStarting] = useState(true);
@@ -194,6 +192,7 @@ export function App({ owner }: { owner?: OwnerConnection }) {
   const sendProjection = useRef(new SendProjection());
   const runEpoch = useRef(0);
   const [routines, setRoutines] = useState<Row[]>([]);
+  const [routinesVersion, setRoutinesVersion] = useState(0);
   const [approvals, setApprovals] = useState<NativeApprovalReview[]>([]);
   const approvalHistory = useRef(new Map<string, NativeApprovalReview[]>());
   function observeApprovals(scope: string, pending: ConversationApproval[]) {
@@ -261,39 +260,34 @@ export function App({ owner }: { owner?: OwnerConnection }) {
   }
 
   const [searchOpen, setSearchOpen] = useState(false);
-  const [confirmCrew, setConfirmCrew] = useState<string>();
   const [organization, setOrganization] = useState<OrganizationState>({
     revision: 0,
-    sections: [
-      { id: 'pebbles', name: 'Pebbles', collapsed: false, items: [] },
-      { id: 'crews', name: 'Crews', collapsed: false, items: [] },
-    ],
-    crews: [],
+    sections: [{ id: 'pebbles', name: 'Pebbles', collapsed: false, items: [] }],
   });
   const organizationBase = useRef(organization);
-  const organizationQueue = useRef<((current: Organization) => Organization)[]>([]);
+  const organizationQueue = useRef<
+    { id: string; change: (current: Organization) => Organization }[]
+  >([]);
   const organizationFlight = useRef<SessionClient | undefined>(undefined);
-  const organizationPending = useRef<Promise<boolean>>(Promise.resolve(true));
   async function pumpOrganization() {
     if (!current.current || organizationFlight.current === current.current) return false;
     const connection = current.current;
     organizationFlight.current = connection;
     try {
       while (organizationQueue.current.length && current.current === connection) {
-        const change = organizationQueue.current[0]!,
+        const command = organizationQueue.current[0]!,
           base = organizationBase.current;
-        const next = change(base);
-        const result = organizationState(
-          await connection.invoke('organization.save', {
-            organization: { schema: 2, sections: next.sections, crews: next.crews },
-            expected_revision: base.revision,
-          }),
+        const next = command.change(base);
+        const result = await new OrganizationDomain(connection).save(
+          next,
+          base.revision,
+          command.id,
         );
         if (current.current !== connection) return false;
         organizationQueue.current.shift();
         organizationBase.current = result;
         setOrganization({
-          ...organizationQueue.current.reduce<Organization>((v, f) => f(v), result),
+          ...organizationQueue.current.reduce<Organization>((v, entry) => entry.change(v), result),
           revision: result.revision,
         });
       }
@@ -302,7 +296,7 @@ export function App({ owner }: { owner?: OwnerConnection }) {
       if (current.current === connection) {
         organizationQueue.current = [];
         try {
-          const actual = organizationState(await connection.invoke('organization.get', {}));
+          const actual = await new OrganizationDomain(connection).read();
           if (current.current === connection) {
             organizationBase.current = actual;
             setOrganization(actual);
@@ -319,47 +313,18 @@ export function App({ owner }: { owner?: OwnerConnection }) {
   }
   function changeOrganization(change: SetStateAction<Organization>) {
     if (!current.current || !connectionAvailable) return;
-    organizationQueue.current.push(typeof change === 'function' ? change : () => change);
+    organizationQueue.current.push({
+      id: crypto.randomUUID(),
+      change: typeof change === 'function' ? change : () => change,
+    });
     setOrganization((v) => ({
       ...organizationQueue.current.reduce<Organization>(
-        (value, f) => f(value),
+        (value, entry) => entry.change(value),
         organizationBase.current,
       ),
       revision: v.revision,
     }));
-    if (organizationFlight.current !== current.current)
-      organizationPending.current = pumpOrganization();
-  }
-  async function openCrew(id: string, confirm = false) {
-    const crew = organization.crews.find((c) => c.id === id);
-    if (!crew || crew.members.length < 2 || crew.members.length > 6) {
-      setError('Choose 2–6 pebbles in Crew settings to open this chat.');
-      return;
-    }
-    const connection = current.current;
-    if (!connection) return;
-    try {
-      if (!(await organizationPending.current) || current.current !== connection) return;
-      const result = object(
-        await connection.invoke('organization.chat', {
-          id,
-          expected_revision: organizationBase.current.revision,
-          confirm_new: confirm,
-        }),
-      );
-      if (current.current !== connection) return;
-      if (result.state === 'new_chat_required') {
-        setConfirmCrew(id);
-        return;
-      }
-      if (result.state !== 'ready') throw new Error('Crew chat could not be confirmed');
-      setConfirmCrew(undefined);
-      setSettings(false);
-      openRoom(object(result.room));
-      void loadRoster(connection, true).catch(fail);
-    } catch (e) {
-      fail(e);
-    }
+    if (organizationFlight.current !== current.current) void pumpOrganization();
   }
   const agentExchanges = useAgentExchanges(
     client,
@@ -626,7 +591,6 @@ export function App({ owner }: { owner?: OwnerConnection }) {
     setConnectionAvailable(false);
     setChatBound(false);
     organizationQueue.current = [];
-    organizationPending.current = Promise.resolve(true);
     setWorkspace(undefined);
     setAgentStates({});
     sessionProfiles.current.clear();
@@ -969,7 +933,7 @@ export function App({ owner }: { owner?: OwnerConnection }) {
     return () => {
       active = false;
     };
-  }, [client, details, selection, documentReader.state]);
+  }, [client, details, selection, documentReader.state, routinesVersion]);
 
   async function refreshHistory(connection: SessionClient, target: Selection, complete = false) {
     if (target.kind !== 'bot' || selectionConnection.current !== connection) return;
@@ -1041,6 +1005,14 @@ export function App({ owner }: { owner?: OwnerConnection }) {
     }
     if (event.type === 'questions.changed' || event.type === 'secret.changed') {
       setCardsVersion((version) => version + 1);
+      return;
+    }
+    if (event.type === 'routines.changed') {
+      if (
+        selected.current?.kind === 'bot' &&
+        object(event.payload).profile === selected.current.bot.profile
+      )
+        setRoutinesVersion((version) => version + 1);
       return;
     }
     if (event.type === 'workspace.changed' || event.type === 'requests.changed') {
@@ -1152,7 +1124,11 @@ export function App({ owner }: { owner?: OwnerConnection }) {
             state.revision < workspaceRef.current.revision
           )
             return;
-          const org = organizationState(data.organization);
+          const decodedOrganization = organizationState(data.organization);
+          const org =
+            data.rooms_complete === false && workspaceRef.current?.id === state.id
+              ? retainPartialGroups(organizationBase.current, decodedOrganization)
+              : decodedOrganization;
           if (
             organizationFlight.current !== connection &&
             (workspaceRef.current?.id !== state.id ||
@@ -1160,22 +1136,24 @@ export function App({ owner }: { owner?: OwnerConnection }) {
           ) {
             organizationBase.current = org;
             setOrganization({
-              ...organizationQueue.current.reduce<Organization>((v, f) => f(v), org),
+              ...organizationQueue.current.reduce<Organization>((v, entry) => entry.change(v), org),
               revision: org.revision,
             });
           }
           setWorkspace(state);
           workspaceRef.current = state;
           setBots(state.bots.filter((b) => b.managed && !b.hidden));
-          setCrewChats(
-            Object.fromEntries(
-              Object.entries(object(data.crew_chats)).filter(
-                (entry): entry is [string, string] => typeof entry[1] === 'string',
-              ),
-            ),
-          );
           const loadedRooms = rows(data.rooms);
-          setRooms(loadedRooms);
+          setRooms((existing) =>
+            data.rooms_complete === false
+              ? [
+                  ...loadedRooms,
+                  ...existing.filter(
+                    (room) => !loadedRooms.some((r) => r.read_key === room.read_key),
+                  ),
+                ]
+              : loadedRooms,
+          );
           const prefs = object(data.preferences);
           setPinOrder(Array.isArray(prefs.pin_order) ? prefs.pin_order.map(String) : []);
           preferencesRevision.current = Number(prefs.revision) || 0;
@@ -1185,7 +1163,7 @@ export function App({ owner }: { owner?: OwnerConnection }) {
               ? state.bots.find((b) => b.id === target.bot.id && b.managed && !b.hidden)
               : undefined;
           const roomSurviving =
-            target?.kind === 'room'
+            target?.kind === 'room' && data.rooms_complete !== false
               ? loadedRooms.some((r) => r.room_id === target.room.room_id)
               : true;
           if (
@@ -1295,7 +1273,6 @@ export function App({ owner }: { owner?: OwnerConnection }) {
     setStreamState('opening');
     setChatBound(false);
     organizationQueue.current = [];
-    organizationPending.current = Promise.resolve(true);
     autoOpened.current = false;
     initialOpenRecovery.current = undefined;
     const owned = new OwnerSession({ ticket, localDev: import.meta.env.DEV });
@@ -1643,11 +1620,7 @@ export function App({ owner }: { owner?: OwnerConnection }) {
             },
           ),
         );
-        const groupLabel = Object.values(crewChatsRef.current).includes(
-          text(selection?.kind === 'room' ? selection.room.room_id : ''),
-        )
-          ? 'Crew'
-          : 'Group chat';
+        const groupLabel = 'Group chat';
         setActivity(
           driver.blocked === true
             ? `${groupLabel} needs attention`
@@ -2194,14 +2167,7 @@ export function App({ owner }: { owner?: OwnerConnection }) {
       client={client}
       pendingPins={Object.fromEntries(Object.keys(pinIntents).map((id) => [id, true]))}
       organization={organization}
-      crewChats={crewChats}
       onOrganization={changeOrganization}
-      onCrew={(id) =>
-        navigate(() => {
-          setArea('chat');
-          void openCrew(id);
-        })
-      }
       onSearch={() => setSearchOpen(true)}
       onClose={nav ? closeNav : undefined}
       onEdit={(profile) =>
@@ -2453,7 +2419,6 @@ export function App({ owner }: { owner?: OwnerConnection }) {
                         <PlansArea
                           client={client}
                           workspace={workspace}
-                          organization={organization}
                           connected={connectionAvailable && tasksEnabled}
                           onEditingChange={setTaskEditorOpen}
                           onNavigate={() => setNav(true)}
@@ -2471,7 +2436,6 @@ export function App({ owner }: { owner?: OwnerConnection }) {
                               <BoardOutcome
                                 client={client}
                                 workspace={workspace}
-                                organization={organization}
                                 connected={connectionAvailable && tasksEnabled}
                                 onEditingChange={setTaskEditorOpen}
                                 board={workBoard}
@@ -2522,10 +2486,14 @@ export function App({ owner }: { owner?: OwnerConnection }) {
                     <div className="pointer-events-none absolute inset-x-0 top-0 z-10">
                       <LoadingBar active={switching} label="Opening conversation" />
                     </div>
-                    <header className="pc-chat-header chat-header">
+                    <header
+                      className="pc-chat-header chat-header"
+                      data-has-requests={requestCount > 0}
+                    >
                       <IconButton
                         quiet
                         className="md:hidden"
+                        glyphSize="navigation"
                         label="Toggle navigation"
                         tooltip={false}
                         icon={ArrowLeft}
@@ -3216,25 +3184,6 @@ export function App({ owner }: { owner?: OwnerConnection }) {
               })
             }
           />
-          {confirmCrew && (
-            <Drawer
-              title="Updated crew"
-              variant="dialog"
-              sizing="content"
-              onClose={() => setConfirmCrew(undefined)}
-            >
-              <h2>Start a chat with this crew?</h2>
-              <p>Membership changed. Your previous chat will stay in Group chats.</p>
-              <div className="form-actions">
-                <Button variant="secondary" onClick={() => setConfirmCrew(undefined)}>
-                  Cancel
-                </Button>
-                <Button variant="secondary" onClick={() => void openCrew(confirmCrew, true)}>
-                  Start new chat
-                </Button>
-              </div>
-            </Drawer>
-          )}
           <DiscardChanges
             open={confirmNavigation}
             onOpenChange={setConfirmNavigation}

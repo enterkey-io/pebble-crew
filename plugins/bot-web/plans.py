@@ -1,6 +1,5 @@
 """Owner-local strategic outcomes linked to native work, never a second task store."""
 from copy import deepcopy
-from types import SimpleNamespace
 import json
 
 from .operations import InvalidOperation, fields
@@ -34,15 +33,21 @@ def board_key(ref):
     return ref['catalog_id'], ref['project_id'], ref['slug']
 
 
+def projection(value):
+    return {**value, **{key: [{k: v for k, v in row.items() if k != 'crew_ids'} for row in value.get(key, [])]
+        for key in ('plans', 'board_outcomes')}}
+
+
 class Plans:
     def __init__(self, workspace, ledger, catalog):
         self.workspace, self.ledger, self.catalog = workspace, ledger, catalog
         self.ledger.db.execute('CREATE TABLE IF NOT EXISTS plans_state(workspace TEXT PRIMARY KEY, revision INTEGER NOT NULL, payload TEXT NOT NULL)')
+        self.ledger.db.execute('CREATE TABLE IF NOT EXISTS plans_before_sections(workspace TEXT PRIMARY KEY, revision INTEGER NOT NULL, payload TEXT NOT NULL)')
         self.ledger.db.commit()
 
     def read(self, state):
         row = self.ledger.db.execute('SELECT revision,payload FROM plans_state WHERE workspace=?', (state['id'],)).fetchone()
-        return {'revision': row[0], **json.loads(row[1])} if row else {'revision': 0, 'plans': [], 'board_outcomes': []}
+        return projection({'revision': row[0], **json.loads(row[1])}) if row else {'revision': 0, 'plans': [], 'board_outcomes': []}
 
     def references(self):
         try:
@@ -85,12 +90,14 @@ class Plans:
             boards, available = self.references()
             live_boards = {board_key({k: b[k] for k in ('catalog_id', 'project_id', 'slug')}) for b in boards}
             from .organization import read
-            crews = {c['id'] for c in read(SimpleNamespace(store=self.workspace), state)['crews']}
+            read(self.workspace, state)  # Persist the sidebar format/downgrade barrier.
             live_bots = {b['id'] for b in state['bots'].values() if b.get('enrolled') and b.get('available', True) and not b.get('deleted')}
             updated = deepcopy(current)
             if operation == 'work.plan.save':
                 plan = deepcopy(params['plan'])
-                fields(plan, ['id', 'title', 'outcome', 'body', 'status', 'owner_id', 'parent_id', 'crew_ids', 'boards'])
+                if 'crew_ids' in plan:
+                    raise InvalidOperation('Crew goal audiences were retired. Reload Pebble Crew.', 'UPDATE_REQUIRED')
+                fields(plan, ['id', 'title', 'outcome', 'body', 'status', 'owner_id', 'parent_id', 'boards'])
                 if plan['id'] is None:
                     plan['id'] = params['operation_id']
                 operation_id(plan['id'])
@@ -99,8 +106,6 @@ class Plans:
                 plan['title'] = text(plan['title'], 120, True)
                 plan['outcome'] = text(plan['outcome'], 2000, True)
                 plan['body'] = text(plan['body'], 12000)
-                if not set(ids(plan['crew_ids'])) <= crews:
-                    raise InvalidOperation('Choose current Crews')
                 if not isinstance(plan['boards'], list) or len(plan['boards']) > 100:
                     raise InvalidOperation('Choose linked project boards')
                 keys = [board_key(ref) for ref in plan['boards']]
@@ -122,15 +127,18 @@ class Plans:
                 evidence = {'plan_id': plan['id']}
             else:
                 outcome = deepcopy(params['outcome'])
-                fields(outcome, ['board', 'outcome', 'crew_ids'])
+                if 'crew_ids' in outcome:
+                    raise InvalidOperation('Crew goal audiences were retired. Reload Pebble Crew.', 'UPDATE_REQUIRED')
+                fields(outcome, ['board', 'outcome'])
                 key = board_key(outcome['board'])
-                if key not in live_boards or not available or not set(ids(outcome['crew_ids'])) <= crews:
-                    raise InvalidOperation('Choose a current linked board and Crews', 'STALE_REVISION')
+                if key not in live_boards or not available:
+                    raise InvalidOperation('Choose a current linked board', 'STALE_REVISION')
                 outcome['outcome'] = text(outcome['outcome'], 2000, True)
                 updated['board_outcomes'] = [v for v in current['board_outcomes'] if board_key(v['board']) != key] + [outcome]
                 evidence = {'board': outcome['board']['slug']}
             updated['revision'] += 1
             with self.ledger.db:
+                self.ledger.db.execute('INSERT OR IGNORE INTO plans_before_sections SELECT workspace,revision,payload FROM plans_state WHERE workspace=?', (state['id'],))
                 self.ledger.db.execute('INSERT INTO plans_state VALUES(?,?,?) ON CONFLICT(workspace) DO UPDATE SET revision=excluded.revision,payload=excluded.payload',
                     (state['id'], updated['revision'], json.dumps({k: updated[k] for k in ('plans', 'board_outcomes')})))
                 self.ledger.db.execute("UPDATE intents SET state='completed',evidence=? WHERE id=?", (json.dumps({'kind': 'plan', 'revision': updated['revision'], **evidence}), params['operation_id']))
@@ -147,7 +155,7 @@ def saved_plans(workspace, state):
         if not db.execute("SELECT 1 FROM sqlite_master WHERE name='plans_state'").fetchone():
             return {'revision': 0, 'plans': [], 'board_outcomes': []}
         row = db.execute('SELECT revision,payload FROM plans_state WHERE workspace=?', (state['id'],)).fetchone()
-    return {'revision': row[0], **json.loads(row[1])} if row else {'revision': 0, 'plans': [], 'board_outcomes': []}
+    return projection({'revision': row[0], **json.loads(row[1])}) if row else {'revision': 0, 'plans': [], 'board_outcomes': []}
 
 
 def runtime_snapshot(workspace, params):

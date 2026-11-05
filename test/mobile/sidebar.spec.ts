@@ -65,3 +65,58 @@ test('regular and pinned pebbles open the shared menu on press-and-hold without 
     await expect(trigger).toBeVisible();
   }
 });
+
+for (const when of ['before', 'after'] as const) {
+  test(`drag owns the gesture ${when} the long-press menu opens`, async ({ page, context }) => {
+    await installFixture(context);
+    await page.goto('/');
+    await expect(page.getByLabel('Message', { exact: true })).toBeEnabled();
+    await page.getByRole('button', { name: 'Toggle navigation', exact: true }).tap();
+    const item = sidebarItem(page, 'Rowan');
+    const trigger = item.getByRole('button', { includeHidden: true }).first();
+    await trigger.scrollIntoViewIfNeeded();
+    await trigger.evaluate((node) => {
+      node.setAttribute('data-original-drag-target', 'true');
+    });
+    const box = (await trigger.boundingBox())!;
+    const pointer = {
+      pointerType: 'touch',
+      pointerId: 1,
+      isPrimary: true,
+      button: 0,
+      clientX: box.x + box.width / 2,
+      clientY: box.y + box.height / 2,
+    };
+    await trigger.dispatchEvent('pointerdown', pointer);
+    const menu = page.getByRole('menu', { name: 'Actions for Rowan', exact: true });
+    if (when === 'after') await expect(menu).toBeVisible();
+    await trigger.dispatchEvent('dragstart', {
+      dataTransfer: await page.evaluateHandle(() => new DataTransfer()),
+    });
+    await expect(menu).toBeHidden();
+    // The pending Radix hold must not reopen after the native drag finishes.
+    await trigger.dispatchEvent('dragend');
+    await page.waitForTimeout(800);
+    await expect(menu).toBeHidden();
+    await expect(trigger).toHaveAttribute('data-original-drag-target', 'true');
+    await expect
+      .poll(() => page.evaluate(() => getComputedStyle(document.body).pointerEvents))
+      .not.toBe('none');
+    await trigger.dispatchEvent('contextmenu', {
+      clientX: pointer.clientX,
+      clientY: pointer.clientY,
+    });
+    await expect(menu).toBeHidden();
+    // A new stationary gesture still opens the same accessible menu.
+    await trigger.dispatchEvent('pointerdown', pointer);
+    await expect(menu).toBeVisible();
+    await trigger.dispatchEvent('pointerup', pointer);
+    await page.keyboard.press('Escape');
+    await expect(menu).toBeHidden();
+    await trigger.focus();
+    await page.keyboard.press('Shift+F10');
+    await expect(menu).toBeVisible();
+    await page.keyboard.press('Escape');
+    await expect(menu).toBeHidden();
+  });
+}

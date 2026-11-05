@@ -49,7 +49,7 @@ function CodeBlock({ value, language }: { value: string; language: string }) {
 }
 
 const components: Components = {
-  p: ({ children }) => <Typography>{children}</Typography>,
+  p: ({ children }) => <Typography className="text-[length:inherit]">{children}</Typography>,
   h1: ({ children }) => <Typography as="h1">{children}</Typography>,
   h2: ({ children }) => <Typography as="h2">{children}</Typography>,
   h3: ({ children }) => <Typography as="h3">{children}</Typography>,
@@ -72,7 +72,11 @@ const components: Components = {
   ),
   li: ({ children, className }) => <li className={className}>{children}</li>,
   code: ({ children }) => <Typography as="code">{children}</Typography>,
-  blockquote: ({ children }) => <Typography as="blockquote">{children}</Typography>,
+  blockquote: ({ children }) => (
+    <Typography as="blockquote" className="text-[length:inherit] leading-[inherit]">
+      {children}
+    </Typography>
+  ),
   input: ({ checked, disabled, type }) => (
     <input
       className="mr-2 accent-foreground"
@@ -82,7 +86,7 @@ const components: Components = {
       readOnly
     />
   ),
-  table: ({ children }) => <Table>{children}</Table>,
+  table: ({ children }) => <Table className="text-[length:inherit]">{children}</Table>,
   thead: ({ children }) => <TableHeader>{children}</TableHeader>,
   tbody: ({ children }) => <TableBody>{children}</TableBody>,
   tr: ({ children }) => <TableRow>{children}</TableRow>,

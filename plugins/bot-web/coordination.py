@@ -1,11 +1,6 @@
-"""One current Crew/goal projection for text, rooms, peer exchanges, voice and workers."""
+"""Explicit goal context for text, groups, peer exchanges, voice and workers."""
 import json
-from .organization import leadership
 from .plans import saved_plans, board_key
-
-
-def outcome_summary(value):
-    return {**value, 'crew_ids': value['crew_ids'][:6], 'crew_count': len(value['crew_ids']), 'more_crews': len(value['crew_ids']) > 6}
 
 
 def context(store, profile, board=None):
@@ -13,44 +8,35 @@ def context(store, profile, board=None):
     bot = state['bots'].get(profile)
     if not bot or not bot.get('enrolled') or not bot.get('available', True) or bot.get('deleted'):
         return {}
-    crews = leadership(store, state, profile)
-    own = [c for c in crews['crews'] if bot['id'] in c['member_ids']]
-    other = [c for c in crews['crews'] if c not in own]
-    data = {'workspace_id': state['id'], 'crew_revision': crews['revision'], 'crews': [{**c, 'member_count': len(c['member_ids']), 'member_ids': c['member_ids'][:6], 'more_members': len(c['member_ids']) > 6} for c in own],
-        'other_crews': [{'id': c['id'], 'name': c['name'], 'manager': c['manager']} for c in other[:8]],
-        'other_crew_count': len(other),
-        'tasks_enabled': state.get('features', {}).get('tasks') is not False,
-        'policy': 'Crew managers coordinate the Crew purpose. This never changes reporting, permissions or owner authority. Goals guide work; they never authorize starting tasks, spending money or external actions. Read workspace_agents describe for full Crew details and workspace_work work.plans for full Plans/outcomes.'}
+    data = {'workspace_id': state['id'], 'tasks_enabled': state.get('features', {}).get('tasks') is not False,
+        'policy': 'Sections organize the interface only. Group participants are explicitly selected. Neither grants authority or changes reporting. Goals guide work; they never authorize starting tasks, spending money or external actions.'}
     if not data['tasks_enabled']:
-        data['policy'] = 'Crew managers coordinate the Crew purpose without changing reporting, permissions or owner authority. Tasks and goals are off: do not read, manage or use saved Plans or project outcomes. Native Kanban remains available for background work. Read workspace_agents describe for full Crew details.'
+        data['policy'] += ' Tasks and goals are off: do not use saved Plans or project outcomes. Native Kanban remains available for background work.'
         return data
     graph = saved_plans(store, state)
-    own_ids = {c['id'] for c in own}
     is_main = profile == state.get('orchestrator')
     selected = {p['id'] for p in graph['plans'] if p['status'] == 'active' and
-        (is_main or p['parent_id'] is None or p['owner_id'] == bot['id'] or own_ids.intersection(p['crew_ids'])
-         or (board and board_key(board) in [board_key(ref) for ref in p['boards']]))}
+        (is_main or p['parent_id'] is None or p['owner_id'] == bot['id'] or
+         (board and board_key(board) in [board_key(ref) for ref in p['boards']]))}
     by_id = {p['id']: p for p in graph['plans']}
     for ident in list(selected):
         parent = by_id[ident]['parent_id']
         while parent in by_id and parent not in selected:
             selected.add(parent)
             parent = by_id[parent]['parent_id']
-    data.update(plans_revision=graph['revision'], goals=[], goal_count=len(selected), board_outcome=None, project_outcomes=[])
-    related = [v for v in graph['board_outcomes'] if is_main or own_ids.intersection(v['crew_ids'])]
-    data['project_outcome_count'] = len(related)
+    related = [v for v in graph['board_outcomes'] if is_main or (board and board_key(v['board']) == board_key(board))]
+    data.update(plans_revision=graph['revision'], goals=[], goal_count=len(selected), board_outcome=None,
+        project_outcomes=[], project_outcome_count=len(related))
     if board:
-        data['board_outcome'] = next((outcome_summary(v) for v in graph['board_outcomes'] if board_key(v['board']) == board_key(board)), None)
+        data['board_outcome'] = next((v for v in related if board_key(v['board']) == board_key(board)), None)
     for value in related:
-        data['project_outcomes'].append(outcome_summary(value))
+        data['project_outcomes'].append(value)
         if len(json.dumps(data, ensure_ascii=False)) > 4500:
             data['project_outcomes'].pop()
             break
-    # Preserve the entire current Crew purpose. Optional goal detail has an explicit read path.
     def priority(plan):
         if board and any(board_key(board) == board_key(ref) for ref in plan['boards']): return 0
-        if plan['owner_id'] == bot['id'] or own_ids.intersection(plan['crew_ids']): return 1
-        return 2
+        return 1 if plan['owner_id'] == bot['id'] else 2
     for plan in sorted(graph['plans'], key=priority):
         if plan['id'] not in selected:
             continue
@@ -64,9 +50,6 @@ def context(store, profile, board=None):
     while data['goals'] and len(json.dumps(data, ensure_ascii=False)) > 5000:
         data['goals'].pop()
     data['goals_more'] = len(selected) > len(data['goals'])
-    # The optional Main directory is summarized; a member's own Crew purpose stays intact.
-    while data['other_crews'] and len(json.dumps(data, ensure_ascii=False)) > 5000:
-        data['other_crews'].pop()
     return data
 
 
@@ -131,6 +114,6 @@ def worker_context():
             meta = native.kanban.read_board_metadata(slug)
             project = native.project(meta['project_id']) if meta.get('project_id') else None
             ref = {'catalog_id': catalog['id'], 'project_id': project['id'], 'slug': slug} if project and project.get('board_slug') == slug else None
-        return '\nCurrent Crew coordination: ' + json.dumps(context(store, profile, ref), ensure_ascii=False)
+        return '\nCurrent project coordination: ' + json.dumps(context(store, profile, ref), ensure_ascii=False)
     finally:
         store.db.close()

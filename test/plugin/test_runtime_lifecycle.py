@@ -244,7 +244,7 @@ class RuntimeLifecycleTests(unittest.TestCase):
             result = setup.sync_runtime(native_idle=True)
         self.assertTrue(result['complete'])
         self.assertEqual(result['source_kind'], 'active-release')
-        self.assertTrue(all(host.runtime_evidence(path)['contract'] == 'workspace-runtime-v3'
+        self.assertTrue(all(host.runtime_evidence(path)['contract'] == 'workspace-runtime-v4'
                             for path in self.paths.values()))
 
     def test_v2_host_requires_activation_before_v3_peer_runtime_sync(self):
@@ -261,7 +261,7 @@ class RuntimeLifecycleTests(unittest.TestCase):
         (active/'runtime-contract.json').write_bytes((self.source/'runtime-contract.json').read_bytes())
         with contextlib.redirect_stdout(io.StringIO()):result=setup.sync_runtime(native_idle=True)
         self.assertTrue(result['complete'])
-        self.assertTrue(all(host.runtime_evidence(path)['contract']=='workspace-runtime-v3' for path in self.paths.values()))
+        self.assertTrue(all(host.runtime_evidence(path)['contract']=='workspace-runtime-v4' for path in self.paths.values()))
 
     def test_historical_tree_only_rollback_refuses_new_reporting_runtimes(self):
         active = self.install(self.source)
@@ -339,7 +339,12 @@ class RuntimeLifecycleTests(unittest.TestCase):
         db.execute("INSERT INTO presentation VALUES('organization',?)",(json.dumps({'schema':2}),))
         db.commit();db.close()
         legacy=self.root/'old-code';legacy.mkdir();(legacy/'organization.py').write_text('def old_writer(): pass')
-        with self.assertRaisesRegex(ValueError,'cannot preserve Crew shortcuts'):host.preflight_organization(legacy)
+        with self.assertRaisesRegex(ValueError,'cannot read the current sidebar format'):host.preflight_organization(legacy)
+        host.preflight_organization(self.source)
+        with sqlite3.connect(self.workspace) as db:
+            db.execute("UPDATE presentation SET value=? WHERE key='organization'",(json.dumps({'schema':3}),))
+        (legacy/'organization.py').write_text('SCHEMA = 2\n')
+        with self.assertRaisesRegex(ValueError,'cannot read the current sidebar format'):host.preflight_organization(legacy)
         host.preflight_organization(self.source)
 
 

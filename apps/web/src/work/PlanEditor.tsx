@@ -16,8 +16,6 @@ import { Label } from '../components/ui/label';
 import { Textarea } from '../components/ui/textarea';
 import { Notice } from '../ui/primitives';
 import { DiscardChanges } from '../ui/DiscardChanges';
-import type { Organization } from '../ui/organization';
-import { CrewChoices } from './CrewChoices';
 import { session, receive, resolve, planFields, descendants } from './plan-session';
 import { planStatuses } from '@hermes-client/protocol';
 import type { PlanDraft, PlansSnapshot } from '@hermes-client/protocol';
@@ -35,7 +33,6 @@ export function PlanEditor({
   draft: initial,
   snapshot,
   workspace,
-  organization,
   client,
   onClose,
   onSaved,
@@ -43,7 +40,6 @@ export function PlanEditor({
   draft: PlanDraft;
   snapshot: PlansSnapshot;
   workspace: WorkspaceSnapshot;
-  organization: Organization;
   client: SessionClient;
   onClose: () => void;
   onSaved: () => void;
@@ -265,11 +261,6 @@ export function PlanEditor({
                       </SelectContent>
                     </Select>
                   </div>
-                  <CrewChoices
-                    organization={organization}
-                    value={draft.crewIds}
-                    onChange={(crewIds) => patch({ crewIds })}
-                  />
                   <fieldset className="grid gap-3">
                     <legend className="mb-3 text-sm font-medium">Project boards</legend>
                     {snapshot.boards.map((board) => (
@@ -340,7 +331,6 @@ export function PlanEditor({
                                 status: 'Status',
                                 ownerId: 'Owner',
                                 parentId: 'Parent plan',
-                                crewIds: 'Crews',
                                 boards: 'Project boards',
                                 id: 'Plan',
                               }[key]

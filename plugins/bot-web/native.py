@@ -13,7 +13,21 @@ from .compatibility import check_native_adapter
 
 
 class NativeError(Exception):
-    pass
+    def __init__(self, message, *, reason=None):
+        super().__init__(message)
+        self.reason = reason
+
+    @classmethod
+    def from_rpc(cls, error):
+        # Only named, pinned native absence contracts may authorize initial room creation.
+        reason = None
+        if isinstance(error, dict) and error.get('code') == 4114:
+            data = error.get('data')
+            if isinstance(data, dict) and data.get('reason') == 'room_history_expired':
+                reason = 'room_history_expired'
+            elif error.get('message') == 'hosted room not found' and not data:
+                reason = 'room_not_found'
+        return cls('Hermes rejected the operation', reason=reason)
 
 
 class NativeGateway:
@@ -88,7 +102,7 @@ class NativeGateway:
                 future = self.pending.get(frame.get("id"))
                 if future is not None and not future.done():
                     if "error" in frame:
-                        future.set_exception(NativeError("Hermes rejected the operation"))
+                        future.set_exception(NativeError.from_rpc(frame["error"]))
                     else:
                         result = frame.get("result")
                         future.set_result(result)

@@ -5,7 +5,7 @@ description: Read reporting relationships, carry out Main Pebble changes and pro
 
 Read `workspace_agents` with action `describe` and spec `{}` first.
 Per-turn context is compact. Use describe with `{"profile":"native-profile"}`
-to read the complete role and Instructions, or `{"crew":"crew-id"}` for Crew details. Use the current
+to read the complete role, Instructions, appearance and stable target ID. Use the current
 public handle, role, manager and Main Pebble supplied in your per-turn context.
 You remain the same Hermes personality, SOUL, memory and skills.
 `main_pebble` identifies the actual Main Pebble by public handle and native profile.
@@ -13,7 +13,7 @@ Use `your_manager`, `direct_reports`, `reporting_state` and `your_reporting_path
 from current context. Main Pebble reports to the owner. Other agents may be
 unattached, including managers with their own reports; never invent a manager or
 an extra Main Pebble from titles or old messages. Invalid relationships need
-owner repair. Reporting, crews, sidebar sections and task dependencies are separate.
+owner repair. Reporting, sidebar sections, explicit group participants and task dependencies are separate.
 
 The current Main Pebble always has the capability to change reporting and the
 one optional Instructions field. Ask the owner before making an unsolicited
@@ -36,17 +36,42 @@ instead of overwriting another edit. When refused or uncertain, report the actua
 receipt and ask for inspection if needed. A change of Main Pebble identity stops queued changes from its predecessor.
 Other agents still use the owner-reviewed proposal actions below.
 
-## Crew leadership
+## Sidebar, groups, avatars and routines
 
-A Crew is a persistent group with a shared purpose and optional member-manager.
-The manager appears first, but membership and leadership do not change reporting
-lines. A shortcut is another sidebar reference to the same agent, not a copy.
-The current Main Pebble can use `workspace_agents` action `crew.update` for an
-existing Crew: spec `id`, `name`, `purpose`, `manager_id` (member ID or null),
-`members` (current stable member IDs), and `expected_revision` from
-`crew_leadership.revision`. Describe first and preserve unrelated membership.
-Ask before unsolicited changes; the owner's clear request already authorizes
-its requested changes. Other agents cannot use this direct management path.
+All verified enrolled agents in an owner conversation can arrange the sidebar.
+Use `sidebar.describe` for current sections, placement IDs and layout revision.
+`sidebar.section.create` takes `operation_id` (fresh UUID), `expected_revision` and
+`name`. `sidebar.move` takes `operation_id`, `expected_revision`, `placement_id`,
+`section_id` and `before_id` (null appends). Move the selected reference, preserving
+independent shortcuts. Sections never change group participants or reporting.
+
+`group.create` takes `operation_id`, `expected_revision` (workspace), `name` and
+`members` (2–6 explicitly chosen stable pebble IDs). This creates a native group;
+it does not send a message as the owner. Existing groups are never reconstructed
+from sections. Reuse the same operation ID after a missing acknowledgement.
+
+Each agent can change its own avatar and routines. The current Main Pebble can
+change every pebble's avatar and routines. Use `agent.appearance.update` with
+`operation_id`, `profile`, stable `id`, `expected_revision`, `appearance`
+(`kind`, `shape`, `color`) and `photo` (null preserves the saved photo; otherwise a
+PNG/JPEG/WebP data URL). Shape names: pebble, beacon, petal, kite, arch, cairn, seed,
+dune, flint, drift. Colors: iris, citron, clay, lagoon, rose, sky, white (Snow),
+umber, moss, ocean, heather, sienna. Use a saved photo only when one exists.
+
+`routines.manage` takes `operation_id`, `profile`, stable `id`, `expected_revision`
+and `command`. Commands: `list` (optional `offset`); `create` with `name`, `prompt`,
+`schedule`; `update` with `job_id`, `expected`, `name`, `prompt`, `schedule`;
+`pause`, `resume` or `remove` with `job_id`, `expected`. List first for current
+job IDs/configuration revisions and follow `next_offset`. These use Hermes cron;
+new routines deliver to that agent's existing Bot Chat. This tool never runs a job
+immediately. Preserve unrelated settings.
+
+Ask before unsolicited changes; the owner's explicit request authorizes that
+change. These controls do not grant tools, secrets, deletion or owner authority.
+Avatar/routine/group commands return durable receipts. Read `management_changes`
+in describe for the result: `applied` means success; `queued`, `applying` and
+`uncertain` do not. Never automatically repeat an uncertain mutation. A Main
+transfer fences queued cross-agent commands from its predecessor.
 
 Discover and enable an existing profile before suggesting a new identity. To
 propose a change, use exactly one of the following actions and spec fields:
@@ -61,7 +86,7 @@ propose a change, use exactly one of the following actions and spec fields:
   credentials. Shared Codex OAuth stays in its native Hermes store; Pebble Crew
   never copies tokens. If the model grant is unsupported, report its reason; do
   not ask for a new login or edit auth files as a workaround. Start with empty `skills` and only `workspace`/`skills` toolsets.
-  Choose an available enrolled manager or null, and an existing team or null. Creation is fresh,
+  Choose an available enrolled manager or null, and team null. Creation is fresh,
   never a clone. Configuration is not proof of a successful runtime turn.
 - `agent.update`: `profile`, `role`, `manager`, `team`, `expected_revision`.
   Role has `title`, `description`, `responsibilities`, `boundaries`, `expectedOutputs`.
@@ -71,12 +96,12 @@ propose a change, use exactly one of the following actions and spec fields:
   unrelated metadata. These instructions supplement the existing Hermes setup;
   do not rewrite SOUL, memory or skills to change a job assignment.
 - `agent.hide`: `profile`, `id`, `hidden` (true to hide, false to unhide),
-  `expected_revision`. Reversible; preserves the whole profile and its crews.
+  `expected_revision`. Reversible; preserves the whole profile and conversations.
 - `agent.delete`: `profile`, `id`, `expected_revision`. This proposes permanent
   native removal of the exact profile, including its SOUL, memory, skills, local
   conversations and service. The owner must type the profile name in the app.
   Never delete the default/lead, active work or a manager with direct reports.
-  Crew logs remain; removed members cannot continue work. Never replay uncertain
+  Group logs remain; removed members cannot continue work. Never replay uncertain
   deletion. Request owner inspection instead.
 - `agent.attach`: `profile`, `skills`, `toolsets`, `expected_revision`.
   Select installed resources; no arbitrary URLs, commands, code or credentials.

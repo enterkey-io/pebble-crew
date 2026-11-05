@@ -26,6 +26,7 @@ def main():
     from importlib import import_module
     package = load_code('_pebble_work_adapter')
     import_module(package.__name__ + '.work').register_native()
+    import_module(package.__name__ + '.routines_native').register()
     start_hosted_room_service()
     try:
         entry.main()

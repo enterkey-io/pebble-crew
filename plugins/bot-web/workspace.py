@@ -64,6 +64,8 @@ class WorkspaceStore:
         self.db.commit()
         from .reporting import initialize
         initialize(self, path)
+        from .agent_management import initialize as initialize_management
+        initialize_management(self.db)
 
     def read(self):
         revision, data = self.db.execute('SELECT revision,data FROM workspace WHERE id=1').fetchone()
@@ -367,7 +369,8 @@ class WorkspaceService:
             # Serialize room creation with snapshots, including uncertain native outcomes.
             self._snapshot = None
             try:
-                return await self.ops.invoke(operation, params)
+                from .groups import create
+                return await create(self, params)
             finally:
                 self._snapshot = None
         if operation in {'exchange.references','exchange.read'}:
@@ -398,8 +401,8 @@ class WorkspaceService:
             from .organization import invoke
             return await invoke(self, operation, params, state)
         if operation == 'crews.save':
-            from .crews import save
-            return await save(self, params)
+            raise InvalidOperation('Crews were replaced by sections and explicit group chats', 'UPDATE_REQUIRED')
+
         if operation == 'agent.propose' and params.get('action') == 'agent.create':
             fields(params, ['action', 'spec'])
             spec = params['spec']
@@ -519,8 +522,9 @@ class WorkspaceService:
             detection = await self._invoke('workspace.detect_primary', {})
             if detection.get('profile') != params['profile']:
                 raise InvalidOperation('Primary identity changed')
+            state = self.store.read()
             if params['expected_revision'] != state['revision']:
-                raise InvalidOperation('Refresh setup before saving')
+                raise InvalidOperation('Refresh setup before saving', 'STALE_REVISION')
             profile = identifier(params['profile'])
             look = appearance(params['appearance'])
             handle = self.handle(state, profiles, profile, params['handle'])
@@ -655,20 +659,7 @@ class WorkspaceService:
         if profile and profile not in state['bots']:
             raise InvalidOperation('Profile unavailable')
         if operation == 'teams.save':
-            teams = params['teams']
-            if not isinstance(teams, list) or len(teams) > 100:
-                raise InvalidOperation('Invalid teams')
-            clean = []
-            for team in teams:
-                fields(team, ['id', 'name'])
-                clean.append({'id': identifier(team['id']), 'name': bounded(team['name'], 80, False)})
-            if len({t['id'] for t in clean}) != len(clean) or any(b.get('team') and b['team'] not in {t['id'] for t in clean} for b in state['bots'].values()):
-                raise InvalidOperation('Move bots before removing their team', 'INVALID_REPORTING')
-            state['teams'] = clean
-            for name, bot in state['bots'].items():
-                if bot.get('team'):
-                    team = next(t for t in clean if t['id'] == bot['team'])
-                    await self.mirror(name, {'sectionId': team['id'], 'sectionName': team['name']})
+            raise InvalidOperation('Use presentation sections; native team edits were retired', 'UPDATE_REQUIRED')
         elif operation == 'workspace.set_orchestrator':
             if not state['bots'][profile].get('enrolled'):
                 raise InvalidOperation('Enable this agent first')
@@ -678,6 +669,8 @@ class WorkspaceService:
             assign(state, profile, None)
             self.graph(state)
         elif operation in {'roles.update', 'agent.update'}:
+            if params['team'] != state['bots'][profile].get('team'):
+                raise InvalidOperation('This proposal changes retired team membership; request a fresh role-only proposal', 'UPDATE_REQUIRED')
             role = params['role']
             role = normalize_role(role)
             if params['team'] is not None and params['team'] not in {t['id'] for t in state['teams']}:
@@ -686,8 +679,7 @@ class WorkspaceService:
             assign(state, profile, params['manager'])
             state['bots'][profile].update(role=role, team=params['team'])
             self.graph(state)
-            team = next((t for t in state['teams'] if t['id'] == params['team']), None)
-            await self.mirror(profile, {'workspaceRole': role, 'description': role['description'], 'sectionId': team['id'] if team else None, 'sectionName': team['name'] if team else None}, description=(role['title'] + ': ' + role['description']).strip(': ')[:1000])
+            await self.mirror(profile, {'workspaceRole': role, 'description': role['description']}, description=(role['title'] + ': ' + role['description']).strip(': ')[:1000])
         elif operation == 'bots.update_handle':
             handle = self.handle(state, profiles, profile, params['handle'])
             await self.mirror(profile, {'workspaceHandle': handle})

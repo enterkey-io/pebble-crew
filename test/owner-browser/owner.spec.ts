@@ -275,32 +275,28 @@ test('native private replies update durable owner history through the real live 
   expect(errors).toEqual([]);
 });
 
-test('native Crews, group chats, avatar switching and role persistence', async ({
-  page,
-  context,
-}) => {
+test('native group chats, avatar switching and role persistence', async ({ page, context }) => {
   await context.addCookies(ownerCookies);
   const signals = observeOwner(page);
   await page.goto('/');
   await expect(page.getByLabel('Message', { exact: true })).toBeEnabled();
   await page.getByRole('button', { name: 'New', exact: true }).click();
-  await page.getByRole('menuitem', { name: 'New crew', exact: true }).click();
-  const crew = page.getByRole('dialog', { name: 'New crew', exact: true });
+  await page.getByRole('menuitem', { name: 'New group chat', exact: true }).click();
+  const crew = page.getByRole('dialog', { name: 'New group chat', exact: true });
   await crew.getByLabel('Name', { exact: true }).fill('Research');
   for (const name of ['Alpha', 'Beta'])
     await crew.getByRole('checkbox', { name, exact: true }).check();
   await crew.getByRole('button', { name: 'Create', exact: true }).click();
   await expect(page.getByRole('button', { name: /^Research .*Open chat$/ })).toBeVisible();
-  await page.getByRole('button', { name: /^Research .*Open chat$/ }).click();
   await expect(page.locator('.chat-title')).toContainText('Research');
   const groupField = page.getByLabel('Message', { exact: true });
   await groupField.fill('@');
   await page.getByRole('option', { name: 'Alpha @alpha', exact: true }).click();
-  await groupField.fill('@alpha Hello from the crew');
+  await groupField.fill('@alpha Hello from the group');
   await submitMessage(page);
   const groupMessage = page
     .locator('[data-message-role="user"]')
-    .filter({ hasText: '@alpha Hello from the crew' });
+    .filter({ hasText: '@alpha Hello from the group' });
   await expect(groupMessage).toHaveCount(1);
   await expect(groupMessage).toHaveAttribute('data-message-id', /^user:/);
   await expect(page.locator('[data-message-id^="pending-"]')).toHaveCount(0);
@@ -327,7 +323,7 @@ test('native Crews, group chats, avatar switching and role persistence', async (
   await expect(page.locator('.chat-title')).toContainText('Quick discussion');
   await expect(
     page.getByRole('button', {
-      name: 'Quick discussion Group conversation Open chat',
+      name: 'Quick discussion Open chat',
       exact: true,
     }),
   ).toBeVisible();

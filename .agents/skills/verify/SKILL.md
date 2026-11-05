@@ -17,7 +17,7 @@ The browser runners launch and stop their own loopback static server. Use `CI=1`
 
 ## Doctor
 
-Check `git status --short --branch` and the versions in `release.json` and `apps/web/dist/version.json`. A matching version identifies the reported release, not source freshness. Run the build above before testing. A busy test port is a failure to isolate the run. Do not kill an existing listener or reuse it.
+Check `git status --short --branch` and the versions in `release.json` and `apps/web/dist/version.json`. A matching version identifies the reported release, not source freshness. Production browser servers also verify build-source.json against the product inputs and refuse stale assets. Run the build above before testing. An explicit WORKSPACE_BUILD_ROOT selects an archive for artifact-specific verification, which is separate from source freshness. A busy test port is a failure to isolate the run. Do not kill an existing listener or reuse it.
 
 For each journey, install the repo's bridge fixture and require the Message field to become enabled before proceeding. Existing browser specs do this. A 200 from the static server alone is not readiness.
 
@@ -43,7 +43,7 @@ Run `npm run test:owner-browser` when a profile, avatar, setup or chat contract 
 
 ## Evidence
 
-Keep command output in a task-specific log under `test-results/verification/` or an ignored local audit directory. Desktop screenshots are under `test-results/chat/`; phone screenshots are under `test-results/mobile/`; native screenshots are under `test-results/owner/`. Open the settled screenshots, including iPhone and Android for UI changes. A saved screenshot is not a visual review until inspected.
+Keep command output in a task-specific log under `test-results/verification/` or an ignored local audit directory. Desktop screenshots are under `test-results/chat/`; phone screenshots are under `test-results/mobile/`; native screenshots are under `test-results/owner/`. Open the settled screenshots, including iPhone and Android for UI changes. A saved screenshot is not a visual review until inspected. Inspect text nodes, full control edges and the relationship between the header, transcript, composer and navigation footer. Check settled destinations and hit testing, not only visibility or wrapper bounds. For installed-iOS viewport changes, actual PWA cold-open and keyboard/resume evidence is a release gate; emulation alone does not close it.
 
 Record the source revision, build/release, command, result and evidence paths. Browser emulation does not prove a physical keyboard, mobile Safari or all-device performance. Native synthetic proof does not establish an owner's ingress or restart behavior. Review metadata from the served owner URL before attributing an owner report to current source, using no credentials or private API data.
 

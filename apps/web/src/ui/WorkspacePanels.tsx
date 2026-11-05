@@ -43,7 +43,12 @@ export function WorkspacePanels({
   const width = useRef(initialWidth);
   const panel = usePanelRef();
   const page = useRef<HTMLDivElement>(null);
-  useEdgeNavigation(page, phone && edgeNavigation && !navigationOpen, onOpenNavigation);
+  useEdgeNavigation(
+    page,
+    phone && edgeNavigation,
+    navigationOpen ? onCloseNavigation : onOpenNavigation,
+    navigationOpen ? 'to-chat' : 'to-list',
+  );
   const closeNavigation = useRef(onCloseNavigation);
   closeNavigation.current = onCloseNavigation;
   useEffect(() => {

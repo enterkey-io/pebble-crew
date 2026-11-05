@@ -61,7 +61,7 @@ class WorkModel(Model):
                 WorkModel.worker_missing_context = True
             assert 'COORDINATION_GLOBAL_GOAL' in json.dumps(data['messages']), 'Worker did not receive the current Plan goal'
             assert 'COORDINATION_BOARD_OUTCOME' in json.dumps(data['messages']), 'Worker did not receive the exact project goal'
-            assert 'CREW_PURPOSE_END' in json.dumps(data['messages']), 'Worker lost the full Crew purpose'
+            assert 'CREW_PURPOSE_END' not in json.dumps(data['messages']), 'Worker received a retired Crew purpose'
             step = WorkModel.worker_step
             tools = ['workspace_work', 'kanban_show', 'kanban_comment', 'kanban_complete']
             name = tools[step] if step < len(tools) else None
@@ -132,20 +132,20 @@ class WorkModel(Model):
                 board = graph['boards'][0]
                 ref = {key: board[key] for key in ('catalog_id', 'project_id', 'slug')}
                 arguments = {'operation': 'work.plan.save', 'params': {**scope, 'operation_id': self.plan_operation, 'expected_revision': graph['revision'],
-                    'plan': {'id': None, 'title': 'A shared launch goal', 'outcome': 'COORDINATION_GLOBAL_GOAL: Reach 100 customers', 'body': 'Review evidence weekly', 'status': 'active', 'owner_id': None, 'parent_id': None, 'crew_ids': [], 'boards': [ref]}}}
+                    'plan': {'id': None, 'title': 'A shared launch goal', 'outcome': 'COORDINATION_GLOBAL_GOAL: Reach 100 customers', 'body': 'Review evidence weekly', 'status': 'active', 'owner_id': None, 'parent_id': None, 'boards': [ref]}}}
             elif step == 7:
                 graph = next(v for v in reversed(values) if 'plans' in v and 'revision' in v)
                 receipt = next(v for v in reversed(values) if v.get('kind') == 'plan')
                 ref = {key: graph['boards'][0][key] for key in ('catalog_id', 'project_id', 'slug')}
                 arguments = {'operation': 'work.board.outcome.save', 'params': {**scope, 'operation_id': self.outcome_operation, 'expected_revision': receipt['revision'],
-                    'outcome': {'board': ref, 'outcome': 'COORDINATION_BOARD_OUTCOME: Prove useful delivery', 'crew_ids': []}}}
+                    'outcome': {'board': ref, 'outcome': 'COORDINATION_BOARD_OUTCOME: Prove useful delivery'}}}
             elif step == 8:
                 arguments = {'operation': 'work.plans', 'params': scope}
             else:
                 task = next(v['task'] for v in values if isinstance(v.get('task'), dict) and v['task'].get('title') == 'Read the originals')
                 assert task['status'] == 'triage' and task['project_id']
                 assert 'COORDINATION_GLOBAL_GOAL' in json.dumps(data['messages'])
-                assert 'CREW_PURPOSE_END' in json.dumps(data['messages'])
+                assert 'CREW_PURPOSE_END' not in json.dumps(data['messages']), 'Chat received a retired Crew purpose'
                 WorkModel.completed = True
                 reply = 'Native project, triage task and current goals confirmed.'
         if not reply and name not in names:
@@ -208,9 +208,18 @@ async def exercise(root, home, port):
             'expected_revision': primary['revision']})
         state = store.read()
         members = [b['id'] for b in state['bots'].values() if b.get('enrolled') and b.get('available')]
-        await workspace.invoke('organization.save', {'expected_revision': 0, 'organization': {'schema': 2,
+        old_sidebar = json.dumps({'schema': 2, 'revision': 0,
             'sections': [{'id': 'pebbles', 'name': 'Pebbles', 'collapsed': False, 'items': [{'kind': 'crew', 'id': 'studio'}]}],
-            'crews': [{'id': 'studio', 'name': 'Studio', 'purpose': 'Full Crew purpose. ' * 90 + 'CREW_PURPOSE_END', 'managerId': members[0], 'members': members, 'collapsed': False}]}})
+            'crews': [{'id': 'studio', 'name': 'Studio', 'purpose': 'CREW_PURPOSE_END',
+                'managerId': members[0], 'members': members, 'collapsed': False}]})
+        with store.db:
+            store.db.execute("DELETE FROM presentation WHERE key IN ('sidebar-before-sections','sidebar-retirement')")
+            store.db.execute("INSERT OR REPLACE INTO presentation VALUES('organization',?)", (old_sidebar,))
+        migrated = await workspace.invoke('organization.get', {})
+        studio = next(section for section in migrated['sections'] if section['name'] == 'Studio')
+        assert migrated['schema'] == 3 and [row['id'] for row in studio['items']] == members
+        archived = store.db.execute("SELECT value FROM presentation WHERE key='sidebar-before-sections'").fetchone()
+        assert json.loads(archived[0])['organization'] == old_sidebar
         sid = (await ops.invoke('bot.open', {'profile': primary['profile']}))['session_id']
         events = asyncio.Queue(maxsize=256)
         gateway.listeners.add(events)
@@ -353,7 +362,7 @@ async def exercise(root, home, port):
             work.close()
         assert soul.read_bytes() == original
         print(json.dumps({'revision': gateway.build['revision'], 'deferred_work_schema': True,
-            'saved_tool_selection': True, 'native_model_project_and_task': True, 'real_dispatcher_worker': True, 'worker_reporting_protocol': True, 'native_history': True, 'current_crew_and_goals_in_real_worker': True, 'native_proactive_setup_model_free': True, 'native_proactive_bot_chat_delivery': True, 'result_delivered_to_existing_bot_chat_once': True,
+            'saved_tool_selection': True, 'native_model_project_and_task': True, 'real_dispatcher_worker': True, 'worker_reporting_protocol': True, 'native_history': True, 'current_goals_and_no_retired_crew_purpose_in_real_worker': True, 'native_proactive_setup_model_free': True, 'native_proactive_bot_chat_delivery': True, 'result_delivered_to_existing_bot_chat_once': True,
             'model': 'deterministic-local-only', 'persona_preserved': True, 'mention_woke_existing_bot_once': True}))
     finally:
         store.db.close()

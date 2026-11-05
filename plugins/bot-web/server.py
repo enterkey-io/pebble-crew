@@ -83,6 +83,8 @@ def create_app(token, origins, hosts, gateway=None, trust=None, workspace=None, 
         if workspace:
             from .reporting import recover
             recover(workspace.store)
+            from .agent_management import recover as recover_management
+            recover_management(workspace.store)
             from .request_delivery import recover as recover_requests
             recover_requests(workspace.store)
             await native.call('bot_web.work_delivery', {'action': 'recover'})
@@ -107,6 +109,11 @@ def create_app(token, origins, hosts, gateway=None, trust=None, workspace=None, 
                             await deliver(workspace, native)
                         except Exception:
                             pass  # Durable receipts retain unconfirmed deliveries.
+                    from .agent_management import drain as drain_management
+                    try:
+                        await drain_management(workspace)
+                    except Exception:
+                        pass  # Durable receipts retain unconfirmed changes.
                     from .reporting import drain
                     try:
                         await drain(workspace)
@@ -506,6 +513,9 @@ def create_app(token, origins, hosts, gateway=None, trust=None, workspace=None, 
                     if event.get("type") == "bridge.resync":
                         yield json.dumps(event) + "\n\n"
                         break
+                    if event.get('type') == 'routines.changed':
+                        yield json.dumps({'type': 'routines.changed', 'payload': {'profile': event['payload']['profile']}}) + '\n\n'
+                        continue
                     if event.get('type') in {'workspace.changed', 'requests.changed', 'exchanges.changed'}:
                         yield json.dumps({'type': event['type']}) + '\n\n'
                         continue

@@ -1,165 +1,95 @@
-import { initialOrganization } from './organization-fixture';
 import { describe, it, expect } from 'vitest';
+import { initialOrganization } from './organization-fixture';
 import {
   addShortcut,
   removeShortcut,
-  crewMembers,
+  placeItem,
+  placePebble,
   nudgeItem,
   nudgeSection,
-  placeCrew,
-  placePebble,
+  moveSection,
+  removeSection,
   readRailDrag,
-  reorderSection,
-  railDropTarget,
-  sectionChoiceLabel,
-  setCrewMembers,
+  organizationState,
 } from '../ui/organization';
-import type { Organization } from '../ui/organization';
-function occurrences(org: Organization, id: string) {
-  return (
-    org.sections.flatMap((s) => s.items).filter((i) => i.kind === 'pebble' && i.id === id).length +
-    org.crews.flatMap((c) => c.members).filter((p) => p === id).length
-  );
-}
-describe('reference organization', () => {
-  it('edits crew membership in one operation, returning removed members to the unsectioned list', () => {
-    const root = { id: 'pebbles', name: 'Pebbles', collapsed: false, items: [] };
-    const org = { ...initialOrganization, sections: [root, ...initialOrganization.sections] };
-    const next = setCrewMembers(org, 'studio', ['sample-2', 'sample-5']);
-    expect(next.crews[0]!.members).toEqual(['sample-2', 'sample-5']);
-    expect(next.sections[0]!.items).toEqual([{ kind: 'pebble', id: 'sample-4' }]);
-    for (const id of ['sample-2', 'sample-4', 'sample-5']) expect(occurrences(next, id)).toBe(1);
-    expect(initialOrganization.crews[0]!.members).toEqual(['sample-4', 'sample-5']);
+import type { Organization, RailItem } from '../ui/organization';
+const sample = () => structuredClone(initialOrganization);
+const all = (org: Organization) => org.sections.flatMap((s) => s.items);
+const group: RailItem = {
+  kind: 'group',
+  id: 'native-room',
+  readKey: 'room:native-room:1700000000.123456',
+  placementId: 'group-placement',
+};
+describe('independent sections and explicit groups', () => {
+  it('moves a row by placement without changing its conversation identity', () => {
+    const org = sample();
+    org.sections[1]!.items.push(group);
+    const next = placeItem(org, group.placementId, 'studio', 'row-sample-4');
+    expect(next.sections[2]!.items[0]).toEqual(group);
+    expect(all(next).length).toBe(all(org).length);
+    expect(org.sections[1]!.items.at(-1)).toEqual(group);
   });
-  it('keeps the unsectioned destination out of section ordering and calls it None in menus', () => {
-    const root = { id: 'pebbles', name: 'Pebbles', collapsed: true, items: [] };
-    const org = {
-      ...initialOrganization,
-      sections: [initialOrganization.sections[0]!, root, initialOrganization.sections[1]!],
-    };
-    expect(sectionChoiceLabel(root)).toBe('None');
-    expect(nudgeSection(org, 'pebbles', 1)).toBe(org);
-    expect(reorderSection(org, 'pebbles', 'personal')).toBe(org);
-    expect(nudgeSection(org, 'studio-section', -1).sections.map((s) => s.id)).toEqual([
+  it('preserves independent shortcut placements and changes only the selected copy', () => {
+    const org = addShortcut(sample(), 'sample-4', 'shortcut-copy');
+    expect(all(org).filter((i) => i.id === 'sample-4')).toHaveLength(2);
+    const moved = placeItem(org, 'shortcut-copy', 'personal');
+    expect(moved.sections[2]!.items.some((i) => i.id === 'sample-4')).toBe(true);
+    expect(removeShortcut(moved, 'sample-4')).toEqual(sample());
+  });
+  it('will not move to an obsolete destination or missing row anchor', () => {
+    const org = sample();
+    expect(placeItem(org, 'row-sample-4', 'missing')).toBe(org);
+    expect(placeItem(org, 'row-sample-4', 'personal', 'missing')).toBe(org);
+    expect(placeItem(org, 'row-sample-4', 'studio', 'row-sample-4')).toBe(org);
+  });
+  it('keeps groups, direct rows and every placement when removing a section', () => {
+    const org = sample();
+    org.sections[2]!.items.push(group);
+    const next = removeSection(org, 'studio');
+    expect(next.sections[0]!.items).toEqual(org.sections[2]!.items);
+    expect(
+      all(next)
+        .map((i) => i.placementId)
+        .sort(),
+    ).toEqual(
+      all(org)
+        .map((i) => i.placementId)
+        .sort(),
+    );
+    expect(removeSection(next, 'pebbles')).toBe(next);
+  });
+  it('reorders rows and sections by keyboard, preserving the unnamed list', () => {
+    const org = sample(),
+      item = org.sections[1]!.items[1]!;
+    expect(nudgeItem(org, item, -1).sections[1]!.items[0]).toEqual(item);
+    expect(nudgeSection(org, 'studio', -1).sections.map((s) => s.id)).toEqual([
       'pebbles',
-      'studio-section',
+      'studio',
       'personal',
     ]);
-  });
-  it('reorders visible rows without treating the pin shelf as intervening rows', () => {
+    expect(moveSection(org, 'pebbles', 'studio')).toBe(org);
     expect(
-      nudgeItem(initialOrganization, { kind: 'pebble', id: 'sample-2' }, -1, [
-        'sample-0',
-        'sample-1',
-      ]),
-    ).toBe(initialOrganization);
+      placePebble(org, 'sample-4', { kind: 'section', id: 'personal' }).sections[1]!.items.at(-1)
+        ?.id,
+    ).toBe('sample-4');
+  });
+  it('accepts only current drag identities, never a room-membership mutation', () => {
+    const org = sample();
     expect(
-      nudgeItem(initialOrganization, { kind: 'pebble', id: 'sample-3' }, -1, [
-        'sample-0',
-        'sample-1',
-      ]).sections[0]!.items.map((i) => i.id),
-    ).toEqual(['sample-0', 'sample-1', 'sample-3', 'sample-2']);
-  });
-  it('moves one identity between sections and crews without duplicate membership or deletion', () => {
-    const moved = placePebble(initialOrganization, 'sample-2', { kind: 'crew', id: 'studio' });
-    expect(moved.crews[0]!.members).toEqual(['sample-4', 'sample-5', 'sample-2']);
-    expect(occurrences(moved, 'sample-2')).toBe(1);
-    const again = placePebble(moved, 'sample-2', { kind: 'crew', id: 'studio' });
-    expect(again).toEqual(moved);
-    const back = placePebble(moved, 'sample-2', { kind: 'section', id: 'personal' }, 'sample-0');
-    expect(back.sections[0]!.items[0]).toEqual({ kind: 'pebble', id: 'sample-2' });
-    expect(occurrences(back, 'sample-2')).toBe(1);
-    expect(initialOrganization.crews[0]!.members).toEqual(['sample-4', 'sample-5']);
-  });
-  it('reorders sections, members and crew placement with bounded no-op edges', () => {
-    expect(nudgeSection(initialOrganization, 'personal', -1)).toBe(initialOrganization);
+      readRailDrag(JSON.stringify({ kind: 'placement', id: 'row-sample-4' }), org, []),
+    ).toEqual({ kind: 'placement', id: 'row-sample-4' });
+    expect(readRailDrag(JSON.stringify({ kind: 'crew', id: 'studio' }), org, [])).toBeUndefined();
     expect(
-      reorderSection(initialOrganization, 'studio-section', 'personal').sections.map((s) => s.id),
-    ).toEqual(['studio-section', 'personal']);
-    expect(
-      nudgeItem(initialOrganization, { kind: 'pebble', id: 'sample-5' }, -1, [], {
-        kind: 'crew',
-        id: 'studio',
-      }).crews[0]!.members,
-    ).toEqual(['sample-5', 'sample-4']);
-    const moved = placeCrew(initialOrganization, 'studio', 'personal', 'sample-2');
-    expect(moved.sections[1]!.items).toEqual([]);
-    expect(moved.sections[0]!.items[2]).toEqual({ kind: 'crew', id: 'studio' });
-    expect(moved.crews).toEqual(initialOrganization.crews);
+      readRailDrag(JSON.stringify({ kind: 'placement', id: 'absent' }), org, []),
+    ).toBeUndefined();
   });
-  it('treats crews as sibling blocks and ignores their nested member drop zones', () => {
-    const nested = {
-      kind: 'item',
-      item: { kind: 'pebble', id: 'sample-4' },
-      placement: { kind: 'crew', id: 'studio' },
-    } as const;
-    expect(railDropTarget(initialOrganization, 'crew', nested, false)).toBeUndefined();
-    expect(railDropTarget(initialOrganization, 'section', nested, false)).toBeUndefined();
-    const crew = {
-      kind: 'item',
-      item: { kind: 'crew', id: 'studio' },
-      placement: { kind: 'section', id: 'studio-section' },
-    } as const;
-    expect(railDropTarget(initialOrganization, 'crew', crew, true)).toEqual({
-      target: { kind: 'section', id: 'studio-section' },
-      beforeId: undefined,
-      edge: 'after',
-    });
-    expect(railDropTarget(initialOrganization, 'pebble', crew, false)).toEqual({
-      target: { kind: 'crew', id: 'studio' },
-      edge: 'inside',
-    });
-    expect(
-      railDropTarget(initialOrganization, 'crew', { kind: 'section', id: 'pebbles' }, false),
-    ).toEqual({ target: { kind: 'section', id: 'pebbles' }, edge: 'inside' });
-    expect(railDropTarget(initialOrganization, 'pebble', nested, true)).toEqual({
-      target: { kind: 'crew', id: 'studio' },
-      beforeId: 'sample-5',
-      edge: 'after',
-    });
+  it('decodes schema 3 with opaque native group read keys and rejects duplicate placements/old writers', () => {
+    const value = { schema: 3, revision: 2, ...sample() };
+    value.sections[0]!.items.push(group);
+    expect(organizationState(value).sections[0]!.items[0]).toEqual(group);
+    expect(() => organizationState({ ...value, schema: 2 })).toThrow();
+    value.sections[1]!.items.push(group);
+    expect(() => organizationState(value)).toThrow();
   });
-  it('can place a section after the final section without disturbing its members', () => {
-    const destination = railDropTarget(
-      initialOrganization,
-      'section',
-      { kind: 'section', id: 'studio-section' },
-      true,
-    )!;
-    expect(destination.edge).toBe('after');
-    const moved = reorderSection(initialOrganization, 'personal', destination.beforeId);
-    expect(moved.sections.map((section) => section.id)).toEqual(['studio-section', 'personal']);
-    expect(moved.crews).toEqual(initialOrganization.crews);
-    expect(moved.sections[1]!.items).toEqual(initialOrganization.sections[0]!.items);
-  });
-  it('accepts only known local drag identities at the external drop boundary', () => {
-    for (const value of [
-      'bad',
-      'null',
-      '{"kind":"pebble","id":"unknown"}',
-      '{"kind":"file","id":"studio"}',
-    ])
-      expect(readRailDrag(value, initialOrganization, ['sample-0'])).toBeUndefined();
-    expect(
-      readRailDrag('{"kind":"pebble","id":"sample-0"}', initialOrganization, ['sample-0']),
-    ).toEqual({ kind: 'pebble', id: 'sample-0' });
-  });
-});
-
-it('shortcuts share an identity while Crew membership and manager-first order survive row removal', () => {
-  const org = {
-    ...initialOrganization,
-    sections: [
-      { id: 'pebbles', name: 'Pebbles', collapsed: false, items: [] },
-      ...initialOrganization.sections,
-    ],
-  };
-  const member = org.crews[0]!;
-  const led = { ...org, crews: [{ ...member, managerId: 'sample-5' }] };
-  const shortcut = addShortcut(led, 'sample-5');
-  expect(shortcut.sections[0]!.items[0]).toEqual({ kind: 'pebble', id: 'sample-5' });
-  expect(addShortcut(shortcut, 'sample-5')).toBe(shortcut);
-  expect(crewMembers(shortcut.crews[0]!)).toEqual(['sample-5', 'sample-4']);
-  expect(removeShortcut(shortcut, 'sample-5').crews).toEqual(led.crews);
-  expect(removeShortcut(shortcut, 'sample-5').sections[0]!.items).toEqual([]);
-  expect(setCrewMembers(shortcut, 'studio', ['sample-4']).crews[0]!.managerId).toBeNull();
 });

@@ -20,7 +20,7 @@ test('role tags use the available row width and only truncate when the row is fu
     const row = page
       .locator('.pebble-row')
       .filter({ has: page.getByRole('button', { name: new RegExp(`^${name} .*Bot Chat$`) }) });
-    const badge = row.locator('[data-slot="badge"]');
+    const badge = row.locator('[data-slot="role-label"]');
     await expect(badge).toHaveText(role!);
     expect(await badge.evaluate((node) => node.scrollWidth <= node.clientWidth)).toBe(true);
   }
@@ -34,7 +34,7 @@ test('role tags use the available row width and only truncate when the row is fu
   const long = page
     .locator('.pebble-row')
     .filter({ has: page.getByRole('button', { name: /^Rowan .*Bot Chat$/ }) });
-  await expect(long.locator('[data-slot="badge"]')).toContainText('A genuinely long role');
+  await expect(long.locator('[data-slot="role-label"]')).toContainText('A genuinely long role');
   const geometry = await long.evaluate((node) => {
     const title = node.querySelector('[data-slot="item-title"]')!.getBoundingClientRect();
     const boundary = node.getBoundingClientRect();

@@ -18,7 +18,7 @@ let front,
   browser,
   page,
   diagnostic = '',
-  connectionMetadata,
+  browserHandshake,
   connects = 0,
   eventStreams = 0,
   handshakeReadErrors = 0;
@@ -139,13 +139,19 @@ try {
             });
           if (incoming.headers['sec-fetch-site'] === 'same-origin' && response.statusCode === 200) {
             if (path === '/v1/connect' && incoming.method === 'POST') {
-              connects++;
-              if (connects === 1) console.log('Browser handshake observed at HTTPS proxy.');
+              const sequence = ++connects;
+              if (sequence === 1) console.log('Browser handshake observed at HTTPS proxy.');
               const chunks = [];
               response.on('data', (chunk) => chunks.push(Buffer.from(chunk)));
               response.once('end', () => {
                 try {
-                  connectionMetadata = JSON.parse(Buffer.concat(chunks).toString('utf8'));
+                  const result = JSON.parse(Buffer.concat(chunks).toString('utf8'));
+                  if (!browserHandshake || sequence > browserHandshake.sequence) {
+                    browserHandshake = {
+                      sequence,
+                      recovery: result.capabilities?.connection_recovery === 1,
+                    };
+                  }
                 } catch {
                   handshakeReadErrors++;
                 }
@@ -280,11 +286,13 @@ try {
   await page.getByLabel('Handle', { exact: true }).fill('aurora');
   await page.getByRole('button', { name: 'Snow', exact: true }).click();
   await page.getByRole('button', { name: 'Start chatting', exact: true }).click();
+  const proactive = page.getByRole('dialog', { name: 'Proactive help', exact: true });
+  await proactive.getByRole('button', { name: 'Not now', exact: true }).click();
+  await expect(proactive).toHaveCount(0);
   const message = page.getByLabel('Message', { exact: true });
   await expect(message).toBeEnabled();
-  const initialHandshake = await connectionMetadata;
-  expect(initialHandshake).toBeTruthy();
-  recoverableOwner = initialHandshake.capabilities?.connection_recovery === 1;
+  await expect.poll(() => browserHandshake?.sequence ?? 0).toBeGreaterThan(0);
+  recoverableOwner = browserHandshake.recovery;
   await message.fill('/');
   await expect(page.getByRole('option').filter({ hasText: '/model' }).first()).toBeVisible();
   await message.fill('/model');
@@ -380,14 +388,10 @@ try {
   await exerciseRestarts(!process.env.WORKSPACE_PREVIOUS_ARCHIVE);
   if (process.env.WORKSPACE_PREVIOUS_ARCHIVE) {
     await control('contract-upgrade');
-    const handshake = page.waitForResponse(
-      (response) =>
-        new URL(response.url()).pathname === '/v1/connect' &&
-        response.request().method() === 'POST' &&
-        response.status() === 200,
-    );
+    const beforeReload = connects;
     await page.reload();
-    expect((await (await handshake).json()).capabilities.connection_recovery).toBe(1);
+    await expect.poll(() => browserHandshake?.sequence ?? 0).toBeGreaterThan(beforeReload);
+    expect(browserHandshake.recovery).toBe(true);
     recoverableOwner = true;
     await expect(message).toBeEnabled();
     await expect(page.getByText('Native fixture reply', { exact: true }).last()).toBeVisible();

@@ -14,17 +14,21 @@ test('default pebbles are a flat list even when their old section was collapsed'
     await route.fulfill({
       json: {
         result: {
+          schema: 3,
           revision: 0,
           sections: [
-            { id: 'crews', name: 'Crews', collapsed: false, items: [] },
             {
               id: 'pebbles',
               name: 'Pebbles',
               collapsed: true,
-              items: fixture.state.bots.map((bot) => ({ kind: 'pebble', id: bot.id })),
+              items: fixture.state.bots.map((bot) => ({
+                kind: 'pebble',
+                id: bot.id,
+                placementId: 'row-' + bot.id,
+                shortcut: false,
+              })),
             },
           ],
-          crews: [],
         },
       },
     });
@@ -36,7 +40,7 @@ test('default pebbles are a flat list even when their old section was collapsed'
   const rail = phone
     ? page.getByRole('region', { name: 'navigation' })
     : page.getByRole('complementary', { name: 'Pebbles and crews' });
-  const list = rail.getByRole('group', { name: 'Unsectioned pebbles', exact: true });
+  const list = rail.getByRole('group', { name: 'Unsectioned conversations', exact: true });
   await expect(list.getByRole('button', { name: /^Rowan .*Bot Chat$/ })).toBeVisible();
   await expect(rail.getByRole('button', { name: 'Pebbles', exact: true })).toHaveCount(0);
   await expect(list.locator('.pc-section-header')).toHaveCount(0);
@@ -70,7 +74,7 @@ test('custom sections are optional and None returns a pebble to the plain list',
   await openSidebarMenu(page, 'Rowan');
   await page.getByRole('menuitem', { name: 'Move to section', exact: true }).click();
   await page.getByRole('menuitemcheckbox', { name: 'None', exact: true }).click();
-  const list = rail.getByRole('group', { name: 'Unsectioned pebbles', exact: true });
+  const list = rail.getByRole('group', { name: 'Unsectioned conversations', exact: true });
   await expect(list.getByRole('button', { name: /^Rowan .*Bot Chat$/ })).toBeVisible();
   await expect(studio.getByRole('button', { name: /^Rowan .*Bot Chat$/ })).toHaveCount(0);
 });

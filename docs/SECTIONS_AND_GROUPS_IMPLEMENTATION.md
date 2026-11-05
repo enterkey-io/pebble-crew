@@ -1,6 +1,6 @@
 # Sections and explicit group chats
 
-Status: architecture reviewed; implementation and owner migration are pending.
+Status: implemented on the unreleased correction branch. Both supported Hermes builds and the native owner browser have passed. Installed-iPhone review remains a release gate.
 This replaces the coupled Crew navigation contract in
 [CREW_COORDINATION_IMPLEMENTATION.md](CREW_COORDINATION_IMPLEMENTATION.md).
 It does not rename the Pebble Crew product.
@@ -31,10 +31,10 @@ has no effect on that discussion.
 
 ## Grounding
 
-The current browser types combine `sections` and `crews` in `ui/organization.ts`.
-`OrganizationRail` calls `App.openCrew`, which invokes `organization.chat` in
-`plugins/bot-web/organization.py`. That operation selects all Crew members and
-creates or opens a deterministic native room. Saving a Crew alone does not run a
+The old browser types combined `sections` and `crews` in `ui/organization.ts`.
+`OrganizationRail` called `App.openCrew`, which invoked `organization.chat` in
+`plugins/bot-web/organization.py`. That operation selected all Crew members and
+created or opened a deterministic native room. Saving a Crew alone does not run a
 model, but using its chat action implicitly chooses the entire department.
 
 Explicit groups already use `ConversationDomain.createGroup` and the native
@@ -49,7 +49,7 @@ a migration inventory. `rooms.list` supplies the complete native catalog and
 reports incomplete bounded pagination. Read scopes and reaction scopes depend
 on the exact original native room identity, timestamp and roster.
 
-There are two organization writers: presentation-only `organization.save`, and
+There were two organization writers: presentation-only `organization.save`, and
 legacy `crews.save`, which writes native team metadata through `roles.update`.
 Main's `crew.update` is another caller of presentation Crew semantics. All must
 be reconciled; hiding New crew alone would leave the old behavior available.
@@ -58,10 +58,9 @@ Plans and board outcomes use `crew_ids`; `coordination.py` uses those membership
 purposes and managers in agent context across text, voice, workers and exchanges.
 Converting sidebar layout must not silently drop or reinterpret that meaning.
 
-These are source findings, not a claim of new native acceptance. In particular,
-the old organization subcase in `native_smoke.py` still assumes schema 1 and
-requires replacement. The documented pinned native source directories were not
-available during this review.
+These findings describe the retired implementation. The migration and actual
+native acceptance now exercise schema 3, independent room identity and real
+deferred tool discovery in disposable homes on both supported Hermes builds.
 
 ## Architecture and ownership
 
@@ -95,7 +94,8 @@ A room whose creation succeeded stays discoverable even if its placement fails.
 The read projection joins the layout to all enrolled direct identities and native
 rooms. Preserve unavailable references rather than rebinding them to replacement
 profiles. Partial inventory must never prune layout or masquerade as an empty
-installation. Block migration activation on incomplete inventory; do not filter
+installation. Layout conversion needs no room catalog or native mutations. An incomplete room
+catalog never prunes saved references or implies an empty installation; do not filter
 history by present-day group creation constraints.
 
 Keep native room IDs, creation timestamps, frozen rosters, events, read cursors,
@@ -109,24 +109,24 @@ identities so moving or removing a reference does not delete its conversation.
 
 ## Existing-data decisions
 
-The owner is being asked whether existing Crew lists should become sections,
-with all existing conversations retained as separate groups, or remain unchanged
-until reorganized. No corresponding owner migration has been activated.
+The owner reconfirmed removal of Crews. Convert each existing Crew into a normal
+named section, preserving its member order and collapse preference. Keep independent
+shortcuts as separate row placements. When a Crew previously appeared inside a
+section, place its converted section immediately after that section, in previous
+Crew order. This preserves useful Operations/Tech Ops organization without nested
+section semantics. Empty custom sections remain editable drop targets.
 
-A second decision covers existing Crew manager, purpose and goal rules: retain
-those coordination rules independently, or retire their active behavior while
-retaining historical records. Section conversion alone does not answer this.
-No hidden department semantics or permanent new management screen is inferred.
+Retire active Crew manager, purpose and goal-audience rules. Preserve current
+reporting, Main identity, instructions and historical records. Archive exact old
+organization bytes and Crew-to-room provenance locally before the atomic layout
+conversion. Native group inventory remains independent and includes old,
+superseded and unlinked group conversations. Conversion never creates a room.
 
-Prepare an owner-local, read-only migration preview from exact source bytes and
-revisions, all native rooms, latest associations as provenance only, existing pins,
-row shortcuts and goal references. Preview reference-placement conflicts without
-dropping copies. Crews without a room must not acquire one during migration.
-
-Retain exact source backups and a manifest. Verify source revisions before an
-atomic layout/compatibility-state activation. Do not pretend changes across
-separate databases are atomic. Defer any new goal-audience representation to the
-accepted goal policy; preserve existing IDs/semantics until then.
+Plan reads omit retired crew_ids from their public projection; the first actual
+plan write archives the exact pre-change payload within its own ledger transaction.
+Preserve every other plan/outcome identity and field. No speculative cross-database
+atomicity claim is made. Pending protected proposals retain their original context;
+a proposal that would change retired team membership remains visible and blocked.
 
 Retire create-on-Crew-open, membership-changing drag operations, legacy native
 team saves and stale tool instructions together in the activated protocol. Old
@@ -180,3 +180,20 @@ Defer A's proposed new goal-audience API to the owner's coordination decision.
 No implementation deviations yet. A proposal that reintroduces a roster in
 section state, a create fallback on open, or section-derived goal scope invalidates
 this design and must be reconsidered rather than patched around.
+
+## Agent tools
+
+`workspace_agents` exposes `sidebar.describe`, `sidebar.section.create`,
+`sidebar.move`, `group.create`, `agent.appearance.update` and `routines.manage`.
+All enrolled agents can arrange the sidebar and create an explicit group from
+an owner conversation. They can change their own avatars and routines; the
+current Main Pebble can change them for other pebbles. The bridge checks the
+actor, target and current Main identity before applying queued work. Creating a
+group does not send a message on the owner's behalf. Protected actions retain
+their existing approval boundary.
+
+A confirmed routine change refreshes the open inspector; a closed inspector
+makes no routine reads. Avatar changes use the native asset and profile metadata
+stores. The native acceptance executes an actual deferred self-avatar call,
+verifies the Main Pebble's cross-agent avatar and routine changes, and checks
+that section, group and routine configuration sends no additional model requests.

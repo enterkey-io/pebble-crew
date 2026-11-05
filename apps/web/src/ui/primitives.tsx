@@ -1,7 +1,7 @@
 import { Alert, AlertDescription } from '../components/ui/alert';
 import { Typography } from '../components/ui/typography';
 import type { LucideIcon } from 'lucide-react';
-import { useRef } from 'react';
+import { useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 import { X, MoreHorizontal, PanelLeftOpen } from 'lucide-react';
 import { IconButton } from '../components/ui/icon-button';
@@ -168,21 +168,35 @@ export function ContextActions({
   children: ReactNode;
 }) {
   const keyboardTarget = useRef<HTMLElement | null>(null);
+  const dragOwnsGesture = useRef(false);
+  const [open, setOpen] = useState(false);
+  const finishDrag = () => setOpen(false);
   return (
-    <ContextMenu>
+    <ContextMenu open={open} onOpenChange={(next) => setOpen(next && !dragOwnsGesture.current)}>
       <ContextMenuTrigger
         disabled={!items.length}
         data-context-label={label}
         asChild
         onPointerDown={(event) => {
           keyboardTarget.current = null;
+          dragOwnsGesture.current = false;
           event.stopPropagation();
         }}
-        onContextMenu={(event) => event.stopPropagation()}
+        onDragStartCapture={() => {
+          dragOwnsGesture.current = true;
+          setOpen(false);
+        }}
+        onDragEndCapture={finishDrag}
+        onDropCapture={finishDrag}
+        onContextMenu={(event) => {
+          event.stopPropagation();
+          if (dragOwnsGesture.current) event.preventDefault();
+        }}
         onKeyDown={(event) => {
           if (event.key !== 'ContextMenu' && !(event.shiftKey && event.key === 'F10')) return;
           event.preventDefault();
           event.stopPropagation();
+          dragOwnsGesture.current = false;
           keyboardTarget.current = event.target instanceof HTMLElement ? event.target : null;
           const bounds = event.currentTarget.getBoundingClientRect();
           event.currentTarget.dispatchEvent(

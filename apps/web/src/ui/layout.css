@@ -460,15 +460,28 @@
     overscroll-behavior: none;
   }
   .pc-shell {
-    position: fixed;
+    position: relative;
     top: var(--app-viewport-top, 0px);
-    inset-inline: 0;
+    width: 100%;
   }
 }
 @media (max-width: 767px) {
   .pc-chat-header {
+    --chat-header-edge: 44px;
+    display: grid;
+    grid-template-columns: var(--chat-header-edge) minmax(0, 1fr) var(--chat-header-edge);
     padding: 0 16px;
     gap: 8px;
+  }
+  .pc-chat-header[data-has-requests='true'] {
+    --chat-header-edge: 96px;
+  }
+  .pc-chat-header .pc-chat-identity {
+    justify-self: center;
+  }
+  .pc-chat-header .header-actions {
+    justify-self: end;
+    margin-left: 0;
   }
   .pc-messages {
     padding: 8px 16px 20px;

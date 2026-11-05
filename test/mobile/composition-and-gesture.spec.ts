@@ -9,8 +9,9 @@ async function swipe(
   start: { x: number; y: number },
   end: { x: number; y: number },
   fingers = 1,
+  surface = '.pc-mobile-conversation',
 ) {
-  await page.locator('.pc-mobile-conversation').evaluate(
+  await page.locator(surface).evaluate(
     (node, { start, end, fingers }) => {
       const point = (p: { x: number; y: number }) => ({
         identifier: 0,
@@ -48,6 +49,11 @@ test('installed PWA leading-edge swipe returns to the list without losing chat o
   await field.blur();
   const log = await page.getByRole('log').elementHandle();
   const input = await field.elementHandle();
+  const readingPosition = await log!.evaluate((node) => {
+    node.scrollTop = Math.min(100, node.scrollHeight - node.clientHeight);
+    node.dispatchEvent(new Event('scroll'));
+    return node.scrollTop;
+  });
   const navigation = page.getByRole('region', { name: 'navigation', exact: true });
   await swipe(page, { x: 6, y: 220 }, { x: 9, y: 360 });
   await expect(navigation).not.toBeVisible();
@@ -59,10 +65,19 @@ test('installed PWA leading-edge swipe returns to the list without losing chat o
   await expect(navigation).toBeVisible();
   expect(await log!.evaluate((node) => node.isConnected)).toBe(true);
   expect(await input!.evaluate((node) => node.isConnected)).toBe(true);
-  await page.goBack();
+  const right = page.viewportSize()!.width - 6;
+  await swipe(page, { x: right, y: 220 }, { x: right - 2, y: 360 }, 1, '.pc-mobile-navigation');
+  await expect(navigation).toBeVisible();
+  await swipe(page, { x: right, y: 220 }, { x: right - 180, y: 225 }, 2, '.pc-mobile-navigation');
+  await expect(navigation).toBeVisible();
+  await swipe(page, { x: right, y: 220 }, { x: right - 180, y: 225 }, 1, '.pc-mobile-navigation');
+  await expect(page.locator('.pc-phone-pages')).toHaveAttribute('data-navigation-open', 'false');
+  await expect(navigation).not.toBeVisible();
   await expect(field).toBeVisible();
+  expect((await field.boundingBox())!.x).toBeLessThan(page.viewportSize()!.width);
   await expect(field).toHaveValue('Keep this draft when I swipe back');
   await expect(field).not.toBeFocused();
+  await expect.poll(() => log!.evaluate((node) => node.scrollTop)).toBeCloseTo(readingPosition, 0);
 });
 
 test('ordinary mobile browser keeps its native edge navigation', async ({ page, context }) => {

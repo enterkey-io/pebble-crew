@@ -15,7 +15,6 @@ async function newItem(page: Page, info: TestInfo, name: string) {
   await page.getByRole('button', { name: 'New', exact: true }).click();
   await expect(page.getByRole('menu').getByRole('menuitem')).toHaveText([
     'New pebble',
-    'New crew',
     'New group chat',
     'New section',
     'New task',

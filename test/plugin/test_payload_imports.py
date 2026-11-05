@@ -74,7 +74,7 @@ class PayloadImportTests(unittest.TestCase):
     def test_the_last_release_inventory_does_not_require_the_new_presentation_module(self):
         with tempfile.TemporaryDirectory() as directory:
             previous_base = tuple(name for name in PRE_VOICE_FILES if name not in {'conversation_presentation.py', 'conversation_history.py'})
-            previous_files = tuple(name for name in FILES[len(PRE_VOICE_FILES):] if name not in {'conversation_presentation.py', 'conversation_history.py'})
+            previous_files = FILES[len(PRE_VOICE_FILES):FILES.index('conversation_presentation.py')]
             path = Path(directory) / 'payload.py'
             path.write_text('PRE_VOICE_FILES = '+repr(previous_base)+'\nFILES = PRE_VOICE_FILES + '+repr(previous_files)+'\n')
             self.assertEqual(source_inventory(Path(directory)), previous_base + previous_files)

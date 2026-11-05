@@ -72,13 +72,13 @@ installation.
 
 ## 3. Obtain the immutable combined release
 
-Candidate: `v0.7.17-preview.1`. If these assets are not published, stop and report
+Candidate: `v0.7.18-preview.1`. If these assets are not published, stop and report
 that the candidate is unavailable. Do not substitute main or an API-only package.
 
-- [Manifest](https://github.com/enterkey-io/pebble-crew/releases/download/v0.7.17-preview.1/workspace-manifest.json)
-- [SHA256SUMS](https://github.com/enterkey-io/pebble-crew/releases/download/v0.7.17-preview.1/SHA256SUMS)
-- [Complete plugin](https://github.com/enterkey-io/pebble-crew/releases/download/v0.7.17-preview.1/workspace-plugin-preview.zip)
-- [Source](https://github.com/enterkey-io/pebble-crew/releases/download/v0.7.17-preview.1/workspace-source-preview.zip)
+- [Manifest](https://github.com/enterkey-io/pebble-crew/releases/download/v0.7.18-preview.1/workspace-manifest.json)
+- [SHA256SUMS](https://github.com/enterkey-io/pebble-crew/releases/download/v0.7.18-preview.1/SHA256SUMS)
+- [Complete plugin](https://github.com/enterkey-io/pebble-crew/releases/download/v0.7.18-preview.1/workspace-plugin-preview.zip)
+- [Source](https://github.com/enterkey-io/pebble-crew/releases/download/v0.7.18-preview.1/workspace-source-preview.zip)
 
 Verify size and SHA-256 against both manifest and checksum file. Reject absolute
 archive paths, traversal, symlinks and entries escaping private staging. The
@@ -191,8 +191,8 @@ and replace only the installed plugin code (preserving all state). Wait for nati
 work to finish and stop independent profile processes for maintenance. Activate
 the verified host with `hermes bot-web update` first, then copy runtime code from
 that active release with `hermes bot-web sync-runtime --native-idle`.
-The Crew/exchange runtime uses contract `workspace-runtime-v3`; a v2 host cannot
-load it before host activation. The new host accepts old runtime copies only for
+The sidebar and agent-management tools use `workspace-runtime-v4`. Activate
+the host before synchronizing copies from an older runtime contract. The new host accepts old runtime copies only for
 this model-free maintenance transition. It refuses app chat admission while a
 profile disk copy differs from its verified package.
 Restart the existing supervised Pebble Crew service and stopped profile processes
@@ -215,7 +215,7 @@ with `hermes bot-web setup-link` (use `--renew-setup` only if it expired).
 remaining seconds). Its output contains the private file path, never the secret.
 
 Event parsing and legacy access controls are specified in
-[the wire protocol](https://github.com/enterkey-io/pebble-crew/blob/v0.7.17-preview.1/docs/WIRE_PROTOCOL.md).
+[the wire protocol](https://github.com/enterkey-io/pebble-crew/blob/v0.7.18-preview.1/docs/WIRE_PROTOCOL.md).
 Never use global revocation for diagnostic cleanup: use DELETE `/v1/connect`
 with the probe's own lease. Global revocation now requires `hermes bot-web revoke
 --all` or the operator-only HTTP body `{"all":true}`.
@@ -236,9 +236,8 @@ The updater stages dependencies and compatibility checks before switching the
 release. The manager adopts it without replacing keys or data. Failed readiness
 restores the previous release.
 
-When upgrading a `v1` or `v2` runtime installation to this release, host-first ordering is required.
-The new `v3` host accepts those runtime contracts for maintenance; older hosts
-cannot accept the new `v3` runtime.
+The new `v4` host accepts `v1`, `v2` and `v3` runtime copies during the
+maintenance transition. Host-first ordering is required for these upgrades.
 Do not run `sync-runtime --source-package` before activation for this transition,
 edit contract declarations, or bypass compatibility checks. A previous sync-first
 refusal changes no runtime copies; continue with the verified host update above.
@@ -275,8 +274,9 @@ that backup and the previous release. Historical integrations that cannot read t
 new reporting contract are refused before activation; do not force a tree-only
 downgrade or restore native conversations/personas to bypass this check.
 
-This preview supports code updates with unchanged owner/workspace data schemas;
-unsupported data migrations are refused. Keep previous snapshots and code backups
+This release migrates the sidebar presentation format and retains a private backup.
+Older releases that cannot read that format are refused before rollback. Use a
+compatible release for rollback and preserve the original backup. Keep previous snapshots and code backups
 until verification passes. Do not restore native history/personality stores as
 plugin rollback. Activate the host first, then run
 `hermes bot-web sync-runtime --native-idle` to update enrolled agents' runtime-only
@@ -358,12 +358,17 @@ its matching integration; a static-only update is insufficient. Keep the existin
 owner account, cookie keys, private state, login sessions, profiles, model settings,
 ports and HTTPS route. Do not send model prompts as installation probes.
 
-Organization is a separate owner-local presentation record: section and Crew
-order, collapse state and membership. Existing role/team assignments initialize
-it once; moving a sidebar item does not rewrite a profile's role or reporting.
-Opening a Crew with 2–6 available pebbles creates or reuses its native Hermes room.
-A changed membership explicitly asks for a new chat; the previous history remains
-in Group chats. Removing a sidebar Crew does not delete native history.
+Organization is an owner-local presentation record. Existing Crew lists become
+regular sections, retaining their order and collapse preference. Existing native
+group chats retain their history and participants. New group chats require
+explicit participant selection. Moving a row between sections does not change a
+profile's reporting line or a group's membership. Preserve the sidebar migration
+backup with the rest of the owner state.
+
+Runtime synchronization exposes section and group-chat management to enrolled
+pebbles. Each pebble can update its own appearance and routines. The Main Pebble
+can manage appearance and routines for other pebbles. Confirm the runtime
+inventory as part of the upgrade without asking a pebble to run a tool.
 
 Search runs on this Hermes host, including visible canonical Bot Chat history,
 routine metadata and supported sent-file text. It does not open or resume sessions,
@@ -406,5 +411,5 @@ successfully connected to Hermes. The device then appears in Devices and can be
 revoked independently. No second login or approval is needed.
 
 The native credential stays in device Keychain; its hash stays on the owner's host.
-Use [the device contract](https://github.com/enterkey-io/pebble-crew/blob/v0.7.17-preview.1/docs/NATIVE_DEVICE_ENROLLMENT.md) for protocol and acceptance
+Use [the device contract](https://github.com/enterkey-io/pebble-crew/blob/v0.7.18-preview.1/docs/NATIVE_DEVICE_ENROLLMENT.md) for protocol and acceptance
 details. Never paste an invitation or permanent device credential into chat or logs.
