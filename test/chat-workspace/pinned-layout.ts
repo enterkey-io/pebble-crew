@@ -31,7 +31,8 @@ export async function expectPinnedLayout(pins: Locator) {
         nameOffset: name.top - card.top,
         titleOffset: title.top - card.top,
         titleTextHeight: range.getBoundingClientRect().height,
-        titleLineHeight: parseFloat(getComputedStyle(titleNode).lineHeight),
+        titleHeight: title.height,
+        titleOverflow: titleNode.scrollWidth > titleNode.clientWidth + 1,
         nameColor: getComputedStyle(nameNode).color,
         foreground: getComputedStyle(document.body).color,
         ancestors,
@@ -53,7 +54,8 @@ export async function expectPinnedLayout(pins: Locator) {
     expect(tile.nameWidth).toBeGreaterThan(24);
     expect(tile.nameColor).toBe(tile.foreground);
     expect(tile.ancestors.every((opacity) => opacity === '1')).toBe(true);
-    expect(tile.titleTextHeight).toBeLessThanOrEqual(tile.titleLineHeight + 1);
+    expect(tile.titleTextHeight).toBeLessThanOrEqual(tile.titleHeight + 1);
+    expect(tile.titleOverflow).toBe(false);
     expect(tile.avatarTop).toBeCloseTo(layout[0]!.avatarTop, 0);
     expect(tile.nameOffset).toBeCloseTo(layout[0]!.nameOffset, 0);
     expect(tile.titleOffset).toBeCloseTo(layout[0]!.titleOffset, 0);
