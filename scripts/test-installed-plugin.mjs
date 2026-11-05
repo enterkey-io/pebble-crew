@@ -286,6 +286,9 @@ try {
   await page.getByLabel('Handle', { exact: true }).fill('aurora');
   await page.getByRole('button', { name: 'Snow', exact: true }).click();
   await page.getByRole('button', { name: 'Start chatting', exact: true }).click();
+  const proactive = page.getByRole('dialog', { name: 'Proactive help', exact: true });
+  await proactive.getByRole('button', { name: 'Not now', exact: true }).click();
+  await expect(proactive).toHaveCount(0);
   const message = page.getByLabel('Message', { exact: true });
   await expect(message).toBeEnabled();
   await expect.poll(() => browserHandshake?.sequence ?? 0).toBeGreaterThan(0);
