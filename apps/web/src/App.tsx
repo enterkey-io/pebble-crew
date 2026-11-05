@@ -410,7 +410,7 @@ export function App({ owner }: { owner?: OwnerConnection }) {
   useLayoutEffect(() => {
     if (!phone) return;
     const target = nav
-      ? '.pc-mobile-navigation [aria-label="Your account"]'
+      ? '.pc-mobile-navigation'
       : navigationWasOpen.current
         ? '.pc-chat-header [aria-label="Toggle navigation"]'
         : null;

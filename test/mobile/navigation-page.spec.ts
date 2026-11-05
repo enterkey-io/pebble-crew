@@ -43,7 +43,7 @@ for (const theme of ['dark', 'light']) {
       node.scrollTop = 0;
       node.dispatchEvent(new Event('scroll'));
     });
-    await page.getByRole('button', { name: 'Toggle navigation', exact: true }).click();
+    await page.getByRole('button', { name: 'Toggle navigation', exact: true }).press('Enter');
     const navigation = page.getByRole('region', { name: 'navigation', exact: true });
     await expect(navigation).toBeVisible();
     await expect.poll(async () => (await navigation.boundingBox())!.x).toBe(0);
@@ -67,10 +67,26 @@ for (const theme of ['dark', 'light']) {
     expect(avatars[0]!.y).toBe(avatars[1]!.y);
     await expect(navigation.getByRole('button', { name: 'Personal', exact: true })).toBeVisible();
     await expect(navigation.getByRole('img', { name: '4 members', exact: true })).toBeVisible();
+    const account = navigation.getByRole('button', { name: 'Your account', exact: true });
+    await expect(navigation).toBeFocused();
+    await expect(account).not.toBeFocused();
+    await expect(account).toHaveCSS('box-shadow', 'none');
+    await expect(account).toHaveCSS('border-top-width', '0px');
     await page.screenshot({
       animations: 'disabled',
       path: info.outputPath(`mobile-list-${theme}.png`),
     });
+    if (info.project.name === 'android-chromium') {
+      await page.keyboard.press('Tab');
+      await expect(search).toBeFocused();
+    }
+    await account.click();
+    await expect(page.getByRole('menu', { name: 'Your account', exact: true })).toBeVisible();
+    await page.keyboard.press('Escape');
+    await expect(account).toBeFocused();
+    await expect
+      .poll(() => account.evaluate((button) => button.matches(':focus-visible')))
+      .toBe(true);
     await search.click();
     await expect(page.locator('[data-slot="command-input"]')).toBeVisible();
     await page.locator('[data-slot="command-input"]').fill('Mica');
@@ -84,7 +100,9 @@ for (const theme of ['dark', 'light']) {
       true,
     );
     await expect(input).toHaveValue('Keep my draft while I browse');
-    await page.getByRole('button', { name: 'Toggle navigation', exact: true }).click();
+    await page.getByRole('button', { name: 'Toggle navigation', exact: true }).tap();
+    await expect(navigation).toBeFocused();
+    await expect(account).not.toBeFocused();
     await navigation.getByRole('button', { name: /Mica.*Bot Chat/ }).click();
     await expect(input).toHaveAttribute('placeholder', 'Message Mica');
     await expect
