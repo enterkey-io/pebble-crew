@@ -442,3 +442,5 @@ that exact request; native smart-denial and session/permanent restrictions take
 precedence. The native policy engine owns scope and pattern persistence.
 `room.approve` remains limited to `once` or `deny` on the supported Hermes builds.
 These scopes do not apply to `requests.approve` agent-management proposals.
+
+The optional `workspace_settings: true` connect capability advertises `workspace.features.set`. Stored `features` values do not advertise API support. Tasks visibility is separate from native `projects` support: disabling it retains native Kanban access and data.

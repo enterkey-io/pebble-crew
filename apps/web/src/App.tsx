@@ -140,6 +140,10 @@ export function App({ owner }: { owner?: OwnerConnection }) {
   const [selectedArea, setArea] = useState<'chat' | 'tasks'>('chat');
   const tasksEnabled = workspace?.features?.tasks !== false;
   const area = tasksEnabled ? selectedArea : 'chat';
+  const [taskEditorOpen, setTaskEditorOpen] = useState(false);
+  useEffect(() => {
+    if (!tasksEnabled) setArea('chat');
+  }, [tasksEnabled]);
   const [workBoard, setWorkBoard] = useState('default');
   const [workDialog, setWorkDialog] = useState<WorkDialogTarget>();
   const [workRevision, setWorkRevision] = useState(0);
@@ -2217,7 +2221,6 @@ export function App({ owner }: { owner?: OwnerConnection }) {
           setWorkspace(state);
           if (state.features?.tasks === false) {
             setArea('chat');
-            setWorkDialog(undefined);
           }
           void loadRoster(client, true).catch(fail);
         }}
@@ -2333,64 +2336,74 @@ export function App({ owner }: { owner?: OwnerConnection }) {
                   onNavigate={() => setNav(true)}
                 />
               )}
-              {area === 'tasks' &&
+              {(area === 'tasks' || taskEditorOpen) &&
                 !orgOpen &&
                 !(settings && settingsTab !== 'agents') &&
-                workspace &&
-                (work.catalog ? (
-                  workBoard === '$plans' && work.catalog.capabilities.plans ? (
-                    <PlansArea
-                      client={client}
-                      workspace={workspace}
-                      organization={organization}
-                      connected={connectionAvailable}
-                      onNavigate={() => setNav(true)}
-                      onBoard={setWorkBoard}
-                    />
-                  ) : (
-                    <WorkArea
-                      key={work.catalog.workspaceId + '/' + workBoard}
-                      client={client}
-                      workspace={workspace}
-                      catalog={work.catalog}
-                      board={workBoard}
-                      goal={
-                        work.catalog.capabilities.plans ? (
-                          <BoardOutcome
-                            client={client}
-                            workspace={workspace}
-                            organization={organization}
-                            connected={connectionAvailable}
-                            board={workBoard}
+                workspace && (
+                  <div
+                    hidden={area !== 'tasks'}
+                    inert={area !== 'tasks'}
+                    style={{ display: area === 'tasks' ? 'contents' : 'none' }}
+                  >
+                    {work.catalog ? (
+                      workBoard === '$plans' &&
+                      (work.catalog.capabilities.plans || taskEditorOpen) ? (
+                        <PlansArea
+                          client={client}
+                          workspace={workspace}
+                          organization={organization}
+                          connected={connectionAvailable && tasksEnabled}
+                          onEditingChange={setTaskEditorOpen}
+                          onNavigate={() => setNav(true)}
+                          onBoard={setWorkBoard}
+                        />
+                      ) : (
+                        <WorkArea
+                          key={work.catalog.workspaceId + '/' + workBoard}
+                          client={client}
+                          workspace={workspace}
+                          catalog={work.catalog}
+                          board={workBoard}
+                          goal={
+                            work.catalog.capabilities.plans || taskEditorOpen ? (
+                              <BoardOutcome
+                                client={client}
+                                workspace={workspace}
+                                organization={organization}
+                                connected={connectionAvailable && tasksEnabled}
+                                onEditingChange={setTaskEditorOpen}
+                                board={workBoard}
+                              />
+                            ) : undefined
+                          }
+                          refresh={workRevision}
+                          connected={connectionAvailable}
+                          onReconnect={owner ? retryConnection : disconnect}
+                          onNavigate={() => setNav(true)}
+                          onTask={(id) => setWorkDialog({ kind: 'task', board: workBoard, id })}
+                          onCreate={() => setWorkDialog({ kind: 'new-task', board: workBoard })}
+                          onEditProject={() => setWorkDialog({ kind: 'project', board: workBoard })}
+                        />
+                      )
+                    ) : (
+                      <section className="pc-work-area" aria-label="Tasks">
+                        <WorkHeader title="Tasks" onNavigate={() => setNav(true)} />
+                        <LoadingBar
+                          active={work.state.kind === 'pending'}
+                          label="Loading project boards"
+                        />
+                        {work.state.kind === 'failed' && (
+                          <WorkReadError
+                            error={work.state.error}
+                            subject="project boards"
+                            onRetry={work.reload}
+                            onReconnect={owner ? retryConnection : disconnect}
                           />
-                        ) : undefined
-                      }
-                      refresh={workRevision}
-                      connected={connectionAvailable}
-                      onReconnect={owner ? retryConnection : disconnect}
-                      onNavigate={() => setNav(true)}
-                      onTask={(id) => setWorkDialog({ kind: 'task', board: workBoard, id })}
-                      onCreate={() => setWorkDialog({ kind: 'new-task', board: workBoard })}
-                      onEditProject={() => setWorkDialog({ kind: 'project', board: workBoard })}
-                    />
-                  )
-                ) : (
-                  <section className="pc-work-area" aria-label="Tasks">
-                    <WorkHeader title="Tasks" onNavigate={() => setNav(true)} />
-                    <LoadingBar
-                      active={work.state.kind === 'pending'}
-                      label="Loading project boards"
-                    />
-                    {work.state.kind === 'failed' && (
-                      <WorkReadError
-                        error={work.state.error}
-                        subject="project boards"
-                        onRetry={work.reload}
-                        onReconnect={owner ? retryConnection : disconnect}
-                      />
+                        )}
+                      </section>
                     )}
-                  </section>
-                ))}
+                  </div>
+                )}
               <div
                 style={{
                   display:
@@ -2933,7 +2946,7 @@ export function App({ owner }: { owner?: OwnerConnection }) {
               )}
             </DetailsDock>
           </WorkspacePanels>
-          {tasksEnabled && workDialog && work.catalog && workspace && (
+          {workDialog && work.catalog && workspace && (
             <Drawer
               title={
                 workDialog.kind === 'task' || workDialog.kind === 'new-task'
@@ -2964,6 +2977,7 @@ export function App({ owner }: { owner?: OwnerConnection }) {
                   ('id' in workDialog ? workDialog.id : '')
                 }
                 target={workDialog}
+                showBoardActions={tasksEnabled}
                 visibleBoard={area === 'tasks' ? workBoard : undefined}
                 client={client}
                 workspace={workspace}

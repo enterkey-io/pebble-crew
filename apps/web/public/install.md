@@ -72,13 +72,13 @@ installation.
 
 ## 3. Obtain the immutable combined release
 
-Candidate: `v0.7.16-preview.1`. If these assets are not published, stop and report
+Candidate: `v0.7.17-preview.1`. If these assets are not published, stop and report
 that the candidate is unavailable. Do not substitute main or an API-only package.
 
-- [Manifest](https://github.com/enterkey-io/pebble-crew/releases/download/v0.7.16-preview.1/workspace-manifest.json)
-- [SHA256SUMS](https://github.com/enterkey-io/pebble-crew/releases/download/v0.7.16-preview.1/SHA256SUMS)
-- [Complete plugin](https://github.com/enterkey-io/pebble-crew/releases/download/v0.7.16-preview.1/workspace-plugin-preview.zip)
-- [Source](https://github.com/enterkey-io/pebble-crew/releases/download/v0.7.16-preview.1/workspace-source-preview.zip)
+- [Manifest](https://github.com/enterkey-io/pebble-crew/releases/download/v0.7.17-preview.1/workspace-manifest.json)
+- [SHA256SUMS](https://github.com/enterkey-io/pebble-crew/releases/download/v0.7.17-preview.1/SHA256SUMS)
+- [Complete plugin](https://github.com/enterkey-io/pebble-crew/releases/download/v0.7.17-preview.1/workspace-plugin-preview.zip)
+- [Source](https://github.com/enterkey-io/pebble-crew/releases/download/v0.7.17-preview.1/workspace-source-preview.zip)
 
 Verify size and SHA-256 against both manifest and checksum file. Reject absolute
 archive paths, traversal, symlinks and entries escaping private staging. The
@@ -215,7 +215,7 @@ with `hermes bot-web setup-link` (use `--renew-setup` only if it expired).
 remaining seconds). Its output contains the private file path, never the secret.
 
 Event parsing and legacy access controls are specified in
-[the wire protocol](https://github.com/enterkey-io/pebble-crew/blob/v0.7.16-preview.1/docs/WIRE_PROTOCOL.md).
+[the wire protocol](https://github.com/enterkey-io/pebble-crew/blob/v0.7.17-preview.1/docs/WIRE_PROTOCOL.md).
 Never use global revocation for diagnostic cleanup: use DELETE `/v1/connect`
 with the probe's own lease. Global revocation now requires `hermes bot-web revoke
 --all` or the operator-only HTTP body `{"all":true}`.
@@ -257,6 +257,8 @@ models. Moving an assigned task to To do queues it through the native Hermes
 dispatcher. Posting a comment with an enrolled agent’s @handle notifies that
 agent in its existing Bot Chat. Do not use moves or mentions as upgrade probes.
 Routines stay in agent chats, separate from project boards.
+
+General settings includes an installation-wide Tasks switch. It defaults on. Off hides Tasks/Plans navigation and creation and suspends saved strategic goals in the new runtime's text, voice and worker context. Native Kanban remains available for background work; no boards, tasks, Plans, project outcomes, routines, personas or credentials are deleted. Re-enabling restores existing data and does not dispatch work. Complete runtime synchronization/restart from the active release so enrolled agents use the current goal-context policy. Do not flip the owner's setting or run a model as an upgrade probe.
 
 Preserve `$HERMES_HOME/bot-web/` in full, including the new `work.sqlite` catalog
 bindings and recovery receipts. Native projects and tasks remain in Hermes. After
@@ -402,5 +404,5 @@ successfully connected to Hermes. The device then appears in Devices and can be
 revoked independently. No second login or approval is needed.
 
 The native credential stays in device Keychain; its hash stays on the owner's host.
-Use [the device contract](https://github.com/enterkey-io/pebble-crew/blob/v0.7.16-preview.1/docs/NATIVE_DEVICE_ENROLLMENT.md) for protocol and acceptance
+Use [the device contract](https://github.com/enterkey-io/pebble-crew/blob/v0.7.17-preview.1/docs/NATIVE_DEVICE_ENROLLMENT.md) for protocol and acceptance
 details. Never paste an invitation or permanent device credential into chat or logs.

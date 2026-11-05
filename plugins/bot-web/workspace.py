@@ -67,7 +67,8 @@ class WorkspaceStore:
 
     def read(self):
         revision, data = self.db.execute('SELECT revision,data FROM workspace WHERE id=1').fetchone()
-        return {'features': {'tasks': True}, **json.loads(data), 'revision': revision}
+        value = json.loads(data)
+        return {**value, 'features': {'tasks': True, **value.get('features', {})}, 'revision': revision}
 
     def save(self, value, expected):
         value = deepcopy(value)
@@ -78,12 +79,14 @@ class WorkspaceStore:
                 raise InvalidOperation('Workspace changed; refresh before saving', 'STALE_REVISION')
         return self.read()
 
-    def set_tasks(self, enabled, expected):
+    def set_tasks(self, enabled, expected, workspace_id):
         if type(enabled) is not bool or type(expected) is not int or expected < 0:
             raise InvalidOperation('Invalid Tasks setting')
         with self.db:
             self.db.execute('BEGIN IMMEDIATE')
             state = self.read()
+            if state['id'] != workspace_id:
+                raise InvalidOperation('Choose this workspace', 'STALE_REVISION')
             if state['features']['tasks'] == enabled:
                 return {'features': state['features'], 'revision': state['revision']}
             if state['revision'] != expected:
@@ -356,8 +359,8 @@ class WorkspaceService:
     async def _invoke(self, operation, params):
         from . import presentation
         if operation == 'workspace.features.set':
-            fields(params, ['tasks', 'expected_revision'])
-            result = self.store.set_tasks(params['tasks'], params['expected_revision'])
+            fields(params, ['workspace_id', 'tasks', 'expected_revision'])
+            result = self.store.set_tasks(params['tasks'], params['expected_revision'], params['workspace_id'])
             self._snapshot = None
             return result
         if operation == 'room.create':

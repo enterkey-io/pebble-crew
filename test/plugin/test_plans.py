@@ -117,11 +117,11 @@ class PlanBehaviorTests(unittest.IsolatedAsyncioTestCase):
         saved = self.plans.read(self.state)
         before = len(self.native.calls)
         revision = self.store.read()['revision']
-        receipt = await self.service.invoke('workspace.features.set', {'tasks': False, 'expected_revision': revision})
+        receipt = await self.service.invoke('workspace.features.set', {'workspace_id': self.state['id'], 'tasks': False, 'expected_revision': revision})
         self.assertFalse(receipt['features']['tasks'])
         self.assertEqual(len(self.native.calls), before, 'Changing Tasks must not call native tools or models')
         # Repeating a lost-response write is harmless and does not bump the revision.
-        self.assertEqual(await self.service.invoke('workspace.features.set', {'tasks': False, 'expected_revision': revision}), receipt)
+        self.assertEqual(await self.service.invoke('workspace.features.set', {'workspace_id': self.state['id'], 'tasks': False, 'expected_revision': revision}), receipt)
         for profile in ('default', 'amy'):
             value = context(self.store, profile, self.board)
             self.assertFalse(value['tasks_enabled'])
@@ -144,7 +144,7 @@ class PlanBehaviorTests(unittest.IsolatedAsyncioTestCase):
         self.service.store = self.store
         self.plans.workspace = self.store
         self.assertFalse(self.store.read()['features']['tasks'])
-        self.store.set_tasks(True, receipt['revision'])
+        self.store.set_tasks(True, receipt['revision'], self.state['id'])
         self.assertEqual(self.plans.invoke('work.plans', {'workspace_id': self.state['id']}, 'owner')['plans'], saved['plans'])
         self.assertEqual(context(self.store, 'amy', self.board)['board_outcome']['outcome'], 'Ship a useful product')
 
@@ -153,12 +153,27 @@ class PlanBehaviorTests(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(state['features']['tasks'])
         changed = self.store.save({**state, 'unrelated': 'keep'}, state['revision'])
         with self.assertRaises(InvalidOperation):
-            self.store.set_tasks(False, state['revision'])
+            self.store.set_tasks(False, state['revision'], self.state['id'])
         for enabled, revision in [('false', changed['revision']), (False, True), (False, -1)]:
-            with self.assertRaises(InvalidOperation): self.store.set_tasks(enabled, revision)
-        await self.service.invoke('workspace.features.set', {'tasks': False, 'expected_revision': changed['revision']})
+            with self.assertRaises(InvalidOperation): self.store.set_tasks(enabled, revision, self.state['id'])
+        await self.service.invoke('workspace.features.set', {'workspace_id': self.state['id'], 'tasks': False, 'expected_revision': changed['revision']})
         self.assertEqual(self.store.read()['unrelated'], 'keep')
         self.assertTrue(all(bot.get('enrolled') for bot in self.store.read()['bots'].values()))
+
+    async def test_tasks_setting_rejects_another_workspace_before_any_write(self):
+        before = self.store.read()
+        with self.assertRaisesRegex(InvalidOperation, 'Choose this workspace'):
+            await self.service.invoke('workspace.features.set', {'workspace_id': str(uuid.uuid4()), 'tasks': False, 'expected_revision': before['revision']})
+        self.assertEqual(self.store.read(), before)
+
+    async def test_tasks_default_and_write_preserve_other_feature_preferences(self):
+        state = self.store.read()
+        state['features'] = {'future_feature': False}
+        self.store.save(state, state['revision'])
+        current = self.store.read()
+        self.assertTrue(current['features']['tasks'])
+        self.store.set_tasks(False, current['revision'], self.state['id'])
+        self.assertEqual(self.store.read()['features'], {'tasks': False, 'future_feature': False})
 
     async def test_disabling_tasks_keeps_native_work_catalog_and_board_reads_available(self):
         from types import SimpleNamespace
@@ -170,7 +185,7 @@ class PlanBehaviorTests(unittest.IsolatedAsyncioTestCase):
             board=lambda slug: {'columns': [{'name': 'todo', 'tasks': [{'id': 'existing', 'title': 'Background work', 'status': 'todo'}]}]})
         service = WorkService(self.store, self.path.with_name('native-work.sqlite'))
         try:
-            self.store.set_tasks(False, self.state['revision'])
+            self.store.set_tasks(False, self.state['revision'], self.state['id'])
             with patch.object(service, 'catalog_native', return_value=('stable', native)):
                 catalog = service.invoke('work.describe', {})
                 self.assertFalse(catalog['capabilities']['plans'])

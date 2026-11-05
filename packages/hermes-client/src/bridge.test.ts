@@ -354,7 +354,12 @@ describe('direct Bot Mode bridge', () => {
         Response.json({
           protocol: 'hermes-bot-web.v1',
           connection,
-          capabilities: { workspace: true, attachments: true, generated_media: true },
+          capabilities: {
+            workspace: true,
+            workspace_settings: true,
+            attachments: true,
+            generated_media: true,
+          },
         }),
       )
       .mockImplementationOnce(
@@ -369,11 +374,13 @@ describe('direct Bot Mode bridge', () => {
     expect(client.supportsAttachments).toBe(true);
     expect(client.supportsGeneratedMedia).toBe(true);
     expect(client.supportsWorkspace).toBe(true);
+    expect(client.supportsWorkspaceSettings).toBe(true);
     const pending = client.invoke('chat.send', { session_id: 'live', text: 'Hello' });
     client.disconnect();
     expect(client.supportsAttachments).toBe(true);
     expect(client.supportsGeneratedMedia).toBe(true);
     expect(client.supportsWorkspace).toBe(true);
+    expect(client.supportsWorkspaceSettings).toBe(true);
     resolve(Response.json({ result: { accepted: true } }));
     await expect(pending).rejects.toMatchObject({ code: 'DISCONNECTED' });
     expect(fetcher.mock.calls[2]![1]).toMatchObject({ method: 'DELETE' });

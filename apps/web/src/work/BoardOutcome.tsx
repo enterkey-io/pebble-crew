@@ -26,15 +26,21 @@ export function BoardOutcome({
   organization,
   connected,
   board,
+  onEditingChange,
 }: {
   client: SessionClient;
   workspace: WorkspaceSnapshot;
   organization: Organization;
   connected: boolean;
   board: string;
+  onEditingChange?: ((open: boolean) => void) | undefined;
 }) {
   const resource = usePlans(client, workspace, connected);
   const [open, setOpen] = useState(false);
+  useEffect(() => {
+    onEditingChange?.(open);
+  }, [open, onEditingChange]);
+  useEffect(() => () => onEditingChange?.(false), [onEditingChange]);
   const data = resource.state.value;
   const ref = data?.boards.find((ref) => ref.slug === board);
   if (!data || !ref) return null;
@@ -48,6 +54,7 @@ export function BoardOutcome({
       {open && (
         <OutcomeEditor
           key={board}
+          tasksEnabled={workspace.features?.tasks !== false}
           initial={current?.outcome ?? ''}
           initialCrews={current?.crewIds ?? []}
           revision={data.revision}
@@ -65,6 +72,7 @@ export function BoardOutcome({
   );
 }
 function OutcomeEditor({
+  tasksEnabled,
   initial,
   initialCrews,
   revision,
@@ -73,6 +81,7 @@ function OutcomeEditor({
   check,
   onClose,
 }: {
+  tasksEnabled: boolean;
   initial: string;
   initialCrews: string[];
   revision: number;
@@ -118,6 +127,7 @@ function OutcomeEditor({
           <Form
             onSubmit={(event) => {
               event.preventDefault();
+              if (!tasksEnabled) return;
               const payload = JSON.stringify({ outcome, crews, revision: edit.revision });
               if (intent.current.payload !== payload)
                 intent.current = { payload, id: crypto.randomUUID() };
@@ -140,6 +150,7 @@ function OutcomeEditor({
                 .finally(() => setBusy(false));
             }}
           >
+            {!tasksEnabled && <Notice>Tasks is off. Your draft is kept here.</Notice>}
             <div className="grid gap-2">
               <Label htmlFor="project-outcome">Goal</Label>
               <Textarea
@@ -216,7 +227,9 @@ function OutcomeEditor({
               </Button>
               <Button
                 type="submit"
-                disabled={busy || uncertain || !!edit.conflicts.length || !outcome.trim()}
+                disabled={
+                  !tasksEnabled || busy || uncertain || !!edit.conflicts.length || !outcome.trim()
+                }
               >
                 {busy ? 'Saving…' : 'Save goal'}
               </Button>

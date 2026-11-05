@@ -1,7 +1,7 @@
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { WorkspaceDomain } from '@hermes-client/protocol';
 import type { SessionClient, WorkspaceSnapshot } from '@hermes-client/protocol';
-import { safeError } from '@hermes-client/core';
+import { ClientError, safeError } from '@hermes-client/core';
 import { Switch } from './components/ui/switch';
 import { Notice } from './ui/primitives';
 import { Button } from './components/ui/button';
@@ -29,35 +29,70 @@ export function GeneralSettings({
   onProactive?: (() => void) | undefined;
 }) {
   const { mode, setMode } = useAppearance();
+  const supported = client.supportsWorkspaceSettings;
   const [saving, setSaving] = useState(false);
   const flight = useRef(false);
-  const [error, setError] = useState('');
+  const [issue, setIssue] = useState<{ target: boolean; message: string }>();
+  const generation = useRef(0);
+  useEffect(() => {
+    generation.current++;
+    flight.current = false;
+    setSaving(false);
+    setIssue(undefined);
+    return () => {
+      generation.current++;
+    };
+  }, [client, state.id, supported]);
+  useEffect(() => {
+    if (issue && state.features?.tasks === issue.target) setIssue(undefined);
+  }, [issue, state.features?.tasks]);
   async function changeTasks(enabled: boolean) {
     if (flight.current) return;
     flight.current = true;
     setSaving(true);
-    setError('');
+    setIssue(undefined);
+    const token = generation.current;
+    const active = () => generation.current === token;
+    const accept = (latest: WorkspaceSnapshot) => {
+      if (latest.id !== state.id) throw new ClientError('INVALID_RESPONSE');
+      if (active()) onChange(latest);
+      return latest.features?.tasks === enabled;
+    };
     const domain = new WorkspaceDomain(client);
     try {
-      const result = await domain.setTasksEnabled(enabled, state.revision);
-      onChange({ ...state, ...result });
+      await domain.setTasksEnabled({
+        enabled,
+        expectedRevision: state.revision,
+        workspaceId: state.id,
+      });
+      if (!active()) return;
+      // A receipt can be idempotent at a newer revision. Never stamp that revision
+      // onto an older roster captured when the switch was clicked.
+      if (!accept(await domain.describeWorkspace()) && active())
+        setIssue({ target: enabled, message: 'Settings changed. Try again.' });
     } catch (cause) {
+      if (!active()) return;
       // A lost response can follow a committed preference. Read before offering a retry.
       try {
         const latest = await domain.describeWorkspace();
-        onChange(latest);
-        if (latest.features?.tasks !== enabled)
-          setError(
-            safeError(cause).code === 'STALE_REVISION'
-              ? 'Settings changed. Try again.'
-              : 'Couldn’t save Tasks. Try again.',
-          );
+        if (!active()) return;
+        if (!accept(latest))
+          setIssue({
+            target: enabled,
+            message:
+              safeError(cause).code === 'STALE_REVISION'
+                ? 'Settings changed. Try again.'
+                : 'Couldn’t save Tasks. Try again.',
+          });
       } catch {
-        setError('Couldn’t confirm this change. Reconnect before trying again.');
+        if (active())
+          setIssue({ target: enabled, message: 'Couldn’t confirm this change. Try again.' });
       }
     } finally {
-      flight.current = false;
-      setSaving(false);
+      if (active()) {
+        flight.current = false;
+        setSaving(false);
+      }
     }
   }
   return (
@@ -96,13 +131,13 @@ export function GeneralSettings({
           </Select>
         </ItemActions>
       </Item>
-      {state.features && (
+      {supported && state.features && (
         <Item className="flex-nowrap px-0">
           <ItemContent>
             <ItemTitle>
               <Label htmlFor="tasks-enabled">Tasks</Label>
             </ItemTitle>
-            <ItemDescription>Show boards and goals. Kanban still works when off.</ItemDescription>
+            <ItemDescription>Project boards and plans.</ItemDescription>
           </ItemContent>
           <ItemActions>
             <Switch
@@ -115,7 +150,7 @@ export function GeneralSettings({
           </ItemActions>
         </Item>
       )}
-      {error && <Notice error>{error}</Notice>}
+      {issue && <Notice error>{issue.message}</Notice>}
       {onProactive && (
         <Item className="flex-nowrap px-0">
           <ItemContent>

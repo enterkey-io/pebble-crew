@@ -3,9 +3,14 @@ import { installFixture } from './fixtures';
 
 export async function installWorkFixture(
   context: BrowserContext,
-  options: { coordination?: boolean } = {},
+  options: { coordination?: boolean; workspaceSettings?: boolean } = {},
 ) {
-  const workspace = await installFixture(context, { projects: true });
+  const workspace = await installFixture(context, {
+    projects: true,
+    ...(options.workspaceSettings === undefined
+      ? {}
+      : { workspaceSettings: options.workspaceSettings }),
+  });
   let revision = 1;
   const nextRevision = () => (++revision).toString(16).padStart(64, '0');
   const boards = [
@@ -75,7 +80,7 @@ export async function installWorkFixture(
             workspace_id: workspace.state.id,
             capabilities: {
               edit_details: true,
-              plans: !!options.coordination,
+              plans: !!options.coordination && workspace.state.features?.tasks !== false,
               proactive: !!options.coordination,
             },
             boards,

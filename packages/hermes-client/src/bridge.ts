@@ -29,6 +29,7 @@ export class BotBridgeClient {
   #connection = '';
   #existingAgents = false;
   #workspace = false;
+  #workspaceSettings = false;
   #reporting = false;
   #projects = false;
   #attachments = false;
@@ -98,6 +99,10 @@ export class BotBridgeClient {
     return this.#generatedMedia;
   }
 
+  get supportsWorkspaceSettings(): boolean {
+    return this.#workspaceSettings;
+  }
+
   get supportsWorkspace(): boolean {
     return this.#workspace;
   }
@@ -137,6 +142,8 @@ export class BotBridgeClient {
     this.#reporting = !!data.capabilities && record(data.capabilities).reporting === 1;
     this.#projects = !!data.capabilities && record(data.capabilities).projects === true;
     this.#workspace = !!data.capabilities && record(data.capabilities).workspace === true;
+    this.#workspaceSettings =
+      !!data.capabilities && record(data.capabilities).workspace_settings === true;
     this.#attachments = !!data.capabilities && record(data.capabilities).attachments === true;
     this.#generatedMedia =
       !!data.capabilities && record(data.capabilities).generated_media === true;

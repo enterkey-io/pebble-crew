@@ -119,3 +119,36 @@ describe('workspace domain commands', () => {
     expect(await domain.updateProfile(edit)).toEqual({ kind: 'refused', reason: 'STALE_REVISION' });
   });
 });
+
+describe('workspace Tasks preference', () => {
+  it('binds the write to the intended workspace and accepts an idempotent newer receipt', async () => {
+    const invoke = vi.fn().mockResolvedValue({ features: { tasks: false }, revision: 100 });
+    expect(
+      await new WorkspaceDomain({ invoke }).setTasksEnabled({
+        enabled: false,
+        expectedRevision: 5,
+        workspaceId: 'workspace-1',
+      }),
+    ).toEqual({ features: { tasks: false }, revision: 100 });
+    expect(invoke).toHaveBeenCalledExactlyOnceWith('workspace.features.set', {
+      workspace_id: 'workspace-1',
+      tasks: false,
+      expected_revision: 5,
+    });
+  });
+  it.each([
+    { features: { tasks: true }, revision: 6 },
+    { features: { tasks: false }, revision: 4 },
+    { features: { tasks: 'false' }, revision: 6 },
+  ])('rejects an invalid Tasks receipt without replay', async (receipt) => {
+    const invoke = vi.fn().mockResolvedValue(receipt);
+    await expect(
+      new WorkspaceDomain({ invoke }).setTasksEnabled({
+        enabled: false,
+        expectedRevision: 5,
+        workspaceId: 'workspace-1',
+      }),
+    ).rejects.toMatchObject({ code: 'INVALID_RESPONSE' });
+    expect(invoke).toHaveBeenCalledTimes(1);
+  });
+});

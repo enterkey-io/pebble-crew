@@ -37,6 +37,7 @@ export function WorkCreator({
   onSaved,
   onOpenBoard,
   visibleBoard,
+  showBoardActions = true,
   onDirtyChange,
   onNavigate,
 }: SharedProps & { target: Exclude<WorkDialogTarget, { kind: 'task' }> }) {
@@ -67,6 +68,9 @@ export function WorkCreator({
     [error, setError] = useState('');
   const [receipt, setReceipt] = useState<WorkReceipt>();
   const [operationId, setOperationId] = useState('');
+  useEffect(() => {
+    if (!showBoardActions && (receipt?.kind === 'task' || receipt?.kind === 'project')) onClose();
+  }, [showBoardActions, receipt, onClose]);
   const [conflict, setConflict] = useState(false);
   const dirty =
     receipt?.kind !== 'project' &&

@@ -83,6 +83,7 @@ export async function installFixture(
     exchanges?: boolean;
     exchangeEvents?: boolean;
     projects?: boolean;
+    workspaceSettings?: boolean;
     organization?: OrganizationState;
     messages?: (Record<string, unknown> & { row_id: number })[];
     open?: (profile: string) => unknown | Promise<unknown>;
@@ -270,6 +271,7 @@ export async function installFixture(
             workspace: true,
             reporting: 1,
             projects: options.projects === true,
+            workspace_settings: options.workspaceSettings !== false,
             existing_agents: true,
             attachments: options.attachments !== false,
             generated_media: true,

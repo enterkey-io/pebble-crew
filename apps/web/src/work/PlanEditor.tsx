@@ -65,7 +65,7 @@ export function PlanEditor({
   const close = () =>
     JSON.stringify(draft) === JSON.stringify(edit.baseline) ? onClose() : setDiscard(true);
   async function save() {
-    if (busy || uncertain || edit.conflicts.length) return;
+    if (busy || uncertain || edit.conflicts.length || workspace.features?.tasks === false) return;
     const payload = JSON.stringify({ revision, draft });
     if (intent.current.payload !== payload) intent.current = { payload, id: crypto.randomUUID() };
     setBusy(true);
@@ -136,6 +136,7 @@ export function PlanEditor({
                     type="submit"
                     disabled={
                       busy ||
+                      workspace.features?.tasks === false ||
                       uncertain ||
                       !!edit.conflicts.length ||
                       !draft.title.trim() ||
@@ -148,6 +149,9 @@ export function PlanEditor({
               }
             >
               <div className="grid min-w-0 gap-5">
+                {workspace.features?.tasks === false && (
+                  <Notice>Tasks is off. Your draft is kept here.</Notice>
+                )}
                 <fieldset className="grid min-w-0 gap-5" disabled={busy || uncertain}>
                   <div className="grid gap-2">
                     <Label htmlFor="plan-name">Name</Label>

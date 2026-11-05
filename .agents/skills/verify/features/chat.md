@@ -152,3 +152,5 @@ continued typing.
 
 - Pending input: `conversation-cards.spec.ts` covers X minimization, usable composer, exact pending-state preservation, reopen, reconnect and new requests. `owner.spec.ts` also checks native pending state/fingerprint while minimized. X never submits a decision.
 - iOS PWA safe areas: `pwa-viewport.spec.ts` models a 59px top and 34px bottom inset, verifies header/composer/navigation controls and keyboard dismissal. Physical installed-iOS behavior remains separate.
+
+- Optional Tasks: `optional-tasks.spec.ts` covers installation-wide visibility, old-host capability fallback, lost/stale receipts, authoritative agent fields and plan drafts retained across another tab disabling Tasks. Native owner acceptance persists the switch across reload while preserving Kanban data; `test_plans.py` verifies text/voice/worker goal suppression with no model/native writes during preference changes.

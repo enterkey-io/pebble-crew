@@ -86,9 +86,18 @@ export class WorkspaceDomain {
     return decodeWorkspaceSnapshot(await this.bridge.invoke('workspace.describe', {}));
   }
 
-  async setTasksEnabled(enabled: boolean, expectedRevision: number) {
+  async setTasksEnabled({
+    enabled,
+    expectedRevision,
+    workspaceId,
+  }: {
+    enabled: boolean;
+    expectedRevision: number;
+    workspaceId: string;
+  }) {
     const data = record(
       await this.bridge.invoke('workspace.features.set', {
+        workspace_id: workspaceId,
         tasks: enabled,
         expected_revision: expectedRevision,
       }),
