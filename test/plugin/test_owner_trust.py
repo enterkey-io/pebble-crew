@@ -42,8 +42,12 @@ class OwnerTrustTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(denied.status_code, 403)
 
     async def test_scope_origin_audience_expiry_algorithm_and_unsigned_tokens_fail_closed(self):
-        for changes in ({'aud': 'other'}, {'scope': 'operator'}, {'origin': 'https://evil.example'}, {'exp': int(time.time())-1}, {'exp': int(time.time())+301}, {'iat': int(time.time())+10}, {'sub': 'operator'}):
-            self.assertIsNone(self.trust.verify(self.ticket(**changes), ORIGIN))
+        now = int(time.time())
+        for changes in ({'aud': 'other'}, {'scope': 'operator'}, {'origin': 'https://evil.example'}, {'exp': now-1}, {'exp': now+301}, {'iat': now+10}, {'sub': 'operator'}):
+            # Keep the lifetime anchored to one issuance instant. Crossing a
+            # second during signing must not turn the 301-second case into 300.
+            claims = {'iat': now, 'exp': now+300, **changes}
+            self.assertIsNone(self.trust.verify(self.ticket(**claims), ORIGIN), repr(changes))
         self.assertIsNone(self.trust.verify(self.ticket(), 'https://evil.example'))
         self.assertIsNone(self.trust.verify('a.b.c', ORIGIN))
         self.assertIsNone(self.trust.verify(jwt.encode({'sub': 'operator'}, 'secret'*10, algorithm='HS256'), ORIGIN))
