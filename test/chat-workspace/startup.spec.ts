@@ -53,73 +53,109 @@ test('reload restores a selected room and waits for its history', async ({ page,
   await expect(page.getByRole('progressbar', { name: 'Opening Pebble Crew' })).toHaveCount(0);
 });
 
-test('startup stays on one quiet progress view until the native conversation is restored', async ({
-  page,
-  context,
-}) => {
-  await installFixture(context);
-  await context.addInitScript(() => {
-    const screens: string[] = [];
-    Object.assign(window, { __startupScreens: screens });
-    new MutationObserver(() => {
-      for (const heading of document.querySelectorAll('h1, h2'))
-        if (['Connecting…', 'Choose a conversation', 'Chats'].includes(heading.textContent ?? ''))
-          screens.push(heading.textContent!);
-    }).observe(document, { subtree: true, childList: true, characterData: true });
-  });
-  let releaseAuth!: () => void;
-  let releaseConnect!: () => void;
-  let releaseOpen!: () => void;
-  const auth = new Promise<void>((resolve) => (releaseAuth = resolve));
-  const connect = new Promise<void>((resolve) => (releaseConnect = resolve));
-  const open = new Promise<void>((resolve) => (releaseOpen = resolve));
-  await page.route('**/api/instance/status', async (route) => {
-    await auth;
-    await route.fallback();
-  });
-  await page.route('**/v1/connect', async (route) => {
-    await connect;
-    await route.fallback();
-  });
-  await page.route('**/v1/rpc', async (route) => {
-    if (route.request().postDataJSON().operation === 'bot.open') await open;
-    await route.fallback();
-  });
-  try {
-    await page.goto('/');
-    const progress = page.getByRole('progressbar', { name: 'Opening Pebble Crew' });
-    await expect(progress).toBeVisible();
-    await expect(page.getByRole('heading')).toHaveCount(0);
-    const position = (await progress.locator('..').boundingBox())!;
-    releaseAuth();
-    await expect(page.getByRole('button', { name: 'Sign out', exact: true })).toBeVisible();
-    releaseConnect();
-    await expect(progress).toBeVisible();
-    await expect(page.getByLabel('Message', { exact: true })).toHaveCount(0);
-    const bar = (await progress.locator('..').boundingBox())!;
-    const signout = (await page
-      .getByRole('button', { name: 'Sign out', exact: true })
-      .boundingBox())!;
-    expect(Math.abs(bar.x - signout.x)).toBeLessThan(1);
-    expect(bar.width).toBe(position.width);
-    expect(Math.abs(bar.y - position.y)).toBeLessThan(1);
-    expect(signout.y).toBeGreaterThanOrEqual(bar.y + bar.height);
-    await page.screenshot({ path: test.info().outputPath('startup-progress.png') });
-    releaseOpen();
-    await expect(page.getByLabel('Message', { exact: true })).toBeEnabled();
-    await expect(page.locator('.pc-chat-identity')).toContainText('Arlo');
-    const transient = await page.evaluate(
-      () => (window as unknown as { __startupScreens: string[] }).__startupScreens,
+for (const theme of ['light', 'dark'] as const) {
+  test(`startup shows one animated Main Pebble above the progress line in ${theme}`, async ({
+    page,
+    context,
+  }, info) => {
+    const fixture = await installFixture(context);
+    fixture.state.bots[0]!.appearance = { kind: 'photo', shape: 'cairn', color: 'lagoon' };
+    await context.addInitScript(
+      (theme) => localStorage.setItem('pebble-crew.appearance', theme),
+      theme,
     );
-    expect(transient).toEqual([]);
-    await expect(progress).toHaveCount(0);
-    await page.screenshot({ path: test.info().outputPath('startup-restored.png') });
-  } finally {
-    releaseAuth();
-    releaseConnect();
-    releaseOpen();
-  }
-});
+    await context.addInitScript(() => {
+      const screens: string[] = [];
+      Object.assign(window, { __startupScreens: screens });
+      new MutationObserver(() => {
+        for (const heading of document.querySelectorAll('h1, h2'))
+          if (['Connecting…', 'Choose a conversation', 'Chats'].includes(heading.textContent ?? ''))
+            screens.push(heading.textContent!);
+      }).observe(document, { subtree: true, childList: true, characterData: true });
+    });
+    let releaseAuth!: () => void;
+    let releaseConnect!: () => void;
+    let releaseOpen!: () => void;
+    let connectionRequested!: () => void;
+    let photosRequested = 0;
+    const auth = new Promise<void>((resolve) => (releaseAuth = resolve));
+    const connect = new Promise<void>((resolve) => (releaseConnect = resolve));
+    const open = new Promise<void>((resolve) => (releaseOpen = resolve));
+    const requested = new Promise<void>((resolve) => (connectionRequested = resolve));
+    await page.route('**/api/instance/status', async (route) => {
+      await auth;
+      await route.fallback();
+    });
+    await page.route('**/v1/connect', async (route) => {
+      connectionRequested();
+      await connect;
+      await route.fallback();
+    });
+    await page.route('**/v1/rpc', async (route) => {
+      const operation = route.request().postDataJSON().operation;
+      if (operation === 'bots.appearance.get') photosRequested++;
+      if (operation === 'bot.open') await open;
+      await route.fallback();
+    });
+    try {
+      await page.goto('/');
+      const progress = page.getByRole('progressbar', { name: 'Opening Pebble Crew' });
+      const track = progress.locator('..');
+      const avatar = page.locator('.startup-pebble .agent-avatar');
+      const body = avatar.locator('[data-avatar-part="body"]');
+      await expect(progress).toBeVisible();
+      await expect(page.getByRole('heading')).toHaveCount(0);
+      await expect(avatar).toHaveClass(/avatar-pebble/);
+      const first = await track.boundingBox();
+      if (!first) throw new Error('Missing startup progress line');
+      releaseAuth();
+      await requested;
+      await expect(avatar).toHaveClass(/avatar-pebble/);
+      await expect(page.getByRole('button', { name: 'Sign out', exact: true })).toHaveCount(0);
+      releaseConnect();
+      await expect(avatar).toHaveClass(/avatar-cairn/);
+      await expect(body.locator(':scope > path')).toHaveAttribute('fill', '#8dcec6');
+      await expect(page.getByRole('progressbar')).toHaveCount(1);
+      await expect(page.getByLabel('Message', { exact: true })).toHaveCount(0);
+      await expect(page.getByRole('button', { name: 'Sign out', exact: true })).toHaveCount(0);
+      expect(photosRequested).toBe(0);
+      const [line, face] = await Promise.all([track.boundingBox(), avatar.boundingBox()]);
+      if (!line || !face) throw new Error('Missing startup avatar or progress line');
+      expect(Math.abs(line.x - first.x)).toBeLessThan(1);
+      expect(Math.abs(line.y - first.y)).toBeLessThan(1);
+      expect(line.width).toBe(first.width);
+      expect(face.y + face.height).toBeLessThan(line.y);
+      expect(Math.abs(face.x + face.width / 2 - line.x - line.width / 2)).toBeLessThan(1);
+      const pose = await body.getAttribute('transform');
+      await expect.poll(() => body.getAttribute('transform')).not.toBe(pose);
+      await page.screenshot({ path: info.outputPath('startup-progress.png'), scale: 'css' });
+      await page.emulateMedia({ reducedMotion: 'reduce' });
+      const reduced = await body.evaluate(async (node) => {
+        const poses: (string | null)[] = [];
+        for (let i = 0; i < 18; i++) {
+          await new Promise(requestAnimationFrame);
+          if (i >= 6) poses.push(node.getAttribute('transform'));
+        }
+        return new Set(poses).size;
+      });
+      expect(reduced).toBe(1);
+      releaseOpen();
+      await expect(page.getByLabel('Message', { exact: true })).toBeEnabled();
+      await expect(page.locator('.pc-chat-identity')).toContainText('Arlo');
+      const transient = await page.evaluate(
+        () => (window as unknown as { __startupScreens: string[] }).__startupScreens,
+      );
+      expect(transient).toEqual([]);
+      await expect(progress).toHaveCount(0);
+      await expect(avatar).toHaveCount(0);
+      await page.screenshot({ path: info.outputPath('startup-restored.png') });
+    } finally {
+      releaseAuth();
+      releaseConnect();
+      releaseOpen();
+    }
+  });
+}
 
 test('API-only connections still reach their real conversation picker', async ({
   page,

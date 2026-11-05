@@ -262,27 +262,22 @@
 }
 .startup-progress {
   width: min(240px, 70vw);
-  min-height: 50px;
+  display: grid;
+  gap: 16px;
+}
+.startup-pebble {
+  display: flex;
+  justify-content: center;
+}
+.startup-pebble .agent-avatar {
+  width: 72px;
+  height: 78px;
 }
 .startup-progress .loading-track {
   background: var(--border);
   border-radius: 1px;
 }
-.startup-sign-out {
-  display: block;
-  min-height: 44px;
-  margin-top: 4px;
-  padding: 0;
-  font-size: var(--text-caption);
-  color: var(--muted-foreground);
-  transition: color var(--motion-hover);
-}
-.startup-sign-out:hover,
-.startup-sign-out:focus-visible {
-  color: var(--foreground);
-}
 .startup-error {
-  margin-top: 16px;
   font-size: var(--text-meta);
   color: var(--muted-foreground);
 }

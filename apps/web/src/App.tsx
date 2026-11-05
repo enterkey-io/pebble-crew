@@ -2059,11 +2059,7 @@ export function App({ owner }: { owner?: OwnerConnection }) {
 
   if (!client)
     return owner ? (
-      <StartupScreen
-        onSignOut={() => void owner.logout()}
-        error={error}
-        onRetry={retryConnection}
-      />
+      <StartupScreen error={error} onRetry={retryConnection} />
     ) : (
       <FirstRun onConnect={connect} />
     );
@@ -2101,7 +2097,7 @@ export function App({ owner }: { owner?: OwnerConnection }) {
   if (starting && client.supportsWorkspace)
     return (
       <StartupScreen
-        onSignOut={owner ? () => void owner.logout() : undefined}
+        mainPebble={workspace?.bots.find((bot) => bot.profile === workspace.orchestrator)}
         error={error}
         onRetry={owner ? retryConnection : disconnect}
       />
