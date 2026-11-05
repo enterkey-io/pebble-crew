@@ -1,25 +1,12 @@
-import { CrewFaces } from './CrewFaces';
-import { DiscardChanges } from './DiscardChanges';
-import { Form } from '../components/ui/form';
-import { useEffect, useState } from 'react';
+import { Fragment, useEffect, useRef, useState } from 'react';
 import type { Dispatch, DragEvent, ReactNode, SetStateAction } from 'react';
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
-import { ChevronDown, Pin, Plus, SlidersHorizontal, Flag, CornerUpRight } from 'lucide-react';
+import { ChevronDown, CornerUpRight, Plus } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { NavigationItem } from './NavigationItem';
-import { UnreadDot } from './UnreadDot';
 import { Input } from '@/components/ui/input';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
 import { Label } from '@/components/ui/label';
-import { Textarea } from '@/components/ui/textarea';
 import { Checkbox } from '@/components/ui/checkbox';
-import { safeError } from '@hermes-client/core';
+import { Form } from '@/components/ui/form';
 import {
   Dialog,
   DialogContent,
@@ -28,38 +15,32 @@ import {
   DialogTitle,
   DialogDescription,
 } from '@/components/ui/dialog';
+import { Alert, AlertDescription } from '@/components/ui/alert';
+import { safeError } from '@hermes-client/core';
+import { NavigationItem } from './NavigationItem';
+import { UnreadDot } from './UnreadDot';
+import { ContextActions } from './primitives';
+import type { MenuItem } from './primitives';
+import { DiscardChanges } from './DiscardChanges';
+import { useOverlayHistory } from './overlay-history';
 import {
-  removeCrew,
+  addShortcut,
+  hasShortcut,
   isSystemSection,
-  sectionAccepts,
-  sectionChoiceLabel,
-  removeSection,
+  moveSection,
   nudgeItem,
   nudgeSection,
-  placeCrew,
+  placeItem,
   placePebble,
   placementOf,
   readRailDrag,
-  reorderSection,
-  railDropTarget,
-  setCrewMembers,
-  hasShortcut,
-  addShortcut,
+  removeSection,
   removeShortcut,
-  crewMembers,
+  sectionChoiceLabel,
 } from './organization';
-import type {
-  Organization,
-  OrganizationEditor,
-  Placement,
-  RailDrag,
-  RailDrop,
-  RailDropZone,
-} from './organization';
-import { useOverlayHistory } from './overlay-history';
-import { ContextActions } from './primitives';
-import type { MenuItem } from './primitives';
+import type { Organization, OrganizationEditor, RailDrag, RailItem } from './organization';
 
+type ChangeOrganization = Dispatch<SetStateAction<Organization>>;
 type RailPebble = {
   id: string;
   name: string;
@@ -68,527 +49,298 @@ type RailPebble = {
   pinned: boolean;
   unread?: boolean;
 };
-type ChangeOrganization = Dispatch<SetStateAction<Organization>>;
+export type RailGroup = {
+  id: string;
+  readKey: string;
+  name: string;
+  preview: string;
+  unread: boolean;
+};
 const dragFormat = 'application/x-pebble-crew-rail';
-function drag(event: DragEvent, item: RailDrag) {
-  event.stopPropagation();
-  event.dataTransfer.setData(dragFormat, JSON.stringify(item));
-  event.dataTransfer.effectAllowed = 'move';
-}
-function allow(event: DragEvent) {
-  if (event.dataTransfer.types.includes(dragFormat)) {
-    event.preventDefault();
-    event.stopPropagation();
-    event.dataTransfer.dropEffect = 'move';
-  }
-}
 
 export function pebblePlacementItems(
   org: Organization,
   id: string,
   onChange: ChangeOrganization,
   onCreate: (editor: OrganizationEditor) => void,
+  placementId?: string,
 ): MenuItem[] {
-  const value = placementOf(org, id);
+  const value = placementId
+    ? org.sections.find((s) => s.items.some((i) => i.placementId === placementId))
+    : placementOf(org, id);
   const sections = org.sections.filter(
-    (section) =>
-      sectionAccepts(section.id, 'pebble') &&
-      (section.id !== 'pebbles' ||
-        value?.kind !== 'section' ||
-        value.id !== 'pebbles' ||
-        org.sections.some((s) => !isSystemSection(s.id))),
+    (s) => !isSystemSection(s.id) || value?.id !== s.id || org.sections.length > 1,
   );
-  const member = org.crews.some((c) => c.members.includes(id));
   return [
-    ...(member
-      ? [
-          {
-            label: hasShortcut(org, id) ? 'Remove shortcut' : 'Add shortcut',
-            icon: CornerUpRight,
-            action: () =>
-              onChange((current) =>
-                hasShortcut(current, id) ? removeShortcut(current, id) : addShortcut(current, id),
-              ),
-          },
-        ]
-      : []),
+    {
+      label: hasShortcut(org, id) ? 'Remove shortcut' : 'Add shortcut',
+      icon: CornerUpRight,
+      action: () => {
+        const reference = crypto.randomUUID();
+        onChange((current) =>
+          hasShortcut(current, id)
+            ? removeShortcut(current, id)
+            : addShortcut(current, id, reference),
+        );
+      },
+    },
     {
       label: 'Move to section',
       action: () => {},
       items: [
         ...sections.map((section) => ({
           label: sectionChoiceLabel(section),
-          checked: value?.kind === 'section' && value.id === section.id,
+          checked: value?.id === section.id,
           action: () =>
-            onChange((current) => placePebble(current, id, { kind: 'section', id: section.id })),
+            onChange((current) =>
+              placementId
+                ? placeItem(current, placementId, section.id)
+                : placePebble(current, id, { kind: 'section', id: section.id }),
+            ),
         })),
         {
           label: 'New section',
           icon: Plus,
           separatorBefore: !!sections.length,
-          action: () => onCreate({ kind: 'new-section', item: { kind: 'pebble', id } }),
-        },
-      ],
-    },
-    {
-      label: 'Move to crew',
-      action: () => {},
-      items: [
-        ...org.crews.map((crew) => ({
-          label: crew.name,
-          checked: crew.members.includes(id),
           action: () =>
-            onChange((current) => placePebble(current, id, { kind: 'crew', id: crew.id })),
-        })),
-        {
-          label: 'New crew',
-          icon: Plus,
-          separatorBefore: !!org.crews.length,
-          action: () => onCreate({ kind: 'new-crew', pebbleId: id }),
+            onCreate({
+              kind: 'new-section',
+              ...(placementId ? { placementId } : { pebbleId: id }),
+            }),
         },
       ],
     },
   ];
 }
 
-function PebbleActions({
-  pebble,
-  onPin,
-  onEdit,
-  org,
-  onChange,
-  onCreate,
-  children,
-}: {
-  pebble: RailPebble;
-  onPin: () => void;
-  onEdit: () => void;
-  org: Organization;
-  onChange: ChangeOrganization;
-  onCreate: (editor: OrganizationEditor) => void;
-  children: ReactNode;
-}) {
-  return (
-    <ContextActions
-      label={`Actions for ${pebble.name}`}
-      items={[
-        { label: pebble.pinned ? 'Unpin' : 'Pin', icon: Pin, action: onPin },
-        { label: 'Edit pebble', icon: SlidersHorizontal, action: onEdit },
-        ...pebblePlacementItems(org, pebble.id, onChange, onCreate),
-      ]}
-    >
-      {children}
-    </ContextActions>
-  );
-}
-
 export function OrganizationRail({
   org,
   onChange,
   pebbles,
+  groups,
   activeId,
   face,
+  groupFace,
   onOpenPebble,
-  onOpenCrew,
-  onEditPebble,
+  onOpenGroup,
   onEditOrganization,
   onPin,
   actions,
   openLabel,
 }: {
-  actions?: (id: string, children: ReactNode) => ReactNode;
-  openLabel?: (pebble: RailPebble) => string;
   org: Organization;
   onChange: ChangeOrganization;
   pebbles: RailPebble[];
+  groups: RailGroup[];
   activeId: string;
   face: (id: string, large?: boolean, animated?: boolean) => ReactNode;
+  groupFace: (id: string, readKey: string) => ReactNode;
   onOpenPebble: (id: string) => void;
-  onOpenCrew: (id: string) => void;
-  onEditPebble: (id: string) => void;
+  onOpenGroup: (id: string, readKey: string) => void;
   onEditOrganization: (editor: OrganizationEditor) => void;
   onPin: (id: string) => void;
+  actions: (id: string, children: ReactNode, placementId?: string) => ReactNode;
+  openLabel?: (pebble: RailPebble) => string;
 }) {
-  const reduced = useReducedMotion();
-  const pinnedIds = pebbles.filter((p) => p.pinned).map((p) => p.id);
-  const [over, setOver] = useState('');
-  const [dragging, setDragging] = useState<RailDrag>();
-  function startDrag(event: DragEvent, item: RailDrag) {
-    drag(event, item);
-    setDragging(item);
-    if (item.kind === 'crew') {
-      const bounds = event.currentTarget.getBoundingClientRect();
-      event.dataTransfer.setDragImage(
-        event.currentTarget,
-        event.clientX - bounds.left,
-        event.clientY - bounds.top,
-      );
-    }
-  }
-  function endDrag() {
-    setOver('');
-    setDragging(undefined);
-  }
+  const reduced = useReducedMotion(),
+    [dragging, setDragging] = useState<RailDrag>(),
+    [over, setOver] = useState('');
+  const pinned = pebbles.filter((p) => p.pinned).map((p) => p.id);
   const move = { duration: reduced ? 0 : 0.22, ease: [0.22, 1, 0.36, 1] as const };
-  function dropped(event: DragEvent, { target, beforeId }: RailDrop) {
-    event.preventDefault();
+  const endDrag = () => {
+    setDragging(undefined);
+    setOver('');
+  };
+  const startDrag = (event: DragEvent, item: RailDrag) => {
     event.stopPropagation();
-    endDrag();
-    const item = readRailDrag(
-      event.dataTransfer.getData(dragFormat),
-      org,
-      pebbles.map((p) => p.id),
-    );
-    if (!item) return;
-    if (item.kind === 'section' && target.kind === 'section' && target.id === 'pebbles') return;
-    if (
-      item.kind === 'pebble' &&
-      pinnedIds.includes(item.id) &&
-      !item.placement &&
-      (target.kind !== 'section' || sectionAccepts(target.id, 'pebble'))
-    )
-      onPin(item.id);
-    onChange((current) => {
-      if (item.kind === 'section')
-        return target.kind === 'section' ? reorderSection(current, item.id, beforeId) : current;
-      if (item.kind === 'pebble') {
-        let next = current;
-        if (item.placement?.kind === 'crew' && target.kind === 'section') {
-          const source = current.crews.find((c) => c.id === item.placement?.id);
-          if (source)
-            next = setCrewMembers(
-              current,
-              source.id,
-              source.members.filter((id) => id !== item.id),
-            );
-        }
-        return placePebble(next, item.id, target, beforeId);
-      }
-      const section =
-        target.kind === 'section'
-          ? current.sections.find((s) => s.id === target.id)
-          : current.sections.find((s) =>
-              s.items.some((row) => row.kind === 'crew' && row.id === target.id),
-            );
-      return section
-        ? placeCrew(current, item.id, section.id, target.kind === 'crew' ? target.id : beforeId)
-        : current;
-    });
-  }
-  function targetEvents(zone: RailDropZone) {
-    const key =
-      zone.kind === 'section' ? `section:${zone.id}` : `${zone.item.kind}:${zone.item.id}`;
-    const resolve = (event: DragEvent, kind: RailDrag['kind']) => {
-      const bounds = event.currentTarget.getBoundingClientRect();
-      return railDropTarget(org, kind, zone, event.clientY > bounds.top + bounds.height / 2);
-    };
+    event.dataTransfer.setData(dragFormat, JSON.stringify(item));
+    event.dataTransfer.effectAllowed = 'move';
+    setDragging(item);
+  };
+  function targetEvents(sectionId: string, row?: RailItem) {
+    const key = row?.placementId ?? sectionId;
     return {
       onDragOver: (event: DragEvent) => {
-        if (!event.dataTransfer.types.includes(dragFormat)) return;
-        if (isSource(dragging)) {
-          allow(event);
-          setOver('');
+        if (!event.dataTransfer.types.includes(dragFormat) || (dragging?.kind === 'section' && row))
           return;
-        }
-        const destination = resolve(event, dragging?.kind ?? 'pebble');
-        if (!destination) return;
-        allow(event);
-        setOver(`${key}:${destination.edge}`);
+        event.preventDefault();
+        event.stopPropagation();
+        event.dataTransfer.dropEffect = 'move';
+        const box = event.currentTarget.getBoundingClientRect();
+        setOver(
+          `${key}:${row ? (event.clientY > box.top + box.height / 2 ? 'after' : 'before') : 'inside'}`,
+        );
       },
       onDragLeave: (event: DragEvent) => {
         if (
           !(event.relatedTarget instanceof Node) ||
           !event.currentTarget.contains(event.relatedTarget)
         )
-          setOver((current) => (current.startsWith(`${key}:`) ? '' : current));
+          setOver((value) => (value.startsWith(`${key}:`) ? '' : value));
       },
       onDrop: (event: DragEvent) => {
+        if (dragging?.kind === 'section' && row) return;
+        event.preventDefault();
+        event.stopPropagation();
         const item = readRailDrag(
           event.dataTransfer.getData(dragFormat),
           org,
           pebbles.map((p) => p.id),
         );
+        const box = event.currentTarget.getBoundingClientRect(),
+          after = event.clientY > box.top + box.height / 2;
+        endDrag();
         if (!item) return;
-        if (isSource(item)) {
-          event.preventDefault();
-          event.stopPropagation();
-          endDrag();
+        if (item.kind === 'section') {
+          const index = org.sections.findIndex((s) => s.id === sectionId);
+          onChange((current) =>
+            moveSection(current, item.id, after ? org.sections[index + 1]?.id : sectionId),
+          );
           return;
         }
-        const destination = resolve(event, item.kind);
-        if (destination) dropped(event, destination);
+        const section = org.sections.find((s) => s.id === sectionId);
+        const index = section?.items.findIndex((i) => i.placementId === row?.placementId) ?? -1;
+        const before = row
+          ? after
+            ? section?.items[index + 1]?.placementId
+            : row.placementId
+          : undefined;
+        if (item.kind === 'pebble') {
+          if (pinned.includes(item.id)) onPin(item.id);
+          onChange((current) =>
+            placePebble(current, item.id, { kind: 'section', id: sectionId }, before),
+          );
+        } else onChange((current) => placeItem(current, item.id, sectionId, before));
       },
       'data-drop-target': over.startsWith(`${key}:`) || undefined,
       'data-drop-edge': over.startsWith(`${key}:`) ? over.slice(key.length + 1) : undefined,
     };
-    function isSource(item: RailDrag | undefined) {
-      return (
-        item &&
-        (zone.kind === 'item'
-          ? item.kind === zone.item.kind &&
-            item.id === zone.item.id &&
-            (item.kind !== 'pebble' ||
-              !item.placement ||
-              (item.placement.kind === zone.placement.kind &&
-                item.placement.id === zone.placement.id))
-          : item.kind === 'section' && item.id === zone.id)
-      );
-    }
   }
-  function row(id: string, target: Placement) {
-    const pebble = pebbles.find((p) => p.id === id);
-    if (
-      !pebble ||
-      (pebble.pinned && target.kind === 'section' && !org.crews.some((c) => c.members.includes(id)))
-    )
-      return null;
-    const compact = target.kind === 'crew';
-    const manager = compact && org.crews.some((c) => c.id === target.id && c.managerId === id);
+  function row(item: RailItem, sectionId: string) {
+    const pebble = item.kind === 'pebble' ? pebbles.find((p) => p.id === item.id) : undefined;
+    if (item.kind === 'pebble' && (!pebble || (pebble.pinned && !item.shortcut))) return null;
+    const group =
+      item.kind === 'group'
+        ? groups.find((g) => g.id === item.id && g.readKey === item.readKey)
+        : undefined;
     const content = (
       <motion.div
+        key={item.placementId}
         layout="position"
         layoutId={
-          target.kind === 'section' && !org.crews.some((c) => c.members.includes(id))
-            ? `pebble-${id}`
-            : `pebble-${target.kind}-${target.id}-${id}`
+          item.kind === 'pebble' && !item.shortcut
+            ? `pebble-${item.id}`
+            : `placement-${item.placementId}`
         }
+        transition={move}
+        className={`pc-row ${item.kind === 'pebble' ? 'pebble-row' : 'group-row'} ${activeId === item.id ? 'is-selected' : ''}`}
+        data-placement-id={item.placementId}
+        data-dragging={
+          (dragging?.kind === 'placement' && dragging.id === item.placementId) || undefined
+        }
+        draggable
+        onDragStartCapture={(event) =>
+          startDrag(event, { kind: 'placement', id: item.placementId })
+        }
+        onDragEnd={endDrag}
         onKeyDown={(event) => {
           if (event.altKey && ['ArrowUp', 'ArrowDown'].includes(event.key)) {
             event.preventDefault();
             event.stopPropagation();
             onChange((current) =>
-              nudgeItem(
-                current,
-                { kind: 'pebble', id },
-                event.key === 'ArrowUp' ? -1 : 1,
-                pinnedIds,
-                target,
-              ),
+              nudgeItem(current, item, event.key === 'ArrowUp' ? -1 : 1, pinned),
             );
           }
         }}
-        transition={move}
-        key={id}
-        className={`pc-row pebble-row ${compact ? 'pc-crew-member' : ''} ${activeId === id ? 'is-selected' : ''}`}
-        data-unread={pebble.unread || undefined}
-        draggable
-        onDragStartCapture={(event) => startDrag(event, { kind: 'pebble', id, placement: target })}
-        onDragEnd={endDrag}
-        {...targetEvents({ kind: 'item', item: { kind: 'pebble', id }, placement: target })}
+        {...targetEvents(sectionId, item)}
       >
-        <NavigationItem
-          density={compact ? 'compact' : 'normal'}
-          media={
-            <span className={`pc-member-face ${compact ? 'is-compact' : ''}`}>
-              {face(id)}
-              {manager && (
-                <span className="pc-crew-manager" role="img" aria-label="Crew manager">
-                  <Flag aria-hidden="true" />
-                </span>
-              )}
-            </span>
-          }
-          title={pebble.name}
-          label={pebble.title}
-          description={compact ? undefined : <span aria-hidden="true">{pebble.preview}</span>}
-          onClick={() => onOpenPebble(id)}
-          aria-label={
-            openLabel?.(pebble) ?? `Open ${pebble.name} ${pebble.title} ${pebble.preview}`
-          }
-        />
-        {pebble.unread && <UnreadDot />}
+        {item.kind === 'pebble' && pebble ? (
+          <NavigationItem
+            media={face(item.id)}
+            title={pebble.name}
+            label={pebble.title}
+            description={<span aria-hidden="true">{pebble.preview}</span>}
+            onClick={() => onOpenPebble(item.id)}
+            aria-label={openLabel?.(pebble) ?? `Open ${pebble.name} ${pebble.title}`}
+          />
+        ) : item.kind === 'group' ? (
+          <NavigationItem
+            media={groupFace(item.id, item.readKey)}
+            title={group?.name ?? 'Group chat'}
+            description={group?.preview ?? 'Unavailable'}
+            disabled={!group}
+            onClick={() => onOpenGroup(item.id, item.readKey)}
+            aria-label={`${group?.name ?? 'Group chat'} Open chat`}
+          />
+        ) : null}
+        {(pebble?.unread || group?.unread) && <UnreadDot />}
       </motion.div>
     );
-    return actions ? (
-      actions(id, content)
-    ) : (
-      <PebbleActions
-        pebble={pebble}
-        onPin={() => onPin(id)}
-        onEdit={() => onEditPebble(id)}
-        org={org}
-        onChange={onChange}
-        onCreate={onEditOrganization}
-      >
-        {content}
-      </PebbleActions>
-    );
-  }
-  function crewRow(id: string, sectionId: string) {
-    const crew = org.crews.find((c) => c.id === id);
-    if (!crew) return null;
-    const sections = org.sections.filter((section) => sectionAccepts(section.id, 'crew'));
+    if (item.kind === 'pebble')
+      return (
+        <Fragment key={item.placementId}>{actions(item.id, content, item.placementId)}</Fragment>
+      );
     return (
       <ContextActions
-        key={id}
-        label={`Actions for ${crew.name}`}
+        key={item.placementId}
+        label={`Actions for ${group?.name ?? 'Group chat'}`}
         items={[
-          {
-            label: 'Crew settings',
-            icon: SlidersHorizontal,
-            action: () => onEditOrganization({ kind: 'edit-crew', id }),
-          },
           {
             label: 'Move to section',
             action: () => {},
             items: [
-              ...sections.map((section) => ({
-                label: sectionChoiceLabel(section),
-                checked: section.id === sectionId,
-                action: () => onChange((current) => placeCrew(current, id, section.id)),
+              ...org.sections.map((s) => ({
+                label: sectionChoiceLabel(s),
+                checked: s.id === sectionId,
+                action: () => onChange((current) => placeItem(current, item.placementId, s.id)),
               })),
               {
                 label: 'New section',
                 icon: Plus,
-                separatorBefore: !!sections.length,
+                separatorBefore: true,
                 action: () =>
-                  onEditOrganization({ kind: 'new-section', item: { kind: 'crew', id } }),
+                  onEditOrganization({ kind: 'new-section', placementId: item.placementId }),
               },
             ],
           },
         ]}
       >
-        <motion.div
-          layout
-          transition={move}
-          className="pc-crew-group"
-          data-crew-id={id}
-          draggable
-          onDragStartCapture={(event) => {
-            if (
-              event.target instanceof Element &&
-              event.target.closest('[draggable=true]') === event.currentTarget
-            )
-              startDrag(event, { kind: 'crew', id });
-          }}
-          onDragEnd={endDrag}
-          data-dragging={(dragging?.kind === 'crew' && dragging.id === id) || undefined}
-          onKeyDown={(event) => {
-            if (event.altKey && ['ArrowUp', 'ArrowDown'].includes(event.key)) {
-              event.preventDefault();
-              event.stopPropagation();
-              onChange((current) =>
-                nudgeItem(
-                  current,
-                  { kind: 'crew', id },
-                  event.key === 'ArrowUp' ? -1 : 1,
-                  pinnedIds,
-                ),
-              );
-            }
-          }}
-          {...targetEvents({
-            kind: 'item',
-            item: { kind: 'crew', id },
-            placement: { kind: 'section', id: sectionId },
-          })}
-        >
-          <div className={`pc-row pc-crew-row ${activeId === id ? 'is-selected' : ''}`}>
-            <Button
-              variant="quiet"
-              size="icon-sm"
-              className="pc-crew-toggle"
-              aria-label={`${crew.collapsed ? 'Expand' : 'Collapse'} ${crew.name} pebbles`}
-              aria-expanded={!crew.collapsed}
-              aria-controls={`crew-members-${id}`}
-              onClick={() =>
-                onChange((current) => ({
-                  ...current,
-                  crews: current.crews.map((c) =>
-                    c.id === id ? { ...c, collapsed: !c.collapsed } : c,
-                  ),
-                }))
-              }
-            >
-              <ChevronDown data-collapsed={crew.collapsed} />
-            </Button>
-            <NavigationItem
-              className="pc-crew"
-              title={crew.name}
-              description={`${crew.members.length} pebbles`}
-              aria-label={`${crew.name} ${crew.members.length} pebbles. Open chat`}
-              onClick={() => onOpenCrew(id)}
-              media={
-                <CrewFaces
-                  members={crewMembers(crew)}
-                  face={(id, animated) => face(id, false, animated)}
-                />
-              }
-            />
-          </div>
-          <AnimatePresence initial={false}>
-            {!crew.collapsed && (
-              <motion.div
-                id={`crew-members-${id}`}
-                initial={{ height: 0 }}
-                animate={{ height: 'auto' }}
-                exit={{ height: 0 }}
-                transition={move}
-                style={{ overflow: 'hidden' }}
-                className="pc-crew-members"
-                aria-label={`${crew.name} pebbles`}
-              >
-                {crewMembers(crew).map((member) => row(member, { kind: 'crew', id }))}
-              </motion.div>
-            )}
-          </AnimatePresence>
-        </motion.div>
+        {content}
       </ContextActions>
     );
   }
   return (
     <>
-      {org.sections
-        .filter((section) => section.id === 'pebbles')
-        .map((section) => (
+      {org.sections.map((section) =>
+        isSystemSection(section.id) ? (
           <motion.div
             layout
             transition={move}
             key={section.id}
             className="pc-unsectioned"
             role="group"
-            aria-label="Unsectioned pebbles"
-            {...targetEvents({ kind: 'section', id: section.id })}
+            aria-label="Unsectioned conversations"
+            {...targetEvents(section.id)}
           >
-            {section.items.map((item) =>
-              item.kind === 'pebble'
-                ? row(item.id, { kind: 'section', id: section.id })
-                : crewRow(item.id, section.id),
-            )}
+            {section.items.map((item) => row(item, section.id))}
           </motion.div>
-        ))}
-      {org.sections
-        .filter(
-          (section) =>
-            section.id !== 'pebbles' &&
-            (!isSystemSection(section.id) ||
-              section.items.some((item) =>
-                item.kind === 'crew'
-                  ? org.crews.some((c) => c.id === item.id)
-                  : pebbles.some((p) => p.id === item.id && !p.pinned),
-              )),
-        )
-        .map((section) => (
+        ) : (
           <motion.section
             layout
             transition={move}
             key={section.id}
             className="pc-list"
             aria-label={section.name}
-            {...targetEvents({ kind: 'section', id: section.id })}
+            {...targetEvents(section.id)}
           >
             <ContextActions
               label={`Actions for ${section.name} section`}
-              items={
-                isSystemSection(section.id)
-                  ? []
-                  : [
-                      {
-                        label: 'Rename section',
-                        action: () => onEditOrganization({ kind: 'edit-section', id: section.id }),
-                      },
-                    ]
-              }
+              items={[
+                {
+                  label: 'Rename section',
+                  action: () => onEditOrganization({ kind: 'edit-section', id: section.id }),
+                },
+              ]}
             >
               <div
                 className="pc-section-header"
@@ -606,18 +358,20 @@ export function OrganizationRail({
               >
                 <Button
                   variant="quiet"
-                  className="pc-section-toggle"
+                  className="pc-section-toggle justify-start"
                   aria-expanded={!section.collapsed}
                   onClick={() =>
                     onChange((current) => ({
-                      ...current,
                       sections: current.sections.map((s) =>
                         s.id === section.id ? { ...s, collapsed: !s.collapsed } : s,
                       ),
                     }))
                   }
                 >
-                  <ChevronDown data-collapsed={section.collapsed} />
+                  <ChevronDown
+                    className="size-4 pointer-coarse:size-5"
+                    data-collapsed={section.collapsed}
+                  />
                   <span>{section.name}</span>
                 </Button>
               </div>
@@ -632,16 +386,13 @@ export function OrganizationRail({
                   style={{ overflow: 'hidden' }}
                   className="pc-section-items"
                 >
-                  {section.items.map((item) =>
-                    item.kind === 'pebble'
-                      ? row(item.id, { kind: 'section', id: section.id })
-                      : crewRow(item.id, section.id),
-                  )}
+                  {section.items.map((item) => row(item, section.id))}
                 </motion.div>
               )}
             </AnimatePresence>
           </motion.section>
-        ))}
+        ),
+      )}
     </>
   );
 }
@@ -664,34 +415,18 @@ export function OrganizationDialog({
   onClose: () => void;
 }) {
   const [name, setName] = useState(''),
-    [purpose, setPurpose] = useState('');
-  const [members, setMembers] = useState<string[]>([]);
-  const [managerId, setManagerId] = useState<string | null>(null);
-  const [original, setOriginal] = useState<{
-    name: string;
-    purpose: string;
-    members: string[];
-    managerId: string | null;
-  }>({
-    name: '',
-    purpose: '',
-    members: [],
-    managerId: null,
-  });
-  const [discard, setDiscard] = useState(false);
-  const [pending, setPending] = useState(false);
-  const [error, setError] = useState('');
-  const [creationId, setCreationId] = useState('');
-  const isCrew = editor?.kind === 'new-crew' || editor?.kind === 'edit-crew';
+    [original, setOriginal] = useState(''),
+    [members, setMembers] = useState<string[]>([]),
+    [creationId, setCreationId] = useState('');
+  const [discard, setDiscard] = useState(false),
+    [pending, setPending] = useState(false),
+    [error, setError] = useState('');
+  const organizationRef = useRef(org);
+  organizationRef.current = org;
   const isGroup = editor?.kind === 'new-group-chat';
   function requestClose() {
     if (pending) return false;
-    if (
-      managerId !== original.managerId ||
-      name !== original.name ||
-      purpose !== original.purpose ||
-      JSON.stringify(members) !== JSON.stringify(original.members)
-    ) {
+    if (name !== original || members.length) {
       setDiscard(true);
       return false;
     }
@@ -702,116 +437,52 @@ export function OrganizationDialog({
   useOverlayHistory(discard, () => setDiscard(false));
   useEffect(() => {
     if (!editor) return;
-    const entity =
-      editor.kind === 'edit-crew'
-        ? org.crews.find((c) => c.id === editor.id)
-        : editor.kind === 'edit-section'
-          ? org.sections.find((s) => s.id === editor.id)
-          : undefined;
-    setName(entity?.name ?? '');
-    setPurpose(entity && 'purpose' in entity ? entity.purpose : '');
-    const initialMembers =
-      entity && 'members' in entity
-        ? entity.members
-        : editor.kind === 'new-crew' && editor.pebbleId
-          ? [editor.pebbleId]
-          : [];
-    setMembers(initialMembers);
-    const manager = entity && 'managerId' in entity ? entity.managerId : null;
-    setManagerId(manager);
-    setOriginal({
-      name: entity?.name ?? '',
-      purpose: entity && 'purpose' in entity ? entity.purpose : '',
-      members: initialMembers,
-      managerId: manager,
-    });
-    setDiscard(false);
-    setPending(false);
-    setError('');
+    const value =
+      editor.kind === 'edit-section'
+        ? (organizationRef.current.sections.find((s) => s.id === editor.id)?.name ?? '')
+        : '';
+    setName(value);
+    setOriginal(value);
+    setMembers([]);
     setCreationId(crypto.randomUUID());
+    setError('');
+    setPending(false);
   }, [editor]);
   async function save() {
-    if (
-      !editor ||
-      pending ||
-      !name.trim() ||
-      ((isCrew || isGroup) && (members.length < 2 || members.length > 6))
-    )
-      return;
-    const id = creationId;
-    if (editor.kind === 'new-group-chat') {
-      setPending(true);
-      setError('');
-      try {
-        await onCreateGroup({ id: 'group-' + id, name: name.trim(), members });
-        onClose();
-      } catch (error) {
-        setError(safeError(error).message);
-      } finally {
-        setPending(false);
-      }
-      return;
-    }
-    onChange((current) => {
-      switch (editor.kind) {
-        case 'new-section': {
+    if (!editor || pending || !name.trim()) return;
+    setPending(true);
+    setError('');
+    try {
+      if (isGroup) await onCreateGroup({ id: creationId, name: name.trim(), members });
+      else if (editor.kind === 'edit-section')
+        onChange((current) => ({
+          sections: current.sections.map((s) =>
+            s.id === editor.id ? { ...s, name: name.trim() } : s,
+          ),
+        }));
+      else if (editor.kind === 'new-section') {
+        const sectionId = `section-${creationId}`;
+        onChange((current) => {
           const next = {
-            ...current,
-            sections: [...current.sections, { id, name: name.trim(), collapsed: false, items: [] }],
+            sections: [
+              ...current.sections,
+              { id: sectionId, name: name.trim(), collapsed: false, items: [] },
+            ],
           };
-          return editor.item?.kind === 'crew'
-            ? placeCrew(next, editor.item.id, id)
-            : editor.item?.kind === 'pebble'
-              ? placePebble(next, editor.item.id, { kind: 'section', id })
+          return editor.placementId
+            ? placeItem(next, editor.placementId, sectionId)
+            : editor.pebbleId
+              ? placePebble(next, editor.pebbleId, { kind: 'section', id: sectionId })
               : next;
-        }
-        case 'edit-section':
-          return {
-            ...current,
-            sections: current.sections.map((s) =>
-              s.id === editor.id ? { ...s, name: name.trim() } : s,
-            ),
-          };
-        case 'new-crew':
-          return setCrewMembers(
-            {
-              ...current,
-              crews: [
-                ...current.crews,
-                { id, name: name.trim(), purpose, managerId, collapsed: false, members: [] },
-              ],
-              sections: current.sections.map((s) =>
-                s.id === 'pebbles' ? { ...s, items: [...s.items, { kind: 'crew', id }] } : s,
-              ),
-            },
-            id,
-            members,
-          );
-        case 'edit-crew':
-          return setCrewMembers(
-            {
-              ...current,
-              crews: current.crews.map((c) =>
-                c.id === editor.id ? { ...c, name: name.trim(), purpose, managerId } : c,
-              ),
-            },
-            editor.id,
-            members,
-          );
+        });
       }
-    });
-    onClose();
+      onClose();
+    } catch (failure) {
+      setError(safeError(failure).message);
+    } finally {
+      setPending(false);
+    }
   }
-  const title =
-    editor?.kind === 'edit-crew'
-      ? 'Crew settings'
-      : editor?.kind === 'edit-section'
-        ? 'Rename section'
-        : isGroup
-          ? 'New group chat'
-          : isCrew
-            ? 'New crew'
-            : 'New section';
   return (
     <Dialog
       open={!!editor}
@@ -821,175 +492,114 @@ export function OrganizationDialog({
     >
       <DialogContent
         size="content"
+        className="overflow-clip"
         onCloseAutoFocus={(event) => {
           event.preventDefault();
-          document.querySelector<HTMLElement>('[aria-label="New"]')?.focus();
+          document.querySelector<HTMLElement>('[aria-label="New"]')?.focus({ preventScroll: true });
         }}
       >
         <DialogHeader className="shrink-0">
-          <DialogTitle>{title}</DialogTitle>
-          <DialogDescription className="sr-only">
-            Organize your sidebar. Agent profiles and chat history stay intact.
-          </DialogDescription>
+          <DialogTitle>
+            {isGroup
+              ? 'New group chat'
+              : editor?.kind === 'edit-section'
+                ? 'Rename section'
+                : 'New section'}
+          </DialogTitle>
+          <DialogDescription className="sr-only">Organize your conversations.</DialogDescription>
         </DialogHeader>
         <Form
+          className="flex min-h-0 flex-col gap-4"
           onSubmit={(event) => {
             event.preventDefault();
             void save();
           }}
-          className="flex min-h-0 flex-col gap-4"
         >
-          <div className="grid min-h-0 gap-4 overflow-y-auto px-1 pb-1">
-            <div className="grid gap-2">
+          <div className="flex min-h-0 flex-col gap-4 overflow-clip px-1 pb-1">
+            <div className="grid shrink-0 gap-2">
               <Label htmlFor="organization-name">Name</Label>
               <Input
                 id="organization-name"
                 value={name}
-                disabled={pending}
                 onChange={(event) => setName(event.target.value)}
-                maxLength={60}
+                maxLength={isGroup ? 80 : 60}
+                disabled={pending}
               />
             </div>
-            {isCrew && (
-              <div className="grid gap-2">
-                <Label htmlFor="organization-purpose">Purpose</Label>
-                <Textarea
-                  id="organization-purpose"
-                  rows={3}
-                  value={purpose}
-                  maxLength={2000}
-                  onChange={(event) => setPurpose(event.target.value)}
-                />
-              </div>
-            )}
-            {isCrew && (
-              <div className="grid gap-2">
-                <Label htmlFor="crew-manager">Crew manager</Label>
-                <Select
-                  value={managerId ?? 'none'}
-                  onValueChange={(value) => setManagerId(value === 'none' ? null : value)}
-                >
-                  <SelectTrigger id="crew-manager">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="none">None</SelectItem>
-                    {pebbles
-                      .filter((p) => members.includes(p.id))
-                      .map((p) => (
-                        <SelectItem key={p.id} value={p.id}>
-                          {p.name}
-                        </SelectItem>
-                      ))}
-                  </SelectContent>
-                </Select>
-              </div>
-            )}
-            {(isCrew || isGroup) && (
-              <fieldset className="min-w-0">
-                <legend className="mb-2 text-sm font-medium">
-                  Pebbles <span className="font-normal text-muted-foreground">(2–6)</span>
-                </legend>
+            {isGroup && (
+              <div className="flex min-h-0 min-w-0 flex-col gap-2">
+                <span className="shrink-0 text-sm font-medium">Pebbles</span>
                 <div
-                  className="grid max-h-56 gap-1 overflow-y-auto"
-                  aria-label={isGroup ? 'Group members' : 'Crew members'}
+                  role="group"
+                  aria-label="Group members"
+                  className="flex min-h-0 max-h-64 flex-col gap-1 overflow-y-auto"
                 >
-                  {pebbles.map((pebble) => (
-                    <Label
-                      key={pebble.id}
-                      className="relative flex min-h-11 cursor-pointer items-center gap-3 rounded-lg px-2 py-1.5 hover:bg-muted/50 transition-colors"
+                  {pebbles.map((p) => (
+                    <label
+                      key={p.id}
+                      className="flex min-h-12 shrink-0 cursor-pointer items-center gap-3 rounded-lg px-2 py-1 hover:bg-muted/50"
                     >
                       <Checkbox
-                        checked={members.includes(pebble.id)}
-                        disabled={pending || (!members.includes(pebble.id) && members.length >= 6)}
-                        onCheckedChange={(checked) => {
-                          if (checked !== true && managerId === pebble.id) setManagerId(null);
-                          setMembers((current) =>
-                            checked === true
-                              ? [...current, pebble.id]
-                              : current.filter((id) => id !== pebble.id),
-                          );
-                        }}
-                        aria-label={pebble.name}
+                        aria-label={p.name}
+                        checked={members.includes(p.id)}
+                        disabled={pending || (!members.includes(p.id) && members.length >= 6)}
+                        onCheckedChange={(checked) =>
+                          setMembers((old) =>
+                            checked ? [...old, p.id] : old.filter((id) => id !== p.id),
+                          )
+                        }
                       />
-                      <span aria-hidden="true" className="shrink-0 [&_.agent-avatar]:size-7">
-                        {face(pebble.id)}
-                      </span>
-                      <span className="min-w-0 flex-1 truncate">{pebble.name}</span>
-                      <span className="min-w-0 truncate text-xs font-normal text-muted-foreground">
-                        @{pebble.handle}
-                      </span>
-                    </Label>
+                      <span className="size-8 shrink-0 [&_.agent-avatar]:size-8">{face(p.id)}</span>
+                      <span className="min-w-0 flex-1 truncate text-sm">{p.name}</span>
+                      <span className="text-xs text-muted-foreground">@{p.handle}</span>
+                    </label>
                   ))}
-                  {!pebbles.length && (
-                    <p className="text-sm text-muted-foreground">
-                      Add pebbles before creating a crew.
-                    </p>
-                  )}
                 </div>
-              </fieldset>
+              </div>
             )}
           </div>
           {error && (
-            <p role="alert" className="text-sm text-destructive">
-              {error}
-            </p>
+            <Alert variant="destructive">
+              <AlertDescription>{error}</AlertDescription>
+            </Alert>
           )}
           <DialogFooter className="shrink-0">
-            {editor?.kind === 'edit-crew' && (
+            {editor?.kind === 'edit-section' && (
               <Button
                 type="button"
                 variant="destructive-ghost"
-                className="self-start sm:mr-auto"
+                className="mr-auto"
+                disabled={pending}
                 onClick={() => {
-                  onChange((current) => removeCrew(current, editor.id));
+                  onChange((current) => removeSection(current, editor.id));
                   onClose();
                 }}
               >
-                Remove crew
+                Remove section
               </Button>
             )}
-            {editor?.kind === 'edit-section' &&
-              !isSystemSection(editor.id) &&
-              org.sections.length > 1 && (
-                <Button
-                  type="button"
-                  variant="destructive-ghost"
-                  className="self-start sm:mr-auto"
-                  onClick={() => {
-                    onChange((current) => removeSection(current, editor.id));
-                    onClose();
-                  }}
-                >
-                  Remove section
-                </Button>
-              )}
-            <div className="flex justify-end gap-2">
-              <Button type="button" variant="ghost" onClick={onClose} disabled={pending}>
-                Cancel
-              </Button>
-              <Button
-                disabled={
-                  pending ||
-                  !name.trim() ||
-                  ((isCrew || isGroup) && (members.length < 2 || members.length > 6))
-                }
-                type="submit"
-              >
-                {editor?.kind.startsWith('new') ? 'Create' : 'Save changes'}
-              </Button>
-            </div>
+            <Button type="button" variant="ghost" onClick={requestClose} disabled={pending}>
+              Cancel
+            </Button>
+            <Button
+              type="submit"
+              disabled={
+                pending || !name.trim() || (isGroup && (members.length < 2 || members.length > 6))
+              }
+            >
+              {editor?.kind === 'edit-section' ? 'Save' : 'Create'}
+            </Button>
           </DialogFooter>
         </Form>
-        <DiscardChanges
-          open={discard}
-          onOpenChange={setDiscard}
-          onDiscard={() => {
-            setDiscard(false);
-            onClose();
-          }}
-        />
       </DialogContent>
+      <DiscardChanges
+        open={discard}
+        onOpenChange={setDiscard}
+        onDiscard={() => {
+          setDiscard(false);
+          onClose();
+        }}
+      />
     </Dialog>
   );
 }

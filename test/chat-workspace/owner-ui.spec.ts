@@ -33,13 +33,8 @@ test('empty system sections disappear; system names and item kinds stay fixed', 
   ).toHaveCount(0);
   await expect(page.locator('.pc-section-empty')).toHaveCount(0);
   await page.getByRole('button', { name: 'New', exact: true }).click();
-  await page.getByRole('menuitem', { name: 'New crew', exact: true }).click();
-  const dialog = page.getByRole('dialog', { name: 'New crew', exact: true });
-  await dialog.getByLabel('Name', { exact: true }).fill('Studio');
-  await expect(dialog.getByRole('button', { name: 'Create', exact: true })).toBeDisabled();
-  await dialog.getByRole('button', { name: 'Cancel', exact: true }).click();
-  await expect(page.locator('.pc-list[aria-label="Crews"]')).toHaveCount(0);
-  await expect(page.getByRole('button', { name: 'Actions for Crews section' })).toHaveCount(0);
+  await expect(page.getByRole('menuitem', { name: 'New crew', exact: true })).toHaveCount(0);
+  await page.keyboard.press('Escape');
   await openSidebarMenu(page, 'Arlo');
   await expect(page.getByRole('menuitem', { name: /Move (up|down|earlier)/ })).toHaveCount(0);
   await page.getByRole('menuitem', { name: 'Move to section', exact: true }).hover();
@@ -261,44 +256,29 @@ test('whole rows drag between sections, pins and crews without exposed handles',
     .dragTo(studio.locator('.pc-section-header'));
   await expect(studio.getByRole('button', { name: /^Mica .*Bot Chat$/ })).toBeVisible();
   await expect(pins.locator('strong')).toHaveText(['Arlo']);
-  for (const name of ['First crew', 'Second crew']) {
+  for (const name of ['First section', 'Second section']) {
     await page.getByRole('button', { name: 'New', exact: true }).click();
-    await page.getByRole('menuitem', { name: 'New crew', exact: true }).click();
-    const dialog = page.getByRole('dialog', { name: 'New crew', exact: true });
+    await page.getByRole('menuitem', { name: 'New section', exact: true }).click();
+    const dialog = page.getByRole('dialog', { name: 'New section', exact: true });
     await dialog.getByLabel('Name', { exact: true }).fill(name);
-    for (const member of name === 'First crew' ? ['Arlo', 'Mica'] : ['Arlo', 'Mica'])
-      await dialog.getByRole('checkbox', { name: member, exact: true }).check();
     await dialog.getByRole('button', { name: 'Create', exact: true }).click();
     await expect(dialog).toHaveCount(0);
   }
-  const crews = page.getByRole('group', { name: 'Unsectioned pebbles', exact: true });
-  const first = crews
-    .locator('.pc-crew-row')
-    .filter({ has: page.getByRole('button', { name: /^First crew / }) });
-  const second = crews
-    .locator('.pc-crew-row')
-    .filter({ has: page.getByRole('button', { name: /^Second crew / }) });
-  await second.dragTo(first);
-  await expect(crews.locator('.pc-crew strong')).toHaveText(['Second crew', 'First crew']);
-  const member = studio
+  const first = page.getByRole('region', { name: 'First section', exact: true });
+  const second = page.getByRole('region', { name: 'Second section', exact: true });
+  await second
+    .locator('.pc-section-header')
+    .dragTo(first.locator('.pc-section-header'), { targetPosition: { x: 30, y: 2 } });
+  await expect(page.locator('.pc-section-toggle')).toHaveText([
+    'Studio',
+    'Second section',
+    'First section',
+  ]);
+  await studio
     .locator('.pebble-row')
-    .filter({ has: page.getByRole('button', { name: /^Rowan / }) });
-  await member.click({ trial: true });
-  await first.click({ trial: true });
-  const from = (await member.boundingBox())!,
-    to = (await first.boundingBox())!;
-  await page.mouse.move(from.x + 24, from.y + from.height / 2);
-  await page.mouse.down();
-  await page.mouse.move(from.x + 36, from.y + from.height / 2, { steps: 3 });
-  await page.mouse.move(to.x + to.width / 2, to.y + to.height / 2, { steps: 12 });
-  await page.mouse.move(to.x + to.width / 2 + 1, to.y + to.height / 2);
-  await page.mouse.up();
-  await expect(
-    crews
-      .locator('.pc-crew-members')
-      .last()
-      .getByRole('button', { name: /^Rowan / }),
-  ).toBeVisible();
+    .filter({ has: page.getByRole('button', { name: /^Rowan / }) })
+    .dragTo(first.locator('.pc-section-header'));
+  await expect(first.getByRole('button', { name: /^Rowan / })).toBeVisible();
 });
 
 test('a lost creation reply checks the same request and finishes setup without creating twice', async ({

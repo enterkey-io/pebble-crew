@@ -37,6 +37,11 @@ class PresentationTests(WorkspaceTests):
         call = self.native.call
         async def native(method, params):
             if method == 'groups.list': return {'rooms': list(rooms)}
+            if method == 'groups.state':
+                from bot_web.native import NativeError
+                room = next((r for r in rooms if r['room_id'] == params['room_id']), None)
+                if room is None: raise NativeError('Not found', reason='room_not_found')
+                return {'room': room}
             if method == 'groups.create':
                 room = {**params, 'created_at': 1}
                 rooms.append(room)

@@ -547,12 +547,14 @@ export class ConversationDomain {
     };
   }
   async createGroup(id: string, name: string, profiles: string[]) {
-    await this.bridge.invoke('room.create', { room_id: id, name, profiles });
-    const data = record(await this.bridge.invoke('room.state', { room_id: id }));
+    const data = record(await this.bridge.invoke('room.create', { room_id: id, name, profiles }));
+    if (data.state !== 'ready') throw new ClientError('RPC_FAILED');
     const room = record(data.room);
     const members = rows(room.members).map((member) => record(member).profile);
     if (
       room.room_id !== id ||
+      typeof room.read_key !== 'string' ||
+      !room.read_key.startsWith(`room:${id}:`) ||
       members.length !== profiles.length ||
       !profiles.every((profile) => members.includes(profile))
     )

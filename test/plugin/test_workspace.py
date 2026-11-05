@@ -300,9 +300,11 @@ class WorkspaceTests(unittest.IsolatedAsyncioTestCase):
         role = state['bots']['amy']['role']
         with self.assertRaises(InvalidOperation):
             await self.service.invoke('roles.update', {'profile': 'amy', 'role': role, 'manager': 'amy', 'team': None, 'expected_revision': state['revision']})
-        saved = await self.service.invoke('teams.save', {'teams': [{'id': 'team-1', 'name': 'Research'}], 'expected_revision': state['revision']})
-        self.assertNotIn('grants', saved)
-        self.assertEqual(saved['orchestrator'], 'default')
+        before = self.store.read()
+        with self.assertRaises(InvalidOperation) as retired:
+            await self.service.invoke('teams.save', {'teams': [{'id': 'team-1', 'name': 'Research'}], 'expected_revision': state['revision']})
+        self.assertEqual(retired.exception.code, 'UPDATE_REQUIRED')
+        self.assertEqual(self.store.read(), before)
 
     async def test_model_proposal_cannot_execute_and_approval_binds_exact_spec(self):
         request_id, status = self.store.request('amy', 'agent.enable', {'profile': 'amy', 'initialize_chat': True})

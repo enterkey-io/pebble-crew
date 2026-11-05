@@ -87,7 +87,7 @@ async function fixture(context: BrowserContext) {
   return { ...fixture, behavior };
 }
 
-test('Tasks can be hidden for the installation without hiding chats, Crews or proactive routines', async ({
+test('Tasks can be hidden for the installation without hiding group chats or proactive routines', async ({
   page,
   context,
 }, info) => {
@@ -130,7 +130,7 @@ test('Tasks can be hidden for the installation without hiding chats, Crews or pr
   await expect(page.getByRole('menuitem', { name: 'New project board', exact: true })).toHaveCount(
     0,
   );
-  await expect(page.getByRole('menuitem', { name: 'New crew', exact: true })).toBeVisible();
+  await expect(page.getByRole('menuitem', { name: 'New group chat', exact: true })).toBeVisible();
   await page.keyboard.press('Escape');
   // A second browser tab receives the installation preference, not a local-storage value.
   const second = await context.newPage();

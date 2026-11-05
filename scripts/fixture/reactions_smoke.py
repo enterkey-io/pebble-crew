@@ -106,7 +106,7 @@ async def exercise(root, home, port):
             raise AssertionError('Native reaction accepted a nonexistent message')
         # The public handle differs from the room's frozen native alias. The
         # real driver must route it, expose the tool, and receive owner feedback.
-        await ops.invoke('room.create', {'room_id': 'reaction-group', 'name': 'Reaction group', 'profiles': ['default', 'alpha']})
+        await service.invoke('room.create', {'room_id': 'reaction-group', 'name': 'Reaction group', 'profiles': ['default', 'alpha']})
         Model.group_audit = []
         Model.emitted_reaction = False
         Model.reaction_describe_requested = False

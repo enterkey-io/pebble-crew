@@ -240,3 +240,23 @@ test('a recent window cannot mark an older unseen native message as read', async
   await expect(page.getByLabel('Message', { exact: true })).toBeEnabled();
   await expect.poll(() => fixture.fixture.state.bots[0]!.unread).toBe(false);
 });
+
+test('routine changes invalidate an open inspector without reading unopened panels', async ({
+  page,
+  context,
+}) => {
+  const fixture = await historyFixture(context);
+  await loaded(page);
+  await emit(page, 'routines.changed', { profile: 'arlo' });
+  await expect(page.getByLabel('Message', { exact: true })).toBeEnabled();
+  expect(fixture.calls.filter((op) => op === 'routines.list')).toHaveLength(0);
+  await page.locator('.pc-chat-identity').click();
+  await expect.poll(() => fixture.calls.filter((op) => op === 'routines.list').length).toBe(1);
+  await emit(page, 'routines.changed', { profile: 'arlo' });
+  await expect.poll(() => fixture.calls.filter((op) => op === 'routines.list').length).toBe(2);
+  await emit(page, 'routines.changed', { profile: 'mica' });
+  await page.getByRole('button', { name: 'Close details', exact: true }).click();
+  await emit(page, 'routines.changed', { profile: 'arlo' });
+  await expect(page.getByLabel('Message', { exact: true })).toBeEnabled();
+  expect(fixture.calls.filter((op) => op === 'routines.list')).toHaveLength(2);
+});

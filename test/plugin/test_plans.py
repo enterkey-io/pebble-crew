@@ -23,7 +23,7 @@ class PlanBehaviorTests(unittest.IsolatedAsyncioTestCase):
         await fixture.WorkspaceTests.asyncTearDown(self)
 
     def draft(self, **patch):
-        return {'id': None, 'title': 'Launch', 'outcome': 'Reach 100 customers', 'body': 'Measure weekly', 'status': 'active', 'owner_id': self.state['bots']['default']['id'], 'parent_id': None, 'crew_ids': [], 'boards': [self.board], **patch}
+        return {'id': None, 'title': 'Launch', 'outcome': 'Reach 100 customers', 'body': 'Measure weekly', 'status': 'active', 'owner_id': self.state['bots']['default']['id'], 'parent_id': None, 'boards': [self.board], **patch}
 
     def save(self, draft, revision, actor='owner', ident=None):
         return self.plans.invoke('work.plan.save', {'workspace_id': self.state['id'], 'operation_id': ident or str(uuid.uuid4()), 'expected_revision': revision, 'plan': draft}, actor)
@@ -69,7 +69,7 @@ class PlanBehaviorTests(unittest.IsolatedAsyncioTestCase):
         with self.assertRaises(InvalidOperation): self.save(self.draft(), 1)
 
     async def test_board_outcomes_are_metadata_not_native_tasks_or_persona_changes(self):
-        self.plans.invoke('work.board.outcome.save', {'workspace_id': self.state['id'], 'operation_id': str(uuid.uuid4()), 'expected_revision': 0, 'outcome': {'board': self.board, 'outcome': 'Ship a useful product', 'crew_ids': []}}, 'owner')
+        self.plans.invoke('work.board.outcome.save', {'workspace_id': self.state['id'], 'operation_id': str(uuid.uuid4()), 'expected_revision': 0, 'outcome': {'board': self.board, 'outcome': 'Ship a useful product'}}, 'owner')
         from bot_web.coordination import context
         self.save(self.draft(), 1)
         value = context(self.store, 'amy', self.board)
@@ -78,21 +78,26 @@ class PlanBehaviorTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(self.store.read(), self.state)
         self.assertFalse(any(method == 'prompt.submit' for method, _ in self.native.calls))
 
-    async def test_full_crew_purpose_survives_compaction_and_voice_context(self):
+    async def test_retired_crew_context_is_projected_out_and_exact_bytes_are_archived_on_write(self):
         from bot_web.runtime import live_context
         from bot_web.coordination import voice_context
-        ids = [b['id'] for b in self.state['bots'].values() if b.get('enrolled')]
-        purpose = 'P' * 1980 + 'PURPOSE_END'
-        await self.service.invoke('organization.save', {'expected_revision': 0, 'organization': {'schema': 2,
-            'sections': [{'id': 'pebbles', 'name': 'Pebbles', 'collapsed': False, 'items': [{'kind': 'crew', 'id': 'studio'}]}],
-            'crews': [{'id': 'studio', 'name': 'Studio', 'purpose': purpose, 'managerId': ids[0], 'collapsed': False, 'members': ids}]}})
-        for index in range(20): self.save(self.draft(outcome='A goal. ' * 200), index)
-        text = live_context(self.store, 'default', compact=True)
-        data = json.loads(text.split('\n', 1)[1])
-        self.assertEqual(data['coordination']['crews'][0]['purpose'], purpose)
-        self.assertLess(len(text), 6500)
-        self.assertIn('PURPOSE_END', voice_context(self.store, 'default'))
-        self.assertTrue(data['coordination']['goals_more'])
+        self.save(self.draft(), 0)
+        graph=self.plans.read(self.state)
+        graph['plans'][0]['crew_ids']=['old-studio']
+        graph['board_outcomes']=[{'board':self.board,'outcome':'Ship it','crew_ids':['old-studio']}]
+        raw=json.dumps({k:graph[k] for k in ('plans','board_outcomes')},indent=3)
+        with self.ledger.db:
+            self.ledger.db.execute('UPDATE plans_state SET payload=? WHERE workspace=?',(raw,self.state['id']))
+            self.ledger.db.execute('DELETE FROM plans_before_sections')
+        self.assertNotIn('crew_ids',self.plans.read(self.state)['plans'][0])
+        self.assertNotIn('old-studio',voice_context(self.store,'default'))
+        self.assertNotIn('old-studio',live_context(self.store,'default',compact=True))
+        self.assertIsNone(self.ledger.db.execute('SELECT 1 FROM plans_before_sections').fetchone())
+        self.save(self.draft(), 1)
+        archive=self.ledger.db.execute('SELECT revision,payload FROM plans_before_sections WHERE workspace=?',(self.state['id'],)).fetchone()
+        self.assertEqual(archive,(1,raw))
+        with self.assertRaises(InvalidOperation) as retired: self.save(self.draft(crew_ids=['old-studio']),2)
+        self.assertEqual(retired.exception.code,'UPDATE_REQUIRED')
 
     async def test_worker_linked_goal_precedes_unrelated_roots_and_outcome_links_are_bounded(self):
         from bot_web.coordination import context
@@ -104,8 +109,8 @@ class PlanBehaviorTests(unittest.IsolatedAsyncioTestCase):
             self.ledger.db.execute('UPDATE plans_state SET payload=? WHERE workspace=?', (json.dumps({k: graph[k] for k in ('plans', 'board_outcomes')}), self.state['id']))
         value = context(self.store, 'amy', self.board)
         self.assertEqual(value['goals'][0]['id'], child)
-        self.assertEqual(value['board_outcome']['crew_count'], 100)
-        self.assertEqual(len(value['board_outcome']['crew_ids']), 6)
+        self.assertNotIn('crew_ids',value['board_outcome'])
+        self.assertNotIn('crews',value)
         self.assertLess(len(json.dumps(value)), 7500)
 
     async def test_tasks_toggle_suspends_goals_everywhere_and_preserves_saved_data(self):
@@ -113,7 +118,7 @@ class PlanBehaviorTests(unittest.IsolatedAsyncioTestCase):
         from bot_web.plans import runtime_snapshot
         from bot_web.runtime import live_context
         self.save(self.draft(), 0)
-        self.plans.invoke('work.board.outcome.save', {'workspace_id': self.state['id'], 'operation_id': str(uuid.uuid4()), 'expected_revision': 1, 'outcome': {'board': self.board, 'outcome': 'Ship a useful product', 'crew_ids': []}}, 'owner')
+        self.plans.invoke('work.board.outcome.save', {'workspace_id': self.state['id'], 'operation_id': str(uuid.uuid4()), 'expected_revision': 1, 'outcome': {'board': self.board, 'outcome': 'Ship a useful product'}}, 'owner')
         saved = self.plans.read(self.state)
         before = len(self.native.calls)
         revision = self.store.read()['revision']

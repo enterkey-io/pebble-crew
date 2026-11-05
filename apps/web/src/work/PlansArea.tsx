@@ -13,7 +13,6 @@ import {
   EmptyMedia,
   EmptyContent,
 } from '../components/ui/empty';
-import type { Organization } from '../ui/organization';
 import { WorkHeader } from './WorkHeader';
 import { WorkReadError } from './WorkReadError';
 import { usePlans, sameBoard } from './use-plans';
@@ -28,14 +27,12 @@ function blank(): PlanDraft {
     status: 'active',
     ownerId: null,
     parentId: null,
-    crewIds: [],
     boards: [],
   };
 }
 export function PlansArea({
   client,
   workspace,
-  organization,
   connected,
   onNavigate,
   onBoard,
@@ -43,7 +40,6 @@ export function PlansArea({
 }: {
   client: SessionClient;
   workspace: WorkspaceSnapshot;
-  organization: Organization;
   connected: boolean;
   onNavigate: () => void;
   onBoard: (slug: string) => void;
@@ -126,11 +122,6 @@ export function PlansArea({
                 </p>
               )}
               <div className="flex flex-wrap gap-2">
-                {plan.crewIds.map((id) => (
-                  <Badge key={id} variant="secondary">
-                    {organization.crews.find((crew) => crew.id === id)?.name ?? 'Unavailable crew'}
-                  </Badge>
-                ))}
                 {plan.boards.map((ref) => {
                   const board = data.boards.find((board) => sameBoard(ref, board));
                   return (
@@ -155,7 +146,6 @@ export function PlansArea({
           draft={editing}
           snapshot={data}
           workspace={workspace}
-          organization={organization}
           client={client}
           onClose={() => setEditing(undefined)}
           onSaved={() => {

@@ -40,8 +40,10 @@ def review(store, request, state):
             reason = 'The proposed model authorization is unavailable or changed. Review it in Hermes.'
         elif spec.get('manager') is not None and (not current['manager'] or not state['bots'][spec['manager']].get('enrolled') or state['bots'][spec['manager']].get('available') is False):
             reason = 'The proposed manager is no longer available.'
-        elif spec.get('team') is not None and current['team'] is None:
-            reason = 'The proposed crew is no longer available.'
+        elif spec.get('team') is not None:
+            reason = 'This proposal changes retired team membership. Ask for a new proposal without a team.'
+    elif action == 'agent.update' and spec.get('team') != state['bots'].get(spec.get('profile'), {}).get('team'):
+        reason = 'This proposal changes retired team membership. Ask for a role-only proposal.'
     elif 'expected_revision' in spec and spec['expected_revision'] != state['revision']:
         reason = 'The affected setup needs a fresh proposal. This request has not been executed.'
     if reason:

@@ -147,9 +147,7 @@ export function Rail({
   owner,
   onClose,
   organization,
-  crewChats,
   onOrganization,
-  onCrew,
   onSearch,
   area,
   onArea,
@@ -184,9 +182,7 @@ export function Rail({
   owner: boolean;
   onClose?: (() => void) | undefined;
   organization: Organization;
-  crewChats: Record<string, string>;
   onOrganization: Dispatch<SetStateAction<Organization>>;
-  onCrew: (id: string) => void;
   onSearch: () => void;
   area: 'chat' | 'tasks';
   onArea: (area: 'chat' | 'tasks') => void;
@@ -238,7 +234,6 @@ export function Rail({
     ) : null;
   };
   const pinIds = pins.map((b) => identity(b)!.id);
-  const groupChats = rooms.filter((r) => !Object.values(crewChats).includes(String(r.room_id)));
   const accountMenu = (
     <Menu
       label="Your account"
@@ -265,7 +260,7 @@ export function Rail({
       </span>
     </span>
   );
-  const controls = (bot: ChatBot, children: ReactNode) => {
+  const controls = (bot: ChatBot, children: ReactNode, placementId?: string) => {
     const b = identity(bot);
     if (!b) return children;
     const items: MenuItem[] = [
@@ -275,7 +270,7 @@ export function Rail({
         disabled: !!pendingPins[b.id] || !online,
       },
       { label: 'Edit pebble', action: () => onEdit(b.profile) },
-      ...pebblePlacementItems(organization, b.id, onOrganization, setEditor),
+      ...pebblePlacementItems(organization, b.id, onOrganization, setEditor, placementId),
       {
         label: bot.hidden ? 'Unhide' : 'Hide',
         action: () => onVisibility(b, !bot.hidden),
@@ -285,7 +280,7 @@ export function Rail({
     if (b.profile !== 'default' && workspace?.orchestrator !== b.profile)
       items.push({ label: 'Delete…', action: () => onDelete(b), danger: true, disabled: !online });
     return (
-      <ContextActions key={b.id} label={`Actions for ${bot.name}`} items={items}>
+      <ContextActions key={placementId ?? b.id} label={`Actions for ${bot.name}`} items={items}>
         {children}
       </ContextActions>
     );
@@ -301,7 +296,6 @@ export function Rail({
           disabled={!online}
           items={[
             { label: 'New pebble', action: onAdd },
-            { label: 'New crew', action: () => setEditor({ kind: 'new-crew' }) },
             { label: 'New group chat', action: () => setEditor({ kind: 'new-group-chat' }) },
             { label: 'New section', action: () => setEditor({ kind: 'new-section' }) },
             ...(tasksEnabled && client.supportsProjects
@@ -394,13 +388,22 @@ export function Rail({
                             organization,
                             all.flatMap((bot) => identity(bot)?.id ?? []),
                           );
-                          if (item?.kind !== 'pebble') return;
-                          const bot = byId(item.id);
+                          const targetId =
+                            item?.kind === 'pebble'
+                              ? item.id
+                              : item?.kind === 'placement'
+                                ? organization.sections
+                                    .flatMap((s) => s.items)
+                                    .find((i) => i.placementId === item.id && i.kind === 'pebble')
+                                    ?.id
+                                : undefined;
+                          if (!targetId) return;
+                          const bot = byId(targetId);
                           if (!bot) return;
                           if (!pinned(bot)) onPin(identity(bot)!, true);
-                          const ids = pinIds.filter((id) => id !== item.id),
+                          const ids = pinIds.filter((id) => id !== targetId),
                             position = ids.indexOf(identity(b)!.id);
-                          ids.splice(position < 0 ? ids.length : position, 0, item.id);
+                          ids.splice(position < 0 ? ids.length : position, 0, targetId);
                           onOrder(ids);
                         }}
                         onKeyDown={(event) => {
@@ -462,21 +465,11 @@ export function Rail({
                         ]
                       : [];
                   })}
-                activeId={
-                  all.find((b) => b.profile === selected)?.id ??
-                  Object.entries(crewChats).find(([, roomId]) => roomId === selected)?.[0] ??
-                  selected ??
-                  ''
-                }
+                activeId={all.find((b) => b.profile === selected)?.id ?? selected ?? ''}
                 face={face}
                 onOpenPebble={(id) => {
                   const b = byId(id);
                   if (b && online) onOpen(b);
-                }}
-                onOpenCrew={onCrew}
-                onEditPebble={(id) => {
-                  const b = byId(id);
-                  if (b) onEdit(b.profile);
                 }}
                 onEditOrganization={setEditor}
                 onPin={(id) => {
@@ -484,9 +477,28 @@ export function Rail({
                     row = b && identity(b);
                   if (b && row) onPin(row, !pinned(b));
                 }}
-                actions={(id, children) => {
+                groups={rooms.map((room) => ({
+                  id: String(room.room_id),
+                  readKey: String(room.read_key),
+                  name: String(room.name ?? 'Group chat'),
+                  preview: String(room.preview ?? ''),
+                  unread: !!room.unread,
+                }))}
+                groupFace={(id, readKey) => {
+                  const room = rooms.find((r) => r.room_id === id && r.read_key === readKey);
+                  return room ? (
+                    <CrewAvatar room={room} workspace={workspace} client={client} active={active} />
+                  ) : (
+                    <Users aria-hidden="true" />
+                  );
+                }}
+                onOpenGroup={(id, readKey) => {
+                  const room = rooms.find((r) => r.room_id === id && r.read_key === readKey);
+                  if (room) onRoom(room);
+                }}
+                actions={(id, children, placementId) => {
                   const b = byId(id);
-                  return b ? controls(b, children) : children;
+                  return b ? controls(b, children, placementId) : children;
                 }}
                 openLabel={(pebble) => `${pebble.name} ${pebble.title} ${pebble.preview} Bot Chat`}
               />
@@ -515,24 +527,6 @@ export function Rail({
                     ),
                   )}
             </nav>
-            {!!groupChats.length && (
-              <nav className="pc-list" aria-label="Group chats">
-                {groupChats.map((r) => (
-                  <NavigationItem
-                    className="pc-crew"
-                    key={String(r.room_id)}
-                    aria-label={`${String(r.name ?? 'Group chat')} ${String(r.preview ?? 'Group conversation')} Open chat`}
-                    disabled={!online}
-                    onClick={() => onRoom(r)}
-                    media={
-                      <CrewAvatar room={r} workspace={workspace} client={client} active={active} />
-                    }
-                    title={String(r.name ?? 'Group chat')}
-                    description={String(r.preview ?? 'Group conversation')}
-                  />
-                ))}
-              </nav>
-            )}
             {!all.length && (
               <div className="rail-empty">
                 <p>No pebbles yet.</p>

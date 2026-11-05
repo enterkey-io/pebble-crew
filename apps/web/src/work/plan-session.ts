@@ -34,7 +34,6 @@ export const planFields = [
   'status',
   'ownerId',
   'parentId',
-  'crewIds',
   'boards',
 ] as const satisfies readonly (keyof PlanDraft)[];
 export function descendants(

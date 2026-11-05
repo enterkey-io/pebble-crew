@@ -119,7 +119,7 @@ test('an empty move submenu offers creation without a disabled placeholder', asy
   await page.goto('/');
   await expect(page.getByLabel('Message', { exact: true })).toBeEnabled();
   await openSidebarMenu(page, 'Mica');
-  await page.getByRole('menuitem', { name: 'Move to crew', exact: true }).hover();
-  await expect(page.getByRole('menuitem', { name: 'New crew', exact: true })).toBeVisible();
+  await page.getByRole('menuitem', { name: 'Move to section', exact: true }).hover();
+  await expect(page.getByRole('menuitem', { name: 'New section', exact: true })).toBeVisible();
   await expect(page.getByRole('menuitem', { name: 'None', exact: true })).toHaveCount(0);
 });

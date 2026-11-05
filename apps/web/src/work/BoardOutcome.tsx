@@ -15,22 +15,18 @@ import { Label } from '../components/ui/label';
 import { Textarea } from '../components/ui/textarea';
 import { Notice } from '../ui/primitives';
 import { DiscardChanges } from '../ui/DiscardChanges';
-import type { Organization } from '../ui/organization';
-import { CrewChoices } from './CrewChoices';
 import { Target } from 'lucide-react';
 import { session, receive, resolve } from './plan-session';
 import { usePlans, sameBoard } from './use-plans';
 export function BoardOutcome({
   client,
   workspace,
-  organization,
   connected,
   board,
   onEditingChange,
 }: {
   client: SessionClient;
   workspace: WorkspaceSnapshot;
-  organization: Organization;
   connected: boolean;
   board: string;
   onEditingChange?: ((open: boolean) => void) | undefined;
@@ -56,13 +52,11 @@ export function BoardOutcome({
           key={board}
           tasksEnabled={workspace.features?.tasks !== false}
           initial={current?.outcome ?? ''}
-          initialCrews={current?.crewIds ?? []}
           revision={data.revision}
-          organization={organization}
           check={(id) => new PlansDomain(client).receipt(workspace.id, id)}
           onClose={() => setOpen(false)}
-          save={async (text, crews, id, revision) => {
-            await new PlansDomain(client).saveOutcome(workspace.id, revision, id, ref, text, crews);
+          save={async (text, id, revision) => {
+            await new PlansDomain(client).saveOutcome(workspace.id, revision, id, ref, text);
             setOpen(false);
             resource.reload();
           }}
@@ -74,37 +68,26 @@ export function BoardOutcome({
 function OutcomeEditor({
   tasksEnabled,
   initial,
-  initialCrews,
   revision,
-  organization,
   save,
   check,
   onClose,
 }: {
   tasksEnabled: boolean;
   initial: string;
-  initialCrews: string[];
   revision: number;
-  organization: Organization;
   check: (id: string) => Promise<boolean>;
-  save: (outcome: string, crewIds: string[], id: string, revision: number) => Promise<void>;
+  save: (outcome: string, id: string, revision: number) => Promise<void>;
   onClose: () => void;
 }) {
-  const [edit, setEdit] = useState(() =>
-    session({ outcome: initial, crews: initialCrews }, revision),
-  );
+  const [edit, setEdit] = useState(() => session({ outcome: initial }, revision));
   useEffect(
-    () =>
-      setEdit((old) =>
-        receive(old, { outcome: initial, crews: initialCrews }, revision, ['outcome', 'crews']),
-      ),
-    [initial, initialCrews, revision],
+    () => setEdit((old) => receive(old, { outcome: initial }, revision, ['outcome'])),
+    [initial, revision],
   );
-  const { outcome, crews } = edit.draft;
+  const { outcome } = edit.draft;
   const setOutcome = (outcome: string) =>
     setEdit((old) => ({ ...old, draft: { ...old.draft, outcome } }));
-  const setCrews = (crews: string[]) =>
-    setEdit((old) => ({ ...old, draft: { ...old.draft, crews } }));
   const [busy, setBusy] = useState(false),
     [error, setError] = useState(''),
     [discard, setDiscard] = useState(false);
@@ -128,12 +111,12 @@ function OutcomeEditor({
             onSubmit={(event) => {
               event.preventDefault();
               if (!tasksEnabled) return;
-              const payload = JSON.stringify({ outcome, crews, revision: edit.revision });
+              const payload = JSON.stringify({ outcome, revision: edit.revision });
               if (intent.current.payload !== payload)
                 intent.current = { payload, id: crypto.randomUUID() };
               setBusy(true);
               setError('');
-              void save(outcome, crews, intent.current.id, edit.revision)
+              void save(outcome, intent.current.id, edit.revision)
                 .catch((cause) => {
                   const failure = safeError(cause);
                   setError(failure.message);
@@ -163,12 +146,6 @@ function OutcomeEditor({
                 required
               />
             </div>
-            <CrewChoices
-              organization={organization}
-              value={crews}
-              onChange={setCrews}
-              disabled={busy || uncertain}
-            />
             {error && <Notice>{error}</Notice>}
             {uncertain && (
               <Notice>

@@ -1,7 +1,8 @@
 {
   "schema": 1,
-  "contract": "workspace-runtime-v3",
+  "contract": "workspace-runtime-v4",
   "accepts": [
+    "workspace-runtime-v4",
     "workspace-runtime-v3",
     "workspace-runtime-v2",
     "workspace-runtime-v1",

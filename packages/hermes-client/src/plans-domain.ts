@@ -36,7 +36,6 @@ function plan(value: unknown) {
     status,
     ownerId: nullable(p.owner_id),
     parentId: nullable(p.parent_id),
-    crewIds: list(p.crew_ids, (value) => text(value)),
     boards: list(p.boards, boardRef),
   };
 }
@@ -59,7 +58,6 @@ function snapshot(value: unknown) {
       return {
         board: boardRef(o.board),
         outcome: text(o.outcome, 2000),
-        crewIds: list(o.crew_ids, (value) => text(value)),
       };
     }),
     unavailableBoards: list(data.unavailable_boards, boardRef),
@@ -107,7 +105,6 @@ export class PlansDomain {
           status: draft.status,
           owner_id: draft.ownerId,
           parent_id: draft.parentId,
-          crew_ids: draft.crewIds,
           boards: draft.boards.map(encodeBoard),
         },
       }),
@@ -119,14 +116,13 @@ export class PlansDomain {
     operationId: string,
     board: PlanBoardRef,
     outcome: string,
-    crewIds: string[],
   ) {
     return receipt(
       await this.bridge.invoke('work.board.outcome.save', {
         workspace_id: workspaceId,
         expected_revision: expectedRevision,
         operation_id: operationId,
-        outcome: { board: encodeBoard(board), outcome, crew_ids: crewIds },
+        outcome: { board: encodeBoard(board), outcome },
       }),
     );
   }

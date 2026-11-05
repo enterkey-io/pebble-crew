@@ -5,37 +5,24 @@ import type { OrganizationState } from '../../apps/web/src/ui/organization';
 test.use({ serviceWorkers: 'block' });
 
 for (const theme of ['dark', 'light']) {
-  test(`mobile list is a full page with pinned pebbles, crews, sections and bottom search in ${theme}`, async ({
+  test(`mobile list is a full page with pinned pebbles, sections and header search in ${theme}`, async ({
     page,
     context,
   }, info) => {
     const organization: OrganizationState = {
       revision: 1,
       sections: [
-        {
-          id: 'pebbles',
-          name: 'Pebbles',
-          collapsed: false,
-          items: [{ kind: 'crew', id: 'studio' }],
-        },
+        { id: 'pebbles', name: 'Pebbles', collapsed: false, items: [] },
         {
           id: 'personal',
           name: 'Personal',
           collapsed: false,
-          items: [
-            { kind: 'pebble', id: 'identity-5' },
-            { kind: 'pebble', id: 'identity-6' },
-          ],
-        },
-      ],
-      crews: [
-        {
-          id: 'studio',
-          name: 'Studio',
-          purpose: 'Research and publishing',
-          members: ['identity-2', 'identity-3', 'identity-4'],
-          managerId: 'identity-2',
-          collapsed: false,
+          items: [2, 3, 4, 5, 6].map((n) => ({
+            kind: 'pebble',
+            id: `identity-${n}`,
+            placementId: `row-identity-${n}`,
+            shortcut: false,
+          })),
         },
       ],
     };
@@ -65,7 +52,7 @@ for (const theme of ['dark', 'light']) {
     await expect(page.getByRole('dialog', { name: 'navigation' })).toHaveCount(0);
     const search = navigation.getByRole('button', { name: 'Search Pebble Crew', exact: true });
     const searchBox = (await search.boundingBox())!;
-    expect(bounds.y + bounds.height - searchBox.y - searchBox.height).toBeLessThanOrEqual(36);
+    expect(searchBox.y - bounds.y).toBeLessThan(100);
     const pins = navigation.locator('.pc-pins .pinned-tile');
     await expect(pins).toHaveCount(3);
     const avatars = await pins.locator('.agent-avatar').evaluateAll((nodes) =>
@@ -79,7 +66,7 @@ for (const theme of ['dark', 'light']) {
     expect(avatars[1]!.x).toBeGreaterThan(avatars[0]!.x);
     expect(avatars[0]!.y).toBe(avatars[1]!.y);
     await expect(navigation.getByRole('button', { name: 'Personal', exact: true })).toBeVisible();
-    await expect(navigation.getByRole('img', { name: '3 members', exact: true })).toBeVisible();
+    await expect(navigation.getByRole('img', { name: '4 members', exact: true })).toBeVisible();
     await page.screenshot({
       animations: 'disabled',
       path: info.outputPath(`mobile-list-${theme}.png`),

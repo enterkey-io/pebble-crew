@@ -123,28 +123,25 @@ test('editor preserves drafts across events and unrelated saves, resolves confli
   await expect(page.getByLabel('Message', { exact: true })).toBeEnabled();
 });
 
-test('sidebar creates and edits crews without changing relationships; fresh and existing pebble flows are distinct', async ({
+test('sidebar creates and edits sections without changing relationships; fresh and existing pebble flows are distinct', async ({
   page,
   context,
 }) => {
   const fixture = await installFixture(context);
   await ready(page);
-  await newItem(page, 'New crew');
-  let dialog = page.getByRole('dialog', { name: 'New crew', exact: true });
-  await expect(dialog).toBeVisible();
+  await newItem(page, 'New section');
+  const dialog = page.getByRole('dialog', { name: 'New section', exact: true });
   await dialog.getByLabel('Name', { exact: true }).fill('Studio');
-  await dialog.getByRole('checkbox', { name: 'Arlo', exact: true }).check();
-  await dialog.getByRole('checkbox', { name: 'Mica', exact: true }).check();
   await dialog.getByRole('button', { name: 'Create', exact: true }).click();
   await expect(dialog).toHaveCount(0);
   expect(fixture.state.bots.find((b) => b.profile === 'mica')!.manager).toBe('arlo');
-  await expect(page.getByRole('button', { name: /^Studio .*Open chat$/ })).toBeVisible();
-  await openSidebarMenu(page, 'Studio');
-  await page.getByRole('menuitem', { name: 'Crew settings', exact: true }).click();
-  dialog = page.getByRole('dialog', { name: 'Crew settings', exact: true });
-  await dialog.getByRole('button', { name: 'Remove crew', exact: true }).click();
-  await expect(dialog).toHaveCount(0);
-  await expect(page.getByRole('button', { name: /^Mica .*Bot Chat$/ })).toBeVisible();
+  await page.getByRole('button', { name: 'Studio', exact: true }).click({ button: 'right' });
+  await page.getByRole('menuitem', { name: 'Rename section', exact: true }).click();
+  await page
+    .getByRole('dialog', { name: 'Rename section', exact: true })
+    .getByRole('button', { name: 'Remove section', exact: true })
+    .click();
+  await expect(page.getByRole('region', { name: 'Studio', exact: true })).toHaveCount(0);
   await newItem(page, 'New pebble');
   await accessible(page);
   await page.getByRole('button', { name: 'Create new', exact: false }).click();
@@ -254,18 +251,18 @@ test('small screens keep dialogs bounded, nested unsaved confirmation restores f
   await ready(page);
   await page.getByRole('button', { name: 'Toggle navigation' }).click();
   await page.getByRole('button', { name: 'New', exact: true }).click();
-  await page.getByRole('menuitem', { name: 'New crew', exact: true }).click();
-  const dialog = page.getByRole('dialog', { name: 'New crew', exact: true });
+  await page.getByRole('menuitem', { name: 'New group chat', exact: true }).click();
+  const dialog = page.getByRole('dialog', { name: 'New group chat', exact: true });
   await expect(dialog).toBeVisible();
-  await dialog.getByLabel('Name', { exact: true }).fill('Draft crew');
+  await dialog.getByLabel('Name', { exact: true }).fill('Draft group');
   await page.keyboard.press('Escape');
   const confirm = page.getByRole('alertdialog', { name: 'Discard changes?' });
   await expect(confirm).toBeVisible();
   await confirm.getByRole('button', { name: 'Keep editing' }).click();
-  await expect(dialog.getByLabel('Name', { exact: true })).toHaveValue('Draft crew');
+  await expect(dialog.getByLabel('Name', { exact: true })).toHaveValue('Draft group');
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
   await accessible(page);
-  await page.screenshot({ animations: 'disabled', path: 'test-results/new-crew-mobile.png' });
+  await page.screenshot({ animations: 'disabled', path: 'test-results/new-group-mobile.png' });
   await page.keyboard.press('Escape');
   await page
     .getByRole('alertdialog', { name: 'Discard changes?' })
@@ -368,8 +365,8 @@ test('browser Back protects an unsaved Crew then closes only its confirmation', 
   await page.setViewportSize({ width: 320, height: 640 });
   await ready(page);
   await page.getByRole('button', { name: 'Toggle navigation' }).click();
-  await newItem(page, 'New crew');
-  const crew = page.getByRole('dialog', { name: 'New crew', exact: true });
+  await newItem(page, 'New group chat');
+  const crew = page.getByRole('dialog', { name: 'New group chat', exact: true });
   await crew.getByLabel('Name', { exact: true }).fill('Back draft');
   await expect(crew.getByRole('button', { name: 'Create', exact: true })).toBeInViewport();
   await page.goBack();
@@ -514,46 +511,42 @@ test('chat proportions, restrained header hover, new avatar choices and minimal 
   );
 });
 
-test('Crew chat waits for pending membership save and opens native conversation instead of settings', async ({
+test('explicit group creation waits for its native receipt without saving section membership', async ({
   page,
   context,
 }) => {
   await installFixture(context);
   await ready(page);
-  await newItem(page, 'New crew');
-  const editor = page.getByRole('dialog', { name: 'New crew', exact: true });
+  await newItem(page, 'New group chat');
+  const editor = page.getByRole('dialog', { name: 'New group chat', exact: true });
   await editor.getByLabel('Name', { exact: true }).fill('Roundtable');
-  await editor.getByRole('checkbox', { name: 'Arlo', exact: true }).check();
-  await editor.getByRole('checkbox', { name: 'Mica', exact: true }).check();
+  for (const name of ['Arlo', 'Mica'])
+    await editor.getByRole('checkbox', { name, exact: true }).check();
   let release!: () => void;
   const waiting = new Promise<void>((resolve) => {
     release = resolve;
   });
-  let saving = false;
-  let opens = 0;
+  let creates = 0,
+    layouts = 0;
   await page.route('**/v1/rpc', async (route) => {
-    const data = route.request().postDataJSON();
-    if (data.operation === 'organization.chat') opens++;
-    if (
-      data.operation === 'organization.save' &&
-      data.params.organization.crews[0]?.members.length === 2
-    ) {
-      saving = true;
+    const { operation } = route.request().postDataJSON();
+    if (operation === 'organization.save') layouts++;
+    if (operation === 'room.create') {
+      creates++;
       await waiting;
     }
     await route.fallback();
   });
   try {
     await editor.getByRole('button', { name: 'Create', exact: true }).click();
-    await expect.poll(() => saving).toBe(true);
-    await page.getByRole('button', { name: /^Roundtable .*Open chat$/ }).click();
-    await page.waitForTimeout(150);
-    expect(opens).toBe(0);
+    await expect.poll(() => creates).toBe(1);
+    await expect(editor.getByRole('button', { name: 'Create', exact: true })).toBeDisabled();
+    await expect(page.locator('.chat-title')).not.toContainText('Roundtable');
     release();
-    await expect.poll(() => opens).toBe(1);
     await expect(page.locator('.chat-title')).toContainText('Roundtable');
     await expect(page.getByRole('log')).toContainText('I have the notes ready.');
-    await expect(page.getByRole('dialog')).toHaveCount(0);
+    await expect(editor).toHaveCount(0);
+    expect(layouts).toBe(0);
   } finally {
     release();
   }

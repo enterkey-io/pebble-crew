@@ -1,28 +1,15 @@
-import type { Organization } from '../ui/organization';
-
+import type { Organization, RailItem } from '../ui/organization';
+const rows = (ids: string[]): RailItem[] =>
+  ids.map((id) => ({ kind: 'pebble', id, placementId: `row-${id}`, shortcut: false }));
 export const initialOrganization: Organization = {
   sections: [
+    { id: 'pebbles', name: 'Pebbles', collapsed: false, items: [] },
     {
       id: 'personal',
       name: 'Personal',
       collapsed: false,
-      items: ['sample-0', 'sample-1', 'sample-2', 'sample-3'].map((id) => ({ kind: 'pebble', id })),
+      items: rows(['sample-0', 'sample-1', 'sample-2', 'sample-3']),
     },
-    {
-      id: 'studio-section',
-      name: 'Studio teams',
-      collapsed: false,
-      items: [{ kind: 'crew', id: 'studio' }],
-    },
-  ],
-  crews: [
-    {
-      id: 'studio',
-      name: 'Studio',
-      managerId: null,
-      purpose: 'Design and writing',
-      collapsed: false,
-      members: ['sample-4', 'sample-5'],
-    },
+    { id: 'studio', name: 'Studio', collapsed: false, items: rows(['sample-4', 'sample-5']) },
   ],
 };

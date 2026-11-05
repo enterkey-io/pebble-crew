@@ -9,6 +9,7 @@ import asyncio
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import importlib.util
 import json
+import uuid
 import os
 import shlex
 from pathlib import Path
@@ -299,7 +300,7 @@ async def exercise(root, home, port, *, seed_only=False):
             routine = await gateway.call("cron.manage", {"profile": name, "action": "add",
                 "name": f"{name}-routine", "schedule": "0 9 * * *", "prompt": "Synthetic routine", "deliver": f"bot-chat:{name}"})
             assert routine.get("success") is True
-        await ops.invoke("room.create", {"room_id": "fixture-room", "name": "Team room", "profiles": ["alpha", "beta"]})
+        await gateway.call("groups.create", {"room_id":"fixture-room","name":"Team room","members":[{"member_id":p,"profile":p,"handle":p} for p in ("alpha","beta")]})
         if seed_only:
             return
         roster = await ops.invoke("bots.list", {})
@@ -482,18 +483,18 @@ async def exercise(root, home, port, *, seed_only=False):
         org = await service.invoke('organization.get', {})
         members = [b['id'] for b in snapshot['workspace']['bots'] if b['profile'] in {'alpha', 'beta'}]
         assert len(members) == 2
-        sections = [{**section, 'items': [item for item in section['items'] if item['kind'] != 'pebble' or item['id'] not in members]} for section in org['sections']]
-        crews = [{**crew, 'members': [i for i in crew['members'] if i not in members]} for crew in org['crews']]
-        crews.append({'id': 'native-review-crew', 'name': 'Native review crew', 'purpose': '', 'collapsed': False, 'members': members})
-        next(s for s in sections if s['id'] == 'crews')['items'].append({'kind': 'crew', 'id': 'native-review-crew'})
-        saved = await service.invoke('organization.save', {'organization': {'sections': sections, 'crews': crews}, 'expected_revision': org['revision']})
-        target = {'id': 'native-review-crew', 'expected_revision': saved['revision'], 'confirm_new': False}
-        crew_chat = await service.invoke('organization.chat', target)
-        crew_again = await service.invoke('organization.chat', target)
-        assert crew_chat['state'] == 'ready' and crew_chat['room']['room_id'] == crew_again['room']['room_id']
-        assert {m['profile'] for m in crew_chat['room']['members']} == {'alpha', 'beta'}
+        section_id = 'native-review-section'
+        sections = [{**s,'items':[item for item in s['items'] if item['kind']!='pebble' or item['id'] not in members]} for s in org['sections']]
+        placements = [item for s in org['sections'] for item in s['items'] if item['kind']=='pebble' and item['id'] in members]
+        sections.append({'id':section_id,'name':'Native review','collapsed':False,'items':placements})
+        saved = await service.invoke('organization.save', {'organization':{'schema':3,'sections':sections},'expected_revision':org['revision'],'operation_id':str(uuid.uuid4())})
+        assert saved['sections'][-1]['items'] == placements
+        group = await service.invoke('room.create',{'room_id':'native-review-group','name':'Native review chat','profiles':['alpha','beta']})
+        again = await service.invoke('room.create',{'room_id':'native-review-group','name':'Native review chat','profiles':['alpha','beta']})
+        assert group['state']=='ready' and group==again
+        assert {m['profile'] for m in group['room']['members']} == {'alpha','beta'}
         linked = await service.invoke('workspace.snapshot', {})
-        assert linked['crew_chats']['native-review-crew'] == crew_chat['room']['room_id']
+        assert any(item['kind']=='group' and item['id']=='native-review-group' for s in linked['organization']['sections'] for item in s['items'])
         bot = next(b for b in snapshot['workspace']['bots'] if b['profile'] == 'delete-probe')
         alpha_clock = next(b for b in snapshot['workspace']['bots'] if b['profile'] == 'alpha')
         assert alpha_clock['cursor_type'] == 'row' and alpha_clock['cursor'] > 0

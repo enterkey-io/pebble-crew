@@ -6,6 +6,8 @@ from .workspace import bounded, normalize_role
 
 
 async def create(service, params, state):
+    if params.get('team') is not None:
+        raise InvalidOperation('Use sidebar sections; team membership proposals were retired', 'UPDATE_REQUIRED')
     fields(params, ['name', 'display_name', 'soul', 'role', 'model_source', 'model_fingerprint', 'skills', 'toolsets', 'manager', 'team', 'expected_revision'])
     name = bounded(params['name'], 40, False)
     if not re.fullmatch(r'[a-z][a-z0-9-]{1,39}', name) or (name in state['bots'] and state['bots'][name].get('available', True)):
