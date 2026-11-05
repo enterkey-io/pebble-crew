@@ -284,7 +284,7 @@ def create_app(token, origins, hosts, gateway=None, trust=None, workspace=None, 
 
     @app.exception_handler(InvalidOperation)
     async def invalid(request, error):
-        return JSONResponse({"error": "Operation unavailable or invalid. Refresh and check the connection.", "code": error.code if error.code in VOICE_ERROR_CODES | {"CONVERSATION_CHANGED", "LEASE_GONE", "STREAM_ACTIVE", "NATIVE_UNAVAILABLE", "CAPACITY", "UPDATE_REQUIRED", "UNSUPPORTED_COMMAND", "STALE_REVISION", "HANDLE_TAKEN", "INVALID_REPORTING", "MODEL_UNAVAILABLE", "REQUIRES_SETUP", "INVALID_PHOTO", "INVALID_PARAMETERS", "INVALID_ATTACHMENT", "ATTACHMENT_QUOTA"} else "INVALID_PARAMETERS"}, 409 if error.code == "STALE_REVISION" else 400)
+        return JSONResponse({"error": "Operation unavailable or invalid. Refresh and check the connection.", "code": error.code if error.code in VOICE_ERROR_CODES | {"CONVERSATION_CHANGED", "BOT_CHAT_MISSING", "LEASE_GONE", "STREAM_ACTIVE", "NATIVE_UNAVAILABLE", "CAPACITY", "UPDATE_REQUIRED", "UNSUPPORTED_COMMAND", "STALE_REVISION", "HANDLE_TAKEN", "INVALID_REPORTING", "MODEL_UNAVAILABLE", "REQUIRES_SETUP", "INVALID_PHOTO", "INVALID_PARAMETERS", "INVALID_ATTACHMENT", "ATTACHMENT_QUOTA"} else "INVALID_PARAMETERS"}, 409 if error.code == "STALE_REVISION" else 400)
 
     @app.exception_handler(NativeError)
     async def native_error(request, error):
@@ -370,7 +370,7 @@ def create_app(token, origins, hosts, gateway=None, trust=None, workspace=None, 
                 if operation == 'bot.open':
                     from .operations import fields
                     fields(params, ['profile'])
-                    await ops.bot(params['profile'])
+                    await ops.bot(params['profile'], require_chat=True)
                 profile=params.get('profile') if operation=='bot.open' else ops.sessions.get(params.get('session_id'))
                 if profile:
                     runtime=await native.call('bot_web.runtime.verify',{'profile':profile})

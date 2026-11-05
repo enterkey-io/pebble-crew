@@ -37,7 +37,7 @@ class Native:
         if method == "profiles.list":
             return {"bot_mode_protocol": True, "profiles": [
                 {"name": "alpha", "ui_meta": {"hermes-bots": {"title": "Alpha"}},
-                 "canonical_session": {"id": "root-alpha"}},
+                 "canonical_session": getattr(self, "canonical_chat", {"id": "root-alpha"})},
                 {"name": "ordinary", "ui_meta": {}}]}
         if method == "bot_web.conversation.resume":
             return {"session_id": "live-alpha", "messages": []}
@@ -256,6 +256,14 @@ class RuntimeAdmissionTests(unittest.IsolatedAsyncioTestCase):
         response=await self.invoke('bot.open',{'profile':'ordinary'})
         self.assertEqual(response.status_code,400,response.text)
         self.assertFalse(any(method in {'prompt.submit','bot_web.runtime.prepare'} for method,_ in self.native.calls))
+
+    async def test_managed_profile_without_canonical_chat_returns_missing_without_provisioning(self):
+        self.native.canonical_chat = None
+        self.native.runtime = {'verified': False, 'state': 'absent', 'loaded': 'unknown'}
+        response = await self.invoke('bot.open', {'profile': 'alpha'})
+        self.assertEqual(response.status_code, 400, response.text)
+        self.assertEqual(response.json()['code'], 'BOT_CHAT_MISSING')
+        self.assertEqual([method for method, _ in self.native.calls], ['profiles.list'])
 
     async def test_only_absent_runtime_is_provisioned_before_first_open_without_a_model(self):
         self.native.runtime={'verified':False,'state':'absent','loaded':'unknown'}

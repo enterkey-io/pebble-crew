@@ -58,12 +58,15 @@ export function WorkspacePanels({
         .composedPath()
         .some(
           (node) =>
-            node instanceof Element && node.matches('[role=dialog], [role=menu], [role=listbox]'),
+            node instanceof Element &&
+            node.matches('[role=dialog], [role=alertdialog], [role=menu], [role=listbox]'),
         );
       if (
         event.key === 'Escape' &&
         !interactiveLayer &&
-        !document.querySelector('[role=dialog][data-state=open], [role=menu][data-state=open]')
+        !document.querySelector(
+          '[role=dialog][data-state=open], [role=alertdialog][data-state=open], [role=menu][data-state=open]',
+        )
       ) {
         event.preventDefault();
         closeNavigation.current?.();

@@ -65,6 +65,15 @@ import { File, Image, Inbox, ArrowLeft, RefreshCw, X, Terminal } from 'lucide-re
 import { Button } from './components/ui/button';
 import { IconButton } from './components/ui/icon-button';
 import { Alert, AlertDescription, AlertAction } from './components/ui/alert';
+import {
+  AlertDialog,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from './components/ui/alert-dialog';
 import { ConversationIdentity } from './ui/ConversationIdentity';
 import { WorkspacePanels } from './ui/WorkspacePanels';
 import { Menu } from './ui/primitives';
@@ -236,6 +245,7 @@ export function App({ owner }: { owner?: OwnerConnection }) {
     recovery.resources,
   );
   const [error, setError] = useState('');
+  const [unavailableChat, setUnavailableChat] = useState<string>();
   const [nav, setNav] = useState(false);
   const phone = useMedia('(max-width: 767px)');
   const [details, setDetails] = useState(
@@ -406,6 +416,7 @@ export function App({ owner }: { owner?: OwnerConnection }) {
   const scrollPositions = useRef(new Map<string, { top: number; follow: boolean }>());
   const closeNav = useCallback(() => setNav(false), []);
   useOverlayHistory(phone && nav, closeNav);
+  useOverlayHistory(unavailableChat !== undefined, () => setUnavailableChat(undefined));
   const navigationWasOpen = useRef(false);
   useLayoutEffect(() => {
     if (!phone) return;
@@ -616,6 +627,7 @@ export function App({ owner }: { owner?: OwnerConnection }) {
     setBlocked(false);
     setStreamState('opening');
     setError('');
+    setUnavailableChat(undefined);
     displayedRead.current = undefined;
     acknowledgedRead.current.clear();
     scrollPositions.current.clear();
@@ -1385,7 +1397,11 @@ export function App({ owner }: { owner?: OwnerConnection }) {
     bot: Bot,
     { restore = false }: { restore?: boolean } = {},
   ): Promise<'opened' | 'unavailable' | 'recovering' | 'superseded'> {
-    if (!client || !connectionAvailable || !bot.canonical) return 'unavailable';
+    if (!client || !connectionAvailable) return 'unavailable';
+    if (!bot.canonical) {
+      if (!restore) setUnavailableChat(bot.name);
+      return 'unavailable';
+    }
     rememberScroll();
     const generation = ++selectGeneration.current;
     setSwitching(!restore);
@@ -1506,6 +1522,11 @@ export function App({ owner }: { owner?: OwnerConnection }) {
       return current.current === client && selected.current === target ? 'opened' : 'superseded';
     } catch (error) {
       if (generation === selectGeneration.current && current.current === client) {
+        const failure = safeError(error);
+        if (!restore && failure.code === 'BOT_CHAT_MISSING') {
+          setUnavailableChat(bot.name);
+          return 'unavailable';
+        }
         if (
           restore &&
           ownerRef.current &&
@@ -1518,7 +1539,7 @@ export function App({ owner }: { owner?: OwnerConnection }) {
             'REQUEST_FAILED',
             'REQUEST_TIMEOUT',
             'UNAUTHORIZED',
-          ].includes(safeError(error).code)
+          ].includes(failure.code)
         ) {
           session.current?.retry(2000);
           return 'recovering';
@@ -1535,6 +1556,29 @@ export function App({ owner }: { owner?: OwnerConnection }) {
         setSwitching(false);
       }
     }
+  }
+
+  function openFromNavigation(bot: Bot, detail?: { tab: 'files' | 'routines'; id: string }) {
+    if (!bot.canonical) {
+      void open(bot);
+      return;
+    }
+    navigate(() => {
+      setOrgOpen(false);
+      setArea('chat');
+      setSettings(false);
+      void open(bot).then((result) => {
+        if (
+          result === 'opened' &&
+          detail &&
+          selected.current?.kind === 'bot' &&
+          selected.current.bot.profile === bot.profile
+        ) {
+          setDetailsTarget(detail);
+          toggleDetails(true);
+        }
+      });
+    });
   }
 
   function openRoom(room: Row, { restore = false }: { restore?: boolean } = {}) {
@@ -2186,15 +2230,7 @@ export function App({ owner }: { owner?: OwnerConnection }) {
       states={agentStates}
       online={connectionAvailable}
       pinOrder={pinOrder}
-      onOpen={(bot) =>
-        navigate(() => {
-          setOrgOpen(false);
-          setArea('chat');
-          setSettings(false);
-          if (bot.canonical) void open(bot);
-          else setPickingAgents(true);
-        })
-      }
+      onOpen={openFromNavigation}
       onRoom={(room) =>
         navigate(() => {
           setOrgOpen(false);
@@ -3156,21 +3192,7 @@ export function App({ owner }: { owner?: OwnerConnection }) {
             client={client}
             onBot={(profile, detail) => {
               const bot = bots.find((b) => b.profile === profile);
-              if (bot)
-                navigate(() => {
-                  setOrgOpen(false);
-                  setSettings(false);
-                  void open(bot).then(() => {
-                    if (
-                      detail &&
-                      selected.current?.kind === 'bot' &&
-                      selected.current.bot.profile === profile
-                    ) {
-                      setDetailsTarget(detail);
-                      toggleDetails(true);
-                    }
-                  });
-                });
+              if (bot) openFromNavigation(bot, detail);
             }}
             onRoom={(room) =>
               navigate(() => {
@@ -3180,6 +3202,24 @@ export function App({ owner }: { owner?: OwnerConnection }) {
               })
             }
           />
+          <AlertDialog
+            open={unavailableChat !== undefined}
+            onOpenChange={(open) => {
+              if (!open) setUnavailableChat(undefined);
+            }}
+          >
+            <AlertDialogContent size="sm">
+              <AlertDialogHeader>
+                <AlertDialogTitle>Can’t open {unavailableChat}’s chat</AlertDialogTitle>
+                <AlertDialogDescription>No active Bot Chat in Hermes.</AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter className="justify-items-center group-data-[size=sm]/alert-dialog-content:grid-cols-1">
+                <AlertDialogCancel variant="secondary" className="min-w-20 max-md:min-h-11">
+                  Close
+                </AlertDialogCancel>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
           <DiscardChanges
             open={confirmNavigation}
             onOpenChange={setConfirmNavigation}
