@@ -452,7 +452,7 @@ The optional `workspace_settings: true` connect capability advertises `workspace
 the same native conversation. Request the preceding window with
 `chat.history { session_id, before: older }`. Keep the current window until that
 read succeeds, merge by durable `row_id`, and preserve the visible scroll anchor.
-The target is 60 native rows / 2 MiB; hidden rows still carry identity/coverage,
+The target is 60 native rows / 2 MiB; hidden rows advance `history_page.coverage: { count, max_row }` without appearing as message records,
 and a single larger supported row is never cut in the middle. An empty visible
 page may still have an older cursor. No cursor grants another session's access.
 

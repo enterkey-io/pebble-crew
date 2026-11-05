@@ -467,3 +467,20 @@ describe('bounded history recovery', () => {
     ).rejects.toThrow();
   });
 });
+
+it('advances aggregate history coverage without projecting hidden native records as messages', () => {
+  const history = decodeHistory({
+    messages: [],
+    history_page: { older: 'older', coverage: { count: 60, max_row: 305 } },
+  });
+  expect(history.messages).toEqual([]);
+  expect(history.coverage).toEqual({ count: 60, maxRow: 305 });
+  for (const coverage of [
+    { count: -1, max_row: 305 },
+    { count: 60, max_row: -1 },
+    { count: '60', max_row: 305 },
+  ])
+    expect(() =>
+      decodeHistory({ messages: [], history_page: { older: null, coverage } }),
+    ).toThrow();
+});

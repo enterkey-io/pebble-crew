@@ -274,9 +274,23 @@ export function decodeHistory(value: unknown): ConversationHistory {
     )
       maxRow = row.row_id;
   }
+  const coverage = page?.coverage === undefined ? undefined : record(page.coverage);
+  if (
+    coverage &&
+    (typeof coverage.count !== 'number' ||
+      !Number.isSafeInteger(coverage.count) ||
+      coverage.count < source.length ||
+      coverage.count > 10000 ||
+      typeof coverage.max_row !== 'number' ||
+      !Number.isSafeInteger(coverage.max_row) ||
+      coverage.max_row < maxRow)
+  )
+    throw new ClientError('INVALID_RESPONSE');
   return {
     messages: decodeNativeMessages(source),
-    coverage: { count: source.length, maxRow },
+    coverage: coverage
+      ? { count: Number(coverage.count), maxRow: Number(coverage.max_row) }
+      : { count: source.length, maxRow },
     ...(page ? { page: { older: page.older === null ? null : String(page.older) } } : {}),
   };
 }

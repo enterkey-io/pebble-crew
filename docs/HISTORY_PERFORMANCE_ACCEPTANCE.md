@@ -10,7 +10,8 @@ larger supported row is returned whole rather than silently truncated.
 Earlier messages are requested with a conversation-bound durable-row cursor.
 New messages cannot shift that boundary as an offset would. Native ordering,
 compaction visibility and inactive-row rules remain authoritative. Hidden rows
-retain identity/coverage without transferring private model scaffolding. Tools
+advance aggregate coverage and cursors without appearing as owner message records
+or transferring private model scaffolding. Tools
 retain durable row identities too. Recovery fetches just enough earlier pages to
 bridge a missed gap, then retains already loaded rows and local presentation
 identities. Paging preserves the visible reader anchor and unsent draft.

@@ -136,4 +136,9 @@ def read_page(server, session, before=None):
         first = next((m.get('row_id') for m in messages if type(m.get('row_id')) is int), None)
         if messages and more and first is None:
             raise ValueError('Native history has no durable page boundary')
-        return {'messages': messages, 'history_page': {'older': cursor(bound_key, first) if more and first else None}}
+        coverage = {'count': len(messages), 'max_row': max((m.get('row_id', 0) for m in messages), default=0)}
+        # Hidden native rows advance coverage/cursors, but are not owner message
+        # records (including the internal end-of-call instruction).
+        visible = [m for m in messages if m.get('role') in {'user', 'assistant', 'tool'}]
+        return {'messages': visible, 'history_page': {
+            'older': cursor(bound_key, first) if more and first else None, 'coverage': coverage}}
