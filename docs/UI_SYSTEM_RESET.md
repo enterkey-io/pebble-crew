@@ -1,5 +1,7 @@
 # Pebble Crew UI system reset
 
+Use the [UI standards](UI_STANDARDS.md) for current product patterns and the decision log.
+
 Date: 2026-10-16. Baseline inspected: `38f959b`. Status: implementation contract, **not visual approval or completed implementation**. This supersedes conflicting presentation recommendations in the starter design system and previous UX implementation plan. Native identity, security, history, approvals and transport contracts remain authoritative.
 
 ## Work and evidence

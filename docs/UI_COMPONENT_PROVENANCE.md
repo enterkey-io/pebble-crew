@@ -1,5 +1,7 @@
 # UI foundation source and verification
 
+Use the [UI standards](UI_STANDARDS.md) for current product patterns and the decision log.
+
 Pebble Crew owns its shadcn React component sources. The installed application,
 review entry and component workbench use `apps/web/src/main.tsx` and the same
 `ui/theme.css` graph. The workbench provides local samples; it does not connect

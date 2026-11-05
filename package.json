@@ -39,7 +39,7 @@
     "test:owner-worker": "node scripts/test-owner-worker.mjs",
     "test:owner-browser": "node scripts/test-owner-browser.mjs",
     "test:installed-plugin": "node scripts/test-installed-plugin.mjs",
-    "check:ui": "node scripts/check-ui-contract.mjs && node scripts/check-system-contract.mjs && node scripts/check-connection-contract.mjs"
+    "check:ui": "node scripts/check-ui-decisions.mjs && node scripts/check-ui-contract.mjs && node scripts/check-system-contract.mjs && node scripts/check-connection-contract.mjs"
   },
   "dependencies": {
     "@novnc/novnc": "1.7.0",

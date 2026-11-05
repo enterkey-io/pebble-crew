@@ -62,6 +62,9 @@ of profile roles; a Crew opens or reuses a real native room.
 
 ## Interface work and owner reports
 
+The [UI standards](docs/UI_STANDARDS.md) are the current reference for product
+patterns and their decision log.
+
 The [interface implementation plan](docs/PEBBLE_CREW_UI_PLAN.md) records the
 Astra review and the completed conversation/UI implementation. The [bug and improvement list](docs/BUGS_AND_IMPROVEMENTS.md) tracks owner reports, acceptance criteria and release status.
 
