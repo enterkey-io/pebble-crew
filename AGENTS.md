@@ -43,6 +43,13 @@ model-free and run that scenario only in disposable acceptance homes.
 Use the project [verification skill](.agents/skills/verify/SKILL.md) for the
 maintained app-driving recipe and feature map.
 
+Read the [UI standards](docs/UI_STANDARDS.md) before changing the interface.
+Record each new, revised, or exceptional UI decision there with its reason and
+evidence. Update the active rule and append a decision entry in the same pull
+request. If a UI diff follows an existing rule without changing it, cite the rule
+and give the reason in the PR description. The UI decision check validates the
+record or citation.
+
 For UI changes, run `npm run check`, the relevant production browser flows, and
 inspect settled desktop/phone screenshots. Use the native owner check when a
 profile, avatar, setup or chat contract changes. Tests establish the exercised
