@@ -132,3 +132,98 @@ test('sidebar resizes from its edge, keeps row contents inside, supports keyboar
   await handle.dblclick();
   await expect(rail).toHaveCSS('width', '352px');
 });
+
+test('three compact pins fit the narrow sidebar and photos stay circular', async ({
+  page,
+  context,
+}, info) => {
+  const phone = page.viewportSize()!.width < 768;
+  if (phone) await page.setViewportSize({ width: 320, height: 720 });
+  await context.addInitScript(() => localStorage.setItem('pebble-crew.sidebar-width', '280'));
+  const fixture = await installFixture(context);
+  const [main, , third] = fixture.state.bots;
+  main!.appearance.kind = 'photo';
+  third!.pinned = true;
+  const photo = await page.evaluate(() => {
+    const canvas = document.createElement('canvas');
+    canvas.width = 960;
+    canvas.height = 600;
+    const paint = canvas.getContext('2d')!;
+    const backdrop = paint.createLinearGradient(0, 0, 960, 600);
+    backdrop.addColorStop(0, '#2e666e');
+    backdrop.addColorStop(1, '#96d9c0');
+    paint.fillStyle = backdrop;
+    paint.fillRect(0, 0, 960, 600);
+    paint.fillStyle = '#244756';
+    paint.beginPath();
+    paint.moveTo(0, 600);
+    paint.lineTo(340, 220);
+    paint.lineTo(610, 520);
+    paint.lineTo(780, 340);
+    paint.lineTo(960, 550);
+    paint.lineTo(960, 600);
+    paint.fill();
+    return canvas.toDataURL('image/png');
+  });
+  let releasePhoto!: () => void;
+  const heldPhoto = new Promise<void>((resolve) => {
+    releasePhoto = resolve;
+  });
+  let photoRequests = 0;
+  await page.route('https://hermes.fixture.invalid/**/rpc', async (route) => {
+    const { operation, params } = route.request().postDataJSON();
+    if (operation === 'bots.appearance.get' && params.profile === 'arlo') {
+      photoRequests++;
+      await heldPhoto;
+      await route.fulfill({ json: { result: { data: photo } } });
+    } else {
+      await route.fallback();
+    }
+  });
+  await page.goto('/');
+  await expect(page.getByLabel('Message', { exact: true })).toBeEnabled();
+  const headerPhoto = page.locator('.pc-chat-identity .agent-avatar > img');
+  if (phone) await page.getByRole('button', { name: 'Toggle navigation', exact: true }).click();
+
+  const rail = phone
+    ? page.getByRole('region', { name: 'navigation', exact: true })
+    : page.getByRole('complementary', { name: 'Pebbles and crews', exact: true });
+  const pins = rail.locator('.pc-pins');
+  const tiles = pins.getByRole('button', { name: /Bot Chat$/ });
+  await expect(tiles).toHaveCount(3);
+  await expect(rail).toHaveCSS('width', phone ? '320px' : '280px');
+  const pinAvatar = tiles.first().locator('.agent-avatar');
+  const pinPhoto = pinAvatar.locator('img');
+  try {
+    await expect.poll(() => photoRequests).toBe(1);
+    await expect(pinAvatar.locator(':scope > img, :scope > svg')).toHaveCount(0);
+    await expect(headerPhoto).toHaveCount(0);
+  } finally {
+    releasePhoto();
+  }
+  await expect(headerPhoto).toHaveCSS('border-radius', '50%');
+  await expect(pinPhoto).toHaveCSS('border-radius', '50%');
+  await expect(pinPhoto).toHaveCSS('object-fit', 'cover');
+  await expect(pinPhoto).toHaveCSS('overflow', 'hidden');
+  await expect
+    .poll(() => pinPhoto.evaluate((image) => image.getBoundingClientRect().width))
+    .toBe(await pinPhoto.evaluate((image) => image.getBoundingClientRect().height));
+  await expect(tiles.first().getByRole('img', { name: 'Main Pebble' })).toBeVisible();
+  await expect(tiles.nth(1).getByText('Executive assistant')).toBeVisible();
+  const cards = await tiles.evaluateAll((nodes) =>
+    nodes.map((node) => {
+      const rect = node.getBoundingClientRect();
+      return { top: rect.top, height: rect.height };
+    }),
+  );
+  expect(cards.map((card) => card.top)).toEqual(Array(3).fill(cards[0]?.top));
+  expect(Math.max(...cards.map((card) => card.height))).toBeLessThan(150);
+  expect(photoRequests).toBe(1);
+  expect(await pins.evaluate((node) => node.scrollWidth)).toBe(
+    await pins.evaluate((node) => node.clientWidth),
+  );
+  await rail.screenshot({
+    animations: 'disabled',
+    path: info.outputPath('compact-photo-pins.png'),
+  });
+});

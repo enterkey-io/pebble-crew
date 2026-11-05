@@ -53,9 +53,8 @@
 }
 .pc-mobile-navigation .pc-pins {
   flex-wrap: nowrap;
-  gap: 8px;
-  margin-bottom: 20px;
-  padding-block: 8px;
+  margin-bottom: 12px;
+  padding-block: 4px;
   overflow-x: auto;
   scrollbar-width: none;
 }
@@ -63,10 +62,7 @@
   justify-content: flex-start;
 }
 .pc-mobile-navigation .pc-pin {
-  flex: 0 0 calc((100% - 16px) / 3);
-  width: calc((100% - 16px) / 3);
-  min-height: 164px;
-  max-width: 140px;
+  max-width: 120px;
 }
 .pc-mobile-navigation .pc-pin.is-selected,
 .pc-mobile-navigation .pc-pin:hover {

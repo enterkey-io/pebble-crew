@@ -1,5 +1,6 @@
 """Actual deferred management tools, avatars, layouts, groups and cron in disposable Hermes homes."""
 import asyncio
+import base64
 from copy import deepcopy
 from http.server import ThreadingHTTPServer
 import json
@@ -116,6 +117,17 @@ async def exercise(root, home, port):
         await service.invoke('workspace.detect_primary', {})
         state = store.read()
         await service.invoke('workspace.initialize', {'profile': 'default', 'handle': 'hermes', 'appearance': {'kind': 'shape', 'shape': 'pebble', 'color': 'iris'}, 'photo': None, 'expected_revision': state['revision']})
+        from PIL import Image
+        photo = io.BytesIO()
+        Image.new('RGBA', (1200, 800), (46, 102, 110, 160)).save(photo, format='PNG')
+        source_photo = 'data:image/png;base64,' + base64.b64encode(photo.getvalue()).decode()
+        asset = {'name': 'default', 'asset': 'avatar'}
+        assert (await gateway.call('profiles.set_asset', {**asset, 'data': source_photo}))['ok']
+        thumbnail = (await service.invoke('bots.appearance.get', {'profile': 'default'}))['data']
+        with Image.open(io.BytesIO(base64.b64decode(thumbnail.split(',', 1)[1]))) as image:
+            assert image.size == (256, 256) and image.mode == 'RGBA'
+            assert image.getpixel((128, 128))[3] == 160 and image.info == {}
+        assert (await gateway.call('profiles.get_asset', asset))['data'] == source_photo
         await gateway.call('bot_web.runtime.prepare', {'profile':'alpha'})
         await service.invoke('workspace.set_orchestrator', {'profile':'alpha','expected_revision':store.read()['revision']})
         souls = {p: (Path(get_profile_dir(p)) / 'SOUL.md').read_bytes() if (Path(get_profile_dir(p)) / 'SOUL.md').exists() else None for p in ('alpha', 'beta')}
@@ -193,7 +205,8 @@ async def exercise(root, home, port):
             assert (path.read_bytes() if path.exists() else None) == souls[profile]
             assert store.read()['bots'][profile]['role'] == roles[profile]
         print(json.dumps({'revision': gateway.build['revision'], 'actual_deferred_tool_schema': sorted(REQUIRED),
-            'native_avatar_metadata': True, 'section_move_without_native_membership_change': True,
+            'native_avatar_metadata': True, 'photo_thumbnail_preserves_native_original': True,
+            'section_move_without_native_membership_change': True,
             'group_identity_and_retry': True, 'native_routine_management': True,
             'models': 'deterministic localhost discovery/owner turn only'}))
     finally:

@@ -22,6 +22,56 @@ function release() {
     clock = undefined;
   }
 }
+const photoRequests = new WeakMap<SessionClient, Map<string, Promise<string | undefined>>>();
+
+function requestAvatarPhoto(client: SessionClient, profile: string, revision: number | undefined) {
+  let requests = photoRequests.get(client);
+  if (!requests) {
+    requests = new Map();
+    photoRequests.set(client, requests);
+  }
+  const key = `${profile}:${revision ?? ''}`;
+  const pending = requests.get(key);
+  if (pending) return pending;
+
+  const request = client
+    .invoke('bots.appearance.get', { profile })
+    .then((value) =>
+      value &&
+      typeof value === 'object' &&
+      'data' in value &&
+      typeof value.data === 'string' &&
+      /^data:image\/(png|jpeg|webp);base64,/.test(value.data)
+        ? value.data
+        : '',
+    )
+    .catch(() => undefined)
+    .finally(() => requests.delete(key));
+  requests.set(key, request);
+  return request;
+}
+
+function useSavedAvatarPhoto(
+  client: SessionClient | undefined,
+  profile: string | undefined,
+  revision: number | undefined,
+  identity = profile,
+) {
+  const [loaded, setLoaded] = useState<{ client: SessionClient; identity: string; data: string }>();
+  useEffect(() => {
+    if (!client || !profile || !identity) return;
+    let current = true;
+    void requestAvatarPhoto(client, profile, revision).then((data) => {
+      if (current && data !== undefined) setLoaded({ client, identity, data });
+    });
+    return () => {
+      current = false;
+    };
+  }, [client, profile, revision, identity]);
+
+  return loaded && loaded.client === client && loaded.identity === identity ? loaded.data : '';
+}
+
 export function AgentAvatar({
   id,
   look,
@@ -49,29 +99,12 @@ export function AgentAvatar({
 }) {
   const host = useRef<HTMLSpanElement>(null);
   const view = useRef<AvatarView | undefined>(undefined);
-  const [savedPhoto, setSavedPhoto] = useState('');
-  useEffect(() => {
-    let live = true;
-    if (look.kind === 'photo' && !photo && client && profile)
-      void client
-        .invoke('bots.appearance.get', { profile })
-        .then((data) => {
-          if (
-            live &&
-            data &&
-            typeof data === 'object' &&
-            'data' in data &&
-            typeof data.data === 'string' &&
-            /^data:image\/(png|jpeg|webp);base64,/.test(data.data)
-          )
-            setSavedPhoto(data.data);
-        })
-        .catch(() => undefined);
-    return () => {
-      live = false;
-      setSavedPhoto('');
-    };
-  }, [look.kind, photo, client, profile, revision]);
+  const savedPhoto = useSavedAvatarPhoto(
+    look.kind === 'photo' && !photo ? client : undefined,
+    profile,
+    revision,
+    id,
+  );
   const image = look.kind === 'photo' ? photo || savedPhoto : '';
   useEffect(() => {
     if (!host.current || look.kind !== 'shape') return;
@@ -143,12 +176,6 @@ export function AgentAvatar({
           </span>
         )
       )}
-      {look.kind === 'photo' && !image && (
-        <svg className="empty-photo size-full" viewBox="0 0 48 48" aria-hidden="true">
-          <circle cx="24" cy="18" r="7" />
-          <path d="M11 39v-3a13 13 0 0 1 26 0v3" />
-        </svg>
-      )}
     </span>
   );
 }
@@ -171,29 +198,8 @@ export function AvatarChooser({
   onBusyChange?: (busy: boolean) => void;
   revision?: number | undefined;
 }) {
-  const [storedPhoto, setStoredPhoto] = useState('');
+  const storedPhoto = useSavedAvatarPhoto(client, profile, revision);
   const fileInput = useRef<HTMLInputElement>(null);
-  useEffect(() => {
-    let live = true;
-    setStoredPhoto('');
-    if (client && profile)
-      void client
-        .invoke('bots.appearance.get', { profile })
-        .then((value) => {
-          const data = value as { data?: unknown };
-          if (
-            live &&
-            data &&
-            typeof data.data === 'string' &&
-            /^data:image\/(png|jpeg|webp);base64,/.test(data.data)
-          )
-            setStoredPhoto(data.data);
-        })
-        .catch(() => undefined);
-    return () => {
-      live = false;
-    };
-  }, [client, profile, revision]);
   const [error, setError] = useState('');
   const [decoding, setDecoding] = useState(false);
   const missingPhoto = look.kind === 'photo' && !photo && !storedPhoto;

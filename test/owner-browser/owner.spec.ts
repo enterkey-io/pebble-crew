@@ -128,8 +128,9 @@ test('private first use, native onboarding, idle keepalive and reconnection', as
   await page.clock.runFor(7100);
   expect(await face.getAttribute('transform')).not.toBe(initialGaze);
   await picker.getByRole('button', { name: 'Photo', exact: true }).click();
-  await expect(picker.locator('.avatar-preview svg.avatar')).toHaveCount(0);
-  await expect(picker.locator('.empty-photo')).toHaveCount(1);
+  await expect(
+    picker.getByRole('img', { name: 'Selected avatar' }).locator('img, svg'),
+  ).toHaveCount(0);
   await expect(page.getByRole('button', { name: 'Start chatting', exact: true })).toBeDisabled();
   await expect(picker.getByRole('button', { name: 'Upload photo', exact: true })).toBeVisible();
   await picker.getByRole('button', { name: 'Animated', exact: true }).click();
