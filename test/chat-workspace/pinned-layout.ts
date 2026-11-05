@@ -3,6 +3,7 @@ import type { Locator } from '@playwright/test';
 
 export async function expectPinnedLayout(pins: Locator) {
   await expect(pins.locator('.pc-pin-title')).toHaveText(['Team lead', 'Executive assistant']);
+  await expectPinRoleContrast(pins);
   const layout = await pins.evaluateAll((tiles) =>
     tiles.map((tile) => {
       const card = tile.getBoundingClientRect();
@@ -72,4 +73,45 @@ export async function expectPinnedLayout(pins: Locator) {
   expect(Math.min(...layout.map((tile) => tile.cardBottom - tile.titleBottom))).toBeLessThanOrEqual(
     12,
   );
+}
+
+export async function expectPinRoleContrast(pins: Locator) {
+  const roles = pins.locator('.pc-pin-title');
+  await expect(roles.first()).toBeVisible();
+  await expect
+    .poll(async () =>
+      Math.min(
+        ...(await roles.evaluateAll((elements) => {
+          const canvas = document.createElement('canvas');
+          canvas.width = canvas.height = 1;
+          const paint = canvas.getContext('2d')!;
+          const luminance = (color: string) => {
+            paint.fillStyle = color;
+            paint.fillRect(0, 0, 1, 1);
+            const [r, g, b] = Array.from(paint.getImageData(0, 0, 1, 1).data, (byte) => {
+              const channel = byte / 255;
+              return channel <= 0.04045 ? channel / 12.92 : ((channel + 0.055) / 1.055) ** 2.4;
+            });
+            return 0.2126 * r! + 0.7152 * g! + 0.0722 * b!;
+          };
+          return elements.map((element) => {
+            const foreground = luminance(getComputedStyle(element).color);
+            let surface: Element = element;
+            while (
+              getComputedStyle(surface).backgroundColor === 'rgba(0, 0, 0, 0)' &&
+              surface.parentElement
+            )
+              surface = surface.parentElement;
+            const background = luminance(getComputedStyle(surface).backgroundColor);
+            return (
+              (Math.max(foreground, background) + 0.05) / (Math.min(foreground, background) + 0.05)
+            );
+          });
+        })),
+      ),
+    )
+    .toBeGreaterThanOrEqual(4.5);
+  for (const role of await roles.all()) {
+    await expect(role).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
+  }
 }

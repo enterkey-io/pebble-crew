@@ -93,7 +93,7 @@ export function WorkspacePanels({
         id="navigation-panel"
         panelRef={panel}
         disabled={phone}
-        style={phone ? { display: 'contents' } : undefined}
+        style={phone ? { display: 'contents' } : { overflow: 'clip' }}
         defaultSize={phone ? 0 : initialWidth}
         minSize={phone ? 0 : 280}
         maxSize={phone ? 0 : 960}

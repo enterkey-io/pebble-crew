@@ -1,6 +1,7 @@
 import { test, expect } from '@playwright/test';
 import type { Locator, Page } from '@playwright/test';
 import { installFixture } from '../chat-workspace/fixtures';
+import { expectPinRoleContrast } from '../chat-workspace/pinned-layout';
 
 test.use({
   serviceWorkers: 'block',
@@ -129,13 +130,12 @@ for (const theme of ['dark', 'light'])
         ),
       ).toBe(true);
     }
-    const styles = await pin.evaluate((e) => ({
-      size: getComputedStyle(e).fontSize,
-      background: getComputedStyle(e).backgroundColor,
-    }));
-    await expect(row).toHaveCSS('font-size', styles.size);
-    await expect(row).toHaveCSS('background-color', styles.background);
-    expect(styles.background).not.toBe('rgba(0, 0, 0, 0)');
+    await expect(row).toHaveCSS(
+      'font-size',
+      await pin.evaluate((e) => getComputedStyle(e).fontSize),
+    );
+    await expect(row).not.toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
+    await expectPinRoleContrast(navigation.locator('.pc-pins'));
     for (const button of await header.getByRole('button').all()) {
       const svg = button.locator('svg').first();
       if (await svg.count()) expect((await svg.boundingBox())!.width).toBeGreaterThanOrEqual(20);

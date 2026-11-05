@@ -52,21 +52,8 @@
   padding: 8px 12px 20px;
 }
 .pc-mobile-navigation .pc-pins {
-  flex-wrap: nowrap;
   margin-bottom: 12px;
   padding-block: 4px;
-  overflow-x: auto;
-  scrollbar-width: none;
-}
-.pc-mobile-navigation .pc-pins:has(> :nth-child(4)) {
-  justify-content: flex-start;
-}
-.pc-mobile-navigation .pc-pin {
-  max-width: 120px;
-}
-.pc-mobile-navigation .pc-pin.is-selected,
-.pc-mobile-navigation .pc-pin:hover {
-  background: transparent;
 }
 .pc-mobile-navigation .pc-row:not(.pc-crew-member) .pc-member-face > .agent-avatar {
   width: 48px;
