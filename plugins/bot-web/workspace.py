@@ -215,7 +215,7 @@ def appearance(value):
     return dict(value)
 
 
-def normalize_photo(data):
+def normalize_photo(data, *, size=512):
     if not isinstance(data, str) or len(data) > 2_800_000 or not re.fullmatch(r'data:image/(png|jpeg|webp);base64,[A-Za-z0-9+/=]+', data):
         raise InvalidOperation('Choose a PNG, JPEG or WebP photo')
     from PIL import Image, ImageOps
@@ -229,9 +229,10 @@ def normalize_photo(data):
             with Image.open(io.BytesIO(blob)) as source:
                 if source.format not in {'PNG', 'JPEG', 'WEBP'} or source.width * source.height > 16_000_000 or max(source.size) > 8192 or getattr(source, 'n_frames', 1) != 1:
                     raise ValueError()
-                image = ImageOps.fit(ImageOps.exif_transpose(source).convert('RGB'), (512, 512))
+                mode = 'RGBA' if 'A' in source.getbands() or 'transparency' in source.info else 'RGB'
+                image = ImageOps.fit(ImageOps.exif_transpose(source).convert(mode), (size, size))
                 # Fresh raster drops EXIF/GPS, filename and embedded metadata.
-                clean = Image.new('RGB', image.size)
+                clean = Image.new(mode, image.size)
                 clean.paste(image)
                 output = io.BytesIO()
                 clean.save(output, format='PNG')
@@ -641,7 +642,11 @@ class WorkspaceService:
             if profile not in state['bots']:
                 raise InvalidOperation('Profile unavailable')
             asset = await self.ops.gateway.call('profiles.get_asset', {'name': profile, 'asset': 'avatar'})
-            return {'appearance': state['bots'][profile]['appearance'], 'data': asset.get('data') if asset.get('found') else None}
+            try:
+                thumbnail = normalize_photo(asset.get('data'), size=256) if asset.get('found') else None
+            except InvalidOperation:
+                thumbnail = None
+            return {'appearance': state['bots'][profile]['appearance'], 'data': thumbnail}
         fields_by_operation = {
             'bots.appearance.update': ['profile', 'appearance', 'photo', 'expected_revision'],
             'bots.update_handle': ['profile', 'handle', 'expected_revision'],
