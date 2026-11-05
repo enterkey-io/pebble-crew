@@ -54,7 +54,7 @@ test('reload restores a selected room and waits for its history', async ({ page,
 });
 
 for (const theme of ['light', 'dark'] as const) {
-  test(`startup shows one animated Main Pebble above the progress line in ${theme}`, async ({
+  test(`startup shows one unbadged animated pebble above the progress line in ${theme}`, async ({
     page,
     context,
   }, info) => {
@@ -106,6 +106,8 @@ for (const theme of ['light', 'dark'] as const) {
       await expect(progress).toBeVisible();
       await expect(page.getByRole('heading')).toHaveCount(0);
       await expect(avatar).toHaveClass(/avatar-pebble/);
+      await expect(body.locator(':scope > path')).toHaveAttribute('fill', '#aca8ed');
+      await expect(avatar.locator('[aria-label="Main Pebble"]')).toHaveCount(0);
       const first = await track.boundingBox();
       if (!first) throw new Error('Missing startup progress line');
       releaseAuth();
@@ -115,6 +117,7 @@ for (const theme of ['light', 'dark'] as const) {
       releaseConnect();
       await expect(avatar).toHaveClass(/avatar-cairn/);
       await expect(body.locator(':scope > path')).toHaveAttribute('fill', '#8dcec6');
+      await expect(avatar.locator('[aria-label="Main Pebble"]')).toHaveCount(0);
       await expect(page.getByRole('progressbar')).toHaveCount(1);
       await expect(page.getByLabel('Message', { exact: true })).toHaveCount(0);
       await expect(page.getByRole('button', { name: 'Sign out', exact: true })).toHaveCount(0);
@@ -149,6 +152,9 @@ for (const theme of ['light', 'dark'] as const) {
       await expect(progress).toHaveCount(0);
       await expect(avatar).toHaveCount(0);
       await page.screenshot({ path: info.outputPath('startup-restored.png') });
+      if (page.viewportSize()!.width < 768)
+        await page.getByRole('button', { name: 'Toggle navigation', exact: true }).click();
+      await expect(page.locator('.pinned-tile [aria-label="Main Pebble"]')).toBeVisible();
     } finally {
       releaseAuth();
       releaseConnect();
