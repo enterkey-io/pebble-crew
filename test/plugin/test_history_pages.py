@@ -14,8 +14,12 @@ class HistoryPagesTests(unittest.TestCase):
     def setUp(self):
         self.rows = [{'id': i, 'role': 'assistant' if i % 2 else 'user', 'content': f'Native row {i}'} for i in range(1, 306)]
         self.calls = []
+        self.append_during_reads = False
         def get_messages(key, **options):
             self.calls.append(options)
+            if self.append_during_reads and len(self.calls) % 2 == 0:
+                start = self.rows[-1]['id'] + 1
+                self.rows += [{'id': i, 'role': 'assistant', 'content': 'Arrived during lookup'} for i in range(start, start + 17)]
             self.assertEqual(key, 'canonical')
             self.assertTrue(options['include_compacted'] and options['include_ancestors'] and options['latest'])
             reverse = self.rows[::-1][options['offset']:][:options['limit']]
@@ -41,6 +45,15 @@ class HistoryPagesTests(unittest.TestCase):
         self.assertEqual(seen, list(range(1, 306)))
         self.assertEqual(self.rows[:305], original)
         self.assertTrue(all(call['limit'] == PAGE_ROWS + 1 for call in self.calls))
+
+    def test_appends_between_native_offset_reads_cannot_duplicate_or_skip_predecessors(self):
+        page = read_page(self.server, {})
+        self.append_during_reads = True
+        seen = [row['row_id'] for row in page['messages']]
+        while page['history_page']['older']:
+            page = read_page(self.server, {}, page['history_page']['older'])
+            seen = [row['row_id'] for row in page['messages']] + seen
+        self.assertEqual(seen, list(range(1, 306)))
 
     def test_hidden_page_keeps_cursor_and_background_content_never_crosses_stdio(self):
         for row in self.rows[-60:]:

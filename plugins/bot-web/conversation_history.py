@@ -96,28 +96,28 @@ def read_page(server, session, before=None):
             # display history into stdio/HTTP or retain it on the phone.
             legacy = [{**row, 'id': row['_row_id']} for row in db.get_messages_as_conversation(
                 key, include_ancestors=True, include_row_ids=True) if type(row.get('_row_id')) is int]
-        offset, selected, found = 0, [], row_id is None
+        offset, selected, anchor = 0, [], row_id
         while True:
             batch = legacy[::-1][offset:][:PAGE_ROWS + 1][::-1] if legacy is not None else db.get_messages(
                 key, include_compacted=True, include_ancestors=True, latest=True, limit=PAGE_ROWS + 1, offset=offset)
-            if not batch:
-                if not found:
-                    raise ValueError('History changed; reload its earlier pages')
+            if anchor is None:
+                selected = batch
                 break
-            if not found:
-                index = next((i for i, row in enumerate(batch) if row['id'] == row_id), None)
-                if index is not None:
-                    selected = batch[:index]
-                    found = True
-            else:
-                selected = batch + selected
-            if found and (len(selected) > PAGE_ROWS or len(batch) < PAGE_ROWS + 1):
-                break
-            if len(batch) < PAGE_ROWS + 1:
-                if not found:
-                    raise ValueError('History changed; reload its earlier pages')
-                break
-            offset += len(batch)
+            index = next((i for i, row in enumerate(batch) if row['id'] == anchor), None)
+            if index is not None:
+                # Only take predecessors from the SAME native read as the
+                # durable anchor. Never combine offset pages across a write:
+                # concurrent appends can otherwise duplicate or skip rows.
+                selected = batch[:index] + selected
+                if len(selected) > PAGE_ROWS or len(batch) < PAGE_ROWS + 1:
+                    break
+                if index:
+                    anchor, offset = selected[0]['id'], 0
+                    continue
+            elif len(batch) < PAGE_ROWS + 1:
+                raise ValueError('History changed; reload its earlier pages')
+            # Overlap the boundary row when it is the first row of a batch.
+            offset += PAGE_ROWS
         more = len(selected) > PAGE_ROWS
         chosen = selected[-PAGE_ROWS:]
         messages = display_rows(server, chosen, session.get('profile_home'))
