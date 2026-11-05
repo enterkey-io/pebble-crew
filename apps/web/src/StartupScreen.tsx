@@ -23,7 +23,6 @@ export function StartupScreen({
               shape: mainPebble?.appearance.shape ?? 'pebble',
               color: mainPebble?.appearance.color ?? 'iris',
             }}
-            orchestrator={!!mainPebble}
             large
           />
         </div>
