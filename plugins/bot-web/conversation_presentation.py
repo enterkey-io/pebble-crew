@@ -31,7 +31,7 @@ def project_message(row):
 
 
 def project_result(method, result):
-    if method not in {'session.resume', 'session.history', 'bot_web.conversation.snapshot'} or not isinstance(result, dict):
+    if method not in {'session.resume', 'session.history', 'bot_web.conversation.history', 'bot_web.conversation.snapshot'} or not isinstance(result, dict):
         return result
     projected = dict(result)
     if isinstance(result.get('inflight'), dict):

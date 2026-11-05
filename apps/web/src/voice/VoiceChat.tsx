@@ -212,11 +212,11 @@ export const VoiceChat = forwardRef<
         call.speak(id, 'That request failed. Please check the error in chat.');
         return;
       }
-      const { messages: history } = await new ConversationDomain(client).history(sessionId);
-      if (generation.current !== epoch || live.current !== call) return;
-      const reply = history.find(
-        (message) => message.id === String(result.assistant) && message.role === 'assistant',
+      const reply = await new ConversationDomain(client).message(
+        sessionId,
+        String(result.assistant),
       );
+      if (generation.current !== epoch || live.current !== call) return;
       if (reply?.text) call.speak(id, reply.text);
       else call.think(id, 'The result is available in chat.');
     } catch {
@@ -238,8 +238,10 @@ export const VoiceChat = forwardRef<
       const early = receipts.current.accept(request.id, response);
       call.think(request.id, 'The selected agent is handling your request.');
       const data = record(response);
-      const { messages: history } = await new ConversationDomain(client).history(sessionId);
-      const user = history.find((message) => message.id === String(data.user_row_id));
+      const user = await new ConversationDomain(client).message(
+        sessionId,
+        String(data.user_row_id),
+      );
       if (user && generation.current === epoch) onAccepted(user);
       if (early) await finish(early);
     } catch (cause) {

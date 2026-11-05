@@ -383,7 +383,7 @@ export class BotBridgeClient {
       const response = await this.#fetch(url, this.#options(controller, method, body, token));
       this.#lifetime.assertCurrent(generation);
       await this.#check(response, url);
-      const data = await readBoundedJson(response, 4 * 1024 * 1024);
+      const data = await readBoundedJson(response, 32 * 1024 * 1024);
       this.#lifetime.assertCurrent(generation);
       return data;
     } catch (error) {

@@ -87,6 +87,7 @@ export async function installFixture(
     organization?: OrganizationState;
     messages?: (Record<string, unknown> & { row_id: number })[];
     open?: (profile: string) => unknown | Promise<unknown>;
+    historyPage?: (params: Record<string, unknown>) => unknown | Promise<unknown>;
   } = {},
 ) {
   const messages = options.messages ?? history;
@@ -575,12 +576,14 @@ export async function installFixture(
             running: false,
           };
     if (operation === 'chat.history')
-      result = {
-        messages: messages.map((m) => ({
-          ...m,
-          display_metadata: { reactions: reactions.get(m.row_id) ?? [] },
-        })),
-      };
+      result = options.historyPage
+        ? await options.historyPage(params)
+        : {
+            messages: messages.map((m) => ({
+              ...m,
+              display_metadata: { reactions: reactions.get(m.row_id) ?? [] },
+            })),
+          };
     if (operation === 'chat.react') {
       const previous = reactions.get(params.row_id) ?? [];
       const next = previous.filter((r) => r.author !== 'user');

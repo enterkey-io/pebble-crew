@@ -14,6 +14,7 @@ import type { WorkspaceSnapshot as WorkspaceState } from '@hermes-client/protoco
 import type { SessionClient } from '@hermes-client/protocol';
 import type { Row } from '../conversation';
 export function Inspector({
+  active = true,
   bot,
   room,
   workspace,
@@ -28,6 +29,7 @@ export function Inspector({
   filesVersion,
   target,
 }: {
+  active?: boolean;
   bot?: ChatBot | undefined;
   room?: Row | undefined;
   workspace?: WorkspaceState | undefined;
@@ -45,9 +47,12 @@ export function Inspector({
   const [tab, setTab] = useState('routines'),
     [computer, setComputer] = useState(false);
   useEffect(() => {
-    let live = true;
     setComputer(false);
     setTab((current) => (current === 'computer' ? 'routines' : current));
+  }, [client, bot?.profile]);
+  useEffect(() => {
+    if (!active) return;
+    let live = true;
     if (client.supportsComputer && bot)
       void client
         .invoke('computer.status', { profile: bot.profile })
@@ -58,7 +63,7 @@ export function Inspector({
     return () => {
       live = false;
     };
-  }, [client, bot?.profile]);
+  }, [client, bot?.profile, active]);
   useEffect(() => {
     if (target) setTab(target.tab);
   }, [target, bot?.profile]);
@@ -114,6 +119,7 @@ export function Inspector({
                 client.supportsAttachments || client.supportsGeneratedMedia ? (
                   sessionId ? (
                     <FilesPanel
+                      active={active}
                       key={sessionId}
                       client={client}
                       sessionId={sessionId}

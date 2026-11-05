@@ -160,7 +160,7 @@ class BotOperations:
                     # Do not resurrect deliberately retired chats or fork a second canonical.
                     raise InvalidOperation("Open this bot's Bot Chat once in Hermes first")
                 stamp = await self.stamp(bot["name"])
-                live = await self.gateway.call("session.resume", {"profile": bot["name"],
+                live = await self.gateway.call("bot_web.conversation.resume", {"profile": bot["name"],
                     "session_id": canonical["id"]})
                 sid = identifier(live["session_id"])
                 if await self.stamp(bot['name']) != stamp:
@@ -174,6 +174,7 @@ class BotOperations:
                 live = await self.gateway.call('bot_web.conversation.snapshot', {'session_id': sid})
                 return {"session_id": sid, "profile": bot["name"],
                         "canonical_id": canonical["id"], "messages": live.get("messages", []),
+                        **({"history_page": live["history_page"]} if "history_page" in live else {}),
                         "inflight": live.get("inflight"), "running": live.get("running") is True,
                         "active_user_row_id": live.get('active_user_row_id'),
                         "live_assistant_row_ids": live.get('live_assistant_row_ids', []),
@@ -191,7 +192,7 @@ class BotOperations:
                 raise InvalidOperation('Conversation changed during snapshot', 'CONVERSATION_CHANGED')
             return {**result, 'session_id': sid, 'profile': profile}
         if operation in {"chat.send", "chat.stop", "chat.history", "chat.approvals", "chat.approve", "chat.replay", "chat.react"}:
-            extras = {"chat.send": ["text"], "chat.approve": ["request_id", "choice"],
+            extras = {"chat.history": (["before"] if "before" in params else []), "chat.send": ["text"], "chat.approve": ["request_id", "choice"],
                       "chat.replay": ["last_seen"], "chat.react": ["row_id", "emoji"]}.get(operation, [])
             fields(params, ["session_id", *extras])
             sid = identifier(params["session_id"])
@@ -200,9 +201,9 @@ class BotOperations:
             await self.bot(self.sessions[sid])
             if await self.stamp(self.sessions[sid]) != self.session_incarnations.get(sid):
                 raise InvalidOperation('This conversation belongs to a retired profile; open the current pebble')
-            native_params = {"session_id": sid}
+            native_params = {"session_id": sid, **({"before": params["before"]} if operation == "chat.history" and "before" in params else {})}
             method = {"chat.send": "prompt.submit", "chat.stop": "session.interrupt",
-                      "chat.history": "session.history", "chat.approvals": "approval.pending",
+                      "chat.history": "bot_web.conversation.history", "chat.approvals": "approval.pending",
                       "chat.approve": "approval.respond", "chat.replay": "session.events.since",
                       "chat.react": "message.react"}[operation]
             if operation == 'chat.react':
@@ -238,6 +239,8 @@ class BotOperations:
                     raise InvalidOperation("Invalid cursor")
                 native_params["last_seen"] = cursor
             result = await self.gateway.call(method, native_params)
+            if operation == "chat.history" and result.get("history_unavailable"):
+                raise InvalidOperation("Earlier history changed; reopen this conversation")
             if operation == "chat.approvals":
                 result = {**result, "approvals": [{**row, "choices": approval_choices(row)} for row in result["approvals"]]}
             return result

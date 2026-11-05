@@ -134,6 +134,15 @@ export class SendProjection {
     });
   }
 
+  prepend(earlier: ChatMessage[], displayed: ChatMessage[]) {
+    const known = new Set(displayed.flatMap((row) => (row.id ? [row.id] : [])));
+    const prefix = earlier.filter((row) => !row.id || !known.has(row.id));
+    for (const pending of this.pending.values())
+      for (const row of prefix) if (row.id) pending.before.add(row.id);
+    this.latest = [...prefix, ...this.latest];
+    return [...prefix, ...displayed];
+  }
+
   restore({
     history,
     corrections,
@@ -189,7 +198,11 @@ export class SendProjection {
           if (pending.acknowledged && pending.deferred && !pending.nativeId)
             this.pending.delete(id);
       return {
-        messages: this.project(nativeMessages),
+        messages: this.project(
+          nativeMessages.filter(
+            (row) => !(row.role === 'assistant' && row.id && liveAssistantIds?.includes(row.id)),
+          ),
+        ),
         stream: this.cuts.length || !corrections.length ? assistant : '',
       };
     }

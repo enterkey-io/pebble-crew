@@ -63,7 +63,7 @@ class NativeGateway:
             sys.executable, str(Path(__file__).with_name("native_entry.py")),
             stdin=asyncio.subprocess.PIPE, stdout=asyncio.subprocess.PIPE,
             # Native stderr may contain tool output. Do not duplicate it in HTTP logs.
-            stderr=asyncio.subprocess.DEVNULL, limit=4 * 1024 * 1024, env=env,
+            stderr=asyncio.subprocess.DEVNULL, limit=32 * 1024 * 1024, env=env,
         )
         self.reader = asyncio.create_task(self._read())
         self.healthy = True

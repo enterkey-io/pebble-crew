@@ -444,3 +444,22 @@ precedence. The native policy engine owns scope and pattern persistence.
 These scopes do not apply to `requests.approve` agent-management proposals.
 
 The optional `workspace_settings: true` connect capability advertises `workspace.features.set`. Stored `features` values do not advertise API support. Tasks visibility is separate from native `projects` support: disabling it retains native Kanban access and data.
+
+## Recent conversation history (0.7.17 and later)
+
+`bot.open`, `chat.snapshot` and `chat.history` return a recent display window plus
+`history_page: { older: string | null }`. A non-null cursor is opaque and bound to
+the same native conversation. Request the preceding window with
+`chat.history { session_id, before: older }`. Keep the current window until that
+read succeeds, merge by durable `row_id`, and preserve the visible scroll anchor.
+The target is 60 native rows / 2 MiB; hidden rows still carry identity/coverage,
+and a single larger supported row is never cut in the middle. An empty visible
+page may still have an older cursor. No cursor grants another session's access.
+
+The binding is installed before the stream-positioned open snapshot; clients
+need not request the same history again after opening. Buffer events during
+recovery and use `stream_position`/native IDs to reconcile them. Pending approvals,
+questions and secrets are separate reads and are not limited to the recent page.
+RPC response and native stdio JSON reads are bounded at 32 MiB. Request-body,
+attachment, event-framing and authorization rules remain in force. An invalidated
+history cursor is a failed history read, not proof the native gateway disconnected.

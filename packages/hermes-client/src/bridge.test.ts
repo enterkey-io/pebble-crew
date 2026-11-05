@@ -409,3 +409,27 @@ describe('full-profile photo routing', () => {
     },
   );
 });
+
+describe('large bounded native responses', () => {
+  it('accepts a response above the former 4 MiB limit while retaining the 32 MiB ceiling', async () => {
+    const fetcher = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(connectedResponse())
+      .mockResolvedValueOnce(Response.json({ result: { text: 'x'.repeat(8 * 1024 * 1024) } }))
+      .mockResolvedValueOnce(
+        new Response('{}', {
+          headers: {
+            'content-length': String(32 * 1024 * 1024 + 1),
+            'content-type': 'application/json',
+          },
+        }),
+      );
+    const client = new BotBridgeClient(endpoint, token, fetcher);
+    await client.connect();
+    const result = await client.invoke('chat.history', { session_id: 'synthetic' });
+    expect(result).toHaveProperty('text', 'x'.repeat(8 * 1024 * 1024));
+    await expect(client.invoke('chat.history', { session_id: 'synthetic' })).rejects.toMatchObject({
+      code: 'RESPONSE_TOO_LARGE',
+    });
+  });
+});

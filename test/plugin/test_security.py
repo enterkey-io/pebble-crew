@@ -39,7 +39,7 @@ class Native:
                 {"name": "alpha", "ui_meta": {"hermes-bots": {"title": "Alpha"}},
                  "canonical_session": {"id": "root-alpha"}},
                 {"name": "ordinary", "ui_meta": {}}]}
-        if method == "session.resume":
+        if method == "bot_web.conversation.resume":
             return {"session_id": "live-alpha", "messages": []}
         if method == "approval.pending":
             return {"approvals": [{"request_id": "alpha-request", "choices": ["once", "deny"]}]}
@@ -105,7 +105,7 @@ class BoundaryTests(unittest.IsolatedAsyncioTestCase):
         second = await self.connected()
         opened = await self.http.post("/v1/rpc", json={"operation": "bot.open", "params": {"profile": "alpha"}}, headers=first)
         self.assertEqual(opened.status_code, 200)
-        self.assertIn(("session.resume", {"profile": "alpha", "session_id": "root-alpha"}), self.native.calls)
+        self.assertIn(("bot_web.conversation.resume", {"profile": "alpha", "session_id": "root-alpha"}), self.native.calls)
         response = await self.http.post("/v1/rpc", json={"operation": "chat.send", "params": {"session_id": "live-alpha", "text": "hi"}}, headers=second)
         self.assertEqual(response.status_code, 400)
         self.assertFalse(any(method == "prompt.submit" for method, _ in self.native.calls))
@@ -168,6 +168,7 @@ class NativeFailureTests(unittest.IsolatedAsyncioTestCase):
                 gateway, "call", AsyncMock(side_effect=[{}, {"driver": True}, {"supported": True}])):
             await gateway.start()
             await gateway.reader
+        self.assertEqual(launch.call_args.kwargs["limit"], 32 * 1024 * 1024)
         env = launch.call_args.kwargs["env"]
         self.assertFalse(any(key.startswith("HERMES_BOT_WEB_") for key in env))
         self.assertEqual(env["MODEL_API_KEY"], "synthetic-provider")

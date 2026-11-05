@@ -184,6 +184,13 @@ export function App({ owner }: { owner?: OwnerConnection }) {
   const [selection, setSelection] = useState<Selection>();
   const [starting, setStarting] = useState(true);
   const [messages, setMessages] = useState<Message[]>([]);
+  const retainedMessages = useRef(messages);
+  retainedMessages.current = messages;
+  const [historyPage, setHistoryPage] = useState<{ sessionId: string; older: string | null }>();
+  const [olderLoading, setOlderLoading] = useState(false);
+  const [olderError, setOlderError] = useState('');
+  const olderFlight = useRef(false);
+  const prependAnchor = useRef(false);
   const sendProjection = useRef(new SendProjection());
   const runEpoch = useRef(0);
   const [routines, setRoutines] = useState<Row[]>([]);
@@ -530,6 +537,11 @@ export function App({ owner }: { owner?: OwnerConnection }) {
     target.kind === 'bot'
       ? `bot:${target.bot.id ?? target.bot.profile}`
       : `room:${text(target.room.room_id)}`;
+  const [inspectedConversation, setInspectedConversation] = useState('');
+  const inspectorKey = selection ? draftKey(selection) : '';
+  useEffect(() => {
+    if (details) setInspectedConversation(inspectorKey);
+  }, [details, inspectorKey]);
   const attentionKey = workspace?.id + ':' + (selection ? draftKey(selection) : '');
   let attentionNavigation = attentionNavigations.current.get(attentionKey);
   if (!attentionNavigation) {
@@ -556,7 +568,7 @@ export function App({ owner }: { owner?: OwnerConnection }) {
   useEffect(() => {
     let live = true;
     setSharedFiles([]);
-    if (client?.supportsAttachments && fileSession)
+    if (client?.supportsAttachments && fileSession && historyPage?.sessionId !== fileSession)
       void new ConversationDomain(client)
         .files(fileSession)
         .then((files) => {
@@ -566,7 +578,7 @@ export function App({ owner }: { owner?: OwnerConnection }) {
     return () => {
       live = false;
     };
-  }, [client, fileSession, filesVersion]);
+  }, [client, fileSession, filesVersion, historyPage?.sessionId]);
   async function checkAttachmentSend(discard = false) {
     if (!client || selection?.kind !== 'bot') return;
     const target = selection,
@@ -899,6 +911,62 @@ export function App({ owner }: { owner?: OwnerConnection }) {
     );
   }
 
+  async function loadOlderHistory() {
+    const target = selected.current,
+      connection = current.current;
+    if (
+      !connection ||
+      target?.kind !== 'bot' ||
+      historyPage?.sessionId !== target.sessionId ||
+      !historyPage.older ||
+      olderFlight.current
+    )
+      return;
+    olderFlight.current = true;
+    setOlderLoading(true);
+    setOlderError('');
+    try {
+      const page = await new ConversationDomain(connection).older(
+        target.sessionId,
+        historyPage.older,
+      );
+      if (current.current !== connection || selected.current !== target) return;
+      followLatest.current = false;
+      transcriptFollow.current?.cancel();
+      captureDetailsAnchor();
+      prependAnchor.current = true;
+      setMessages((previous) => sendProjection.current.prepend(page.messages, previous));
+      setHistoryPage({ sessionId: target.sessionId, older: page.page?.older ?? null });
+    } catch {
+      if (current.current === connection && selected.current === target)
+        setOlderError('Earlier messages could not be loaded.');
+    } finally {
+      olderFlight.current = false;
+      setOlderLoading(false);
+    }
+  }
+  useLayoutEffect(() => {
+    if (prependAnchor.current) {
+      prependAnchor.current = false;
+      restoreDetailsAnchor();
+      rememberScroll();
+    }
+  }, [messages, restoreDetailsAnchor]);
+  useEffect(() => {
+    const target = selected.current;
+    if (!client || !details || documentReader.state || target?.kind !== 'bot') return;
+    let active = true;
+    void client
+      .invoke('routines.list', { profile: target.bot.profile })
+      .then((value) => {
+        if (active && selected.current === target) setRoutines(rows(object(value).jobs ?? []));
+      })
+      .catch(() => undefined);
+    return () => {
+      active = false;
+    };
+  }, [client, details, selection, documentReader.state]);
+
   async function refreshHistory(connection: SessionClient, target: Selection, complete = false) {
     if (target.kind !== 'bot' || selectionConnection.current !== connection) return;
     // Native history can already contain a partial turn. Keep it out of the
@@ -906,7 +974,10 @@ export function App({ owner }: { owner?: OwnerConnection }) {
     if (sendProjection.current.replying && !complete) return;
     const terminalEpoch = runEpoch.current;
     const generation = ++historyGeneration.current;
-    const data = await new ConversationDomain(connection).history(target.sessionId);
+    const data = await new ConversationDomain(connection).history(
+      target.sessionId,
+      retainedMessages.current,
+    );
     if (current.current === connection && selected.current === target) {
       if (
         generation === historyGeneration.current &&
@@ -1243,11 +1314,18 @@ export function App({ owner }: { owner?: OwnerConnection }) {
             }
           : undefined;
       },
+      history: () => retainedMessages.current,
       receive: (event) => receive(connection, event),
       apply: (snapshot, identity) => {
         const target = selected.current;
         if (current.current !== connection || target !== identity || target.kind !== 'bot') return;
         if (target.sessionId !== snapshot.sessionId) {
+          const previousId = target.sessionId;
+          setHistoryPage((previous) =>
+            previous?.sessionId === previousId
+              ? { ...previous, sessionId: snapshot.sessionId }
+              : previous,
+          );
           target.sessionId = snapshot.sessionId;
           const rebound = { ...target };
           selected.current = rebound;
@@ -1338,10 +1416,28 @@ export function App({ owner }: { owner?: OwnerConnection }) {
       setPickingAgents(false);
     }
     try {
+      const openRevision = session.current?.recoveryVersion ?? -1;
       openingChat.current = { generation, events: [] };
-      const data = await new ConversationDomain(client).open(bot.profile);
+      const previous = selected.current;
+      const retaining = restore && previous?.kind === 'bot' && previous.bot.profile === bot.profile;
+      const data = await new ConversationDomain(client).open(
+        bot.profile,
+        retaining ? retainedMessages.current : [],
+      );
       if (generation !== selectGeneration.current || current.current !== client)
         return 'superseded';
+      setHistoryPage((old) =>
+        data.history.page
+          ? {
+              sessionId: data.sessionId,
+              older:
+                retaining && old?.sessionId === previous.sessionId
+                  ? old.older
+                  : data.history.page.older,
+            }
+          : undefined,
+      );
+      setOlderError('');
       const target: Selection = { kind: 'bot', bot, sessionId: data.sessionId };
       if (!restore || !selected.current) setDraft(drafts.current.get(draftKey(target)) ?? '');
       if (!restore) {
@@ -1401,30 +1497,31 @@ export function App({ owner }: { owner?: OwnerConnection }) {
           );
         }
       }
-      const ownedRoutines = object(await client.invoke('routines.list', { profile: bot.profile }));
-      if (current.current !== client || selected.current !== target) return 'superseded';
-      setRoutines(rows(ownedRoutines.jobs ?? []));
       await refreshApprovals(client, target);
-      // The first open also authorizes this browser's event subscription for
-      // the session. Snapshot once more after that authorization; positions
-      // merge events that race the response, even under continuous streaming.
       if (current.current !== client || selected.current !== target) return 'superseded';
-      openingChat.current = { generation, events: [] };
-      const snapshotRevision = session.current?.recoveryVersion ?? -1;
-      const snapshot = await (client.supportsConnectionRecovery
-        ? new ConversationDomain(client).snapshot(target.sessionId)
-        : new ConversationDomain(client).open(bot.profile));
-      if (current.current !== client || selected.current !== target) return 'superseded';
-      const final = sendProjection.current.restore(snapshot);
-      streamHandoff.current.restore(snapshot.streamPosition, snapshot.running);
-      observedHistory(target, snapshot.history.coverage);
-      setMessages(final.messages);
-      setRunning(snapshot.running);
-      setStream(final.stream);
-      const remaining = openingChat.current.events;
-      openingChat.current = undefined;
-      for (const event of remaining) await receive(client, event);
-      conversationFeed.current?.cover(target, snapshotRevision);
+      if (data.history.page) {
+        // The native binding is installed before its snapshot. Buffered events
+        // have native stream positions, so a second history transfer is redundant.
+        conversationFeed.current?.cover(target, openRevision);
+      } else {
+        // Older plugin releases did not make that bounded-open guarantee.
+        openingChat.current = { generation, events: [] };
+        const snapshotRevision = session.current?.recoveryVersion ?? -1;
+        const snapshot = await (client.supportsConnectionRecovery
+          ? new ConversationDomain(client).snapshot(target.sessionId, retainedMessages.current)
+          : new ConversationDomain(client).open(bot.profile));
+        if (current.current !== client || selected.current !== target) return 'superseded';
+        const final = sendProjection.current.restore(snapshot);
+        streamHandoff.current.restore(snapshot.streamPosition, snapshot.running);
+        observedHistory(target, snapshot.history.coverage);
+        setMessages(final.messages);
+        setRunning(snapshot.running);
+        setStream(final.stream);
+        const remaining = openingChat.current.events;
+        openingChat.current = undefined;
+        for (const event of remaining) await receive(client, event);
+        conversationFeed.current?.cover(target, snapshotRevision);
+      }
       return current.current === client && selected.current === target ? 'opened' : 'superseded';
     } catch (error) {
       if (generation === selectGeneration.current && current.current === client) {
@@ -1932,8 +2029,9 @@ export function App({ owner }: { owner?: OwnerConnection }) {
     }
   }
   const capabilities = conversationCapabilities(client, selection?.kind ?? 'none');
-  const detailsContent = client && (
+  const detailsContent = client && (details || inspectedConversation === inspectorKey) && (
     <Inspector
+      active={details && !documentReader.state}
       bot={selection?.kind === 'bot' ? selection.bot : undefined}
       room={selection?.kind === 'room' ? selection.room : undefined}
       workspace={workspace}
@@ -2580,6 +2678,28 @@ export function App({ owner }: { owner?: OwnerConnection }) {
                         acknowledgeRead();
                       }}
                     >
+                      {selection?.kind === 'bot' &&
+                        historyPage?.sessionId === selection.sessionId &&
+                        historyPage.older && (
+                          <div className="flex flex-col items-center gap-1 py-3">
+                            <Button
+                              variant="quiet"
+                              size="sm"
+                              disabled={olderLoading}
+                              onClick={() => void loadOlderHistory()}
+                            >
+                              Earlier messages
+                            </Button>
+                            <div className="w-32">
+                              <LoadingBar active={olderLoading} label="Loading earlier messages" />
+                            </div>
+                            {olderError && (
+                              <p role="status" className="text-xs text-muted-foreground">
+                                {olderError}
+                              </p>
+                            )}
+                          </div>
+                        )}
                       <LiveTranscript
                         text={liveText}
                         projection={sendProjection.current}

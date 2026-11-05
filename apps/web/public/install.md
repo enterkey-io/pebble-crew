@@ -260,6 +260,8 @@ Routines stay in agent chats, separate from project boards.
 
 General settings includes an installation-wide Tasks switch. It defaults on. Off hides Tasks/Plans navigation and creation and suspends saved strategic goals in the new runtime's text, voice and worker context. Native Kanban remains available for background work; no boards, tasks, Plans, project outcomes, routines, personas or credentials are deleted. Re-enabling restores existing data and does not dispatch work. Complete runtime synchronization/restart from the active release so enrolled agents use the current goal-context policy. Do not flip the owner's setting or run a model as an upgrade probe.
 
+This release includes the 32 MiB native/RPC transport limit and recent-first conversation loading. Update the combined app/plugin and synchronize enrolled runtimes through the existing procedure. Do not alter owner history or reset browser grants. Verify the served version; the owner may reload the PWA once to load the new client. Older history remains available on demand. Physical-phone performance validation is separate from these model-free install checks.
+
 Preserve `$HERMES_HOME/bot-web/` in full, including the new `work.sqlite` catalog
 bindings and recovery receipts. Native projects and tasks remain in Hermes. After
 host activation, synchronize enrolled runtime copies and restart their processes

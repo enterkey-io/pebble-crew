@@ -20,7 +20,7 @@ class FilesNative(Native):
         if method == 'bot_web.attachments':
             self.calls.append((method, params))
             return {'attached': True, 'ref_text': '@file /private/' + str(params.get('id', '')) + '.txt'}
-        if method == 'session.history':
+        if method == 'bot_web.conversation.history':
             return {'messages': self.history}
         if method == 'prompt.submit':
             self.calls.append((method, params))
@@ -83,3 +83,23 @@ class AttachmentTests(unittest.IsolatedAsyncioTestCase):
         self.store.path(row['id']).write_bytes(b'changed')
         with self.assertRaises(InvalidOperation): self.store.read(row)
         self.assertFalse(any(m=='prompt.submit' for m,_ in self.native.calls))
+
+    async def test_lost_attachment_receipt_can_be_reconciled_beyond_the_recent_page(self):
+        row = await self.upload()
+        self.native.fail = True
+        with self.assertRaises(NativeError):
+            await self.store.submit(self.ops, 'owner', {'session_id':'live-alpha', 'text':'Read',
+                'attachments':[row['id']], 'request_id':'lost-receipt'})
+        original = self.native.call
+        pages = []
+        async def call(method, params):
+            if method == 'bot_web.conversation.history':
+                pages.append(params)
+                return {'messages': [{'role':'user', 'text':row['id']}], 'history_page':{'older':None}} if params.get('before') == 'earlier' else {
+                    'messages':[{'role':'assistant','text':'Recent unrelated work'}], 'history_page':{'older':'earlier'}}
+            return await original(method, params)
+        with patch.object(self.native, 'call', side_effect=call):
+            result = await self.store.invoke(self.ops,'owner','files.reconcile',{'session_id':'live-alpha'})
+        self.assertEqual(result, {'state':'accepted','ids':[row['id']]})
+        self.assertEqual(len(pages), 2)
+        self.assertEqual(sum(method == 'prompt.submit' for method, _ in self.native.calls), 1)
