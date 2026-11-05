@@ -60,11 +60,16 @@ export async function expectPinnedLayout(pins: Locator) {
     expect(tile.nameOffset).toBeCloseTo(layout[0]!.nameOffset, 0);
     expect(tile.titleOffset).toBeCloseTo(layout[0]!.titleOffset, 0);
     expect(Math.abs(tile.centerOffset)).toBeLessThan(1);
-    expect(tile.heightRatio).toBeGreaterThanOrEqual(0.28);
+    expect(tile.avatarTop).toBeGreaterThanOrEqual(0);
+    expect(tile.avatarTop).toBeLessThanOrEqual(12);
     expect(tile.heightRatio).toBeLessThanOrEqual(0.37);
     expect(tile.nameTop).toBeGreaterThanOrEqual(tile.avatarBottom);
     expect(tile.titleTop).toBeGreaterThanOrEqual(tile.nameBottom);
     expect(tile.titleBottom).toBeLessThanOrEqual(tile.cardBottom);
     expect(tile.menuCount).toBe(0);
   }
+  // Equal-height pins can have labels with different line counts.
+  expect(Math.min(...layout.map((tile) => tile.cardBottom - tile.titleBottom))).toBeLessThanOrEqual(
+    12,
+  );
 }

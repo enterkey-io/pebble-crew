@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { Star } from 'lucide-react';
 import { UnreadDot } from './ui/UnreadDot';
 import { Button } from './components/ui/button';
@@ -22,33 +22,49 @@ function release() {
     clock = undefined;
   }
 }
-const photoRequests = new WeakMap<SessionClient, Map<string, Promise<string | undefined>>>();
+type AvatarPhoto = { request: Promise<string | undefined>; data?: string };
+const photoCache = new WeakMap<SessionClient, Map<string, AvatarPhoto>>();
+const maxCachedPhotos = 64;
 
-function requestAvatarPhoto(client: SessionClient, profile: string, revision: number | undefined) {
-  let requests = photoRequests.get(client);
-  if (!requests) {
-    requests = new Map();
-    photoRequests.set(client, requests);
+function requestAvatarPhoto(client: SessionClient, profile: string, key: string) {
+  let cache = photoCache.get(client);
+  if (!cache) {
+    cache = new Map();
+    photoCache.set(client, cache);
   }
-  const key = `${profile}:${revision ?? ''}`;
-  const pending = requests.get(key);
-  if (pending) return pending;
+  const previous = cache.get(key);
+  if (previous) {
+    cache.delete(key);
+    cache.set(key, previous);
+    return previous.request;
+  }
 
-  const request = client
-    .invoke('bots.appearance.get', { profile })
-    .then((value) =>
-      value &&
-      typeof value === 'object' &&
-      'data' in value &&
-      typeof value.data === 'string' &&
-      /^data:image\/(png|jpeg|webp);base64,/.test(value.data)
-        ? value.data
-        : '',
-    )
-    .catch(() => undefined)
-    .finally(() => requests.delete(key));
-  requests.set(key, request);
-  return request;
+  const entry: AvatarPhoto = {
+    request: client
+      .invoke('bots.appearance.get', { profile })
+      .then((value) => {
+        if (
+          value &&
+          typeof value === 'object' &&
+          'data' in value &&
+          typeof value.data === 'string' &&
+          /^data:image\/(png|jpeg|webp);base64,/.test(value.data)
+        ) {
+          entry.data = value.data;
+          return value.data;
+        }
+        if (cache.get(key) === entry) cache.delete(key);
+        return '';
+      })
+      .catch(() => {
+        if (cache.get(key) === entry) cache.delete(key);
+        return undefined;
+      }),
+  };
+  cache.set(key, entry);
+  const oldest = cache.keys().next();
+  if (cache.size > maxCachedPhotos && !oldest.done) cache.delete(oldest.value);
+  return entry.request;
 }
 
 function useSavedAvatarPhoto(
@@ -58,18 +74,21 @@ function useSavedAvatarPhoto(
   identity = profile,
 ) {
   const [loaded, setLoaded] = useState<{ client: SessionClient; identity: string; data: string }>();
+  const key = JSON.stringify([profile, identity, revision]);
   useEffect(() => {
     if (!client || !profile || !identity) return;
     let current = true;
-    void requestAvatarPhoto(client, profile, revision).then((data) => {
+    void requestAvatarPhoto(client, profile, key).then((data) => {
       if (current && data !== undefined) setLoaded({ client, identity, data });
     });
     return () => {
       current = false;
     };
-  }, [client, profile, revision, identity]);
+  }, [client, profile, key, identity]);
 
-  return loaded && loaded.client === client && loaded.identity === identity ? loaded.data : '';
+  const cached = client && photoCache.get(client)?.get(key)?.data;
+  const current = loaded && loaded.client === client && loaded.identity === identity;
+  return cached ?? (current ? loaded.data : '');
 }
 
 export function AgentAvatar({
@@ -106,7 +125,7 @@ export function AgentAvatar({
     id,
   );
   const image = look.kind === 'photo' ? photo || savedPhoto : '';
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (!host.current || look.kind !== 'shape') return;
     const motion = matchMedia('(prefers-reduced-motion: reduce)');
     const avatar = new AvatarView(

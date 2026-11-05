@@ -1,6 +1,6 @@
 import { test, expect } from '@playwright/test';
 import AxeBuilder from '@axe-core/playwright';
-import { installFixture } from './fixtures';
+import { emit, installFixture } from './fixtures';
 
 test.use({ serviceWorkers: 'block' });
 test('appearance is applied before the application module starts', async ({ page, context }) => {
@@ -226,4 +226,72 @@ test('three compact pins fit the narrow sidebar and photos stay circular', async
     animations: 'disabled',
     path: info.outputPath('compact-photo-pins.png'),
   });
+});
+
+test('reopening a section reuses its photo and an edited photo refreshes', async ({
+  page,
+  context,
+}, info) => {
+  const fixture = await installFixture(context, {
+    organization: {
+      revision: 1,
+      sections: [
+        { id: 'pebbles', name: 'Pebbles', collapsed: false, items: [] },
+        {
+          id: 'design',
+          name: 'Design',
+          collapsed: false,
+          items: [3, 4].map((index) => ({
+            kind: 'pebble',
+            id: `identity-${index}`,
+            placementId: `row-${index}`,
+            shortcut: false,
+          })),
+        },
+      ],
+    },
+  });
+  fixture.state.bots[3]!.appearance.kind = 'photo';
+  const [original, edited] = await page.evaluate(() =>
+    ['#334b53', '#879d65'].map((color) => {
+      const canvas = document.createElement('canvas');
+      canvas.width = canvas.height = 32;
+      const context = canvas.getContext('2d')!;
+      context.fillStyle = color;
+      context.fillRect(0, 0, 32, 32);
+      return canvas.toDataURL();
+    }),
+  );
+  let photo = original;
+  let reads = 0;
+  await page.route('**/v1/rpc', async (route) => {
+    const { operation, params } = route.request().postDataJSON();
+    if (operation === 'bots.appearance.get' && params.profile === 'sage') {
+      reads++;
+      await route.fulfill({ json: { result: { data: photo } } });
+    } else await route.fallback();
+  });
+
+  await page.goto('/');
+  await expect(page.getByLabel('Message', { exact: true })).toBeEnabled();
+  if (page.viewportSize()!.width < 768)
+    await page.getByRole('button', { name: 'Toggle navigation', exact: true }).click();
+  const section = page.getByRole('button', { name: 'Design', exact: true });
+  const sage = page.getByRole('button', { name: /^Sage .*Bot Chat$/ });
+  const ember = page.getByRole('button', { name: /^Ember .*Bot Chat$/ });
+  const avatar = sage.locator('.agent-avatar > img');
+  await expect(avatar).toHaveAttribute('src', original!);
+  await section.click();
+  await expect(sage).toHaveCount(0);
+  await section.click();
+  await expect(avatar).toHaveAttribute('src', original!);
+  await expect(ember.locator('svg.avatar')).toBeVisible();
+  expect(reads).toBe(1);
+  await page.screenshot({ animations: 'disabled', path: info.outputPath('reopened-section.png') });
+
+  photo = edited;
+  fixture.state.revision++;
+  await emit(page, 'workspace.changed');
+  await expect(avatar).toHaveAttribute('src', edited!);
+  expect(reads).toBe(2);
 });
