@@ -100,8 +100,9 @@ export function WorkspacePanels({
         groupResizeBehavior="preserve-pixel-size"
       >
         <aside
-          className={phone ? 'pc-mobile-navigation' : 'pc-rail sidebar'}
+          className={phone ? 'pc-mobile-navigation outline-none' : 'pc-rail sidebar'}
           role={phone ? 'region' : 'complementary'}
+          tabIndex={phone ? -1 : undefined}
           aria-label={phone ? 'navigation' : 'Pebbles and crews'}
           aria-hidden={phone ? !navigationOpen : undefined}
           inert={phone && !navigationOpen}
