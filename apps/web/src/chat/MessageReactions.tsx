@@ -25,34 +25,70 @@ export function ReactionPicker({
   disabled?: boolean;
 }) {
   const [pending, setPending] = useState(false);
+  const [open, setOpen] = useState(false);
   const trigger = useRef<HTMLButtonElement>(null);
-  const [container, setContainer] = useState<HTMLElement | null>(null);
+  const menu = useRef<HTMLDivElement>(null);
+  const keyboard = useRef(false);
   const own = reactions.find((r) => r.author === 'user')?.emoji;
-  return (
-    <DropdownMenu
-      modal={false}
-      onOpenChange={(open) => {
-        if (open) setContainer(trigger.current?.closest('main') ?? null);
-      }}
+  const button = (
+    <Button
+      ref={trigger}
+      variant="ghost"
+      size="icon-sm"
+      aria-label="React to message"
+      aria-haspopup="menu"
+      aria-expanded={open}
+      disabled={disabled || pending}
+      onClick={
+        open
+          ? undefined
+          : () => {
+              keyboard.current = false;
+              setOpen(true);
+            }
+      }
+      onKeyDown={
+        open
+          ? undefined
+          : (event) => {
+              if (['Enter', ' ', 'ArrowDown'].includes(event.key)) {
+                event.preventDefault();
+                keyboard.current = true;
+                setOpen(true);
+              }
+            }
+      }
     >
+      <SmilePlus />
+    </Button>
+  );
+  if (!open)
+    return (
       <Tooltip>
-        <TooltipTrigger asChild>
-          <DropdownMenuTrigger asChild>
-            <Button
-              ref={trigger}
-              variant="ghost"
-              size="icon-sm"
-              aria-label="React to message"
-              disabled={disabled || pending}
-            >
-              <SmilePlus />
-            </Button>
-          </DropdownMenuTrigger>
-        </TooltipTrigger>
+        <TooltipTrigger asChild>{button}</TooltipTrigger>
         <TooltipContent>React to message</TooltipContent>
       </Tooltip>
+    );
+  return (
+    <DropdownMenu modal={false} open onOpenChange={setOpen}>
+      <DropdownMenuTrigger asChild>{button}</DropdownMenuTrigger>
       <DropdownMenuContent
-        container={container}
+        ref={menu}
+        container={trigger.current?.closest('main') ?? null}
+        onFocusCapture={(event) => {
+          if (keyboard.current && event.target === event.currentTarget) {
+            keyboard.current = false;
+            requestAnimationFrame(() =>
+              menu.current
+                ?.querySelector<HTMLElement>('[role="menuitem"]')
+                ?.focus({ preventScroll: true }),
+            );
+          }
+        }}
+        onCloseAutoFocus={(event) => {
+          event.preventDefault();
+          requestAnimationFrame(() => trigger.current?.focus({ preventScroll: true }));
+        }}
         onInteractOutside={(event) => {
           const target = event.detail.originalEvent.target;
           if (target instanceof Node && trigger.current?.contains(target)) event.preventDefault();

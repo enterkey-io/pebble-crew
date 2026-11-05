@@ -3,7 +3,7 @@ import { ProactiveSetup } from './proactive/ProactiveSetup';
 import { PlansArea, BoardOutcome } from './work/PlansArea';
 import type { AttentionNavigation } from './chat/ConversationAttention';
 import { useSecretCards } from './chat/SecretCards';
-import { ConversationAttention } from './chat/ConversationAttention';
+import { ConversationAttention, useAttentionDocks } from './chat/ConversationAttention';
 import { useManagementRequests } from './chat/useManagementRequests';
 import type { TranscriptCard } from './chat/presentation';
 import type { SessionClient } from '@hermes-client/protocol';
@@ -41,7 +41,7 @@ const WorkspaceSettings = lazy(() =>
 );
 
 import { useMedia, scrollToLatest } from './ui/motion';
-import { roomMessages, withSharedFiles } from './conversation';
+import { roomMessages } from './conversation';
 import type { ChatMessage as Message } from './conversation';
 import { RosterLoader } from './chat/roster';
 import { useUploads } from './chat/uploads';
@@ -50,7 +50,8 @@ import { fileSize } from './chat/FilesPanel';
 import { Rail, PebbleAvatar, CrewAvatar } from './chat/Rail';
 import type { ChatBot as Bot } from './chat/Rail';
 import { useAgentExchanges } from './chat/AgentExchanges';
-import { Transcript } from './chat/Transcript';
+import { LiveTranscript } from './chat/LiveTranscript';
+import { LiveText } from './chat/live-text';
 import { Chat, ChatViewport } from './components/ai-elements/chat';
 import { Inspector } from './chat/Inspector';
 import { Icon } from './chat/Icon';
@@ -60,7 +61,7 @@ import { DetailsDock } from './ui/DetailsDock';
 import { VoiceChat } from './voice/VoiceChat';
 import type { VoiceChatHandle } from './voice/VoiceChat';
 import type { VoiceSettingsRequest } from './voice/decode';
-import { File, Image, Inbox, Menu as MenuIcon, RefreshCw, X, Terminal } from 'lucide-react';
+import { File, Image, Inbox, ArrowLeft, RefreshCw, X, Terminal } from 'lucide-react';
 import { Button } from './components/ui/button';
 import { IconButton } from './components/ui/icon-button';
 import { Alert, AlertDescription, AlertAction } from './components/ui/alert';
@@ -97,6 +98,7 @@ import { WorkArea } from './work/WorkArea';
 import { WorkDialog } from './work/WorkDialogs';
 import type { WorkDialogTarget } from './work/WorkDialogs';
 import { DocumentActions, DocumentReader, useDocumentReader } from './documents/DocumentReader';
+import type { DocumentSource } from './documents/DocumentReader';
 import { decodeDocumentRequest } from '@hermes-client/protocol';
 
 import { decodeWorkspaceSnapshot } from '@hermes-client/protocol';
@@ -204,7 +206,10 @@ export function App({ owner }: { owner?: OwnerConnection }) {
   const setDraft = (value: string) => inputDraft.current.set(value);
   const draftEdits = useRef(0);
   const attachmentDraft = useRef<{ conversation: string; edit: number } | undefined>(undefined);
-  const [stream, setStream] = useState('');
+  const [liveText] = useState(() => new LiveText());
+  const stream = liveText.get();
+  const setStream = liveText.set;
+  useEffect(() => () => liveText.dispose(), [liveText]);
   const [activity, setActivity] = useState('Ready');
   const [running, setRunning] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -373,7 +378,12 @@ export function App({ owner }: { owner?: OwnerConnection }) {
   const [reviewBusy, setReviewBusy] = useState(false);
   const [cardsVersion, setCardsVersion] = useState(0);
   const attentionNavigations = useRef(new Map<string, AttentionNavigation>());
-  const [requestFocus, setRequestFocus] = useState<string>();
+  const attentionDocks = useAttentionDocks();
+  const [requestFocus, updateRequestFocus] = useState<string>();
+  function setRequestFocus(id: string) {
+    attentionDocks.focus(id);
+    updateRequestFocus(id);
+  }
   const management = useManagementRequests({
     client: workspace ? client : undefined,
     scope: workspace?.id,
@@ -417,8 +427,30 @@ export function App({ owner }: { owner?: OwnerConnection }) {
   workspaceRef.current = workspace;
   const scrollPositions = useRef(new Map<string, { top: number; follow: boolean }>());
   const closeNav = useCallback(() => setNav(false), []);
+  useOverlayHistory(phone && nav, closeNav);
+  const navigationWasOpen = useRef(false);
+  useLayoutEffect(() => {
+    if (!phone) return;
+    const target = nav
+      ? '.pc-mobile-navigation [aria-label="Your account"]'
+      : navigationWasOpen.current
+        ? '.pc-chat-header [aria-label="Toggle navigation"]'
+        : null;
+    if (target) document.querySelector<HTMLElement>(target)?.focus({ preventScroll: true });
+    navigationWasOpen.current = nav;
+  }, [nav, phone]);
   const closeReview = useCallback(() => setReview(undefined), []);
   const [pickingAgents, setPickingAgents] = useState(false);
+  const followLiveText = useCallback(() => {
+    if (
+      !pickingAgents &&
+      document.visibilityState === 'visible' &&
+      followLatest.current &&
+      !scrollAnimating.current
+    )
+      transcriptFollow.current?.follow();
+  }, [pickingAgents]);
+
   const transcriptPane = useRef<HTMLDivElement>(null);
   const composer = useRef<HTMLTextAreaElement>(null);
   const authorBot = useCallback(
@@ -683,7 +715,7 @@ export function App({ owner }: { owner?: OwnerConnection }) {
       if (opening) transcriptFollow.current.snap();
       else transcriptFollow.current.follow();
     }
-  }, [messages, stream, pickingAgents, running, selection, settings, starting]);
+  }, [messages, pickingAgents, running, selection, settings, starting]);
   useLayoutEffect(() => {
     const pane = transcriptPane.current;
     if (!pane) return;
@@ -714,7 +746,27 @@ export function App({ owner }: { owner?: OwnerConnection }) {
     };
   }, []);
 
+  useEffect(() => {
+    if (!phone) return;
+    const blurComposer = () => {
+      if (document.activeElement === composer.current) composer.current?.blur();
+      focusOnReady.current = false;
+    };
+    const visibility = () => {
+      if (document.visibilityState === 'hidden') blurComposer();
+    };
+    document.addEventListener('visibilitychange', visibility);
+    window.addEventListener('pagehide', blurComposer);
+    return () => {
+      document.removeEventListener('visibilitychange', visibility);
+      window.removeEventListener('pagehide', blurComposer);
+    };
+  }, [phone]);
   useLayoutEffect(() => {
+    if (phone) {
+      focusOnReady.current = false;
+      return;
+    }
     if (
       focusOnReady.current &&
       !busy &&
@@ -726,8 +778,8 @@ export function App({ owner }: { owner?: OwnerConnection }) {
       focusOnReady.current = false;
       composer.current.focus();
     }
-  }, [busy, blocked, pickingAgents, selection, starting]);
-  function captureDetailsAnchor() {
+  }, [busy, blocked, pickingAgents, selection, starting, phone]);
+  const captureDetailsAnchor = useCallback(() => {
     detailsAnchor.current = undefined;
     const pane = transcriptPane.current;
     if (pane && !followLatest.current) {
@@ -741,7 +793,14 @@ export function App({ owner }: { owner?: OwnerConnection }) {
           offset: message.getBoundingClientRect().top - top,
         };
     }
-  }
+  }, []);
+  const openDocument = useCallback(
+    (source: DocumentSource) => {
+      captureDetailsAnchor();
+      documentReader.open(source);
+    },
+    [captureDetailsAnchor, documentReader.open],
+  );
   function toggleDetails(value: boolean) {
     detailsAnchor.current = undefined;
     captureDetailsAnchor();
@@ -826,7 +885,7 @@ export function App({ owner }: { owner?: OwnerConnection }) {
         followLatest.current = true;
         setShowLatest(false);
         acknowledgeRead();
-        composer.current?.focus({ preventScroll: true });
+        if (matchMedia('(pointer: fine)').matches) composer.current?.focus({ preventScroll: true });
       },
       () => {
         scrollAnimating.current = false;
@@ -1623,7 +1682,7 @@ export function App({ owner }: { owner?: OwnerConnection }) {
       sendProjection.current.begin(
         pendingMessage,
         messages,
-        running && target.kind === 'bot' ? stream : undefined,
+        running && target.kind === 'bot' ? liveText.get() : undefined,
       ),
     );
     setDraft('');
@@ -1969,6 +2028,8 @@ export function App({ owner }: { owner?: OwnerConnection }) {
 
   const rail = (
     <Rail
+      phone={phone}
+      active={!phone || nav}
       area={area}
       catalog={work.catalog}
       selectedBoard={workBoard}
@@ -2153,7 +2214,6 @@ export function App({ owner }: { owner?: OwnerConnection }) {
       />
     </Suspense>
   ) : null;
-  const transcript = sendProjection.current.display(messages, stream);
   const nativeCards: TranscriptCard[] = approvals.map((approval) => ({
     id: 'native-approval:' + approvalKey(approval.target),
     needsInput: approval.state === 'pending',
@@ -2194,26 +2254,17 @@ export function App({ owner }: { owner?: OwnerConnection }) {
   const attentionItems = [...requestCards, ...questionCards, ...nativeCards, ...secretCards].filter(
     (card) => card.needsInput,
   );
-  const awaitingInput = attentionItems.length > 0;
+  const inputMinimized = attentionDocks.isMinimized(attentionKey, attentionItems);
+  const awaitingInput = attentionItems.length > 0 && !inputMinimized;
   const actionBlocked =
     blocked || !connectionAvailable || (selection?.kind === 'bot' && !chatBound) || awaitingInput;
   return (
     <ConnectionRecovery.Provider value={recovery}>
-      <DocumentActions.Provider
-        value={(source) => {
-          captureDetailsAnchor();
-          documentReader.open(source);
-        }}
-      >
+      <DocumentActions.Provider value={openDocument}>
         <main
           data-live-updates={streamState}
           className={`pc-shell workspace ${settings && settingsTab !== 'agents' ? 'editing' : ''} ${(details || documentReader.state) && area === 'chat' && phone && !settings && !orgOpen ? 'phone-details' : ''}`}
         >
-          {nav && (
-            <Drawer title="navigation" onClose={closeNav}>
-              {rail}
-            </Drawer>
-          )}
           {proactiveOpen && workspace && work.catalog?.capabilities.proactive && (
             <ProactiveSetup
               client={client}
@@ -2221,7 +2272,16 @@ export function App({ owner }: { owner?: OwnerConnection }) {
               onClose={() => setProactiveOpen(false)}
             />
           )}
-          <WorkspacePanels navigation={rail} phone={phone}>
+          <WorkspacePanels
+            navigation={rail}
+            phone={phone}
+            navigationOpen={nav}
+            onCloseNavigation={closeNav}
+            onOpenNavigation={() => setNav(true)}
+            edgeNavigation={
+              area === 'chat' && !settings && !orgOpen && !details && !documentReader.state
+            }
+          >
             <Chat
               aria-busy={starting || switching}
               state={
@@ -2341,7 +2401,8 @@ export function App({ owner }: { owner?: OwnerConnection }) {
                         quiet
                         className="md:hidden"
                         label="Toggle navigation"
-                        icon={MenuIcon}
+                        tooltip={false}
+                        icon={ArrowLeft}
                         onClick={() => setNav(true)}
                       />
                       <ConversationIdentity
@@ -2495,7 +2556,11 @@ export function App({ owner }: { owner?: OwnerConnection }) {
                         acknowledgeRead();
                       }}
                     >
-                      <Transcript
+                      <LiveTranscript
+                        text={liveText}
+                        projection={sendProjection.current}
+                        files={sharedFiles}
+                        onTextLayout={followLiveText}
                         suppressedTools={agentExchanges.suppressedTools}
                         cards={[
                           ...agentExchanges.cards,
@@ -2576,8 +2641,7 @@ export function App({ owner }: { owner?: OwnerConnection }) {
                         onReact={
                           capabilities.reactions && connectionAvailable ? reactToMessage : undefined
                         }
-                        messages={withSharedFiles(transcript.messages, sharedFiles)}
-                        liveIds={transcript.liveIds}
+                        messages={messages}
                         onDownloadFile={(file) => {
                           if (selection?.kind !== 'bot') return;
                           void client
@@ -2629,7 +2693,7 @@ export function App({ owner }: { owner?: OwnerConnection }) {
                             </Button>
                           </section>
                         )}
-                      </Transcript>
+                      </LiveTranscript>
                       {agentExchanges.viewer}
                     </ChatViewport>
                     {!pickingAgents && (
@@ -2644,13 +2708,21 @@ export function App({ owner }: { owner?: OwnerConnection }) {
                           </Button>
                         )}
                         <RequestDiscoveryStatus management={management} />
-                        {awaitingInput && (
-                          <div className="pc-composer-wrap composer-wrap">
+                        {attentionItems.length > 0 && (
+                          <div
+                            className="pc-composer-wrap composer-wrap"
+                            style={inputMinimized ? { paddingBottom: 0 } : undefined}
+                          >
                             <ConversationAttention
                               key={selection ? draftKey(selection) : ''}
                               navigation={attentionNavigation}
                               items={attentionItems}
                               focusId={requestFocus}
+                              minimized={inputMinimized}
+                              onMinimize={() =>
+                                attentionDocks.minimize(attentionKey, attentionItems)
+                              }
+                              onExpand={() => attentionDocks.expand(attentionKey)}
                             />
                           </div>
                         )}

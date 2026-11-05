@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { installFixture } from './fixtures';
+import { installFixture, emit } from './fixtures';
 
 test.use({ serviceWorkers: 'block' });
 for (const theme of ['dark', 'light']) {
@@ -34,6 +34,7 @@ for (const theme of ['dark', 'light']) {
     await page.goto('/');
     const field = page.getByLabel('Message', { exact: true });
     await expect(field).toBeEnabled();
+    await field.blur();
     const frame = page.locator('[data-slot="prompt-input"]');
     await expect(frame).toHaveCSS('border-top-width', '0px');
     const edge = await frame.evaluate((node) => getComputedStyle(node).boxShadow);
@@ -79,9 +80,37 @@ for (const theme of ['dark', 'light']) {
       animations: 'disabled',
     });
     await field.fill('   ');
+    await field.blur();
     await expect(voice).toBeEnabled();
     await voice.click();
     await expect(page.getByRole('dialog', { name: /Edit/ })).toBeVisible();
     await expect(page.getByRole('button', { name: 'Use saved key', exact: true })).toBeVisible();
   });
 }
+
+test('working composer has one action: Stop outside the field, Send when focused or drafted', async ({
+  page,
+  context,
+}) => {
+  await installFixture(context);
+  await page.goto('/');
+  const field = page.getByLabel('Message', { exact: true });
+  await expect(field).toBeEnabled();
+  await field.blur();
+  await emit(page, 'message.start');
+  const action = page.locator('[data-action]');
+  await expect(action).toHaveCount(1);
+  await expect(page.getByRole('button', { name: 'Stop', exact: true })).toBeEnabled();
+  await field.focus();
+  await expect(page.getByRole('button', { name: 'Send message', exact: true })).toBeDisabled();
+  await expect(page.getByRole('button', { name: 'Stop', exact: true })).toHaveCount(0);
+  await field.fill('Redirect the agent');
+  await expect(page.getByRole('button', { name: 'Send message', exact: true })).toBeEnabled();
+  await expect(action).toHaveCount(1);
+  await expect(page.getByRole('button', { name: 'Stop', exact: true })).toHaveCount(0);
+  await field.blur();
+  await expect(page.getByRole('button', { name: 'Send message', exact: true })).toBeEnabled();
+  await field.fill('');
+  await field.blur();
+  await expect(page.getByRole('button', { name: 'Stop', exact: true })).toBeEnabled();
+});

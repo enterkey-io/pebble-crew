@@ -1,9 +1,10 @@
+import { submitMessage } from '../composer';
 import { test, expect } from '@playwright/test';
 import { installFixture, emit } from './fixtures';
 
 test.use({ serviceWorkers: 'block' });
 
-test('ordinary Send redirects working chat while Stop stays available and every message survives', async ({
+test('ordinary Send redirects working chat with one action and every message survives', async ({
   page,
   context,
 }, info) => {
@@ -33,14 +34,16 @@ test('ordinary Send redirects working chat while Stop stays available and every 
   await expect(input).toBeEnabled();
   await input.fill('Start the work');
   await expect(page.getByRole('button', { name: 'Send message', exact: true })).toBeEnabled();
-  await input.press('Enter');
+  await submitMessage(page);
   await expect.poll(() => sends).toBe(1);
   await emit(page, 'message.start');
   await emit(page, 'message.delta', { text: 'Here is the current work. ' });
   await expect(page.getByRole('log')).toContainText('Here is the current work.');
+  await input.blur();
+  await expect(page.getByRole('button', { name: 'Stop', exact: true })).toBeEnabled();
   await input.fill('Change direction');
   await expect(page.getByRole('button', { name: 'Send message', exact: true })).toBeEnabled();
-  await expect(page.getByRole('button', { name: 'Stop', exact: true })).toBeEnabled();
+  await expect(page.getByRole('button', { name: 'Stop', exact: true })).toHaveCount(0);
   await page.screenshot({ path: info.outputPath('send-and-stop.png'), animations: 'disabled' });
   const send = page.getByRole('button', { name: 'Send message', exact: true });
   const centers = await input.evaluate((field) => {
@@ -59,9 +62,9 @@ test('ordinary Send redirects working chat while Stop stays available and every 
   await send.click();
   await expect.poll(() => sends).toBe(2);
   try {
-    await expect(page.getByRole('button', { name: 'Stop', exact: true })).toBeEnabled();
     await input.fill('Use the revised direction');
-    await input.press('Enter');
+    await expect(page.getByRole('button', { name: 'Stop', exact: true })).toHaveCount(0);
+    await expect(send).toBeDisabled();
     expect(sends).toBe(2);
     await emit(page, 'message.delta', { text: 'Following the revised direction. ' });
   } finally {

@@ -1,4 +1,4 @@
-import { test, expect } from '@playwright/test';
+import { test, expect, devices } from '@playwright/test';
 import type { Browser } from '@playwright/test';
 import { writeFile, mkdir } from 'node:fs/promises';
 import { installFixture, history } from './fixtures';
@@ -11,11 +11,13 @@ async function measureTyping(
     label?: string;
     profile?: boolean;
     streaming?: boolean;
+    mobile?: boolean;
+    typing?: boolean;
     screenshot?: string;
   },
 ) {
   const context = await browser.newContext({
-    viewport: { width: 1440, height: 900 },
+    ...(options.mobile ? devices['Pixel 7'] : { viewport: { width: 1440, height: 900 } }),
     colorScheme: 'dark',
     serviceWorkers: 'block',
   });
@@ -28,6 +30,13 @@ async function measureTyping(
       })),
     });
     const page = await context.newPage();
+    let pageErrors = 0,
+      failedBridgeResponses = 0;
+    page.on('pageerror', () => pageErrors++);
+    page.on('response', (response) => {
+      if (new URL(response.url()).pathname.startsWith('/v1/') && !response.ok())
+        failedBridgeResponses++;
+    });
     await page.goto(options.url);
     const field = page.getByLabel('Message', { exact: true });
     await expect(field).toBeEnabled();
@@ -60,26 +69,34 @@ async function measureTyping(
       await cdp.send('Profiler.enable');
       await cdp.send('Profiler.start');
     }
-    if (options.streaming)
-      await page.evaluate(() => {
-        const receive = (window as unknown as { __chatEvent: (event: unknown) => void })
-          .__chatEvent;
-        const event = (type: string, payload = {}) =>
-          receive({ type, payload, session_id: 'session-arlo' });
-        event('message.start');
-        Object.assign(window, { __inputStreamChunks: 0 });
-        let emitted = 0;
-        const timer = setInterval(() => {
-          event('message.delta', { text: 'The next step is to review the project. ' });
-          Object.assign(window, { __inputStreamChunks: ++emitted });
-          if (emitted === 20) clearInterval(timer);
-        }, 100);
-      });
+    const streamChunks = Number(process.env.PEBBLE_INPUT_STREAM_CHUNKS ?? 20);
+    const streamIntervalMs = Number(process.env.PEBBLE_INPUT_STREAM_INTERVAL ?? 100);
     const before = await cdp.send('Performance.getMetrics');
+    const runStarted = performance.now();
+    if (options.streaming)
+      await page.evaluate(
+        ({ chunks, interval }) => {
+          const receive = (window as unknown as { __chatEvent: (event: unknown) => void })
+            .__chatEvent;
+          const event = (type: string, payload = {}) =>
+            receive({ type, payload, session_id: 'session-arlo' });
+          event('message.start');
+          Object.assign(window, { __inputStreamChunks: 0 });
+          let emitted = 0;
+          const timer = setInterval(() => {
+            event('message.delta', { text: 'The next step is to review the project. ' });
+            Object.assign(window, { __inputStreamChunks: ++emitted });
+            if (emitted === chunks) clearInterval(timer);
+          }, interval);
+        },
+        { chunks: streamChunks, interval: streamIntervalMs },
+      );
     const value = 'Please review this project and explain the next steps.';
     const started = performance.now();
-    await field.pressSequentially(value, { delay: options.streaming ? 20 : 0 });
-    await expect(field).toHaveValue(value);
+    if (options.typing !== false) {
+      await field.pressSequentially(value, { delay: options.streaming ? 20 : 0 });
+      await expect(field).toHaveValue(value);
+    }
     const elapsed = performance.now() - started;
     if (options.streaming) {
       await expect
@@ -88,9 +105,9 @@ async function measureTyping(
             () => (window as unknown as { __inputStreamChunks: number }).__inputStreamChunks,
           ),
         )
-        .toBe(20);
+        .toBe(streamChunks);
       await expect(page.locator('[data-message-phase="live"] .message-body')).toHaveText(
-        'The next step is to review the project. '.repeat(20).trim(),
+        'The next step is to review the project. '.repeat(streamChunks).trim(),
       );
     }
     await page.evaluate(
@@ -99,6 +116,7 @@ async function measureTyping(
           requestAnimationFrame(() => requestAnimationFrame(() => resolve())),
         ),
     );
+    const measuredElapsedMs = performance.now() - runStarted;
     const after = await cdp.send('Performance.getMetrics');
     const paints = await page.evaluate(
       () => (window as unknown as { __inputPaints: number[] }).__inputPaints,
@@ -112,12 +130,34 @@ async function measureTyping(
     );
     if (metrics.ScriptDuration === undefined)
       throw new Error('Browser did not report script duration');
-    expect(paints).toHaveLength(value.length);
+    await cdp.send('HeapProfiler.collectGarbage');
+    const retained = await cdp.send('Performance.getMetrics');
+    const resources = ['JSEventListeners', 'Nodes', 'JSHeapUsedSize'];
+    const beforeResources = Object.fromEntries(
+      before.metrics.filter((m) => resources.includes(m.name)).map((m) => [m.name, m.value]),
+    );
+    const retainedResources = Object.fromEntries(
+      retained.metrics.filter((m) => resources.includes(m.name)).map((m) => [m.name, m.value]),
+    );
+    expect(paints).toHaveLength(options.typing === false ? 0 : value.length);
+    expect(pageErrors).toBe(0);
+    expect(failedBridgeResponses).toBe(0);
     const result = {
+      pageErrors,
+      failedBridgeResponses,
+      measuredElapsedMs,
       scriptMs: metrics.ScriptDuration * 1000,
       count,
       streaming: !!options.streaming,
-      characters: value.length,
+      streamChunks: options.streaming ? streamChunks : 0,
+      streamIntervalMs: options.streaming ? streamIntervalMs : undefined,
+      replyCharacters: options.streaming
+        ? 'The next step is to review the project. '.length * streamChunks
+        : 0,
+      typing: options.typing !== false,
+      characters: options.typing === false ? 0 : value.length,
+      beforeResources,
+      retainedResources,
       elapsed,
       paints: paints.length,
       medianPaint: paints[Math.floor(paints.length / 2)],
@@ -126,7 +166,7 @@ async function measureTyping(
       metrics,
     };
     if (options.label) {
-      const directory = '.audit/request-input';
+      const directory = process.env.PEBBLE_INPUT_OUTPUT ?? '.audit/request-input';
       await mkdir(directory, { recursive: true });
       if (options.profile) {
         const { profile } = await cdp.send('Profiler.stop');
@@ -187,6 +227,8 @@ test('measures typing work in a production conversation', async ({ browser }, te
         label,
         profile: !!process.env.PEBBLE_INPUT_PROFILE,
         streaming: !!process.env.PEBBLE_INPUT_STREAM,
+        mobile: !!process.env.PEBBLE_INPUT_MOBILE,
+        typing: !process.env.PEBBLE_INPUT_NO_TYPING,
         screenshot: testInfo.outputPath(`${label}.png`),
       });
       console.log(JSON.stringify({ label, ...result }));

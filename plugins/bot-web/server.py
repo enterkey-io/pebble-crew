@@ -292,6 +292,16 @@ def create_app(token, origins, hosts, gateway=None, trust=None, workspace=None, 
             if reclaimable(idle, LEASE_SECONDS):
                 clients.pop(key)
         if len(clients) >= 8:
+            # A discarded page cannot release its lease. Reclaim only this principal's
+            # quiet, ended stream under pressure; live/polling tabs and writes stay owned.
+            abandoned = [(key, client) for key, client in clients.items()
+                if client["principal"] == request.scope["bot.principal"]
+                and not client["inflight"] and client["stream"] is None
+                and client["ended"] is not None
+                and time.monotonic() - max(client["ended"], client["touched"]) > HEARTBEAT_SECONDS]
+            if abandoned:
+                clients.pop(min(abandoned, key=lambda entry: entry[1]["ended"])[0])
+        if len(clients) >= 8:
             return JSONResponse({"code": "CAPACITY"}, 429, headers={"Retry-After": "5"})
         connection = secrets.token_urlsafe(32)
         clients[connection] = {"touched": time.monotonic(), "stream": None,

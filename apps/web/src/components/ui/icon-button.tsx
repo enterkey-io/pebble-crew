@@ -6,30 +6,35 @@ type IconButtonProps = Omit<ComponentProps<typeof Button>, 'children' | 'aria-la
   label: string;
   icon: ComponentType<{ className?: string }>;
   quiet?: boolean;
+  tooltip?: boolean;
 };
 
 export function IconButton({
   label,
   icon: Glyph,
   quiet = false,
+  tooltip = true,
   variant = 'ghost',
   size = 'icon-sm',
   ...props
 }: IconButtonProps) {
-  return (
+  const button = (
+    <Button
+      type="button"
+      variant={quiet ? 'quiet' : variant}
+      size={size}
+      aria-label={label}
+      {...props}
+    >
+      <Glyph />
+    </Button>
+  );
+  return tooltip ? (
     <Tooltip>
-      <TooltipTrigger asChild>
-        <Button
-          type="button"
-          variant={quiet ? 'quiet' : variant}
-          size={size}
-          aria-label={label}
-          {...props}
-        >
-          <Glyph />
-        </Button>
-      </TooltipTrigger>
+      <TooltipTrigger asChild>{button}</TooltipTrigger>
       <TooltipContent>{label}</TooltipContent>
     </Tooltip>
+  ) : (
+    button
   );
 }

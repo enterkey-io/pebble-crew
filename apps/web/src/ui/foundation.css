@@ -51,8 +51,14 @@
   --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
   --scrollbar-thumb: #3b3a43;
   --scrollbar-thumb-hover: #575561;
+  --text-caption: 12px;
+  --text-meta: 13px;
+  --text-ui: 14px;
+  --text-chat: 14px;
   --text-field: 13px;
   --text-composer: 14px;
+  --app-safe-top: env(safe-area-inset-top, 0px);
+  --app-safe-bottom: env(safe-area-inset-bottom, 0px);
   --chart-1: #a89cbe;
   --chart-2: #94a68c;
   --chart-3: #c2a184;
@@ -107,7 +113,19 @@
   }
 }
 
+@media (max-width: 767px) {
+  :root {
+    --text-caption: 13px;
+    --text-meta: 14px;
+    --text-ui: 15px;
+    --text-chat: 16px;
+    --text-composer: max(17px, 1rem);
+  }
+}
+
 @theme inline {
+  --text-xs: var(--text-caption);
+  --text-sm: var(--text-ui);
   --animate-disclosure-expand: disclosure-expand var(--motion-overlay) var(--ease-out);
   --animate-disclosure-collapse: disclosure-collapse var(--motion-overlay) var(--ease-out);
   @keyframes disclosure-expand {

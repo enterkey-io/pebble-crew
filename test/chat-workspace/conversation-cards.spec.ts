@@ -1,4 +1,5 @@
 import { test, expect, type Page } from '@playwright/test';
+import AxeBuilder from '@axe-core/playwright';
 import { installFixture, emit } from './fixtures';
 
 test.use({ serviceWorkers: 'block' });
@@ -27,6 +28,7 @@ async function journal(page: Page, requests: Request[]) {
     fail: false,
     corrupt: false,
     lost: false,
+    blockedReview: false,
     corruptOld: false,
     failOld: false,
     reads: 0,
@@ -65,6 +67,16 @@ async function journal(page: Page, requests: Request[]) {
     if (operation === 'requests.get')
       return route.fulfill({
         json: { result: { request: requests.find((row) => row.id === params.id) ?? null } },
+      });
+    if (operation === 'requests.review' && control.blockedReview)
+      return route.fulfill({
+        json: {
+          result: {
+            kind: 'blocked',
+            reason:
+              'The affected setup needs a fresh proposal. This request has not been executed.',
+          },
+        },
       });
     if (operation === 'requests.approve' || operation === 'requests.deny') {
       decisions.push(params);
@@ -140,7 +152,8 @@ for (const theme of ['dark', 'light'] as const)
       animations: 'disabled',
     });
     await first.getByRole('button', { name: 'Approve exact request' }).click();
-    await expect(queue).toContainText('1 of 1');
+    await expect(queue).toBeVisible();
+    await expect(queue).not.toContainText('1 of 1');
     await expect(page.getByRole('log').locator('[data-request-id="first"]')).toContainText(
       'Approved',
     );
@@ -250,7 +263,8 @@ test('native approvals use the fixed queue, reject stale snapshots and leave rec
     animations: 'disabled',
   });
   await dock(page).getByRole('button', { name: 'Deny', exact: true }).click();
-  await expect(dock(page)).toContainText('1 of 1');
+  await expect(dock(page)).toBeVisible();
+  await expect(dock(page)).not.toContainText('1 of 1');
   await expect(page.getByRole('log')).toContainText('Tool action denied');
   fixture.setApprovals([]);
   await emit(page, 'approval.request');
@@ -351,7 +365,23 @@ test('question drafts and secret forms survive queue switching, navigation and r
   );
   await dock(page).getByRole('button', { name: 'Submit', exact: true }).click();
   await expect.poll(() => secretValue).toBe('synthetic-secret-do-not-record');
-  await expect(dock(page)).toContainText('1 of 1');
+  await expect(dock(page)).toBeVisible();
+  await expect(dock(page)).not.toContainText('1 of 1');
+  const actions = dock(page).locator('[data-slot="questionnaire-actions"]');
+  await expect(actions).toBeVisible();
+  await expect(actions.getByRole('button', { name: 'Skip', exact: true })).toBeVisible();
+  const actionBox = (await actions.boundingBox())!;
+  const skipBox = (await actions.getByRole('button', { name: 'Skip', exact: true }).boundingBox())!;
+  const submitBox = (await actions
+    .getByRole('button', { name: 'Submit', exact: true })
+    .boundingBox())!;
+  expect(Math.abs(skipBox.x - actionBox.x)).toBeLessThanOrEqual(1);
+  expect(
+    Math.abs(submitBox.x + submitBox.width - actionBox.x - actionBox.width),
+  ).toBeLessThanOrEqual(1);
+  await expect(dock(page).getByRole('button', { name: 'Next request', exact: true })).toHaveCount(
+    0,
+  );
   await page.screenshot({
     path: info.outputPath('question-input-queue.png'),
     animations: 'disabled',
@@ -378,7 +408,8 @@ for (const fault of ['corruptOld', 'failOld'] as const)
     const requests = [proposal('old')];
     const { control } = await journal(page, requests);
     await page.goto('/');
-    await expect(dock(page)).toContainText('1 of 1');
+    await expect(dock(page)).toBeVisible();
+    await expect(dock(page)).not.toContainText('1 of 1');
     requests.push(proposal('new-ron'));
     control[fault] = true;
     await emit(page, 'requests.changed');
@@ -532,4 +563,71 @@ test('an older native approval response cannot replace a newer queue snapshot', 
   } finally {
     release();
   }
+});
+
+test('a blocked approval can be minimized to chat, survives reconnect and reopens without a decision', async ({
+  page,
+  context,
+}, info) => {
+  await installFixture(context);
+  const requests = [proposal('blocked')];
+  const { decisions, control } = await journal(page, requests);
+  control.blockedReview = true;
+  const sends: string[] = [];
+  await page.route('**/v1/rpc', async (route) => {
+    const { operation, params } = route.request().postDataJSON();
+    if (operation === 'chat.send') sends.push(params.text);
+    await route.fallback();
+  });
+  await page.goto('/');
+  const queue = dock(page);
+  const field = page.getByLabel('Message', { exact: true });
+  await expect(queue).toContainText('needs a fresh proposal');
+  await expect(queue.getByRole('button', { name: 'Approve exact request' })).toBeDisabled();
+  await queue.getByRole('button', { name: 'Minimize request', exact: true }).click();
+  await expect(field).toBeEnabled();
+  await expect(queue.getByRole('button', { name: /Review pending requests$/ })).toBeVisible();
+  expect((await new AxeBuilder({ page }).analyze()).violations).toEqual([]);
+  await field.fill('The approval needs a fresh proposal. Please help.');
+  await page.getByRole('button', { name: 'Send message', exact: true }).click();
+  await expect.poll(() => sends.length).toBe(1);
+  expect(sends).toEqual(['The approval needs a fresh proposal. Please help.']);
+  await field.fill('Keep my next draft');
+  await page.evaluate(() => (window as unknown as { __breakStream: () => void }).__breakStream());
+  await emit(page, 'requests.changed');
+  await expect(queue.getByRole('button', { name: /Review pending requests$/ })).toBeVisible();
+  await expect(field).toHaveValue('Keep my next draft');
+  await page.screenshot({
+    animations: 'disabled',
+    path: info.outputPath('minimized-approval-composer.png'),
+  });
+  await queue.getByRole('button', { name: /Review pending requests$/ }).click();
+  await expect(queue).toContainText('needs a fresh proposal');
+  await expect(field).toBeHidden();
+  expect(requests[0]!.state).toBe('pending');
+  expect(decisions).toHaveLength(0);
+  await page.screenshot({
+    animations: 'disabled',
+    path: info.outputPath('reopened-blocked-approval.png'),
+  });
+});
+
+test('minimizing a queue preserves each request and a new request still opens for review', async ({
+  page,
+  context,
+}) => {
+  await installFixture(context);
+  const requests = [proposal('one'), proposal('two')];
+  const { decisions } = await journal(page, requests);
+  await page.goto('/');
+  await expect(dock(page)).toContainText('1 of 2');
+  await dock(page).getByRole('button', { name: 'Minimize request' }).click();
+  await expect(page.getByLabel('Message', { exact: true })).toBeVisible();
+  await expect(dock(page)).toContainText('2 requests pending');
+  requests.push(proposal('three'));
+  await emit(page, 'requests.changed');
+  await expect(dock(page)).toContainText('1 of 3');
+  await expect(page.getByLabel('Message', { exact: true })).toBeHidden();
+  expect(decisions).toHaveLength(0);
+  expect(requests.every((row) => row.state === 'pending')).toBe(true);
 });

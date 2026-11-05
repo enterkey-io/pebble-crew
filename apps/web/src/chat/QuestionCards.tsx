@@ -109,7 +109,12 @@ function Question({
             />
             {error && <Notice error>{error}</Notice>}
             <QuestionnaireActions>
-              <Button variant="quiet" disabled={busy} onClick={() => void respond(null)}>
+              <Button
+                variant="quiet"
+                className="justify-self-start"
+                disabled={busy}
+                onClick={() => void respond(null)}
+              >
                 Skip
               </Button>
               <QuestionnaireSubmit disabled={busy}>Submit</QuestionnaireSubmit>

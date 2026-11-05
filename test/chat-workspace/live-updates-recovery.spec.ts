@@ -1,3 +1,4 @@
+import { submitMessage } from '../composer';
 import { test, expect } from '@playwright/test';
 import { installFixture, history } from './fixtures';
 import { sidebarItem } from '../sidebar-menu';
@@ -32,7 +33,7 @@ test('stream-only failures keep the same authenticated chat usable', async ({
     (window as unknown as { __breakStream: () => void }).__breakStream();
   });
   await expect(page.getByRole('button', { name: 'Send message', exact: true })).toBeEnabled();
-  await field.press('Enter');
+  await submitMessage(page);
   await expect.poll(() => sends).toBe(1);
   expect(leases).toBe(originalLeases);
   expect(await node.evaluate((element) => element.isConnected)).toBe(true);
@@ -144,7 +145,7 @@ test('a stream interruption does not abort or duplicate a pending send', async (
   const field = page.getByRole('textbox', { name: 'Message', exact: true });
   await expect(field).toBeEnabled();
   await field.fill('Exactly once');
-  await field.press('Enter');
+  await submitMessage(page);
   await expect.poll(() => sends).toBe(1);
   try {
     await page.evaluate(() => Reflect.get(window, '__breakStream')());

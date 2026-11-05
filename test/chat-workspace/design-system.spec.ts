@@ -271,7 +271,7 @@ test('small screens keep dialogs bounded, nested unsaved confirmation restores f
     .getByRole('alertdialog', { name: 'Discard changes?' })
     .getByRole('button', { name: 'Discard' })
     .click();
-  await page.getByRole('button', { name: 'Close navigation', exact: true }).click();
+  await page.goBack();
   await expect(page.getByRole('dialog')).toHaveCount(0);
   await expect(page.getByLabel('Message', { exact: true })).toBeEnabled();
 });
@@ -354,7 +354,7 @@ test('mobile browser Back closes the top overlay and keeps the underlying app av
   await expect(page.getByRole('dialog')).toHaveCount(0);
   await expect(page.getByRole('button', { name: /Show details/ })).toBeFocused();
   await page.getByRole('button', { name: 'Toggle navigation' }).click();
-  await expect(page.getByRole('dialog', { name: 'navigation' })).toBeVisible();
+  await expect(page.getByRole('region', { name: 'navigation' })).toBeVisible();
   await page.goBack();
   await expect(page.getByRole('dialog')).toHaveCount(0);
   await expect(page.getByLabel('Message', { exact: true })).toBeEnabled();
@@ -380,7 +380,7 @@ test('browser Back protects an unsaved Crew then closes only its confirmation', 
   await page.goBack();
   await expect(page.getByRole('alertdialog', { name: 'Discard changes?' })).toBeVisible();
   await page.getByRole('button', { name: 'Discard' }).click();
-  await page.getByRole('button', { name: 'Close navigation', exact: true }).click();
+  await page.goBack();
   await expect(page.getByRole('dialog')).toHaveCount(0);
   await expect(page.getByLabel('Message', { exact: true })).toBeEnabled();
 });

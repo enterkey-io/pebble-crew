@@ -1,5 +1,5 @@
 import { createContext, useRef, useState } from 'react';
-import { ChevronLeft, ChevronRight } from 'lucide-react';
+import { ChevronLeft, ChevronRight, ChevronUp, MessageSquare, X } from 'lucide-react';
 import type { TranscriptCard } from './presentation';
 import { Button } from '../components/ui/button';
 
@@ -10,15 +10,39 @@ export type AttentionNavigation = {
   order: Map<string, number>;
 };
 
+/** Presentation-only dismissal; no decision or server request is submitted. */
+export function useAttentionDocks() {
+  const [minimized, setMinimized] = useState<Record<string, readonly string[]>>({});
+  return {
+    isMinimized: (scope: string, items: readonly TranscriptCard[]) =>
+      items.length > 0 && items.every((item) => minimized[scope]?.includes(item.id)),
+    minimize: (scope: string, items: readonly TranscriptCard[]) =>
+      setMinimized((previous) => ({ ...previous, [scope]: items.map((item) => item.id) })),
+    expand: (scope: string) => setMinimized((previous) => ({ ...previous, [scope]: [] })),
+    focus: (id: string) =>
+      setMinimized((previous) =>
+        Object.fromEntries(
+          Object.entries(previous).filter(([, ids]) => !ids.includes('request:' + id)),
+        ),
+      ),
+  };
+}
+
 /** Fixed input surface; hidden siblings stay mounted so unfinished forms survive navigation. */
 export function ConversationAttention({
   items,
   focusId,
   navigation,
+  minimized = false,
+  onMinimize,
+  onExpand,
 }: {
   items: TranscriptCard[];
   focusId?: string | undefined;
   navigation?: AttentionNavigation | undefined;
+  minimized?: boolean;
+  onMinimize?: (() => void) | undefined;
+  onExpand?: (() => void) | undefined;
 }) {
   const fallback = useRef<AttentionNavigation>({ selection: undefined, order: new Map() });
   const state = navigation ?? fallback.current;
@@ -46,36 +70,67 @@ export function ConversationAttention({
       role="region"
       aria-label="Waiting for your input"
       data-slot="conversation-attention"
-      className="pc-composer-width min-w-0 rounded-2xl bg-card text-card-foreground shadow-sm"
+      className="pc-composer-width min-w-0 text-card-foreground"
     >
-      <div className="flex items-center gap-2 px-4 pt-3 pb-1 text-xs text-muted-foreground">
-        <span className="mr-auto">Your input</span>
-        <span aria-live="polite" className="tabular-nums">
-          {index + 1} of {items.length}
-        </span>
+      {minimized ? (
         <Button
           variant="quiet"
-          size="icon-sm"
-          aria-label="Previous request"
-          disabled={index === 0}
-          onClick={() => choose(items[index - 1]?.id ?? '')}
+          className="w-full justify-start gap-2 rounded-xl bg-muted px-4"
+          onClick={onExpand}
+          aria-label={`${items.length === 1 ? 'Request pending' : `${items.length} requests pending`}. Review pending requests`}
         >
-          <ChevronLeft />
+          <MessageSquare className="size-4" />
+          <span>{items.length === 1 ? 'Request pending' : `${items.length} requests pending`}</span>
+          <ChevronUp className="ml-auto size-4" />
         </Button>
-        <Button
-          variant="quiet"
-          size="icon-sm"
-          aria-label="Next request"
-          disabled={index === items.length - 1}
-          onClick={() => choose(items[index + 1]?.id ?? '')}
-        >
-          <ChevronRight />
-        </Button>
-      </div>
-      <div className="max-h-[min(66dvh,36rem)] overflow-y-auto overscroll-contain px-1 pb-1">
+      ) : (
+        <div className="flex items-center justify-end gap-2 px-2 pt-1 pb-1 text-xs text-muted-foreground">
+          {items.length > 1 && (
+            <>
+              <span className="mr-auto">Your input</span>
+              <span aria-live="polite" className="tabular-nums">
+                {index + 1} of {items.length}
+              </span>
+              <Button
+                variant="quiet"
+                size="icon-sm"
+                aria-label="Previous request"
+                disabled={index === 0}
+                onClick={() => choose(items[index - 1]?.id ?? '')}
+              >
+                <ChevronLeft />
+              </Button>
+              <Button
+                variant="quiet"
+                size="icon-sm"
+                aria-label="Next request"
+                disabled={index === items.length - 1}
+                onClick={() => choose(items[index + 1]?.id ?? '')}
+              >
+                <ChevronRight />
+              </Button>
+            </>
+          )}
+          {onMinimize && (
+            <Button
+              variant="quiet"
+              size="icon-sm"
+              aria-label="Minimize request"
+              onClick={onMinimize}
+            >
+              <X />
+            </Button>
+          )}
+        </div>
+      )}
+      <div
+        hidden={minimized}
+        inert={minimized}
+        className="max-h-[min(66dvh,36rem)] overflow-y-auto overscroll-contain px-1 pb-1"
+      >
         {items.map((item, i) => (
           <div key={item.id} hidden={i !== index} inert={i !== index} data-attention-id={item.id}>
-            <AttentionVisible.Provider value={i === index}>
+            <AttentionVisible.Provider value={!minimized && i === index}>
               {item.content}
             </AttentionVisible.Provider>
           </div>

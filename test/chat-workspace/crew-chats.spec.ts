@@ -1,3 +1,4 @@
+import { submitMessage } from '../composer';
 import { openSidebarMenu } from '../sidebar-menu';
 import { test, expect } from '@playwright/test';
 import type { Page } from '@playwright/test';
@@ -45,7 +46,7 @@ test('replacing a chosen mention before the next paint preserves the replacement
       }),
   );
   await expect(field).toHaveValue('@aurora please review this');
-  await field.press('Enter');
+  await submitMessage(page);
   await expect.poll(() => sends).toEqual(['@aurora please review this']);
 });
 
@@ -143,7 +144,7 @@ test('crew creation includes description and members; chat mentions only its mem
   await page.getByRole('option', { name: 'Arlo @aurora', exact: true }).click();
   await expect(field).toHaveValue('@aurora ');
   await field.fill('@aurora please review this');
-  await field.press('Enter');
+  await submitMessage(page);
   await expect.poll(() => sends).toEqual(['@aurora please review this']);
   const committed = page.locator('[data-message-id^="committed-"]');
   await expect(committed).toHaveCount(1);
@@ -188,14 +189,15 @@ test('ad hoc group creation leaves crew membership and sidebar placement unchang
   if (info.project.use.isMobile)
     await page.getByRole('button', { name: 'Toggle navigation', exact: true }).click();
   const rail = info.project.use.isMobile
-    ? page.getByRole('dialog', { name: 'navigation', exact: true })
+    ? page.getByRole('region', { name: 'navigation', exact: true })
     : page.getByRole('complementary', { name: 'Pebbles and crews' });
   await expect(rail.locator('.pinned-tile strong')).toHaveText(['Arlo', 'Mica']);
   await expect(page.getByRole('heading', { name: 'Group chats', exact: true })).toHaveCount(0);
   await expect(
-    rail
-      .getByRole('navigation', { name: 'Group chats', exact: true })
-      .getByRole('button', { name: 'Planning discussion Group chat', exact: true }),
+    rail.getByRole('navigation', { name: 'Group chats', exact: true }).getByRole('button', {
+      name: 'Planning discussion Group conversation Open chat',
+      exact: true,
+    }),
   ).toBeVisible();
   await page.screenshot({
     path: info.outputPath('ad-hoc-group-navigation.png'),

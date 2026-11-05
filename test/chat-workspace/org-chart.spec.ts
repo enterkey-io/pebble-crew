@@ -36,14 +36,15 @@ for (const theme of ['light', 'dark']) {
         await card.evaluate((node) => ({ width: node.clientWidth, height: node.clientHeight })),
       ).toEqual({ width: 238, height: 126 });
     }
-    const initialCanvas = await chart
-      .getByRole('group', { name: 'Organization canvas', exact: true })
-      .boundingBox();
-    const initialMain = await chart.locator('[data-org-profile="arlo"] .pc-org-card').boundingBox();
-    if (!initialCanvas || !initialMain) throw new Error('Initial chart view missing');
-    expect(
-      Math.abs(initialMain.x + initialMain.width / 2 - initialCanvas.x - initialCanvas.width / 2),
-    ).toBeLessThan(1);
+    const centers = await chart.evaluate((node) => {
+      const canvas = node.querySelector('[aria-label="Organization canvas"]');
+      const main = node.querySelector('[data-org-profile="arlo"] .pc-org-card');
+      if (!canvas || !main) throw new Error('Initial chart view missing');
+      const canvasBox = canvas.getBoundingClientRect();
+      const mainBox = main.getBoundingClientRect();
+      return { canvas: canvasBox.x + canvasBox.width / 2, main: mainBox.x + mainBox.width / 2 };
+    });
+    expect(Math.abs(centers.main - centers.canvas)).toBeLessThan(1);
     await page.screenshot({
       path: info.outputPath(`org-main-${theme}.png`),
       animations: 'disabled',

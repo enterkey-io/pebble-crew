@@ -86,10 +86,12 @@ export function CrewAvatar({
   room,
   workspace,
   client,
+  active = true,
 }: {
   room: Row;
   workspace?: WorkspaceState | undefined;
   client: SessionClient;
+  active?: boolean;
 }) {
   const members = Array.isArray(room.members) ? room.members : [];
   const profiles = members
@@ -109,7 +111,7 @@ export function CrewAvatar({
             client={client}
             profile={profile}
             revision={workspace?.revision}
-            animated={animated}
+            animated={animated && active}
           />
         ) : (
           <Users aria-hidden="true" />
@@ -120,6 +122,8 @@ export function CrewAvatar({
 }
 
 export function Rail({
+  phone = false,
+  active = true,
   bots,
   rooms,
   workspace,
@@ -155,6 +159,8 @@ export function Rail({
   onNewProject,
   onNewTask,
 }: {
+  phone?: boolean;
+  active?: boolean;
   bots: ChatBot[];
   rooms: Row[];
   workspace?: WorkspaceState | undefined;
@@ -226,12 +232,38 @@ export function Rail({
         state={states[bot.profile]}
         large={large}
         unread={large}
-        animated={animated}
+        animated={animated && active}
       />
     ) : null;
   };
   const pinIds = pins.map((b) => identity(b)!.id);
   const groupChats = rooms.filter((r) => !Object.values(crewChats).includes(String(r.room_id)));
+  const accountMenu = (
+    <Menu
+      label="Your account"
+      placement={phone ? 'toolbar' : 'account'}
+      items={[
+        { label: 'Org chart', icon: Network, action: onOrgChart },
+        { label: 'Settings', icon: Settings2, action: onSettings },
+        {
+          label: hidden ? 'Hide hidden pebbles' : 'Show hidden pebbles',
+          icon: hidden ? Eye : EyeOff,
+          action: () => setHidden(!hidden),
+        },
+        { label: owner ? 'Sign out' : 'Disconnect', icon: LogOut, action: onLogout },
+      ]}
+    >
+      <PersonalAvatar />
+    </Menu>
+  );
+  const connectionStatus = (
+    <span className="connection-status" data-online={online}>
+      <i aria-hidden="true" />
+      <span className={phone ? 'sr-only' : undefined}>
+        {online ? 'Hermes connected' : 'Reconnecting…'}
+      </span>
+    </span>
+  );
   const controls = (bot: ChatBot, children: ReactNode) => {
     const b = identity(bot);
     if (!b) return children;
@@ -260,8 +292,15 @@ export function Rail({
   return (
     <>
       <div className="pc-rail-header rail-toolbar">
-        <span className="pc-wordmark">Pebble Crew</span>
-        <IconButton label="Search Pebble Crew" icon={Search} onClick={onSearch} />
+        {phone ? (
+          <div className="pc-mobile-account">
+            {accountMenu}
+            {connectionStatus}
+          </div>
+        ) : (
+          <span className="pc-wordmark">Pebble Crew</span>
+        )}
+        {!phone && <IconButton label="Search Pebble Crew" icon={Search} onClick={onSearch} />}
         <Menu
           label="New"
           placement="toolbar"
@@ -281,7 +320,7 @@ export function Rail({
         >
           <Plus />
         </Menu>
-        {onClose && (
+        {onClose && !phone && (
           <IconButton
             className="pc-nav-close"
             label="Close navigation"
@@ -310,7 +349,7 @@ export function Rail({
           <nav aria-label="Project boards" className="grid content-start gap-1">
             {catalog?.capabilities.plans && (
               <NavigationItem
-                className="min-h-12 px-3 mb-3"
+                className="min-h-12 px-3 mb-3 max-md:min-h-12"
                 title="Plans"
                 media={<Target className="size-4 text-muted-foreground" />}
                 aria-current={selectedBoard === '$plans' ? 'page' : undefined}
@@ -320,7 +359,7 @@ export function Rail({
             {catalog?.boards.map((board) => (
               <NavigationItem
                 key={board.slug}
-                className="min-h-12 px-3"
+                className="min-h-12 px-3 max-md:min-h-12"
                 title={board.name}
                 media={<PanelsTopLeft className="size-4 text-muted-foreground" />}
                 aria-current={board.slug === selectedBoard ? 'page' : undefined}
@@ -488,10 +527,12 @@ export function Rail({
                   <NavigationItem
                     className="pc-crew"
                     key={String(r.room_id)}
-                    aria-label={r.name ? `${String(r.name)} Group chat` : 'Group chat'}
+                    aria-label={`${String(r.name ?? 'Group chat')} ${String(r.preview ?? 'Group conversation')} Open chat`}
                     disabled={!online}
                     onClick={() => onRoom(r)}
-                    media={<CrewAvatar room={r} workspace={workspace} client={client} />}
+                    media={
+                      <CrewAvatar room={r} workspace={workspace} client={client} active={active} />
+                    }
                     title={String(r.name ?? 'Group chat')}
                     description={String(r.preview ?? 'Group conversation')}
                   />
@@ -510,26 +551,21 @@ export function Rail({
         )}
       </div>
       <footer className="pc-rail-footer">
-        <Menu
-          label="Your account"
-          placement="account"
-          items={[
-            { label: 'Org chart', icon: Network, action: onOrgChart },
-            { label: 'Settings', icon: Settings2, action: onSettings },
-            {
-              label: hidden ? 'Hide hidden pebbles' : 'Show hidden pebbles',
-              icon: hidden ? Eye : EyeOff,
-              action: () => setHidden(!hidden),
-            },
-            { label: owner ? 'Sign out' : 'Disconnect', icon: LogOut, action: onLogout },
-          ]}
-        >
-          <PersonalAvatar />
-        </Menu>
-        <span className="connection-status" data-online={online}>
-          <i aria-hidden="true" />
-          {online ? 'Hermes connected' : 'Reconnecting…'}
-        </span>
+        {phone ? (
+          <Button
+            variant="secondary"
+            className="pc-mobile-search h-12 w-full justify-start gap-3 rounded-full px-4 text-muted-foreground"
+            onClick={onSearch}
+            aria-label="Search Pebble Crew"
+          >
+            <Search aria-hidden="true" />
+            <span>Search Pebble Crew</span>
+          </Button>
+        ) : (
+          accountMenu
+        )}
+
+        {!phone && connectionStatus}
       </footer>
       <OrganizationDialog
         editor={editor}

@@ -34,7 +34,7 @@ test('personal photos have no shape controls, persist on reload and keep a chat 
   await message.fill('Keep my draft');
   const phone = page.viewportSize()!.width < 768;
   async function openPhoto() {
-    if (phone && !(await page.getByRole('dialog', { name: 'navigation' }).isVisible()))
+    if (phone && !(await page.getByRole('region', { name: 'navigation' }).isVisible()))
       await page.getByRole('button', { name: 'Toggle navigation', exact: true }).click();
     await page.getByRole('button', { name: 'Your account', exact: true }).click();
     await expect(page.getByRole('menuitem', { name: 'Your photo', exact: true })).toHaveCount(0);
@@ -83,9 +83,8 @@ test('personal photos have no shape controls, persist on reload and keep a chat 
   await expect(dialog.getByRole('alert')).toContainText('JPEG');
   expect(saves).toBe(1);
   await dialog.getByRole('button', { name: 'Close Settings', exact: true }).click();
-  const navigation = page.getByRole('dialog', { name: 'navigation' });
-  if (phone && (await navigation.isVisible()))
-    await navigation.getByRole('button', { name: 'Close navigation' }).click();
+  const navigation = page.getByRole('region', { name: 'navigation' });
+  if (phone && (await navigation.isVisible())) await page.goBack();
   await expect(message).toHaveValue('Keep my draft');
   await page.reload();
   await expect(message).toBeEnabled();

@@ -1,3 +1,4 @@
+import { submitMessage } from '../composer';
 import { test, expect } from '@playwright/test';
 import { installFixture } from './fixtures';
 test.use({ serviceWorkers: 'block' });
@@ -83,10 +84,12 @@ test('native slash suggestions use the open conversation and commands never beco
   await page.screenshot({
     path: `test-results/verification/slash-commands-${page.viewportSize()?.width}.png`,
   });
-  await field.press('Enter');
+  if (await page.evaluate(() => matchMedia('(pointer: coarse)').matches))
+    await suggestions.getByRole('option', { name: '/model Change model', exact: true }).click();
+  else await field.press('Enter');
   await expect(field).toHaveValue('/model ');
   await field.fill('/model synthetic-model');
-  await field.press('Enter');
+  await submitMessage(page);
   await expect(
     page
       .getByRole('log')
@@ -105,14 +108,16 @@ test('native slash suggestions use the open conversation and commands never beco
   expect(await node?.evaluate((element) => element.isConnected)).toBe(true);
   await field.press('a');
   await expect(page.getByRole('status', { name: 'Loading commands' })).toHaveCount(0);
-  await field.press('Enter');
+  if (await page.evaluate(() => matchMedia('(pointer: coarse)').matches))
+    await list.getByRole('option', { name: '/status Session status', exact: true }).click();
+  else await field.press('Enter');
   await expect(
     page.getByRole('log').getByRole('region', { name: '/status result', exact: true }),
   ).toContainText('Native session status.');
   expect(commands).toEqual(['/model synthetic-model', '/status']);
   await expect(field).toHaveValue('');
   await field.fill('/reset');
-  await field.press('Enter');
+  await submitMessage(page);
   await expect(page.locator('.banner')).toContainText('not supported in Pebble Crew');
   await expect(field).toHaveValue('/reset');
   expect(prompts).toEqual([]);

@@ -1,3 +1,4 @@
+import { submitMessage } from '../composer';
 import { test, expect } from '@playwright/test';
 import { installFixture } from './fixtures';
 import { connectionFixture, openConnections } from './connections-fixture';
@@ -42,7 +43,7 @@ for (const outcome of ['accepted', 'failed', 'attachment-recovery'] as const) {
     });
     try {
       await field.fill('First message');
-      await field.press('Enter');
+      await submitMessage(page);
       await expect.poll(() => requested).toBe(true);
       await expect(field).toBeEnabled();
       await field.fill('My next draft');
@@ -127,7 +128,9 @@ test('reconnecting keeps composer controls, typography, focus and the editable d
     await expect(send).toBeDisabled();
     await page.keyboard.type(' offline');
     await expect(field).toHaveValue('Draft offline');
-    await field.press('Enter');
+    // Attempt the disabled touch action without waiting for reconnection to enable it.
+    if (info.project.use.isMobile) await send.click({ force: true });
+    else await submitMessage(page);
     expect(sends).toBe(0);
     const disconnected = await measure();
     expect(disconnected.fontSize).toBe(before.fontSize);

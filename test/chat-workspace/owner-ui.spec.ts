@@ -10,6 +10,9 @@ async function ready(page: Page) {
 async function newPebble(page: Page) {
   await page.getByRole('button', { name: 'New', exact: true }).click();
   await page.getByRole('menuitem', { name: 'New pebble', exact: true }).click();
+  await expect(
+    page.getByRole('button', { name: 'Add existing Hermes agent', exact: true }),
+  ).toBeVisible();
 }
 
 test('empty system sections disappear; system names and item kinds stay fixed', async ({
