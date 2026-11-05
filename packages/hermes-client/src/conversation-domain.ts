@@ -25,7 +25,11 @@ export type ConversationMessage = {
   commentary?: string[];
   reactions?: MessageReaction[];
 };
-export type HistoryCoverage = { readonly count: number; readonly maxRow: number };
+export type HistoryCoverage = {
+  readonly count: number;
+  readonly maxRow: number;
+  readonly rowIds?: readonly number[];
+};
 export type ConversationHistory = {
   readonly messages: ConversationMessage[];
   readonly coverage: HistoryCoverage;
@@ -288,9 +292,24 @@ export function decodeHistory(value: unknown): ConversationHistory {
     throw new ClientError('INVALID_RESPONSE');
   return {
     messages: decodeNativeMessages(source),
-    coverage: coverage
-      ? { count: Number(coverage.count), maxRow: Number(coverage.max_row) }
-      : { count: source.length, maxRow },
+    coverage: {
+      ...(coverage
+        ? { count: Number(coverage.count), maxRow: Number(coverage.max_row) }
+        : { count: source.length, maxRow }),
+      ...(page
+        ? {
+            rowIds: source.flatMap((item) => {
+              const row = optionalRecord(item);
+              return row &&
+                typeof row.row_id === 'number' &&
+                Number.isSafeInteger(row.row_id) &&
+                row.row_id > 0
+                ? [row.row_id]
+                : [];
+            }),
+          }
+        : {}),
+    },
     ...(page ? { page: { older: page.older === null ? null : String(page.older) } } : {}),
   };
 }

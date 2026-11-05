@@ -216,3 +216,27 @@ test('a cached-session reload still fetches only one recent history page', async
     contentType: 'application/json',
   });
 });
+
+test('a recent window cannot mark an older unseen native message as read', async ({
+  page,
+  context,
+}) => {
+  const fixture = await historyFixture(context);
+  const bot = fixture.fixture.state.bots[0]!;
+  bot.cursor_type = 'row';
+  bot.cursor = 25;
+  bot.unread = true;
+  await loaded(page);
+  await page.evaluate(
+    () =>
+      new Promise<void>((resolve) =>
+        requestAnimationFrame(() => requestAnimationFrame(() => resolve())),
+      ),
+  );
+  expect(bot.unread).toBe(true);
+  expect(fixture.calls.filter((op) => op === 'presentation.read')).toHaveLength(0);
+  bot.cursor = 360;
+  await page.reload();
+  await expect(page.getByLabel('Message', { exact: true })).toBeEnabled();
+  await expect.poll(() => fixture.fixture.state.bots[0]!.unread).toBe(false);
+});

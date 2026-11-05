@@ -474,7 +474,7 @@ it('advances aggregate history coverage without projecting hidden native records
     history_page: { older: 'older', coverage: { count: 60, max_row: 305 } },
   });
   expect(history.messages).toEqual([]);
-  expect(history.coverage).toEqual({ count: 60, maxRow: 305 });
+  expect(history.coverage).toEqual({ count: 60, maxRow: 305, rowIds: [] });
   for (const coverage of [
     { count: -1, max_row: 305 },
     { count: 60, max_row: -1 },

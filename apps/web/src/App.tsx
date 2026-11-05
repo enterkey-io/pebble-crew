@@ -503,7 +503,11 @@ export function App({ owner }: { owner?: OwnerConnection }) {
     if (
       bot?.read_key &&
       typeof bot.cursor === 'number' &&
-      (bot.cursor_type === 'row' ? coverage.maxRow : coverage.count) >= bot.cursor
+      (bot.cursor_type === 'row'
+        ? coverage.rowIds
+          ? coverage.rowIds.includes(bot.cursor)
+          : coverage.maxRow >= bot.cursor
+        : coverage.count >= bot.cursor)
     )
       displayedRead.current = { key: bot.read_key, cursor: bot.cursor };
   }
