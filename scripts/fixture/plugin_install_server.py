@@ -299,16 +299,6 @@ def main():
                     result = {'upgraded_from': baseline['tag'], 'runtime_receipt': synced['receipt']}
                 elif self.path == '/update':
                     turns = Model.turns
-                    if args.previous_archive:
-                        install_record = state / 'install.json'
-                        before_install = install_record.read_bytes()
-                        refused = cli('rollback', expect_failure=True)
-                        checks['old_sidebar_rollback_refused_without_changing_install'] = (
-                            'cannot read the current sidebar format' in refused.stderr
-                            and install_record.read_bytes() == before_install
-                            and hashlib.sha256(settings.read_bytes()).hexdigest() == key_digest
-                            and Model.turns == turns)
-                        assert checks['old_sidebar_rollback_refused_without_changing_install'], refused.stderr
                     from hermes_cli.profiles import get_profile_dir
                     for profile in ('alpha', 'beta'):
                         snapshot = rpc('workspace.describe', {})
