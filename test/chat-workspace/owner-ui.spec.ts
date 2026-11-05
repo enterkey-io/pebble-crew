@@ -47,9 +47,10 @@ test('menus open beside their work, connection stays visible, search has neutral
 }) => {
   await installFixture(context);
   await ready(page);
+  await expect(page.locator('.connection-status')).toHaveText('Hermes connected');
   await expect(page.locator('.connection-status i')).toHaveCSS(
     'background-color',
-    'rgb(133, 184, 154)',
+    'rgb(149, 186, 165)',
   );
   const trigger = page.getByRole('button', { name: 'Add attachment', exact: true });
   const triggerBox = (await trigger.boundingBox())!;
