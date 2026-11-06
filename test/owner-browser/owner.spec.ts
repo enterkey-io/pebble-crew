@@ -1,5 +1,5 @@
 import { submitMessage } from '../composer';
-import { atmeePortrait, installAtmeeRoom } from '../atmee-room';
+import { atmeePortrait, atmeeWav, installAtmeeRoom } from '../atmee-room';
 import { execFileSync } from 'node:child_process';
 import { openSidebarMenu } from '../sidebar-menu';
 import { test, expect } from '@playwright/test';
@@ -1206,7 +1206,7 @@ test('Aurora remembers a text fact in video and a video correction in text and t
   await endCall();
 });
 
-test('owner creates and selects Aurora from Pebble Crew without a voice recording', async ({
+test('owner creates Aurora with a generated voice and with a recording', async ({
   page,
   context,
 }) => {
@@ -1278,5 +1278,21 @@ test('owner creates and selects Aurora from Pebble Crew without a voice recordin
   await expect(page.getByLabel('Message', { exact: true })).toBeEnabled();
   await openVideo();
   await expect(selected).toContainText('Aurora · Video test');
+
+  await page.getByRole('button', { name: 'New video avatar', exact: true }).click();
+  await page.getByLabel('Portrait', { exact: true }).setInputFiles(await atmeePortrait(page));
+  await page.getByRole('radio', { name: 'Upload recording', exact: true }).click();
+  await page.getByLabel('Voice recording').setInputFiles({
+    name: 'voice.wav',
+    mimeType: 'audio/wav',
+    buffer: atmeeWav(12),
+  });
+  await page.getByRole('button', { name: /Review Hermes profile/ }).click();
+  await page.getByLabel('Avatar name').fill('Aurora · Recording test');
+  await page.getByLabel('Avatar instructions').fill('Approved Aurora character description.');
+  await page.getByRole('button', { name: 'Create video avatar', exact: true }).click();
+  await expect(page.getByText('Aurora · Recording test is ready.')).toBeVisible({ timeout: 30000 });
+  await page.getByRole('button', { name: 'Use video avatar', exact: true }).click();
+  await expect(selected).toContainText('Aurora · Recording test');
   expectNoChatSends(signals);
 });

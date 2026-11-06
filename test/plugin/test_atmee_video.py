@@ -12,7 +12,7 @@ from unittest.mock import AsyncMock, Mock, patch
 
 from test_security import Native  # Loads the production plugin package under bot_web.
 from bot_web.atmee_video import AtmeeVideo, VoiceDesignFailure, catalog, provider
-from bot_web.atmee_build import PreviewConnection, fetch_voice_sample, portrait_upload, video_account
+from bot_web.atmee_build import PreviewConnection, fetch_voice_sample, portrait_upload, storage_url, video_account
 from bot_web.live_voice import LiveVoice
 from bot_web.operations import InvalidOperation
 from bot_web.workspace import WorkspaceStore
@@ -285,6 +285,14 @@ class AtmeeVideoTests(unittest.IsolatedAsyncioTestCase):
                 'voice': {'kind': 'existing', 'id': CHARACTER}})
             await asyncio.gather(*self.service.builds.tasks)
             self.assertEqual(self.store.db.execute('SELECT state FROM atmee_build').fetchone()[0], 'building')
+
+    def test_upload_targets_allow_atmee_storage_without_allowing_other_supabase_projects(self):
+        url = 'https://fpgwbdmvvurxnanvxjld.supabase.co/storage/v1/object/upload/sign/assets/test?token=fixture'
+        self.assertEqual(storage_url(url), url)
+        for host in ('other-project.supabase.co', 'fpgwbdmvvurxnanvxjld.supabase.co.example.net',
+                     'sub.fpgwbdmvvurxnanvxjld.supabase.co'):
+            with self.subTest(host=host), self.assertRaises(ValueError):
+                storage_url('https://' + host + '/upload?token=fixture')
 
     def test_preview_rejects_non_public_dns_before_connecting(self):
         private_addresses = ('127.0.0.1', '100.64.0.1', '169.254.169.254', '224.0.0.1',

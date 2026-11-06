@@ -1,27 +1,11 @@
 import { test, expect } from '@playwright/test';
 import { installFixture } from './fixtures';
-import { atmeePortrait, installAtmeeRoom } from '../atmee-room';
+import { atmeePortrait, atmeeWav, installAtmeeRoom } from '../atmee-room';
 
 const character = 'bbcb7c08-35d3-44c2-86cd-28825ed7165e';
 const call = '9c53b2f5-5c43-4b51-b553-504fa870e0e2';
 const voiceDesign = '21a1896b-011e-4dcf-a8db-9382f0875d70';
-function wav(seconds: number) {
-  const sampleWav = Buffer.alloc(seconds * 8000 + 44, 0x80);
-  sampleWav.write('RIFF', 0);
-  sampleWav.writeUInt32LE(sampleWav.length - 8, 4);
-  sampleWav.write('WAVEfmt ', 8);
-  sampleWav.writeUInt32LE(16, 16);
-  sampleWav.writeUInt16LE(1, 20);
-  sampleWav.writeUInt16LE(1, 22);
-  sampleWav.writeUInt32LE(8000, 24);
-  sampleWav.writeUInt32LE(8000, 28);
-  sampleWav.writeUInt16LE(1, 32);
-  sampleWav.writeUInt16LE(8, 34);
-  sampleWav.write('data', 36);
-  sampleWav.writeUInt32LE(sampleWav.length - 44, 40);
-  return sampleWav;
-}
-const sampleWav = wav(1);
+const sampleWav = atmeeWav(1);
 
 test.use({ serviceWorkers: 'block' });
 
@@ -185,7 +169,7 @@ test('a failed voice design explains the blocked create and accepts a recording 
       expect(new URL(route.request().url()).pathname).toBe('/v1/files/upload');
       expect(params.voice).toEqual({
         kind: 'recording',
-        data: 'data:audio/wav;base64,' + wav(12).toString('base64'),
+        data: 'data:audio/wav;base64,' + atmeeWav(12).toString('base64'),
       });
       submitted = true;
       return ok({
@@ -212,7 +196,7 @@ test('a failed voice design explains the blocked create and accepts a recording 
   await page.getByRole('radio', { name: 'Upload recording' }).click();
   await page
     .getByLabel('Voice recording')
-    .setInputFiles({ name: 'voice.wav', mimeType: 'audio/wav', buffer: wav(12) });
+    .setInputFiles({ name: 'voice.wav', mimeType: 'audio/wav', buffer: atmeeWav(12) });
   await expect(page.getByLabel('Recording preview')).toBeVisible();
   await expect(create).toHaveAccessibleDescription('Open Review Hermes profile before creating.');
   await page.getByRole('button', { name: /Review Hermes profile/ }).click();

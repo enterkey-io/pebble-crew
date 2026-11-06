@@ -25,6 +25,7 @@ STYLES = {
 }
 DNS_NAME = re.compile(r'(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z](?:[a-z0-9-]{0,61}[a-z0-9])?')
 NAT64_PREFIX = ip_network('64:ff9b::/96')
+ATMEE_STORAGE_PROJECT = 'fpgwbdmvvurxnanvxjld.supabase.co'
 STORAGE_HOSTS = ('atmanity.us', 'atmee.ai', 'r2.cloudflarestorage.com', 'amazonaws.com', 'storage.googleapis.com')
 PENDING = {'preparing', 'creating', 'building'}
 ERRORS = {
@@ -85,12 +86,15 @@ def video_account(key):
     return account
 
 
-def voice_url(value):
+def storage_url(value):
     parsed = urlsplit(value if isinstance(value, str) else '')
     host = parsed.hostname or ''
-    if (parsed.scheme != 'https' or parsed.username or parsed.password or parsed.port is not None
-            or parsed.fragment or not any(host == item or host.endswith('.' + item) for item in STORAGE_HOSTS)):
-        raise ValueError('Invalid voice preview location')
+    approved = host == ATMEE_STORAGE_PROJECT or any(
+        host == item or host.endswith('.' + item) for item in STORAGE_HOSTS
+    )
+    if (parsed.scheme != 'https' or parsed.username is not None or parsed.password is not None
+            or parsed.port is not None or parsed.fragment or not approved):
+        raise ValueError('Invalid Atmee storage location')
     return value
 
 
@@ -161,7 +165,7 @@ def fetch_voice_sample(url):
 def existing_voice(key, ident):
     result = atmee.provider('/v1/avatars/' + ident + '/voice', key)
     try:
-        return voice_url(result.get('url'))
+        return storage_url(result.get('url'))
     except ValueError:
         raise InvalidOperation('This Atmee avatar has no reusable voice sample', 'ATMEE_VOICE_UNAVAILABLE') from None
 
@@ -209,11 +213,7 @@ def media_upload(key, kind, mime, blob):
     if not isinstance(upload, str) or not atmee.UUID.fullmatch(upload) or not isinstance(supplied, dict):
         raise InvalidOperation('Invalid Atmee upload ticket', 'ATMEE_UNAVAILABLE')
     try:
-        parsed = urlsplit(target if isinstance(target, str) else '')
-        host = parsed.hostname or ''
-        if (parsed.scheme != 'https' or parsed.username or parsed.password or parsed.port is not None
-                or parsed.fragment or not any(host == item or host.endswith('.' + item) for item in STORAGE_HOSTS)):
-            raise ValueError()
+        target = storage_url(target)
         headers = {}
         for name, value in supplied.items():
             if (not re.fullmatch(r'content-type|x-amz-[a-z0-9-]+|x-goog-[a-z0-9-]+', name.lower())
@@ -508,6 +508,7 @@ class AtmeeBuilds:
 
     async def run(self, key, bot, request_id, name, persona, voice_choice, photo):
         creating = False
+        uploading = None
         try:
             permissions = await asyncio.to_thread(atmee.key_permissions, key)
             if not atmee.can_create(permissions) or (isinstance(voice_choice, str) and not atmee.can_build(permissions)):
@@ -517,12 +518,16 @@ class AtmeeBuilds:
             sizes = limits.get('v2Resolutions') or []
             portrait_size = {'width': 384, 'height': 672}
             self.check_scope(bot, key)
+            uploading = 'portrait'
             portrait = await asyncio.to_thread(portrait_upload, key, photo)
+            uploading = None
             self.check_scope(bot, key)
             if isinstance(voice_choice, str):
                 voice = await asyncio.to_thread(generated_voice, key, request_id, name, voice_choice)
             elif voice_choice['kind'] == 'recording':
+                uploading = 'voice recording'
                 voice = await asyncio.to_thread(media_upload, key, 'voice', voice_choice['mime'], voice_choice['audio'])
+                uploading = None
             elif voice_choice['kind'] == 'existing':
                 voice = await asyncio.to_thread(existing_voice, key, voice_choice['id'])
             else:
@@ -551,6 +556,8 @@ class AtmeeBuilds:
         except InvalidOperation as error:
             if creating and error.code == 'ATMEE_UNAVAILABLE':
                 self.change(request_id, 'uncertain', error=UNCERTAIN)
+            elif uploading and error.code in {'ATMEE_UNAVAILABLE', 'ATMEE_BUILD_INPUT'}:
+                self.change(request_id, 'failed', error=f'Atmee did not accept the {uploading} upload.')
             else:
                 self.change(request_id, 'failed', error=ERRORS.get(error.code, 'Atmee could not finish the build. Check your Atmee account before trying again.'))
         except Exception:

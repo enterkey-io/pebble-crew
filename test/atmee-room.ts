@@ -13,6 +13,23 @@ export async function atmeePortrait(page: Page) {
   return { name: 'portrait.png', mimeType: 'image/png', buffer: Buffer.from(image, 'base64') };
 }
 
+export function atmeeWav(seconds: number) {
+  const sampleWav = Buffer.alloc(seconds * 8000 + 44, 0x80);
+  sampleWav.write('RIFF', 0);
+  sampleWav.writeUInt32LE(sampleWav.length - 8, 4);
+  sampleWav.write('WAVEfmt ', 8);
+  sampleWav.writeUInt32LE(16, 16);
+  sampleWav.writeUInt16LE(1, 20);
+  sampleWav.writeUInt16LE(1, 22);
+  sampleWav.writeUInt32LE(8000, 24);
+  sampleWav.writeUInt32LE(8000, 28);
+  sampleWav.writeUInt16LE(1, 32);
+  sampleWav.writeUInt16LE(8, 34);
+  sampleWav.write('data', 36);
+  sampleWav.writeUInt32LE(sampleWav.length - 44, 40);
+  return sampleWav;
+}
+
 export async function installAtmeeRoom(page: Page, dimensions = { width: 512, height: 512 }) {
   await page.addInitScript(() => {
     const Media = globalThis.MediaStream;

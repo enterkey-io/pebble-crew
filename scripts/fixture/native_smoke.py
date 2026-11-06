@@ -641,9 +641,11 @@ def main():
                     patch('bot_web.native.asyncio.create_subprocess_exec', diagnostic_spawn).start()
                     synthetic_calls = set()
                     built_avatar = '35b912c7-9dcc-464d-941c-b3bc78365030'
+                    recorded_avatar = 'e0f0db58-7530-43ae-8da5-fb52ad0fd8f7'
                     voice_upload = 'upload:0433a8c7-5e87-4d75-839c-a79fecf5796e'
                     second_voice_upload = 'upload:b486933b-28e0-4ea8-866a-53de89805c13'
-                    portrait_upload = 'upload:e35008ba-42f8-468a-b503-5871f3da4050'
+                    uploads = {}
+                    storage = 'https://fpgwbdmvvurxnanvxjld.supabase.co'
                     built = {}
                     def synthetic_atmee(path, key, payload=None, *, idempotency=None):
                         character = 'bbcb7c08-35d3-44c2-86cd-28825ed7165e'
@@ -669,17 +671,35 @@ def main():
                                 {'upload': voice_upload, 'url': 'https://voice-assets.example.net/voice-one.wav?signature=first'},
                                 {'upload': second_voice_upload, 'url': 'https://voice-assets.example.net/voice-two.wav?signature=second'},
                             ]}
+                        if builder and path == '/v1/uploads':
+                            kind = payload['kind']
+                            mime = {'portrait': 'image/png', 'voice': 'audio/wav'}[kind]
+                            assert payload['contentType'] == mime
+                            ident = str(uuid.uuid4())
+                            target = storage + '/storage/v1/object/upload/sign/assets/' + ident + '?token=fixture'
+                            uploads[ident] = {'kind': kind, 'mime': mime, 'status': 'pending', 'target': target}
+                            return {'uploadId': ident, 'uploadUrl': target, 'uploadHeaders': {'Content-Type': mime}}
+                        if builder and path.startswith('/v1/uploads/'):
+                            return {'status': uploads[path.split('/')[-1]]['status']}
                         if builder and path == '/v1/avatars' and payload:
-                            assert not built, 'Character creation was replayed'
+                            ident = {'Aurora · Video test': built_avatar, 'Aurora · Recording test': recorded_avatar}[payload['name']]
+                            assert ident not in built, 'Character creation was replayed'
                             assert payload['engine'] == 'v2' and payload['visibility'] == 'private'
-                            assert payload['assets'] == {'image': {'url': portrait_upload}, 'voice': {'url': voice_upload}}
+                            image = uploads[payload['assets']['image']['url'].removeprefix('upload:')]
+                            assert image['kind'] == 'portrait' and image['status'] == 'uploaded'
+                            voice = payload['assets']['voice']['url']
+                            if ident == built_avatar:
+                                assert voice == voice_upload
+                            else:
+                                recording = uploads[voice.removeprefix('upload:')]
+                                assert recording['kind'] == 'voice' and recording['status'] == 'uploaded'
                             assert payload['persona'] == {'whoPrompt': 'Approved Aurora character description.'}
-                            built[built_avatar] = {'id': built_avatar, 'name': payload['name'],
-                                                   'kind': 'conversational', 'readyToChat': True}
-                            return {'avatarId': built_avatar, 'kind': 'conversational', 'status': 'building',
-                                    'statusUrl': '/v1/avatars/' + built_avatar}
-                        if builder and path == '/v1/avatars/' + built_avatar:
-                            return built[built_avatar]
+                            built[ident] = {'id': ident, 'name': payload['name'],
+                                            'kind': 'conversational', 'readyToChat': True}
+                            return {'avatarId': ident, 'kind': 'conversational', 'status': 'building',
+                                    'statusUrl': '/v1/avatars/' + ident}
+                        if builder and path.startswith('/v1/avatars/') and path.split('/')[-1] in built:
+                            return built[path.split('/')[-1]]
                         if path == '/v1/sessions':
                             assert payload['avatarId'] == character and 'visitorId' not in payload
                             assert 'remember, correct' in payload['appTools']['instructions']
@@ -696,15 +716,25 @@ def main():
                         assert host == 'voice-assets.example.net'
                         return HTTPConnection('127.0.0.1', model.server_port, timeout=timeout)
                     patch('bot_web.atmee_build.PreviewConnection', synthetic_voice_cdn).start()
-                    def synthetic_portrait(key, photo):
-                        assert key == 'sk_atmee_native-builder' and photo.startswith('data:image/png;base64,')
+                    from contextlib import nullcontext
+                    from types import SimpleNamespace
+                    def synthetic_upload(request, *, timeout):
                         from PIL import Image
-                        import base64
                         import io
-                        with Image.open(io.BytesIO(base64.b64decode(photo.split(',', 1)[1]))) as image:
-                            assert image.size == (96, 168), 'Portrait was cropped'
-                        return portrait_upload
-                    patch('bot_web.atmee_build.portrait_upload', synthetic_portrait).start()
+                        import wave
+                        ticket = next(item for item in uploads.values() if item['target'] == request.full_url)
+                        assert request.get_method() == 'PUT'
+                        assert dict(request.header_items()) == {'Content-type': ticket['mime']}
+                        assert ticket['status'] == 'pending'
+                        if ticket['kind'] == 'portrait':
+                            with Image.open(io.BytesIO(request.data)) as image:
+                                assert image.size == (96, 168), 'Portrait was cropped'
+                        else:
+                            with wave.open(io.BytesIO(request.data), 'rb') as audio:
+                                assert audio.getnframes() == 12 * audio.getframerate()
+                        ticket['status'] = 'uploaded'
+                        return nullcontext()
+                    patch('bot_web.atmee_build.build_opener', return_value=SimpleNamespace(open=synthetic_upload)).start()
 
                 from bot_web.trust import OwnerTrust
                 trust = OwnerTrust(json.loads(Path(args.owner_trust).read_text())) if args.owner_trust else None
