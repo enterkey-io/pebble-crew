@@ -75,6 +75,7 @@ import { IconButton } from './components/ui/icon-button';
 import { Alert, AlertDescription, AlertAction } from './components/ui/alert';
 import {
   AlertDialog,
+  AlertDialogAction,
   AlertDialogCancel,
   AlertDialogContent,
   AlertDialogDescription,
@@ -259,6 +260,9 @@ export function App({ owner }: { owner?: OwnerConnection }) {
   );
   const [error, setError] = useState('');
   const [unavailableChat, setUnavailableChat] = useState<string>();
+  const [groupToDelete, setGroupToDelete] = useState<{ id: string; name: string }>();
+  const [deletingGroup, setDeletingGroup] = useState(false);
+  const [groupDeleteError, setGroupDeleteError] = useState('');
   const [nav, setNav] = useState(false);
   const phone = useMedia('(max-width: 767px)');
   const [details, setDetails] = useState(
@@ -434,6 +438,11 @@ export function App({ owner }: { owner?: OwnerConnection }) {
   }, []);
   useOverlayHistory(phone && nav, closeNav);
   useOverlayHistory(unavailableChat !== undefined, () => setUnavailableChat(undefined));
+  useOverlayHistory(groupToDelete !== undefined, () => {
+    if (deletingGroup) return false;
+    setGroupToDelete(undefined);
+    return true;
+  });
   const navigationWasOpen = useRef(false);
   useLayoutEffect(() => {
     if (!phone) return;
@@ -1178,6 +1187,27 @@ export function App({ owner }: { owner?: OwnerConnection }) {
     if (event.type === 'error') setError('Hermes reported an error. Refresh before retrying.');
   }
 
+  function clearRemovedConversation(message: string) {
+    selectGeneration.current++;
+    setOpeningBot(undefined);
+    setBusy(false);
+    selected.current = undefined;
+    setSelection(undefined);
+    setRemovedDraft(inputDraft.current.get());
+    setDraft('');
+    sendProjection.current = new SendProjection();
+    setMessages([]);
+    setStream('');
+    setRunning(false);
+    setStopping(false);
+    setApprovals([]);
+    setRoutines([]);
+    setError(message);
+    autoOpened.current = true;
+    restoreProfile.current = '';
+    restoreRoom.current = '';
+  }
+
   async function loadRoster(connection: SessionClient, invalidate = false) {
     return rosterLoader.current.load(
       connection,
@@ -1237,24 +1267,7 @@ export function App({ owner }: { owner?: OwnerConnection }) {
             target &&
             ((target.kind === 'bot' && !surviving) || (target.kind === 'room' && !roomSurviving))
           ) {
-            selectGeneration.current++;
-            setOpeningBot(undefined);
-            setBusy(false);
-            selected.current = undefined;
-            setSelection(undefined);
-            setRemovedDraft(inputDraft.current.get());
-            setDraft('');
-            sendProjection.current = new SendProjection();
-            setMessages([]);
-            setStream('');
-            setRunning(false);
-            setStopping(false);
-            setApprovals([]);
-            setRoutines([]);
-            setError('This conversation is no longer in your sidebar.');
-            autoOpened.current = true;
-            restoreProfile.current = '';
-            restoreRoom.current = '';
+            clearRemovedConversation('This conversation is no longer in your sidebar.');
           }
           if (surviving && target?.kind === 'bot' && target.bot.profile !== surviving.profile) {
             // Reopen a proven native rename, retaining this incarnation's draft.
@@ -2047,6 +2060,30 @@ export function App({ owner }: { owner?: OwnerConnection }) {
       hidden,
     });
   }
+  async function deleteGroup() {
+    if (!client?.supportsRoomDisband || !groupToDelete || deletingGroup) return;
+    setDeletingGroup(true);
+    setGroupDeleteError('');
+    try {
+      await new ConversationDomain(client).disbandGroup(groupToDelete.id);
+      if (current.current !== client) return;
+      setGroupToDelete(undefined);
+      const active = selected.current;
+      if (active?.kind === 'room' && active.room.room_id === groupToDelete.id)
+        clearRemovedConversation('');
+      setRooms((current) => current.filter((room) => room.room_id !== groupToDelete.id));
+      void loadRoster(client, true).catch(() => undefined);
+    } catch {
+      if (current.current === client) {
+        setGroupDeleteError(
+          'Hermes couldn’t confirm the deletion. Refresh the list before trying again.',
+        );
+        void loadRoster(client, true).catch(() => undefined);
+      }
+    } finally {
+      setDeletingGroup(false);
+    }
+  }
   async function proposeDelete(bot: WorkspaceBot) {
     if (!client || !workspace) return;
     try {
@@ -2322,6 +2359,10 @@ export function App({ owner }: { owner?: OwnerConnection }) {
       onPin={(bot, pinned) => void pinPebble(bot, pinned)}
       onVisibility={(bot, hidden) => void visibility(bot, hidden)}
       onDelete={(bot) => void proposeDelete(bot)}
+      onDeleteGroup={(group) => {
+        setGroupDeleteError('');
+        setGroupToDelete(group);
+      }}
       onOrder={(ids) =>
         presentationAction('presentation.order', {
           ids,
@@ -3289,6 +3330,39 @@ export function App({ owner }: { owner?: OwnerConnection }) {
                 <AlertDialogCancel variant="secondary" className="min-w-20 max-md:min-h-11">
                   Close
                 </AlertDialogCancel>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
+          <AlertDialog
+            open={groupToDelete !== undefined}
+            onOpenChange={(open) => {
+              if (!open && !deletingGroup) setGroupToDelete(undefined);
+            }}
+          >
+            <AlertDialogContent size="sm">
+              <AlertDialogHeader>
+                <AlertDialogTitle>Delete {groupToDelete?.name}?</AlertDialogTitle>
+                <AlertDialogDescription>
+                  This permanently closes the group chat and stops work in it.
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              {groupDeleteError && (
+                <Alert variant="destructive">
+                  <AlertDescription>{groupDeleteError}</AlertDescription>
+                </Alert>
+              )}
+              <AlertDialogFooter>
+                <AlertDialogCancel disabled={deletingGroup}>Cancel</AlertDialogCancel>
+                <AlertDialogAction
+                  variant="destructive"
+                  disabled={deletingGroup}
+                  onClick={(event) => {
+                    event.preventDefault();
+                    void deleteGroup();
+                  }}
+                >
+                  {deletingGroup ? 'Deleting…' : 'Delete group'}
+                </AlertDialogAction>
               </AlertDialogFooter>
             </AlertDialogContent>
           </AlertDialog>

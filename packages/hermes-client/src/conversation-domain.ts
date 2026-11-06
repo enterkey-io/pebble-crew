@@ -562,11 +562,14 @@ export class ConversationDomain {
     );
     return { ...snapshot, history: await this.cover(snapshot.history, retained, sessionId) };
   }
+  async bind(profile: string): Promise<BotConversation> {
+    return decodeBotConversation(await this.bridge.invoke('bot.open', { profile }));
+  }
   async open(
     profile: string,
     retained: readonly ConversationMessage[] = [],
   ): Promise<BotConversation> {
-    const snapshot = decodeBotConversation(await this.bridge.invoke('bot.open', { profile }));
+    const snapshot = await this.bind(profile);
     return {
       ...snapshot,
       history: retained.length
@@ -623,6 +626,10 @@ export class ConversationDomain {
     )
       throw new ClientError('INVALID_RESPONSE');
     return room;
+  }
+  async disbandGroup(roomId: string): Promise<void> {
+    const receipt = record(await this.bridge.invoke('room.disband', { room_id: roomId }));
+    if (receipt.deleted !== roomId) throw new ClientError('INVALID_RESPONSE');
   }
   async history(
     sessionId: string,

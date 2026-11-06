@@ -515,6 +515,13 @@
       ],
       "effect": "write"
     },
+    "room.disband": {
+      "preferred": "rpc",
+      "accepted": [
+        "rpc"
+      ],
+      "effect": "write"
+    },
     "room.log": {
       "preferred": "rpc",
       "accepted": [

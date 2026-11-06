@@ -28,6 +28,7 @@ import type { ReactNode } from 'react';
 import type { MenuItem } from '../ui/primitives';
 import { IconButton } from '../components/ui/icon-button';
 import { OrganizationRail, OrganizationDialog, pebblePlacementItems } from '../ui/OrganizationRail';
+import type { RailGroup } from '../ui/OrganizationRail';
 import { NavigationItem } from '../ui/NavigationItem';
 import { Item, ItemMedia, ItemContent, ItemTitle, ItemDescription } from '../components/ui/item';
 import { readRailDrag } from '../ui/organization';
@@ -135,6 +136,7 @@ export function Rail({
   pinOrder,
   onOpen,
   onRoom,
+  onDeleteGroup,
   onAdd,
   onEdit,
   pendingPins,
@@ -170,6 +172,7 @@ export function Rail({
   pinOrder: string[];
   onOpen: (b: ChatBot) => void;
   onRoom: (r: Row) => void;
+  onDeleteGroup: (group: RailGroup) => void;
   onAdd: () => void;
   onEdit: (profile: string) => void;
   pendingPins: Record<string, boolean>;
@@ -433,6 +436,7 @@ export function Rail({
                         layoutId={`pebble-${identity(b)!.id}`}
                         draggable
                         onDragStartCapture={(event) => {
+                          if (event.currentTarget.hasAttribute('data-stationary-press')) return;
                           event.dataTransfer.setData(
                             'application/x-pebble-crew-rail',
                             JSON.stringify({ kind: 'pebble', id: identity(b)!.id }),
@@ -554,6 +558,9 @@ export function Rail({
                   const b = byId(id);
                   if (b && online) onOpen(b);
                 }}
+                onDeleteGroup={
+                  online && owner && client.supportsRoomDisband ? onDeleteGroup : undefined
+                }
                 onEditOrganization={setEditor}
                 onPin={(id) => {
                   const b = byId(id),

@@ -316,7 +316,7 @@ def create_app(token, origins, hosts, gateway=None, trust=None, workspace=None, 
                                "expires": request.scope.get("bot.ticket_expires"), "ended": None}
         build = getattr(native, "build", None) or {}
         return {"connection": connection, "protocol": "hermes-bot-web.v1", "bridge_version": VERSION,
-                "capabilities": {"connection_recovery": 1, "exchanges": bool(workspace), "exchange_events": bool(workspace), "existing_agents": True, "owner_login": owner_trust is not None, "workspace": bool(workspace), "workspace_settings": bool(workspace), "avatar_thumbnails": bool(workspace), "reporting": 1 if workspace else None, "projects": bool(workspace and getattr(native, 'work_supported', False)), "attachments": bool(files), "generated_media": True, "reactions": True, "room_reactions": bool(workspace), "live_voice": live_voice_supported(), "secrets": bool(getattr(native, "build", None) and native.build.get("server_requests")), "questions": bool(getattr(native, "build", None)), "computer": computer.supported},
+                "capabilities": {"connection_recovery": 1, "exchanges": bool(workspace), "exchange_events": bool(workspace), "existing_agents": True, "owner_login": owner_trust is not None, "workspace": bool(workspace), "workspace_settings": bool(workspace), "avatar_thumbnails": bool(workspace), "reporting": 1 if workspace else None, "projects": bool(workspace and getattr(native, 'work_supported', False)), "attachments": bool(files), "generated_media": True, "reactions": True, "room_reactions": bool(workspace), "room_disband": bool(workspace and owner_trust and getattr(native, "room_disband_supported", False)), "live_voice": live_voice_supported(), "secrets": bool(getattr(native, "build", None) and native.build.get("server_requests")), "questions": bool(getattr(native, "build", None)), "computer": computer.supported},
                 "hermes_version": build.get("version"), "hermes_revision": build.get("revision")}
 
     @app.post("/v1/renew")
@@ -384,6 +384,9 @@ def create_app(token, origins, hosts, gateway=None, trust=None, workspace=None, 
                             runtime = await native.call('bot_web.runtime.verify', {'profile': profile})
                     if not isinstance(runtime, dict) or runtime.get('verified') is not True:
                         raise InvalidOperation('The Hermes plugin update is incomplete. Finish runtime synchronization and restart the stopped services before chatting.', 'UPDATE_REQUIRED')
+            if operation == 'room.disband' and (not owner_trust or (
+                    client['principal'] != 'operator' and request.scope.get('bot.ticket_expires') is None)):
+                raise InvalidOperation('Owner authentication is required')
             if operation in {'voice.status', 'voice.preferences', 'voice.credential', 'voice.session', 'voice.submit', 'voice.end', 'voice.provider', 'voice.voices', 'voice.vox_import'}:
                 result = await voice.invoke(operation, params)
             elif operation in {'chat.commands', 'chat.command'}:
