@@ -32,7 +32,7 @@ function AtmeeKeyForm({
     <SecretCard
       title="Atmee API key"
       label="API key"
-      description="Use an Atmee key with character read access. To create characters, choose Every avatar and enable character and generation write access."
+      description="Use an Atmee key with avatar read access. To create video avatars, choose Every avatar and enable avatar and generation write access."
       onSkip={onClose}
       submissionError={(cause) => safeError(cause).message}
       onSubmit={async (value) => {
@@ -166,8 +166,8 @@ export function AtmeeCharacterSettings({
     }
   }
   return (
-    <FormSection title="Video" description="Your Atmee character supplies the face and voice.">
-      {!characters && !error && <LoadingBar active label="Loading Atmee characters" />}
+    <FormSection title="Video" description="Your video avatar supplies the face and voice.">
+      {!characters && !error && <LoadingBar active label="Loading video avatars" />}
       {editingKey ? (
         <AtmeeKeyForm
           client={client}
@@ -190,8 +190,8 @@ export function AtmeeCharacterSettings({
       ) : characters?.configured && !characters.canCreate ? (
         <div className="grid justify-items-start gap-2">
           <p className="text-sm text-muted-foreground">
-            This key can select characters. To create one, use an Atmee key with access to every
-            avatar and character and generation write permissions.
+            This key can select video avatars. To create one, use an Atmee key with access to every
+            avatar and avatar and generation write permissions.
           </p>
           <Button type="button" variant="quiet" onClick={() => setEditingKey(true)}>
             Replace Atmee API key
@@ -200,7 +200,7 @@ export function AtmeeCharacterSettings({
       ) : null}
       {characters?.configured && characters.avatars.length > 0 && (
         <div className="grid max-w-sm gap-2">
-          <Label htmlFor={id}>Character</Label>
+          <Label htmlFor={id}>Video avatar</Label>
           <Select
             value={
               characters.avatars.some((avatar) => avatar.id === characters.selected)
@@ -214,7 +214,7 @@ export function AtmeeCharacterSettings({
             }}
           >
             <SelectTrigger id={id} className="w-full">
-              <SelectValue placeholder="Select a character" />
+              <SelectValue placeholder="Select a video avatar" />
             </SelectTrigger>
             <SelectContent position="popper">
               {characters.avatars.map((avatar) => (

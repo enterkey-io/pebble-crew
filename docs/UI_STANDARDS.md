@@ -311,6 +311,6 @@ and name the earlier ID when a rule is superseded.
 
 ### Voice provider setup feedback
 
-- Decision: Show saved ElevenLabs voices in the voice picker, with a retryable catalog error next to the field. Use the same private Atmee key card in Connections and a Pebble’s Video settings.
+- Decision: Show all available ElevenLabs voices in the voice picker, with a retryable catalog error next to the field. Use the same private Atmee key card in Connections and a Pebble’s Video settings.
 - Why: A provider request can fail independently of a saved selection. Key errors need to be visible where the owner enters the key, and a confirmed save should immediately unlock the character controls.
-- Evidence: The ElevenLabs browser journey retries a catalog failure and selects a returned voice. Atmee browser and native owner journeys exercise a rejected key, a confirmed save, and character selection.
+- Evidence: The ElevenLabs browser journey retries a catalog failure and selects a returned voice and plays its recorded sample without a call. Atmee browser and native owner journeys exercise a rejected key, a confirmed save, and character selection.

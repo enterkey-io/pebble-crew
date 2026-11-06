@@ -59,31 +59,31 @@ test('create a private character from a portrait, voice style and reviewed Pebbl
   await expect(page.getByLabel('Message', { exact: true })).toBeEnabled();
   const start = page.getByRole('button', { name: 'Start video call' });
   await start.click();
-  await page.getByRole('button', { name: 'New character', exact: true }).click();
-  await expect(page.getByLabel('Character name')).toHaveValue('Arlo');
-  const description = page.getByLabel('Character description');
+  await page.getByRole('button', { name: 'New video avatar', exact: true }).click();
+  await expect(page.getByLabel('Avatar name')).toHaveValue('Arlo');
+  const description = page.getByLabel('Avatar description');
   await expect(description).toHaveValue(/Team lead/);
   await page.getByLabel('Portrait', { exact: true }).setInputFiles(await atmeePortrait(page));
   await expect(page.getByRole('img', { name: 'Portrait preview' })).toBeVisible();
   await page.getByRole('combobox', { name: 'Voice style' }).click();
   await page.getByRole('option', { name: 'Calm & clear' }).click();
-  await page.getByLabel('Character name').fill('Arlo · Studio');
+  await page.getByLabel('Avatar name').fill('Arlo · Studio');
   await description.fill('Arlo leads the team.');
   await page
-    .getByRole('button', { name: 'Create character', exact: true })
+    .getByRole('button', { name: 'Create video avatar', exact: true })
     .scrollIntoViewIfNeeded();
   await page.screenshot({
     animations: 'disabled',
     path: info.outputPath('atmee-character-builder.png'),
   });
-  await page.getByRole('button', { name: 'Create character', exact: true }).click();
+  await page.getByRole('button', { name: 'Create video avatar', exact: true }).click();
   await expect(page.getByText('Creating Arlo · Studio…', { exact: false })).toBeVisible();
   await page.getByRole('button', { name: 'Close Edit Arlo' }).click();
   ready = true;
   await start.click();
   await expect(page.getByText('Arlo · Studio is ready.')).toBeVisible();
-  await page.getByRole('button', { name: 'Use character' }).click();
-  await expect(page.getByRole('combobox', { name: 'Character', exact: true })).toContainText(
+  await page.getByRole('button', { name: 'Use video avatar' }).click();
+  await expect(page.getByRole('combobox', { name: 'Video avatar', exact: true })).toContainText(
     'Arlo · Studio',
   );
   expect(submissions).toBe(1);
@@ -167,14 +167,14 @@ test('Atmee setup, private camera preview and both sides of the call reach Herme
   await expect(key.getByLabel('API key')).toHaveAttribute('type', 'password');
   await key.getByLabel('API key').fill('sk_atmee_missing-scope');
   await key.getByRole('button', { name: 'Submit' }).click();
-  await expect(key.getByRole('alert')).toContainText('Enable character read access');
+  await expect(key.getByRole('alert')).toContainText('Enable avatar read access');
   await key.getByLabel('API key').fill('sk_atmee_fixture-only');
   await key.getByRole('button', { name: 'Submit' }).click();
   await expect(key).toHaveCount(0);
   await expect(addKey).toHaveCount(0);
-  await page.getByRole('combobox', { name: 'Character', exact: true }).click();
+  await page.getByRole('combobox', { name: 'Video avatar', exact: true }).click();
   await page.getByRole('option', { name: 'Aimee' }).click();
-  await expect(page.getByRole('combobox', { name: 'Character' })).toContainText('Aimee');
+  await expect(page.getByRole('combobox', { name: 'Video avatar' })).toContainText('Aimee');
   await page.getByLabel('Call notes', { exact: true }).fill('Keep check-ins brief.');
   const save = page.getByRole('button', { name: 'Save call notes' });
   await save.click();

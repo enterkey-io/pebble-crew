@@ -3,6 +3,7 @@ export const voiceErrors = {
   ELEVEN_KEY_REJECTED: 'ElevenLabs rejected this saved key.',
   ELEVEN_ACCESS_DENIED: 'This ElevenLabs key does not have the required voice access.',
   ELEVEN_RATE_LIMITED: 'ElevenLabs limited this request. Wait a moment, then try again.',
+  ELEVEN_SAMPLE_UNAVAILABLE: 'ElevenLabs has no playable sample for this voice. Try another voice.',
   ELEVEN_CONNECTION_FAILED: 'Hermes could not open a connection to ElevenLabs voice.',
   VOICE_KEY_REQUIRED: 'Add an OpenAI API key to use voice.',
   VOICE_KEY_REJECTED: 'OpenAI rejected this saved key.',
@@ -33,12 +34,12 @@ export const voiceErrors = {
 
 export const atmeeErrors = {
   ATMEE_KEY_REJECTED: 'Atmee rejected this API key.',
-  ATMEE_KEY_SCOPE: 'Enable character read access for this key in Atmee Studio.',
+  ATMEE_KEY_SCOPE: 'Enable avatar read access for this key in Atmee Studio.',
   ATMEE_KEY_SAVE_FAILED: 'Hermes couldn’t save this Atmee key. Try again.',
   ATMEE_UNAVAILABLE: 'Atmee is unavailable. Try again shortly.',
-  ATMEE_AVATAR_UNAVAILABLE: 'Select an available Atmee character in this Pebble’s Voice settings.',
+  ATMEE_AVATAR_UNAVAILABLE: 'Select an available video avatar in this Pebble’s Voice settings.',
   ATMEE_CALL_LIMIT: 'Check your Atmee credits or end the other video call.',
-  ATMEE_BUILD_SCOPE: 'Use an account-wide Atmee key with character and generation write access.',
+  ATMEE_BUILD_SCOPE: 'Use an account-wide Atmee key with avatar and generation write access.',
   ATMEE_BUILD_CREDITS: 'Check your Atmee credits and V2 access.',
   ATMEE_BUILD_INPUT: 'Atmee could not use these inputs. Try another photo or voice style.',
 } as const;

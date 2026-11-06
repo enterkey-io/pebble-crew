@@ -1073,9 +1073,9 @@ test('a native video call without a tool request hands both sides to the existin
   await page.getByRole('button', { name: 'Close Settings' }).click();
   const start = page.getByRole('button', { name: 'Start video call' });
   await start.click();
-  await page.getByRole('combobox', { name: 'Character' }).click();
+  await page.getByRole('combobox', { name: 'Video avatar' }).click();
   await page.getByRole('option', { name: 'Synthetic character' }).click();
-  await expect(page.getByRole('combobox', { name: 'Character' })).toContainText(
+  await expect(page.getByRole('combobox', { name: 'Video avatar' })).toContainText(
     'Synthetic character',
   );
   await page.getByRole('button', { name: /^Close Edit / }).click();
@@ -1242,15 +1242,15 @@ test('owner creates and selects Aurora from Pebble Crew without a voice recordin
     await page.getByRole('tab', { name: 'Voice', exact: true }).click();
   };
   await openVideo();
-  await page.getByRole('button', { name: 'New character', exact: true }).click();
-  await expect(page.getByLabel('Character name')).toHaveValue('Aurora');
+  await page.getByRole('button', { name: 'New video avatar', exact: true }).click();
+  await expect(page.getByLabel('Avatar name')).toHaveValue('Aurora');
   await page.getByLabel('Portrait', { exact: true }).setInputFiles(await atmeePortrait(page));
-  await page.getByLabel('Character name').fill('Aurora · Video test');
-  await page.getByLabel('Character description').fill('Approved Aurora character description.');
-  await page.getByRole('button', { name: 'Create character', exact: true }).click();
+  await page.getByLabel('Avatar name').fill('Aurora · Video test');
+  await page.getByLabel('Avatar description').fill('Approved Aurora character description.');
+  await page.getByRole('button', { name: 'Create video avatar', exact: true }).click();
   await expect(page.getByText('Aurora · Video test is ready.')).toBeVisible({ timeout: 30000 });
-  await page.getByRole('button', { name: 'Use character', exact: true }).click();
-  const selected = page.getByRole('combobox', { name: 'Character', exact: true });
+  await page.getByRole('button', { name: 'Use video avatar', exact: true }).click();
+  const selected = page.getByRole('combobox', { name: 'Video avatar', exact: true });
   await expect(selected).toContainText('Aurora · Video test');
   await page.getByRole('button', { name: 'Close Edit Aurora' }).click();
   await page.reload();

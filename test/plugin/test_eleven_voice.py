@@ -12,7 +12,7 @@ from bot_web.operations import BotOperations, InvalidOperation
 
 
 class ElevenVoiceTests(unittest.TestCase):
-    def test_catalog_reads_large_paginated_saved_voice_lists(self):
+    def test_catalog_reads_large_paginated_voice_lists(self):
         pages = [
             {'voices': [{'voice_id': 'voice_A', 'name': 'First voice', 'description': 'x' * 280_000}],
              'has_more': True, 'next_page_token': 'next+page/='},
@@ -27,10 +27,31 @@ class ElevenVoiceTests(unittest.TestCase):
                              {'voices': {'voice_A': 'First voice', 'voice_B': 'Second voice'}})
         requests = [call.args[0] for call in opener.open.call_args_list]
         queries = [parse_qs(urlsplit(req.full_url).query) for req in requests]
-        self.assertEqual(queries[0]['voice_type'], ['saved'])
+        self.assertNotIn('voice_type', queries[0])
         self.assertEqual(queries[0]['page_size'], ['20'])
         self.assertEqual(queries[1]['next_page_token'], ['next+page/='])
         self.assertTrue(all(req.get_header('Xi-api-key') == 'private-key' for req in requests))
+
+    def test_preview_download_uses_provider_sample_without_forwarding_key(self):
+        from email.message import Message
+        response = io.BytesIO(b'ID3sample')
+        response.headers = Message()
+        response.headers['Content-Type'] = 'audio/mpeg'
+        opener = Mock()
+        opener.open.return_value = response
+        url = 'https://api.us.elevenlabs.io/v1/voices/voice_A/sample/audio?signature=abc'
+        with patch('bot_web.eleven_voice.request', return_value={'preview_url': url}), \
+             patch('bot_web.eleven_voice.urllib.request.build_opener', return_value=opener):
+            self.assertEqual(eleven_voice.sample('private-key', 'voice_A'), {'audio': 'SUQzc2FtcGxl'})
+        req = opener.open.call_args.args[0]
+        self.assertEqual(req.full_url, url)
+        self.assertFalse(req.headers)
+        opener.open.reset_mock()
+        with patch('bot_web.eleven_voice.request', return_value={'preview_url': 'https://127.0.0.1/sample'}), \
+             patch('bot_web.eleven_voice.urllib.request.build_opener', return_value=opener):
+            with self.assertRaises(InvalidOperation):
+                eleven_voice.sample('private-key', 'voice_A')
+        opener.open.assert_not_called()
 
     def test_incomplete_catalog_reports_failure_instead_of_a_partial_list(self):
         page = {'voices': [{'voice_id': 'voice_A', 'name': 'First'}],

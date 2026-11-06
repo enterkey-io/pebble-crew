@@ -21,6 +21,19 @@ test('ElevenLabs preview, Hermes delegation, and call history use the selected E
   const pcm = Buffer.alloc(24000 * 2);
   for (let i = 0; i < 24000; i++)
     pcm.writeInt16LE(Math.sin((i * 2 * Math.PI * 440) / 24000) * 2500, i * 2);
+  const wav = Buffer.alloc(44);
+  wav.write('RIFF', 0);
+  wav.writeUInt32LE(pcm.length + 36, 4);
+  wav.write('WAVEfmt ', 8);
+  wav.writeUInt32LE(16, 16);
+  wav.writeUInt16LE(1, 20);
+  wav.writeUInt16LE(1, 22);
+  wav.writeUInt32LE(24000, 24);
+  wav.writeUInt32LE(48000, 28);
+  wav.writeUInt16LE(2, 32);
+  wav.writeUInt16LE(16, 34);
+  wav.write('data', 36);
+  wav.writeUInt32LE(pcm.length, 40);
   await installFixture(context, { voice: true, messages });
   await page.addInitScript(() => {
     const tracks: MediaStreamTrack[] = [];
@@ -57,17 +70,6 @@ test('ElevenLabs preview, Hermes delegation, and call history use the selected E
     route.onMessage((raw) => {
       const data = JSON.parse(String(raw));
       providerMessages.push(data);
-      if (data.type === 'response.create' && data.response?.instructions) {
-        route.send(JSON.stringify({ type: 'response.created' }));
-        route.send(
-          JSON.stringify({
-            type: 'response.output_audio.delta',
-            item_id: 'preview',
-            delta: pcm.toString('base64'),
-          }),
-        );
-        route.send(JSON.stringify({ type: 'response.done' }));
-      }
     });
     route.send(JSON.stringify({ type: 'session.created' }));
   });
@@ -101,6 +103,10 @@ test('ElevenLabs preview, Hermes delegation, and call history use the selected E
       if (catalogs === 1)
         return route.fulfill({ status: 400, json: { code: 'ELEVEN_ACCESS_DENIED' } });
       return reply({ voices: { soft_voice: 'Soft Voice', bright_voice: 'Bright Voice' } });
+    }
+    if (operation === 'voice.sample') {
+      expect(params.voice).toBe('soft_voice');
+      return reply({ audio: Buffer.concat([wav, pcm]).toString('base64') });
     }
     if (operation === 'voice.session') {
       expect(params.provider).toBe('elevenlabs');
@@ -146,14 +152,9 @@ test('ElevenLabs preview, Hermes delegation, and call history use the selected E
     animations: 'disabled',
   });
   await page.getByRole('button', { name: 'Preview', exact: true }).click();
-  await expect
-    .poll(() => providerMessages.find((message) => message.type === 'response.create')?.response)
-    .toEqual({
-      instructions:
-        'Read this sample once, exactly as written: Hi, this is the Soft Voice voice on Pebble Crew. How do I sound?',
-    });
   await expect(page.getByRole('button', { name: 'Stop preview', exact: true })).toBeEnabled();
   expect(await page.evaluate(() => Reflect.get(window, '__elevenMic')())).toEqual([]);
+  expect(sockets).toHaveLength(0);
   await page.getByRole('button', { name: 'Stop preview', exact: true }).click();
   await page.getByRole('button', { name: 'Start call', exact: true }).click();
   await expect(page.getByRole('button', { name: 'Mute microphone' })).toBeVisible();

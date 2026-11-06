@@ -20,13 +20,13 @@ STYLES = {
 STORAGE_HOSTS = ('atmanity.us', 'atmee.ai', 'r2.cloudflarestorage.com', 'amazonaws.com', 'storage.googleapis.com')
 PENDING = {'preparing', 'creating', 'building'}
 ERRORS = {
-    'ATMEE_BUILD_SCOPE': 'Use an account-wide Atmee key with character and generation write access.',
+    'ATMEE_BUILD_SCOPE': 'Use an account-wide Atmee key with avatar and generation write access.',
     'ATMEE_BUILD_CREDITS': 'Check your Atmee credits and V2 access.',
     'ATMEE_BUILD_INPUT': 'Atmee could not use these inputs. Try another photo or voice style.',
     'ATMEE_KEY_REJECTED': 'Atmee rejected this API key.',
     'STALE_REVISION': 'The Atmee key or Pebble changed. Reopen this editor.',
 }
-UNCERTAIN = 'Check your Atmee characters before starting another build. Atmee may have received this one.'
+UNCERTAIN = 'Check your Atmee video avatars before starting another build. Atmee may have received this one.'
 
 
 def clean_text(value, limit):
@@ -161,7 +161,7 @@ class AtmeeBuilds:
             state = 'ready'
         elif remote.get('status') in {'failed', 'stalled', 'moderation_hold', 'draft'}:
             state = 'failed'
-            error = 'Atmee could not finish this character. Check the build in Atmee Studio.'
+            error = 'Atmee could not finish this video avatar. Check the build in Atmee Studio.'
         if state != 'building':
             self.change(request_id, state, avatar=avatar, error=error)
         return self.receipt((request_id, name, state, avatar, error))
@@ -203,7 +203,7 @@ class AtmeeBuilds:
                 raise InvalidOperation('Invalid character build receipt', 'ATMEE_UNAVAILABLE')
             if result.get('kind') != 'conversational' or status == 'draft':
                 self.change(request_id, 'failed', avatar=avatar,
-                            error='Atmee saved a draft. Check the character in Atmee Studio.')
+                            error='Atmee saved a draft. Check the video avatar in Atmee Studio.')
             else:
                 self.change(request_id, 'building', avatar=avatar)
         except InvalidOperation as error:
@@ -213,7 +213,7 @@ class AtmeeBuilds:
                 self.change(request_id, 'failed', error=ERRORS.get(error.code, 'Atmee could not finish the build. Check your Atmee account before trying again.'))
         except Exception:
             self.change(request_id, 'uncertain' if creating else 'failed',
-                        error=UNCERTAIN if creating else 'Could not prepare the Atmee character.')
+                        error=UNCERTAIN if creating else 'Could not prepare the video avatar.')
 
     def check_scope(self, bot, key):
         self.pebble(bot)

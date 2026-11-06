@@ -89,6 +89,8 @@ export const VoiceChat = forwardRef<
   const live = useRef<VoiceLiveSession | ElevenRealtimeSession | undefined>(undefined),
     generation = useRef(0),
     mounted = useRef(true);
+  const sampleContext = useRef<AudioContext | undefined>(undefined);
+  const sampleFrame = useRef(0);
   const startedCallId = useRef<string | null>(null);
   const receipts = useRef(new DelegationReceipts());
   const seenDelegations = useRef(new Set<string>());
@@ -216,6 +218,10 @@ export const VoiceChat = forwardRef<
     generation.current++;
     clearTimeout(previewTimer.current);
     clearTimeout(setupTimer.current);
+    cancelAnimationFrame(sampleFrame.current);
+    const sample = sampleContext.current;
+    sampleContext.current = undefined;
+    if (sample && sample.state !== 'closed') void sample.close().catch(() => undefined);
     const previous = live.current;
     live.current = undefined;
     const callId = startedCallId.current;
@@ -365,6 +371,45 @@ export const VoiceChat = forwardRef<
       if (result) void finish(result);
     },
   }));
+  async function playElevenSample(voice: string, epoch: number) {
+    const context = new AudioContext();
+    sampleContext.current = context;
+    void context.resume().catch(() => undefined);
+    const data = record(await rpc('voice.sample', { voice }));
+    if (typeof data.audio !== 'string' || !data.audio || data.audio.length > 11_184_812)
+      throw new ClientError('ELEVEN_SAMPLE_UNAVAILABLE');
+    const bytes = Uint8Array.from(atob(data.audio), (byte) => byte.charCodeAt(0));
+    const buffer = await context.decodeAudioData(bytes.buffer);
+    if (generation.current !== epoch) return;
+    const source = context.createBufferSource();
+    const analyser = context.createAnalyser();
+    analyser.fftSize = 256;
+    source.buffer = buffer;
+    source.connect(analyser);
+    analyser.connect(context.destination);
+    source.onended = () => {
+      if (generation.current === epoch) end();
+    };
+    const wave = new Uint8Array(analyser.fftSize);
+    const tick = () => {
+      if (generation.current !== epoch) return;
+      analyser.getByteTimeDomainData(wave);
+      let peak = 0;
+      for (const byte of wave) peak = Math.max(peak, Math.abs(byte - 128));
+      audioActivity.current?.update(peak / 128);
+      sampleFrame.current = requestAnimationFrame(tick);
+    };
+    setState('preview');
+    const syncAudio = () => {
+      if (generation.current !== epoch) return;
+      setPreviewPlaying(context.state === 'running');
+      setBlockedAudio(context.state !== 'running');
+    };
+    context.onstatechange = syncAudio;
+    syncAudio();
+    source.start();
+    tick();
+  }
   async function start(preview: boolean, selection = value, selected: VoiceProvider = provider) {
     if (inputBlocked && !preview) return;
     end();
@@ -381,6 +426,22 @@ export const VoiceChat = forwardRef<
     setError('');
     setNotice('');
     setState('starting');
+    if (preview && selected === 'elevenlabs') {
+      try {
+        await playElevenSample(selection.voice, epoch);
+      } catch (cause) {
+        if (generation.current === epoch) {
+          end();
+          reportFailure(
+            cause instanceof ClientError
+              ? cause.message
+              : 'This ElevenLabs sample could not play. Try again.',
+            rejectedVoiceKey(cause),
+          );
+        }
+      }
+      return;
+    }
     let previewHeard = false,
       playbackBlocked = false;
     const handlers: VoiceLiveHandlers = {
@@ -405,14 +466,7 @@ export const VoiceChat = forwardRef<
         clearTimeout(setupTimer.current);
         if (preview) {
           setState('preview');
-          const voiceName =
-            selected === 'elevenlabs'
-              ? settings?.supported && Object.hasOwn(settings.labels, selection.voice)
-                ? settings.labels[selection.voice]
-                : Object.hasOwn(elevenLabels, selection.voice)
-                  ? elevenLabels[selection.voice]
-                  : 'selected ElevenLabs'
-              : selection.voice.charAt(0).toUpperCase() + selection.voice.slice(1);
+          const voiceName = selection.voice.charAt(0).toUpperCase() + selection.voice.slice(1);
           call.speak(null, `Hi, this is the ${voiceName} voice on Pebble Crew. How do I sound?`);
           previewTimer.current = setTimeout(
             () => {
@@ -537,16 +591,20 @@ export const VoiceChat = forwardRef<
           voiceCatalog={
             loadElevenVoices && (
               <>
-                {catalogState === 'loading' && <LoadingBar active label="Loading My Voices" />}
+                {catalogState === 'loading' && (
+                  <LoadingBar active label="Loading ElevenLabs voices" />
+                )}
                 {catalogState === 'ready' && Object.keys(elevenLabels).length === 0 && (
-                  <p className="text-sm text-muted-foreground">No saved voices in ElevenLabs.</p>
+                  <p className="text-sm text-muted-foreground">
+                    No ElevenLabs voices are available.
+                  </p>
                 )}
                 {(catalogState === 'key' || catalogState === 'error') && (
                   <Alert>
                     <AlertDescription>
                       {catalogState === 'key'
-                        ? 'Couldn’t load My Voices. Check that your ElevenLabs key has Voices read access.'
-                        : 'Couldn’t load My Voices from ElevenLabs.'}
+                        ? 'Couldn’t load ElevenLabs voices. Check that your ElevenLabs key has Voices read access.'
+                        : 'Couldn’t load ElevenLabs voices.'}
                       <Button
                         variant="link"
                         onClick={() => setCatalogAttempt((value) => value + 1)}
@@ -582,9 +640,8 @@ export const VoiceChat = forwardRef<
           }
           audioBlocked={blockedAudio}
           onEnableAudio={() => {
-            void live.current
-              ?.resumeAudio()
-              .then(() => setBlockedAudio(false))
+            void (sampleContext.current?.resume() ?? live.current?.resumeAudio())
+              ?.then(() => setBlockedAudio(false))
               .catch(() => setError('Your browser blocked audio playback.'));
           }}
           onClose={() => {

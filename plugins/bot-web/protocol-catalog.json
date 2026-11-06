@@ -789,6 +789,13 @@
       ],
       "effect": "read"
     },
+    "voice.sample": {
+      "preferred": "rpc",
+      "accepted": [
+        "rpc"
+      ],
+      "effect": "read"
+    },
     "voice.end": {
       "preferred": "rpc",
       "accepted": [

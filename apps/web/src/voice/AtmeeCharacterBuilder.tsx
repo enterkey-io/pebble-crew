@@ -138,7 +138,7 @@ export function AtmeeCharacterBuilder({
     <div className="grid max-w-md gap-3">
       {working && (
         <div className="grid gap-2">
-          <LoadingBar active label="Creating Atmee character" />
+          <LoadingBar active label="Creating video avatar" />
           <p role="status" className="text-sm text-muted-foreground">
             Creating {build?.name}… You can close this and come back.
           </p>
@@ -155,7 +155,7 @@ export function AtmeeCharacterBuilder({
               if (build.avatar) void onSelect({ id: build.avatar, name: build.name, ready: true });
             }}
           >
-            Use character
+            Use video avatar
           </Button>
         </div>
       )}
@@ -186,7 +186,7 @@ export function AtmeeCharacterBuilder({
             setOpen(true);
           }}
         >
-          New character
+          New video avatar
         </Button>
       )}
       {open && (
@@ -198,7 +198,7 @@ export function AtmeeCharacterBuilder({
           }}
         >
           <fieldset disabled={submitting} className="grid gap-3">
-            <legend className="mb-2 text-sm font-medium">New character</legend>
+            <legend className="mb-2 text-sm font-medium">New video avatar</legend>
             <div className="flex items-end gap-3">
               <div className="grid min-w-0 flex-1 gap-2">
                 <Label htmlFor={id + '-photo'}>Portrait</Label>
@@ -240,7 +240,7 @@ export function AtmeeCharacterBuilder({
               </Select>
             </div>
             <div className="grid gap-2">
-              <Label htmlFor={id + '-name'}>Character name</Label>
+              <Label htmlFor={id + '-name'}>Avatar name</Label>
               <Input
                 id={id + '-name'}
                 value={name}
@@ -249,7 +249,7 @@ export function AtmeeCharacterBuilder({
               />
             </div>
             <div className="grid gap-2">
-              <Label htmlFor={id + '-persona'}>Character description</Label>
+              <Label htmlFor={id + '-persona'}>Avatar description</Label>
               <Textarea
                 id={id + '-persona'}
                 rows={4}
@@ -275,7 +275,7 @@ export function AtmeeCharacterBuilder({
               type="submit"
               disabled={submitting || reading || !photo || !name.trim() || !persona.trim()}
             >
-              {submitting ? 'Starting…' : 'Create character'}
+              {submitting ? 'Starting…' : 'Create video avatar'}
             </Button>
           </div>
         </form>

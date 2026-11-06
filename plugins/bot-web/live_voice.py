@@ -17,7 +17,7 @@ from .native import NativeError
 from .operations import InvalidOperation, fields, identifier
 from .voice_credentials import resolve_source, confirm_source, save_shared_key
 
-VOICE_ERROR_CODES = {'ELEVEN_KEY_REQUIRED', 'ELEVEN_KEY_REJECTED', 'ELEVEN_ACCESS_DENIED', 'ELEVEN_RATE_LIMITED', 'ELEVEN_CONNECTION_FAILED', 'VOICE_KEY_REJECTED', 'VOICE_PROVIDER_UNREACHABLE', 'VOICE_INVALID_ANSWER', 'VOICE_KEY_REQUIRED', 'VOICE_SETUP_FAILED', 'VOICE_PREFERENCES_FAILED', 'VOICE_ACCESS_DENIED', 'VOICE_OFFER_REJECTED', 'VOICE_MODEL_UNAVAILABLE', 'VOICE_LIMIT_REACHED', 'VOICE_RATE_LIMITED', 'VOICE_CREDITS_EXHAUSTED', 'VOICE_SPEND_LIMIT_REACHED', 'VOICE_QUOTA_EXHAUSTED', 'VOICE_PROVIDER_TIMEOUT', 'VOICE_PROVIDER_UNAVAILABLE'}
+VOICE_ERROR_CODES = {'ELEVEN_KEY_REQUIRED', 'ELEVEN_KEY_REJECTED', 'ELEVEN_ACCESS_DENIED', 'ELEVEN_RATE_LIMITED', 'ELEVEN_CONNECTION_FAILED', 'ELEVEN_SAMPLE_UNAVAILABLE', 'VOICE_KEY_REJECTED', 'VOICE_PROVIDER_UNREACHABLE', 'VOICE_INVALID_ANSWER', 'VOICE_KEY_REQUIRED', 'VOICE_SETUP_FAILED', 'VOICE_PREFERENCES_FAILED', 'VOICE_ACCESS_DENIED', 'VOICE_OFFER_REJECTED', 'VOICE_MODEL_UNAVAILABLE', 'VOICE_LIMIT_REACHED', 'VOICE_RATE_LIMITED', 'VOICE_CREDITS_EXHAUSTED', 'VOICE_SPEND_LIMIT_REACHED', 'VOICE_QUOTA_EXHAUSTED', 'VOICE_PROVIDER_TIMEOUT', 'VOICE_PROVIDER_UNAVAILABLE'}
 
 _CONFIG = threading.Lock()
 PACE_START = '[Pebble Crew delivery]'
@@ -221,7 +221,8 @@ class LiveVoice:
                 'text': text, 'surface': 'voice-live', 'voice_context': context, 'queued': True})
         allowed = {'voice.status': ['session_id'], 'voice.preferences': ['session_id', 'voice', 'complete'],
                    'voice.credential': ['session_id', 'value'], 'voice.session': ['session_id', 'sdp', 'preview'],
-                   'voice.provider': ['session_id', 'provider'], 'voice.voices': ['session_id']}
+                   'voice.provider': ['session_id', 'provider'], 'voice.voices': ['session_id'],
+                   'voice.sample': ['session_id', 'voice']}
         if operation not in allowed:
             raise InvalidOperation('Unsupported voice operation')
         requested = params.get('provider', 'openai')
@@ -232,13 +233,17 @@ class LiveVoice:
         if requested not in ('openai', 'elevenlabs'):
             raise InvalidOperation('Choose a supported voice provider')
         from . import eleven_voice
-        if operation == 'voice.voices':
-            def catalog():
+        if operation in {'voice.voices', 'voice.sample'}:
+            def read_eleven():
                 from hermes_cli.web_server_profiles import _config_profile_scope
                 with _CONFIG, _config_profile_scope(profile):
                     key, confirmed = eleven_voice.source() if eleven_voice.provider() == 'elevenlabs' else ('', False)
-                return eleven_voice.catalog(key if confirmed else '')
-            return await asyncio.to_thread(catalog)
+                if operation == 'voice.voices':
+                    return eleven_voice.catalog(key if confirmed else '')
+                if not confirmed:
+                    raise InvalidOperation('Confirm the ElevenLabs key first', 'ELEVEN_KEY_REQUIRED')
+                return eleven_voice.sample(key, params['voice'])
+            return await asyncio.to_thread(read_eleven)
         if sid in self.inflight:
             raise InvalidOperation('Voice setup is already in progress')
         # A single owner/profile-scoped config operation, off the event loop. Do not

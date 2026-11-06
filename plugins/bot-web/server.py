@@ -401,7 +401,7 @@ def create_app(token, origins, hosts, gateway=None, trust=None, workspace=None, 
                 if 'session_id' in params and params['session_id'] not in client['sessions']:
                     raise InvalidOperation('Session belongs to another connection')
                 result = await atmee.invoke(operation, params)
-            elif operation in {'voice.status', 'voice.preferences', 'voice.credential', 'voice.session', 'voice.submit', 'voice.end', 'voice.provider', 'voice.voices'}:
+            elif operation in {'voice.status', 'voice.preferences', 'voice.credential', 'voice.session', 'voice.submit', 'voice.end', 'voice.provider', 'voice.voices', 'voice.sample'}:
                 result = await voice.invoke(operation, params)
             elif operation in {'chat.commands', 'chat.command', 'chat.model.options', 'chat.model.select'}:
                 from .commands import invoke as command

@@ -1,11 +1,12 @@
 """Owner-held ElevenLabs credentials and fixed Realtime session configuration."""
+import base64
 import hashlib
 import json
 import re
 import secrets
 import time
 import urllib.error
-from urllib.parse import urlencode
+from urllib.parse import unquote, urlencode, urlsplit
 import urllib.request
 
 from .operations import InvalidOperation
@@ -116,6 +117,8 @@ def request(path, key, payload=None, *, timeout=15, max_bytes=256_000):
             return value
     except urllib.error.HTTPError as error:
         code = {401: 'ELEVEN_KEY_REJECTED', 403: 'ELEVEN_ACCESS_DENIED', 429: 'ELEVEN_RATE_LIMITED'}.get(error.code, 'ELEVEN_CONNECTION_FAILED')
+        if error.code == 404 and path.startswith('/v1/voices/'):
+            code = 'ELEVEN_SAMPLE_UNAVAILABLE'
         error.close()
         raise InvalidOperation('ElevenLabs refused the voice request', code) from None
     except (OSError, ValueError) as error:
@@ -125,7 +128,7 @@ def request(path, key, payload=None, *, timeout=15, max_bytes=256_000):
 def catalog(key):
     if not key:
         return {'voices': {}}
-    query = {'voice_type': 'saved', 'page_size': 20, 'include_total_count': 'false'}
+    query = {'page_size': 20, 'include_total_count': 'false'}
     voices = {}
     visited = set()
     deadline = time.monotonic() + 15
@@ -152,6 +155,35 @@ def catalog(key):
         visited.add(cursor)
         query['next_page_token'] = cursor
     raise InvalidOperation('ElevenLabs returned an incomplete voice list', 'ELEVEN_CONNECTION_FAILED')
+
+
+def sample(key, voice):
+    if not isinstance(voice, str) or not VOICE_ID.fullmatch(voice):
+        raise InvalidOperation('Choose an ElevenLabs voice')
+    metadata = request('/v1/voices/' + voice, key, max_bytes=1_048_576)
+    try:
+        url = metadata.get('preview_url')
+        parsed = urlsplit(url if isinstance(url, str) else '')
+        path = unquote(parsed.path)
+        trusted = (
+            parsed.hostname == 'storage.googleapis.com' and path.startswith('/eleven-public-prod/')
+            or parsed.hostname in {'api.elevenlabs.io', 'api.us.elevenlabs.io', 'api.eu.elevenlabs.io'}
+            and re.fullmatch(r'/v1/voices/[A-Za-z0-9_-]+/[A-Za-z0-9_-]+/audio', path)
+        )
+        if (not trusted or parsed.scheme != 'https' or parsed.username or parsed.password
+                or parsed.port is not None or parsed.fragment or '..' in path.split('/')):
+            raise ValueError()
+        with urllib.request.build_opener(NoRedirect()).open(urllib.request.Request(url), timeout=12) as response:
+            limit = 8 * 1024 * 1024
+            mime = response.headers.get_content_type()
+            if mime not in {'audio/mpeg', 'audio/wav', 'audio/x-wav', 'audio/mp4', 'audio/ogg'}:
+                raise ValueError()
+            audio = response.read(limit + 1)
+        if not 0 < len(audio) <= limit:
+            raise ValueError()
+        return {'audio': base64.b64encode(audio).decode('ascii')}
+    except (OSError, ValueError):
+        raise InvalidOperation('ElevenLabs sample is unavailable', 'ELEVEN_SAMPLE_UNAVAILABLE') from None
 
 
 def session_parameters(name, preview):
