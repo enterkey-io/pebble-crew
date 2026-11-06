@@ -41,6 +41,8 @@ export const atmeeErrors = {
   ATMEE_CALL_LIMIT: 'Check your Atmee credits or end the other video call.',
   ATMEE_VOICE_UNAVAILABLE:
     'This Atmee voice sample is unavailable. Choose another voice or design a new one.',
+  ATMEE_VOICE_PREVIEW_MISSING:
+    'Pebble Crew did not save the playback link. You can still select this voice for your avatar.',
   ATMEE_BUILD_SCOPE: 'Use an account-wide Atmee key with avatar and generation write access.',
   ATMEE_BUILD_CREDITS:
     'This Atmee account has no V2-eligible credits. Check your plan or invite in Atmee Studio.',

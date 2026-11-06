@@ -1255,6 +1255,18 @@ test('owner creates and selects Aurora from Pebble Crew without a voice recordin
   await page.getByRole('radio', { name: 'Design a voice', exact: true }).click();
   await page.getByLabel('Describe the voice').fill('Warm and conversational with a calm tone.');
   await page.getByRole('button', { name: 'Generate voice samples' }).click();
+  for (const name of ['Voice 1', 'Voice 2']) {
+    await page.getByRole('button', { name: `Preview ${name}` }).click();
+    const audio = page.getByLabel(`Sample for ${name}`);
+    await expect(audio).toHaveAttribute('src', /^blob:/);
+    await expect
+      .poll(() =>
+        audio.evaluate((element) =>
+          element instanceof HTMLAudioElement ? element.currentTime : 0,
+        ),
+      )
+      .toBeGreaterThan(0);
+  }
   await page.getByRole('radio', { name: 'Voice 1' }).click();
   await page.getByRole('button', { name: 'Create video avatar', exact: true }).click();
   await expect(page.getByText('Aurora · Video test is ready.')).toBeVisible({ timeout: 30000 });

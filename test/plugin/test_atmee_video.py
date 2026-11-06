@@ -2,6 +2,7 @@ import asyncio
 import base64
 import io
 import json
+import socket
 from email.message import Message
 from urllib.error import HTTPError
 from pathlib import Path
@@ -11,7 +12,7 @@ from unittest.mock import AsyncMock, Mock, patch
 
 from test_security import Native  # Loads the production plugin package under bot_web.
 from bot_web.atmee_video import AtmeeVideo, VoiceDesignFailure, catalog, provider
-from bot_web.atmee_build import portrait_upload, video_account
+from bot_web.atmee_build import PreviewConnection, fetch_voice_sample, portrait_upload, video_account
 from bot_web.live_voice import LiveVoice
 from bot_web.operations import InvalidOperation
 from bot_web.workspace import WorkspaceStore
@@ -237,7 +238,7 @@ class AtmeeVideoTests(unittest.IsolatedAsyncioTestCase):
                 self.assertEqual(payload['voiceDescription'], design['description'])
                 return {'voices': [
                     {'upload': 'upload:' + CALL, 'url': 'https://assets.atmee.ai/first.mp3'},
-                    {'upload': 'upload:' + UPLOAD, 'url': 'https://assets.atmee.ai/second.mp3'}]}
+                    {'upload': 'upload:' + UPLOAD, 'url': 'https://voice-assets.example.net/second.mp3?signature=one%2Btwo'}]}
             if path == '/v1/account':
                 return {'v2Access': 'granted'}
             if path == '/v1/avatars':
@@ -258,7 +259,7 @@ class AtmeeVideoTests(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(ready['design']['count'], 2)
             self.assertNotIn('https', json.dumps(ready))
             await reopened.invoke('atmee.voice.sample', {'bot_id': 'alpha-id', 'voice': selection})
-            sample.assert_called_once_with('https://assets.atmee.ai/second.mp3')
+            sample.assert_called_once_with('https://voice-assets.example.net/second.mp3?signature=one%2Btwo')
             await reopened.invoke('atmee.build.start', {'bot_id': 'alpha-id', 'request_id': CALL,
                 'name': 'Aurora', 'persona': 'Approved', 'voice': selection, 'photo': self.portrait()})
             await asyncio.gather(*reopened.builds.tasks)
@@ -284,6 +285,49 @@ class AtmeeVideoTests(unittest.IsolatedAsyncioTestCase):
                 'voice': {'kind': 'existing', 'id': CHARACTER}})
             await asyncio.gather(*self.service.builds.tasks)
             self.assertEqual(self.store.db.execute('SELECT state FROM atmee_build').fetchone()[0], 'building')
+
+    def test_preview_rejects_non_public_dns_before_connecting(self):
+        private_addresses = ('127.0.0.1', '100.64.0.1', '169.254.169.254', '224.0.0.1',
+                             '::ffff:127.0.0.1', '64:ff9b::a00:1')
+        for address in private_addresses:
+            with self.subTest(address=address):
+                connection = PreviewConnection('voice-assets.example.net', timeout=15)
+                answers = [(socket.AF_INET, socket.SOCK_STREAM, 6, '', ('1.1.1.1', 443)),
+                           (socket.AF_INET6, socket.SOCK_STREAM, 6, '', (address, 443, 0, 0))]
+                with (patch('bot_web.atmee_build.socket.getaddrinfo', return_value=answers),
+                      patch('bot_web.atmee_build.socket.socket') as dial):
+                    with self.assertRaises(ValueError):
+                        connection.connect()
+                    dial.assert_not_called()
+
+    def test_preview_checks_tls_name_and_uses_the_checked_socket_address(self):
+        address = ('1.1.1.1', 443)
+        connection = PreviewConnection('voice-assets.example.net', timeout=15)
+        dns = [(socket.AF_INET, socket.SOCK_STREAM, 6, '', address)]
+        with (patch('bot_web.atmee_build.socket.getaddrinfo', return_value=dns) as resolve,
+              patch('bot_web.atmee_build.socket.socket') as dial,
+              patch.object(connection._context, 'wrap_socket') as tls):
+            connection.connect()
+            transport = dial.return_value.__enter__.return_value
+            resolve.assert_called_once_with('voice-assets.example.net.', 443, type=socket.SOCK_STREAM)
+            transport.connect.assert_called_once_with(address)
+            tls.assert_called_once_with(transport, server_hostname='voice-assets.example.net')
+
+    def test_preview_never_follows_a_redirect_or_accepts_html(self):
+        url = 'https://voice-assets.example.net/sample.mp3?signature=one%2Btwo'
+        for status, mime in ((302, 'audio/mpeg'), (200, 'text/html')):
+            with self.subTest(status=status, mime=mime):
+                with patch('bot_web.atmee_build.PreviewConnection') as connect:
+                    connection = connect.return_value
+                    response = connection.getresponse.return_value.__enter__.return_value
+                    response.status = status
+                    response.headers.get_content_type.return_value = mime
+                    with self.assertRaises(InvalidOperation):
+                        fetch_voice_sample(url)
+                    connect.assert_called_once_with('voice-assets.example.net', timeout=15)
+                    connection.request.assert_called_once_with('GET', '/sample.mp3?signature=one%2Btwo')
+                    response.read.assert_not_called()
+                    connection.close.assert_called_once()
 
     def test_voice_errors_preserve_safe_provider_reason_and_retry_delay(self):
         for status, mime, body, code in (

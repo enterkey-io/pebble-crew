@@ -70,6 +70,22 @@ class Model(BaseHTTPRequestHandler):
             pass
 
     def do_GET(self):
+        if self.path in ('/voice-one.wav?signature=first', '/voice-two.wav?signature=second'):
+            import io
+            import math
+            import struct
+            import wave
+            frequency = 330 if 'one' in self.path else 440
+            stream = io.BytesIO()
+            with wave.open(stream, 'wb') as sample:
+                sample.setparams((1, 2, 8000, 0, 'NONE', 'not compressed'))
+                sample.writeframes(b''.join(struct.pack('<h', int(1200 * math.sin(i * math.tau * frequency / 8000)))
+                                            for i in range(24000)))
+            self.send_response(200)
+            self.send_header('Content-Type', 'audio/wav')
+            self.end_headers()
+            self.wfile.write(stream.getvalue())
+            return
         self.send_response(200)
         self.send_header("Content-Type", "application/json")
         self.end_headers()
@@ -626,6 +642,7 @@ def main():
                     synthetic_calls = set()
                     built_avatar = '35b912c7-9dcc-464d-941c-b3bc78365030'
                     voice_upload = 'upload:0433a8c7-5e87-4d75-839c-a79fecf5796e'
+                    second_voice_upload = 'upload:b486933b-28e0-4ea8-866a-53de89805c13'
                     portrait_upload = 'upload:e35008ba-42f8-468a-b503-5871f3da4050'
                     built = {}
                     def synthetic_atmee(path, key, payload=None, *, idempotency=None):
@@ -648,7 +665,10 @@ def main():
                             assert uuid.UUID(idempotency) and payload['voiceDescription'].startswith('Warm')
                             assert payload['avatarName'] == 'Aurora · Video test'
                             assert 220 <= len(payload['sampleText']) <= 600
-                            return {'voices': [{'upload': voice_upload, 'url': 'https://assets.atmee.ai/fixture.mp3'}]}
+                            return {'voices': [
+                                {'upload': voice_upload, 'url': 'https://voice-assets.example.net/voice-one.wav?signature=first'},
+                                {'upload': second_voice_upload, 'url': 'https://voice-assets.example.net/voice-two.wav?signature=second'},
+                            ]}
                         if builder and path == '/v1/avatars' and payload:
                             assert not built, 'Character creation was replayed'
                             assert payload['engine'] == 'v2' and payload['visibility'] == 'private'
@@ -671,6 +691,11 @@ def main():
                             return {'alreadyEnded': False}
                         raise AssertionError('Unexpected synthetic vendor operation')
                     patch('bot_web.atmee_video.provider', synthetic_atmee).start()
+                    from http.client import HTTPConnection
+                    def synthetic_voice_cdn(host, *, timeout):
+                        assert host == 'voice-assets.example.net'
+                        return HTTPConnection('127.0.0.1', model.server_port, timeout=timeout)
+                    patch('bot_web.atmee_build.PreviewConnection', synthetic_voice_cdn).start()
                     def synthetic_portrait(key, photo):
                         assert key == 'sk_atmee_native-builder' and photo.startswith('data:image/png;base64,')
                         from PIL import Image

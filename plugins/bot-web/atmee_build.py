@@ -2,10 +2,13 @@
 import asyncio
 import base64
 import hashlib
+from http.client import HTTPException, HTTPSConnection
+from ipaddress import ip_address, ip_network
 import json
 import os
-import stat
 import re
+import socket
+import stat
 import time
 from urllib.error import URLError
 from urllib.parse import urlsplit
@@ -20,6 +23,8 @@ STYLES = {
     'bright': 'Bright and upbeat, crisp consonants, lively intonation and an easy conversational pace.',
     'soft': 'Soft and reassuring, smooth timbre, unhurried delivery and gentle intonation.',
 }
+DNS_NAME = re.compile(r'(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z](?:[a-z0-9-]{0,61}[a-z0-9])?')
+NAT64_PREFIX = ip_network('64:ff9b::/96')
 STORAGE_HOSTS = ('atmanity.us', 'atmee.ai', 'r2.cloudflarestorage.com', 'amazonaws.com', 'storage.googleapis.com')
 PENDING = {'preparing', 'creating', 'building'}
 ERRORS = {
@@ -89,19 +94,67 @@ def voice_url(value):
     return value
 
 
+def preview_location(value):
+    if not isinstance(value, str) or not re.fullmatch(r'[!-~]{1,8192}', value):
+        raise ValueError('Invalid Atmee preview URL')
+    parsed = urlsplit(value)
+    if (parsed.scheme != 'https' or not DNS_NAME.fullmatch(parsed.hostname or '')
+            or parsed.username is not None or parsed.password is not None
+            or parsed.port not in {None, 443} or parsed.fragment):
+        raise ValueError('Invalid Atmee preview URL')
+    return parsed
+
+
+def public_media_address(value):
+    address = ip_address(value)
+    return (address.is_global and not address.is_multicast and not address.is_reserved
+            and not getattr(address, 'ipv4_mapped', None) and not getattr(address, 'sixtofour', None)
+            and not getattr(address, 'teredo', None) and address not in NAT64_PREFIX)
+
+
+class PreviewConnection(HTTPSConnection):
+    def connect(self):
+        # Atmee may sign links on multiple CDNs. Connect to a checked address,
+        # then verify TLS against the original hostname. Never resolve it twice.
+        answers = socket.getaddrinfo(self.host + '.', 443, type=socket.SOCK_STREAM)
+        if not answers or any(not public_media_address(target[0]) for *_, target in answers):
+            raise ValueError('Atmee media host did not resolve exclusively to public addresses')
+        for family, kind, protocol, _, target in answers:
+            try:
+                with socket.socket(family, kind, protocol) as connection:
+                    connection.settimeout(self.timeout)
+                    connection.connect(target)
+                    self.sock = self._context.wrap_socket(connection, server_hostname=self.host)
+                return
+            except OSError as exc:
+                failure = exc
+        raise failure
+
+
 def fetch_voice_sample(url):
     try:
-        with build_opener(atmee.NoRedirect()).open(Request(voice_url(url)), timeout=15) as response:
-            limit = 12 * 1024 * 1024
-            mime = response.headers.get_content_type()
-            if mime not in {'audio/mpeg', 'audio/wav', 'audio/x-wav', 'audio/mp4', 'audio/aac',
-                            'audio/ogg', 'audio/flac', 'audio/webm', 'audio/x-m4a'}:
-                raise ValueError()
-            data = response.read(limit + 1)
+        parsed = preview_location(url)
+        connection = PreviewConnection(parsed.hostname, timeout=15)
+        try:
+            target = parsed.path or '/'
+            if parsed.query:
+                target += '?' + parsed.query
+            connection.request('GET', target)
+            with connection.getresponse() as response:
+                limit = 12 * 1024 * 1024
+                mime = response.headers.get_content_type()
+                if response.status != 200 or mime not in {
+                    'audio/mpeg', 'audio/wav', 'audio/x-wav', 'audio/mp4', 'audio/aac',
+                    'audio/ogg', 'audio/flac', 'audio/webm', 'audio/x-m4a', 'audio/opus',
+                }:
+                    raise ValueError('Atmee did not return preview audio')
+                data = response.read(limit + 1)
+        finally:
+            connection.close()
         if not 0 < len(data) <= limit:
-            raise ValueError()
+            raise ValueError('Atmee preview was empty or too large')
         return {'audio': base64.b64encode(data).decode('ascii'), 'mime': mime}
-    except (OSError, ValueError):
+    except (HTTPException, OSError, ValueError):
         raise InvalidOperation('Could not load the Atmee voice sample', 'ATMEE_VOICE_UNAVAILABLE') from None
 
 
@@ -349,6 +402,8 @@ class AtmeeBuilds:
             voice = read_voice(params['voice'])
             url = (self.design_option(voice, bot, fingerprint)['url'] if voice['kind'] == 'designed'
                    else await asyncio.to_thread(existing_voice, key, voice['id']))
+            if url is None:
+                raise InvalidOperation('The preview link was not saved', 'ATMEE_VOICE_PREVIEW_MISSING')
             self.check_scope(bot, key)
             return await asyncio.to_thread(fetch_voice_sample, url)
         latest = self.db.execute('SELECT id,state,options,error FROM atmee_voice_design WHERE bot=? AND key_hash=? '
@@ -417,7 +472,8 @@ class AtmeeBuilds:
                 if item.get('unavailable') is True:
                     continue
                 try:
-                    url = voice_url(item.get('url'))
+                    url = item.get('url')
+                    preview_location(url)
                 except ValueError:
                     url = None
                 options.append({'upload': upload, 'url': url})
