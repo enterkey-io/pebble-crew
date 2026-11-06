@@ -1252,7 +1252,7 @@ test('owner creates and selects Aurora from Pebble Crew without a voice recordin
   await page.getByLabel('Portrait', { exact: true }).setInputFiles(await atmeePortrait(page));
   await page.getByLabel('Avatar name').fill('Aurora · Video test');
   await page.getByLabel('Avatar instructions').fill('Approved Aurora character description.');
-  await page.getByRole('button', { name: 'Design a voice', exact: true }).click();
+  await page.getByRole('radio', { name: 'Design a voice', exact: true }).click();
   await page.getByLabel('Describe the voice').fill('Warm and conversational with a calm tone.');
   await page.getByRole('button', { name: 'Generate voice samples' }).click();
   await page.getByRole('radio', { name: 'Voice 1' }).click();
