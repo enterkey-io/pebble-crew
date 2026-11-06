@@ -434,7 +434,7 @@ test('cold sidebar photo avatars arrive in bounded batches without per-profile R
     if (info.project.use.isMobile)
       await page.getByRole('button', { name: 'Toggle navigation', exact: true }).click();
     const list = page.getByRole('navigation', { name: 'Pebbles', exact: true });
-    await expect(list.locator('.agent-avatar img')).toHaveCount(35);
+    await expect(list.locator(':is(.pc-pin, .pebble-row) .agent-avatar img')).toHaveCount(35);
     expect(individual).toBe(0);
     expect(requests.every((batch) => batch.length > 0 && batch.length <= 8)).toBe(true);
     expect(requests.length).toBeLessThanOrEqual(6);
