@@ -156,12 +156,13 @@ class LiveVoice:
             return []
         lower, upper = bounds
         rows = self.workspace.db.execute(
-            'SELECT id, ended_at FROM voice_calls WHERE incarnation=? AND conversation=? '
-            'AND ended_at>=? AND ended_at<? ORDER BY ended_at DESC,id LIMIT 1000',
+            'SELECT v.id, v.ended_at, a.id FROM voice_calls v LEFT JOIN atmee_call a ON a.voice_id=v.id '
+            'WHERE v.incarnation=? AND v.conversation=? AND v.ended_at>=? AND v.ended_at<? '
+            'ORDER BY v.ended_at DESC,v.id LIMIT 1000',
             (self.ops.session_incarnations[sid], conversation, lower or 0, upper or float('inf')))
-        return [{'id': row[0], 'ended_at': row[1]} for row in rows]
+        return [{'id': row[0], 'ended_at': row[1], **({'kind': 'video'} if row[2] else {})} for row in rows]
 
-    def record_call(self, sid, call_id):
+    def record_call(self, sid, call_id, *, video_id=None):
         conversation = self.ops.session_conversations.get(sid)
         if not self.workspace or not conversation:
             return None, True
@@ -170,6 +171,8 @@ class LiveVoice:
         with self.workspace.db:
             added = self.workspace.db.execute('INSERT OR IGNORE INTO voice_calls VALUES(?,?,?,?)',
                 (ident, stamp, conversation, time.time())).rowcount
+            if video_id:
+                self.workspace.db.execute('UPDATE atmee_call SET voice_id=? WHERE id=?', (ident, video_id))
             ended_at, = self.workspace.db.execute('SELECT ended_at FROM voice_calls WHERE id=?', (ident,)).fetchone()
         return {'id': ident, 'ended_at': ended_at}, bool(added)
 

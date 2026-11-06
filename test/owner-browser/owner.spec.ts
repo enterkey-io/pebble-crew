@@ -1,4 +1,5 @@
 import { submitMessage } from '../composer';
+import { installAtmeeRoom } from '../atmee-room';
 import { execFileSync } from 'node:child_process';
 import { openSidebarMenu } from '../sidebar-menu';
 import { test, expect } from '@playwright/test';
@@ -1047,4 +1048,64 @@ test('bare model command shows the current native model without prompting it', a
   await expect(picker).toBeVisible();
   await expect(picker).toContainText('Current: fixture-model', { timeout: 20000 });
   expectNoChatSends(signals);
+});
+
+test('a native video call without a tool request hands both sides to the existing Bot Chat', async ({
+  page,
+  context,
+}) => {
+  await context.addCookies(ownerCookies);
+  await installAtmeeRoom(page);
+  await page.goto('/');
+  await expect(page.getByLabel('Message', { exact: true })).toBeEnabled();
+  await page.getByRole('button', { name: 'Your account' }).click();
+  await page.getByRole('menuitem', { name: 'Settings', exact: true }).click();
+  await page.getByRole('tab', { name: 'Connections', exact: true }).click();
+  await page.getByRole('button', { name: 'Add API key', exact: true }).click();
+  const key = page.getByRole('form', { name: 'Atmee API key' });
+  await key.getByLabel('API key').fill('sk_atmee_native-synthetic');
+  await key.getByRole('button', { name: 'Submit' }).click();
+  await expect(page.getByText('API key saved')).toBeVisible();
+  await page.getByRole('button', { name: 'Close Settings' }).click();
+  const start = page.getByRole('button', { name: 'Start video call' });
+  await start.click();
+  await page.getByRole('combobox', { name: 'Character' }).click();
+  await page.getByRole('option', { name: 'Synthetic character' }).click();
+  await expect(page.getByRole('combobox', { name: 'Character' })).toContainText(
+    'Synthetic character',
+  );
+  await page.getByRole('button', { name: /^Close Edit / }).click();
+  await start.click();
+  await expect(page.getByRole('button', { name: 'Mute microphone' })).toBeEnabled({
+    timeout: 20000,
+  });
+  for (const [identity, text] of [
+    ['owner', 'Owner video context sentinel'],
+    ['agent', 'Avatar video context sentinel'],
+  ] as const) {
+    const saved = page.waitForResponse(
+      (response) =>
+        response.url().endsWith('/v1/rpc') &&
+        response.request().postDataJSON()?.operation === 'atmee.caption' &&
+        response.ok(),
+    );
+    await page.evaluate(
+      ({ identity, text }) => {
+        (window as unknown as { __caption: (identity: string, text: string) => void }).__caption(
+          identity,
+          text,
+        );
+      },
+      { identity, text },
+    );
+    await saved;
+  }
+  await page.getByRole('button', { name: 'End video call' }).click();
+  const transcript = page.getByRole('log');
+  await expect(transcript.getByText('Native video context received', { exact: true })).toBeVisible({
+    timeout: 30000,
+  });
+  await expect(transcript.getByText('Video call ended', { exact: true })).toBeVisible();
+  await page.reload();
+  await expect(transcript.getByText('Video call ended', { exact: true })).toBeVisible();
 });

@@ -54,6 +54,13 @@ class WorkspaceStore:
             CREATE TRIGGER IF NOT EXISTS request_update_clock AFTER UPDATE ON requests BEGIN UPDATE request_clock SET generation=generation+1 WHERE id=1; END;
             CREATE TRIGGER IF NOT EXISTS request_delete_clock AFTER DELETE ON requests BEGIN UPDATE request_clock SET generation=generation+1 WHERE id=1; END;
             CREATE INDEX IF NOT EXISTS request_pending ON requests(state,created,id);
+            CREATE TABLE IF NOT EXISTS atmee_selection(bot TEXT PRIMARY KEY, avatar TEXT NOT NULL);
+            CREATE TABLE IF NOT EXISTS atmee_call(
+                id TEXT PRIMARY KEY, incarnation TEXT NOT NULL, conversation TEXT NOT NULL,
+                voice_id TEXT UNIQUE, ended_at REAL, delivered INTEGER NOT NULL DEFAULT 0);
+            CREATE TABLE IF NOT EXISTS atmee_caption(
+                seq INTEGER PRIMARY KEY, call TEXT NOT NULL, line TEXT NOT NULL,
+                speaker TEXT NOT NULL, text TEXT NOT NULL, UNIQUE(call,line));
             CREATE TABLE IF NOT EXISTS vox_voice_presets(handle TEXT PRIMARY KEY,voice_id TEXT NOT NULL,label TEXT NOT NULL);
             CREATE TABLE IF NOT EXISTS voice_calls(
                 id TEXT PRIMARY KEY, incarnation TEXT NOT NULL, conversation TEXT NOT NULL,

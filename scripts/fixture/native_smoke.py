@@ -148,6 +148,11 @@ class Model(BaseHTTPRequestHandler):
             and not Model.reaction_describe_requested and 'tool_describe' in tool_names
             and 'pebble_react' in json.dumps(data))
         reaction = (wants_reaction and can_call('pebble_react') and ('pebble_react' in tool_names or Model.reaction_schema_received))
+        if 'The Atmee video call ended.' in str(latest_user.get('content')):
+            body = str(latest_user.get('content'))
+            text = ('Native video context received' if all(marker in body for marker in
+                    ('Owner video context sentinel', 'Avatar video context sentinel'))
+                    else 'Native video context missing')
         if 'nativefeedback' in str(latest_user.get('content')):
             # The reply only acknowledges feedback actually present in the model input.
             text = 'Native feedback received' if any('[The user reacted ❤️' in str(m.get('content')) for m in data.get('messages', [])) else 'Native feedback missing'
@@ -579,6 +584,24 @@ def main():
                             kwargs['stderr'] = sys.stderr
                         return await original_spawn(*argv, **kwargs)
                     patch('bot_web.native.asyncio.create_subprocess_exec', diagnostic_spawn).start()
+                    def synthetic_atmee(path, key, payload=None):
+                        character = 'bbcb7c08-35d3-44c2-86cd-28825ed7165e'
+                        call = '9c53b2f5-5c43-4b51-b553-504fa870e0e2'
+                        if key != 'sk_atmee_native-synthetic':
+                            raise AssertionError('Only disposable fixture keys are accepted')
+                        if path == '/v1/api_keys/current':
+                            return {'active': True, 'scopes': ['sessions', 'avatars:read'], 'avatarId': character}
+                        if path == '/v1/avatars/' + character:
+                            return {'id': character, 'name': 'Synthetic character', 'kind': 'conversational', 'readyToChat': True}
+                        if path == '/v1/sessions':
+                            assert payload['avatarId'] == character and 'visitorId' not in payload
+                            return {'sessionId': call, 'serverUrl': 'wss://atmanity.livekit.cloud',
+                                    'userToken': 'native-fixture-token-123456', 'actualDurationSeconds': 300}
+                        if path == '/v1/sessions/' + call + '/end':
+                            return {'alreadyEnded': False}
+                        raise AssertionError('Unexpected synthetic vendor operation')
+                    patch('bot_web.atmee_video.provider', synthetic_atmee).start()
+
                 from bot_web.trust import OwnerTrust
                 trust = OwnerTrust(json.loads(Path(args.owner_trust).read_text())) if args.owner_trust else None
                 hosts = {args.public_host or f"127.0.0.1:{args.port}"}

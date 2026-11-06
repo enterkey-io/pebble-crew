@@ -31,8 +31,17 @@ export const voiceErrors = {
   VOICE_PREFERENCES_FAILED: 'Hermes could not save your voice settings.',
 } as const;
 
+const atmeeErrors = {
+  ATMEE_KEY_REJECTED: 'Atmee rejected this API key.',
+  ATMEE_KEY_SCOPE: 'This Atmee key needs access to sessions and characters.',
+  ATMEE_UNAVAILABLE: 'Atmee is unavailable. Try again shortly.',
+  ATMEE_AVATAR_UNAVAILABLE: 'Select an available Atmee character in this Pebble’s Voice settings.',
+  ATMEE_CALL_LIMIT: 'Check your Atmee credits or end the other video call.',
+} as const;
+
 export type ErrorCode =
   | keyof typeof voiceErrors
+  | keyof typeof atmeeErrors
   | 'CONVERSATION_CHANGED'
   | 'BOT_CHAT_MISSING'
   | 'LEASE_GONE'
@@ -70,6 +79,7 @@ const messages: Record<ErrorCode, string> = {
   CAPACITY: 'Too many open connections. Close an unused tab and try again.',
   UPDATE_REQUIRED: 'Update Pebble Crew and its Hermes plugin, then reopen the app.',
   ...voiceErrors,
+  ...atmeeErrors,
   UNSUPPORTED_COMMAND:
     'This command is not supported in Pebble Crew. Use a command from the suggestions or run it in Hermes.',
   STALE_REVISION: 'Your workspace changed. Refresh it before saving again.',

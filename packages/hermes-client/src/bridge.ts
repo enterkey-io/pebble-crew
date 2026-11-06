@@ -42,6 +42,7 @@ export class BotBridgeClient {
   #reactions = false;
   #roomReactions = false;
   #roomDisband = false;
+  #atmeeSetup = false;
   #exchanges = false;
   #exchangeEvents = false;
   #recovery = false;
@@ -83,6 +84,9 @@ export class BotBridgeClient {
   }
   get supportsRoomDisband(): boolean {
     return this.#roomDisband;
+  }
+  get supportsAtmeeSetup(): boolean {
+    return this.#atmeeSetup;
   }
   computerSocket(ticket: string): WebSocket {
     if (
@@ -165,6 +169,7 @@ export class BotBridgeClient {
     this.#reactions = !!data.capabilities && record(data.capabilities).reactions === true;
     this.#roomReactions = !!data.capabilities && record(data.capabilities).room_reactions === true;
     this.#roomDisband = !!data.capabilities && record(data.capabilities).room_disband === true;
+    this.#atmeeSetup = !!data.capabilities && record(data.capabilities).atmee_setup === true;
   }
 
   async invoke(operation: string, params: Readonly<Record<string, unknown>>): Promise<unknown> {

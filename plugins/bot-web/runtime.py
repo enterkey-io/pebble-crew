@@ -225,6 +225,11 @@ def register_runtime(ctx):
                     text += "\n"+document_guidance(platform)
                 except Exception:
                     pass
+                from .atmee_video import pending_context
+                try:
+                    text += pending_context(store, profile, session_id)
+                except Exception:
+                    pass
                 from .live_voice import runtime_guidance as voice_guidance
                 try:
                     text += '\n'+voice_guidance(platform)

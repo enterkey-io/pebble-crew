@@ -508,6 +508,69 @@
       ],
       "effect": "write"
     },
+    "atmee.status": {
+      "preferred": "rpc",
+      "accepted": [
+        "rpc"
+      ],
+      "effect": "read"
+    },
+    "atmee.key": {
+      "preferred": "rpc",
+      "accepted": [
+        "rpc"
+      ],
+      "effect": "write"
+    },
+    "atmee.avatars": {
+      "preferred": "rpc",
+      "accepted": [
+        "rpc"
+      ],
+      "effect": "read"
+    },
+    "atmee.select": {
+      "preferred": "rpc",
+      "accepted": [
+        "rpc"
+      ],
+      "effect": "write"
+    },
+    "atmee.ready": {
+      "preferred": "rpc",
+      "accepted": [
+        "rpc"
+      ],
+      "effect": "read"
+    },
+    "atmee.start": {
+      "preferred": "rpc",
+      "accepted": [
+        "rpc"
+      ],
+      "effect": "write"
+    },
+    "atmee.caption": {
+      "preferred": "rpc",
+      "accepted": [
+        "rpc"
+      ],
+      "effect": "write"
+    },
+    "atmee.delegate": {
+      "preferred": "rpc",
+      "accepted": [
+        "rpc"
+      ],
+      "effect": "write"
+    },
+    "atmee.end": {
+      "preferred": "rpc",
+      "accepted": [
+        "rpc"
+      ],
+      "effect": "write"
+    },
     "room.create": {
       "preferred": "rpc",
       "accepted": [

@@ -102,6 +102,9 @@ export class OwnerSession {
       get supportsRoomDisband() {
         return capabilities()?.supportsRoomDisband ?? false;
       },
+      get supportsAtmeeSetup() {
+        return capabilities()?.supportsAtmeeSetup ?? false;
+      },
       get supportsAttachments() {
         return capabilities()?.supportsAttachments ?? false;
       },

@@ -273,3 +273,10 @@ and name the earlier ID when a rule is superseded.
 - Decision: Use the same Markdown renderer for owner and Pebble bubbles. Keep owner paragraph line breaks and raw copy. Preserve literal code, escaped mentions and attachment permissions.
 - Why: Owner bubbles were using a separate plaintext renderer and showing the underscore markers.
 - Evidence: The [Markdown browser journey](../test/chat-workspace/markdown.spec.ts) checks rendered emphasis, bold, code, lists and tables.
+
+### UI-video-self-view Keep camera preview local
+
+- Date: 2026-11-06
+- Decision: Keep Video separate from audio provider selection. Place the opt-in local camera preview in the lower-right corner of the avatar video. Keep the conversation and approval controls accessible below the call.
+- Why: The user can see their camera while speaking and can resolve Hermes requests without ending the call.
+- Evidence: The [video browser journey](../test/chat-workspace/atmee.spec.ts) checks the shared settings and self-view placement, and verifies that only the microphone is published.
