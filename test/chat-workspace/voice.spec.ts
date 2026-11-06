@@ -931,7 +931,7 @@ test('the installed phone voice picker stays in the safe dialog and scrolls inde
   });
   await expect(page.getByLabel('Message', { exact: true })).toBeEnabled();
   await page.getByRole('button', { name: 'Voice chat', exact: true }).click();
-  const dialog = page.getByRole('dialog', { name: 'Edit pebble', exact: true });
+  const dialog = page.locator('[data-slot="dialog-content"][aria-label="Edit pebble"]');
   const picker = dialog.getByRole('combobox', { name: 'Voice', exact: true });
   await picker.click();
   const list = page.getByRole('listbox');

@@ -392,6 +392,18 @@ The first opening asks for a key (or explicit reuse of a saved key), then a voic
 start only on the owner's action. No Grok live provider is offered: this Hermes
 build's separate xAI transcription/speech output is not a live conversation mode.
 
+On the voice-enabled Hermes build, a Pebble's Voice tab can also select
+**ElevenLabs**. The owner supplies or approves an ElevenLabs key in the same
+private field. The key stays in Hermes. Call audio goes to ElevenLabs over a
+short-lived browser connection. Requests that need the Pebble's tools or context
+go to its existing Hermes conversation, and the reply can be read aloud.
+
+**Import Vox voices** accepts a local JSON array with `handle`, `voice_id`, and
+`label` for each ElevenLabs assignment. A matching handle supplies the default
+ElevenLabs voice while preserving choices already saved in Pebble Crew. The
+import file needs no API keys. After upgrading, test a sample and call only if the
+owner requests it.
+
 ## Native chat commands
 
 Typing `/` offers session-scoped Hermes completions for browser-supported commands. `/model <name>` executes Hermes's native command worker; it is never sent as a model prompt. Terminal-only, destructive lifecycle and unsupported command responses stay in Hermes. The removed Model editor tab only copied the primary model authorization; it was not a model picker.

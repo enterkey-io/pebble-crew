@@ -303,6 +303,16 @@ hermes bot-web verify --public</code></pre>
 <p>The first opening asks for a key (or explicit reuse of a saved key), then a voice. The saved-key choice is remembered across entry points. Preview stays in that tab and speaks one named sample without microphone access or an interactive call. It sends locally generated silence to keep the Live timeline running, shows a thin waiting indicator until audio plays, and reports an error if no audio arrives. A rejected key immediately reopens private entry; no refresh is needed. Rate limits, credits, spending limits and quota have separate safe messages when identified by the provider. Saved keys are never returned to the browser. Voice selection saves in that Pebble&#x27;s native profile. The picker groups documented voice presentations under Female and Male; unclassified or custom voices remain under Other. Pebble Crew offers no speed control because this native Live integration has no reliable rate setting. Later openings start a compact call bar at the top of chat. Its settings button opens the Pebble&#x27;s Voice tab. A stopped call with a transcript requests one text follow-up; previews never do. Calls and previews</p>
 <p>start only on the owner&#x27;s action. No Grok live provider is offered: this Hermes</p>
 <p>build&#x27;s separate xAI transcription/speech output is not a live conversation mode.</p>
+<p>On the voice-enabled Hermes build, a Pebble&#x27;s Voice tab can also select</p>
+<p><strong>ElevenLabs</strong>. The owner supplies or approves an ElevenLabs key in the same</p>
+<p>private field. The key stays in Hermes. Call audio goes to ElevenLabs over a</p>
+<p>short-lived browser connection. Requests that need the Pebble&#x27;s tools or context</p>
+<p>go to its existing Hermes conversation, and the reply can be read aloud.</p>
+<p><strong>Import Vox voices</strong> accepts a local JSON array with <code>handle</code>, <code>voice_id</code>, and</p>
+<p><code>label</code> for each ElevenLabs assignment. A matching handle supplies the default</p>
+<p>ElevenLabs voice while preserving choices already saved in Pebble Crew. The</p>
+<p>import file needs no API keys. After upgrading, test a sample and call only if the</p>
+<p>owner requests it.</p>
 <h2>Native chat commands</h2>
 <p>Typing <code>/</code> offers session-scoped Hermes completions for browser-supported commands. <code>/model &lt;name&gt;</code> executes Hermes&#x27;s native command worker; it is never sent as a model prompt. Terminal-only, destructive lifecycle and unsupported command responses stay in Hermes. The removed Model editor tab only copied the primary model authorization; it was not a model picker.</p>
 <h2>Connect the native Mac or phone app</h2>

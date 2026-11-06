@@ -238,3 +238,10 @@ and name the earlier ID when a rule is superseded.
 - Decision: Anchor the voice list to its trigger, constrain it to the safe editor bounds, and scroll the list independently.
 - Why: Centering the menu around a selected item could position a long voice list above the phone’s visible area.
 - Evidence: The [voice browser checks](../test/chat-workspace/voice.spec.ts) open and scroll a long list on a short installed viewport.
+
+### UI-voice-provider Keep provider setup in the Pebble Voice tab
+
+- Date: 2026-11-05
+- Decision: Use the shared segmented control for provider selection, the private Secret Card for keys, and the same voice selector, preview and call bar for both providers.
+- Why: A Pebble has one place to set up or change its voice. Voice previews play a sample without activating the microphone.
+- Evidence: The [ElevenLabs voice browser journey](../test/chat-workspace/eleven-voice.spec.ts) exercises provider selection, a Vox preset, preview, interruption and the call receipt.

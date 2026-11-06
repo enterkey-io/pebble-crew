@@ -9,18 +9,22 @@ import {
   SelectGroup,
   SelectLabel,
 } from '../components/ui/select';
-import type { VoiceSettings } from './decode';
+import type { VoiceProvider, VoiceSettings } from './decode';
 import { voiceGroups } from './voice-groups';
 
 export type VoiceChoices = { voice: string };
 export function VoiceOptions({
   value,
   voices,
+  provider,
+  labels,
   disabled = false,
   onChange,
 }: {
   value: VoiceChoices;
   voices: string[];
+  provider: VoiceProvider;
+  labels: Record<string, string>;
   disabled?: boolean;
   onChange: (value: VoiceChoices) => void;
 }) {
@@ -48,17 +52,23 @@ export function VoiceOptions({
           collisionPadding={8}
           className="max-h-[min(16rem,var(--radix-select-content-available-height))] overscroll-contain"
         >
-          {voiceGroups([value.voice, ...voices]).map((group) => (
-            <SelectGroup key={group.label}>
-              <SelectLabel>{group.label}</SelectLabel>
-              {group.voices.map((voice) => (
+          {provider === 'elevenlabs'
+            ? [...new Set([value.voice, ...voices])].map((voice) => (
                 <SelectItem key={voice} value={voice}>
-                  {voice[0]?.toUpperCase()}
-                  {voice.slice(1)}
+                  {Object.hasOwn(labels, voice) ? labels[voice] : voice}
                 </SelectItem>
+              ))
+            : voiceGroups([value.voice, ...voices]).map((group) => (
+                <SelectGroup key={group.label}>
+                  <SelectLabel>{group.label}</SelectLabel>
+                  {group.voices.map((voice) => (
+                    <SelectItem key={voice} value={voice}>
+                      {voice[0]?.toUpperCase()}
+                      {voice.slice(1)}
+                    </SelectItem>
+                  ))}
+                </SelectGroup>
               ))}
-            </SelectGroup>
-          ))}
         </SelectContent>
       </Select>
     </Field>

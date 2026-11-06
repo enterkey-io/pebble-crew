@@ -15,9 +15,11 @@ import { rejectedVoiceKey, voiceFailure } from './errors';
 import { ConversationDomain, decodeVoiceCall } from '@hermes-client/protocol';
 import type { VoiceCallRecord } from '@hermes-client/protocol';
 import type { ChatMessage } from '../conversation';
-import { record, settings as decodeSettings, sessionAnswer } from './decode';
-import type { VoiceSettings, VoiceSettingsRequest } from './decode';
+import { record, settings as decodeSettings, sessionAnswer, voiceLabels } from './decode';
+import type { VoiceProvider, VoiceSettings, VoiceSettingsRequest } from './decode';
 import { VoiceLiveSession } from './live-session';
+import type { VoiceLiveHandlers } from './live-session';
+import { ElevenRealtimeSession, elevenSessionAnswer } from './eleven-session';
 import { DelegationReceipts, delegationPrompt } from './delegations';
 import type { Completion } from './delegations';
 
@@ -83,7 +85,7 @@ export const VoiceChat = forwardRef<
   const [error, setError] = useState('');
   const [showTranscript, setShowTranscript] = useState(false);
   const [captions, setCaptions] = useState<{ speaker: 'user' | 'assistant'; text: string }[]>([]);
-  const live = useRef<VoiceLiveSession | undefined>(undefined),
+  const live = useRef<VoiceLiveSession | ElevenRealtimeSession | undefined>(undefined),
     generation = useRef(0),
     mounted = useRef(true);
   const startedCallId = useRef<string | null>(null);
@@ -102,24 +104,56 @@ export const VoiceChat = forwardRef<
       throw new Error('Voice operation was closed.');
     return value;
   };
-  async function savePreferences(complete: boolean, selection = value) {
-    const next = decodeSettings(await rpc('voice.preferences', { ...selection, complete }));
+  const provider = settings?.supported ? settings.provider : 'openai';
+  async function savePreferences(
+    complete: boolean,
+    selection = value,
+    selected: VoiceProvider = provider,
+  ) {
+    const next = decodeSettings(
+      await rpc('voice.preferences', {
+        ...selection,
+        complete,
+        ...(selected === 'elevenlabs' ? { provider: selected } : {}),
+      }),
+    );
     setSettings(next);
     return next;
   }
-  async function loadSettings(requestKey = false) {
-    const value = decodeSettings(await rpc('voice.status'));
-    if (mounted.current) {
-      setSettings(value);
-      if (value.supported) {
-        setValue(choices(value));
-        setStep(
-          requestKey ? 'replacement' : value.configured && value.keyConfirmed ? 'settings' : 'key',
-        );
-      }
+  function applySettings(next: VoiceSettings, requestKey = false) {
+    setSettings(next);
+    if (next.supported) {
+      setValue(choices(next));
+      setStep(requestKey ? 'replacement' : next.keyConfirmed ? 'settings' : 'key');
     }
-    return value;
+    return next;
   }
+  async function loadSettings(requestKey = false) {
+    return applySettings(decodeSettings(await rpc('voice.status')), requestKey);
+  }
+  const [elevenLabels, setElevenLabels] = useState<Record<string, string>>({});
+  const loadElevenVoices =
+    mode === 'settings' &&
+    settings?.supported &&
+    settings.provider === 'elevenlabs' &&
+    settings.keyConfirmed &&
+    visible;
+  useEffect(() => {
+    setElevenLabels({});
+    if (!loadElevenVoices) return;
+    let active = true;
+    void rpc('voice.voices')
+      .then((value) => {
+        if (!active) return;
+        setElevenLabels(voiceLabels(record(value).voices));
+      })
+      .catch(() => {
+        // Presets and the default voice remain available if the key cannot list voices.
+      });
+    return () => {
+      active = false;
+    };
+  }, [loadElevenVoices, client, sessionId]);
   async function open() {
     if (inputBlocked && mode === 'chat') return;
     setVisible(true);
@@ -142,7 +176,7 @@ export const VoiceChat = forwardRef<
       setOpening(false);
       if (mode === 'chat') {
         if (value.supported && value.configured && value.setupComplete)
-          await start(false, choices(value));
+          await start(false, choices(value), value.provider);
         else {
           setVisible(false);
           onOpenSettings?.({ kind: 'start' });
@@ -239,9 +273,12 @@ export const VoiceChat = forwardRef<
       );
       if (generation.current !== epoch || live.current !== call) return;
       if (reply?.text) call.speak(id, reply.text);
-      else call.think(id, 'The result is available in chat.');
+      else call.speak(id, 'The result is available in chat.');
     } catch {
-      if (mounted.current) setError('The reply is in chat. Voice could not read it.');
+      if (generation.current === epoch && live.current === call) {
+        call.speak(id, 'The reply is in chat. Voice could not read it.');
+        setError('The reply is in chat. Voice could not read it.');
+      }
     } finally {
       active.current = false;
     }
@@ -267,6 +304,7 @@ export const VoiceChat = forwardRef<
       if (early) await finish(early);
     } catch (cause) {
       if (generation.current === epoch && mounted.current) {
+        call.speak(request.id, 'Hermes could not confirm the request. Please check chat.');
         setError(
           cause instanceof Error
             ? cause.message
@@ -313,7 +351,7 @@ export const VoiceChat = forwardRef<
       if (result) void finish(result);
     },
   }));
-  async function start(preview: boolean, selection = value) {
+  async function start(preview: boolean, selection = value, selected: VoiceProvider = provider) {
     if (inputBlocked && !preview) return;
     end();
     const epoch = generation.current;
@@ -331,98 +369,112 @@ export const VoiceChat = forwardRef<
     setState('starting');
     let previewHeard = false,
       playbackBlocked = false;
-    const call = new VoiceLiveSession(
-      {
-        onAudioLevel(level) {
-          if (generation.current !== epoch) return;
-          audioActivity.current?.update(level);
-          if (preview && !previewHeard && level > 0.03 && !call.audio.paused) {
-            previewHeard = true;
-            setPreviewPlaying(true);
-            clearTimeout(previewTimer.current);
-            previewTimer.current = setTimeout(end, 30000);
-          }
-        },
-        onSpeakingChange(speaking) {
-          if (!preview || generation.current !== epoch) return;
-          if (!previewHeard) return;
+    const handlers: VoiceLiveHandlers = {
+      onAudioLevel(level) {
+        if (generation.current !== epoch) return;
+        audioActivity.current?.update(level);
+        if (preview && !previewHeard && level > 0.03 && call.playing) {
+          previewHeard = true;
+          setPreviewPlaying(true);
           clearTimeout(previewTimer.current);
-          previewTimer.current = setTimeout(end, speaking ? 30000 : 1500);
-        },
-        onStarted() {
-          if (generation.current !== epoch) return;
-          clearTimeout(setupTimer.current);
-          if (preview) {
-            setState('preview');
-            const voiceName = selection.voice.charAt(0).toUpperCase() + selection.voice.slice(1);
-            call.speak(null, `Hi, this is the ${voiceName} voice on Pebble Crew. How do I sound?`);
-            previewTimer.current = setTimeout(
-              () => {
-                if (generation.current !== epoch) return;
-                end();
-                if (previewHeard) return;
-                reportFailure(
-                  playbackBlocked
-                    ? 'Your browser blocked preview audio. Try Preview again and enable audio when prompted.'
-                    : 'No preview audio arrived. Try again.',
-                );
-              },
-              previewHeard ? 30000 : 15000,
-            );
-          } else {
-            startedCallId.current ??= call.sessionId;
-            setState('live');
-          }
-        },
-        onDelegation(id, context) {
-          if (preview || generation.current !== epoch) return;
-          const prompt = delegationPrompt(context);
-          if (!prompt.text) return;
-          if (queue.current.length >= 4) {
-            setError('Several requests are waiting. Let this work finish before adding more.');
-            return;
-          }
-          if (active.current || busy.current)
-            call.think(id, 'Your request is waiting for the current Hermes work to finish.');
-          queue.current.push({ id, ...prompt });
-          void drain();
-        },
-        onError() {
-          if (generation.current === epoch) {
-            setError('The voice provider ended the audio connection. Your work remains in chat.');
-            end();
-          }
-        },
-        onClosed(reason) {
-          if (generation.current !== epoch) return;
+          previewTimer.current = setTimeout(end, 30000);
+        }
+      },
+      onSpeakingChange(speaking) {
+        if (!preview || generation.current !== epoch) return;
+        if (!previewHeard) return;
+        clearTimeout(previewTimer.current);
+        previewTimer.current = setTimeout(end, speaking ? 30000 : 1500);
+      },
+      onStarted() {
+        if (generation.current !== epoch) return;
+        clearTimeout(setupTimer.current);
+        if (preview) {
+          setState('preview');
+          const voiceName =
+            selected === 'elevenlabs'
+              ? settings?.supported && Object.hasOwn(settings.labels, selection.voice)
+                ? settings.labels[selection.voice]
+                : Object.hasOwn(elevenLabels, selection.voice)
+                  ? elevenLabels[selection.voice]
+                  : 'selected ElevenLabs'
+              : selection.voice.charAt(0).toUpperCase() + selection.voice.slice(1);
+          call.speak(null, `Hi, this is the ${voiceName} voice on Pebble Crew. How do I sound?`);
+          previewTimer.current = setTimeout(
+            () => {
+              if (generation.current !== epoch) return;
+              end();
+              if (previewHeard) return;
+              reportFailure(
+                playbackBlocked
+                  ? 'Your browser blocked preview audio. Try Preview again and enable audio when prompted.'
+                  : 'No preview audio arrived. Try again.',
+              );
+            },
+            previewHeard ? 30000 : 15000,
+          );
+        } else {
+          startedCallId.current ??= call.sessionId;
+          setState('live');
+        }
+      },
+      onDelegation(id, context, request) {
+        if (preview || generation.current !== epoch) return;
+        const prompt = delegationPrompt(context);
+        const text = request ?? prompt.text;
+        if (!text) return;
+        if (queue.current.length >= 4) {
+          if (selected === 'elevenlabs') call.speak(id, 'Several requests are still waiting.');
+          setError('Several requests are waiting. Let this work finish before adding more.');
+          return;
+        }
+        if (active.current || busy.current)
+          call.think(id, 'Your request is waiting for the current Hermes work to finish.');
+        queue.current.push({ id, context: prompt.context, text });
+        void drain();
+      },
+      onError() {
+        if (generation.current === epoch) {
+          setError('The voice provider ended the audio connection. Your work remains in chat.');
           end();
-          if (reason !== 'close_requested')
-            setError('Call ended. You can start another when ready.');
-        },
-        onTranscript(fragment) {
-          if (generation.current === epoch)
-            setCaptions((previous) => {
-              const last = previous.at(-1);
-              if (last?.speaker === fragment.speaker)
-                return [
-                  ...previous.slice(0, -1),
-                  { speaker: last.speaker, text: (last.text + fragment.text).slice(-4000) },
-                ];
-              return [...previous.slice(-39), { speaker: fragment.speaker, text: fragment.text }];
-            });
-        },
-        onAutoplayBlocked() {
-          if (generation.current === epoch) {
-            playbackBlocked = true;
-            setBlockedAudio(true);
-          }
-        },
+        }
       },
-      async (sdp, sampleOnly) => {
-        await savePreferences(!sampleOnly, selection);
-        return sessionAnswer(await rpc('voice.session', { sdp, preview: sampleOnly }));
+      onClosed(reason) {
+        if (generation.current !== epoch) return;
+        end();
+        if (reason !== 'close_requested') setError('Call ended. You can start another when ready.');
       },
-    );
+      onTranscript(fragment) {
+        if (generation.current === epoch)
+          setCaptions((previous) => {
+            const last = previous.at(-1);
+            if (last?.speaker === fragment.speaker)
+              return [
+                ...previous.slice(0, -1),
+                { speaker: last.speaker, text: (last.text + fragment.text).slice(-4000) },
+              ];
+            return [...previous.slice(-39), { speaker: fragment.speaker, text: fragment.text }];
+          });
+      },
+      onAutoplayBlocked() {
+        if (generation.current === epoch) {
+          playbackBlocked = true;
+          setBlockedAudio(true);
+        }
+      },
+    };
+    const call =
+      selected === 'elevenlabs'
+        ? new ElevenRealtimeSession(handlers, async (sampleOnly) => {
+            await savePreferences(!sampleOnly, selection, selected);
+            return elevenSessionAnswer(
+              await rpc('voice.session', { provider: selected, preview: sampleOnly }),
+            );
+          })
+        : new VoiceLiveSession(handlers, async (sdp, sampleOnly) => {
+            await savePreferences(!sampleOnly, selection, selected);
+            return sessionAnswer(await rpc('voice.session', { sdp, preview: sampleOnly }));
+          });
     live.current = call;
     setupTimer.current = setTimeout(() => {
       if (generation.current === epoch) {
@@ -459,7 +511,15 @@ export const VoiceChat = forwardRef<
       {mode === 'settings' && visible && !opening && (
         <VoicePanel
           panel={panel}
-          settings={settings}
+          settings={
+            settings?.supported && provider === 'elevenlabs'
+              ? {
+                  ...settings,
+                  voices: [...new Set([...settings.voices, ...Object.keys(elevenLabels)])],
+                  labels: { ...elevenLabels, ...settings.labels },
+                }
+              : settings
+          }
           value={value}
           onChange={setValue}
           step={step}
@@ -483,8 +543,8 @@ export const VoiceChat = forwardRef<
           }
           audioBlocked={blockedAudio}
           onEnableAudio={() => {
-            void live.current?.audio
-              .play()
+            void live.current
+              ?.resumeAudio()
               .then(() => setBlockedAudio(false))
               .catch(() => setError('Your browser blocked audio playback.'));
           }}
@@ -496,7 +556,12 @@ export const VoiceChat = forwardRef<
           onKey={async (value) => {
             setError('');
             setNotice('');
-            const receipt = record(await rpc('voice.credential', { value }));
+            const receipt = record(
+              await rpc('voice.credential', {
+                value,
+                ...(provider === 'elevenlabs' ? { provider } : {}),
+              }),
+            );
             if (receipt.saved !== true) throw new Error('Save not confirmed');
             await savePreferences(false);
             setStep('settings');
@@ -509,6 +574,40 @@ export const VoiceChat = forwardRef<
               .then(() => {
                 setStep('settings');
                 onCredentialConfirmed?.();
+              })
+              .catch((cause) => setError(voiceFailure(cause)))
+              .finally(() => setSaving(false));
+          }}
+          onProvider={(next) => {
+            setSaving(true);
+            setError('');
+            setNotice('');
+            void rpc('voice.provider', { provider: next })
+              .then((value) => applySettings(decodeSettings(value)))
+              .catch((cause) => setError(voiceFailure(cause)))
+              .finally(() => setSaving(false));
+          }}
+          onImportVox={(file) => {
+            if (file.size > 64 * 1024) {
+              setError('Choose a Vox voice export smaller than 64 KB.');
+              return;
+            }
+            setSaving(true);
+            setError('');
+            setNotice('');
+            void file
+              .text()
+              .then(async (value) => {
+                let presets: unknown;
+                try {
+                  presets = JSON.parse(value);
+                } catch {
+                  setError('This file isn’t a Vox voice export.');
+                  return;
+                }
+                await rpc('voice.vox_import', { presets });
+                await loadSettings();
+                setNotice('Vox voices imported.');
               })
               .catch((cause) => setError(voiceFailure(cause)))
               .finally(() => setSaving(false));
@@ -564,8 +663,8 @@ export const VoiceChat = forwardRef<
                 <Button
                   variant="quiet"
                   onClick={() => {
-                    void live.current?.audio
-                      .play()
+                    void live.current
+                      ?.resumeAudio()
                       .then(() => setBlockedAudio(false))
                       .catch(() => setError('Your browser blocked audio playback.'));
                   }}

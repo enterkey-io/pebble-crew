@@ -14,11 +14,10 @@ import urllib.error
 import socket
 
 from .native import NativeError
-from .native import NativeError
 from .operations import InvalidOperation, fields, identifier
 from .voice_credentials import resolve_source, confirm_source, save_shared_key
 
-VOICE_ERROR_CODES = {'VOICE_KEY_REJECTED', 'VOICE_PROVIDER_UNREACHABLE', 'VOICE_INVALID_ANSWER', 'VOICE_KEY_REQUIRED', 'VOICE_SETUP_FAILED', 'VOICE_PREFERENCES_FAILED', 'VOICE_ACCESS_DENIED', 'VOICE_OFFER_REJECTED', 'VOICE_MODEL_UNAVAILABLE', 'VOICE_LIMIT_REACHED', 'VOICE_RATE_LIMITED', 'VOICE_CREDITS_EXHAUSTED', 'VOICE_SPEND_LIMIT_REACHED', 'VOICE_QUOTA_EXHAUSTED', 'VOICE_PROVIDER_TIMEOUT', 'VOICE_PROVIDER_UNAVAILABLE'}
+VOICE_ERROR_CODES = {'ELEVEN_KEY_REQUIRED', 'ELEVEN_KEY_REJECTED', 'ELEVEN_ACCESS_DENIED', 'ELEVEN_RATE_LIMITED', 'ELEVEN_CONNECTION_FAILED', 'VOICE_KEY_REJECTED', 'VOICE_PROVIDER_UNREACHABLE', 'VOICE_INVALID_ANSWER', 'VOICE_KEY_REQUIRED', 'VOICE_SETUP_FAILED', 'VOICE_PREFERENCES_FAILED', 'VOICE_ACCESS_DENIED', 'VOICE_OFFER_REJECTED', 'VOICE_MODEL_UNAVAILABLE', 'VOICE_LIMIT_REACHED', 'VOICE_RATE_LIMITED', 'VOICE_CREDITS_EXHAUSTED', 'VOICE_SPEND_LIMIT_REACHED', 'VOICE_QUOTA_EXHAUSTED', 'VOICE_PROVIDER_TIMEOUT', 'VOICE_PROVIDER_UNAVAILABLE'}
 
 _CONFIG = threading.Lock()
 PACE_START = '[Pebble Crew delivery]'
@@ -218,16 +217,34 @@ class LiveVoice:
             return await self.ops.gateway.call('prompt.submit', {'session_id': sid,
                 'text': text, 'surface': 'voice-live', 'voice_context': context, 'queued': True})
         allowed = {'voice.status': ['session_id'], 'voice.preferences': ['session_id', 'voice', 'complete'],
-                   'voice.credential': ['session_id', 'value'], 'voice.session': ['session_id', 'sdp', 'preview']}
+                   'voice.credential': ['session_id', 'value'], 'voice.session': ['session_id', 'sdp', 'preview'],
+                   'voice.provider': ['session_id', 'provider'], 'voice.voices': ['session_id'],
+                   'voice.vox_import': ['session_id', 'presets']}
         if operation not in allowed:
             raise InvalidOperation('Unsupported voice operation')
-        fields(params, allowed[operation])
+        requested = params.get('provider', 'openai')
+        expected = allowed[operation]
+        if operation in {'voice.session', 'voice.preferences', 'voice.credential'} and 'provider' in params:
+            expected = [field for field in expected if field != 'sdp' or requested != 'elevenlabs'] + ['provider']
+        fields(params, expected)
+        if requested not in ('openai', 'elevenlabs'):
+            raise InvalidOperation('Choose a supported voice provider')
+        from . import eleven_voice
+        if operation == 'voice.vox_import':
+            return eleven_voice.import_presets(self.workspace, params['presets'])
+        if operation == 'voice.voices':
+            def catalog():
+                from hermes_cli.web_server_profiles import _config_profile_scope
+                with _CONFIG, _config_profile_scope(profile):
+                    key, confirmed = eleven_voice.source() if eleven_voice.provider() == 'elevenlabs' else ('', False)
+                return eleven_voice.catalog(key if confirmed else '')
+            return await asyncio.to_thread(catalog)
         if sid in self.inflight:
             raise InvalidOperation('Voice setup is already in progress')
         # A single owner/profile-scoped config operation, off the event loop. Do not
         # hold native session/skills locks over provider I/O.
         history = []
-        if operation == 'voice.session' and params.get('preview') is False:
+        if operation == 'voice.session' and requested == 'openai' and params.get('preview') is False:
             budget, before, visited, complete = 6000, None, set(), False
             while not complete:
                 saved = await self.ops.invoke('chat.history', {'session_id': sid,
@@ -247,17 +264,35 @@ class LiveVoice:
                 if before in visited:
                     raise NativeError('Voice context history did not advance')
                 visited.add(before)
+        preset = eleven_voice.vox_preset(self.workspace, profile)
         bot = await self.ops.bot(profile)
         name = self.ops.summary(bot)['name']
         from .coordination import voice_context
         coordination = voice_context(self.workspace, profile) if self.workspace and operation == 'voice.session' and params.get('preview') is False else ''
-        def execute():
+        def execute_configured():
             from hermes_cli.web_server_profiles import _config_profile_scope
             with _CONFIG, _config_profile_scope(profile):
-                if operation == 'voice.status':
-                    return preferences()
+                if operation == 'voice.provider':
+                    eleven_voice.save_voice({'pebble_provider': requested})
+                selected = eleven_voice.provider()
+                if operation in {'voice.status', 'voice.provider'}:
+                    status = eleven_voice.preferences(preset) if selected == 'elevenlabs' else preferences()
+                    return {**status, 'providers': ['openai', 'elevenlabs']}
+                if requested != selected:
+                    raise InvalidOperation('Voice provider changed. Reopen voice settings.', 'VOICE_PREFERENCES_FAILED')
+                if selected == 'elevenlabs':
+                    if operation == 'voice.preferences':
+                        return {**eleven_voice.save_preferences(params['voice'], params['complete'], preset), 'providers': ['openai', 'elevenlabs']}
+                    if operation == 'voice.credential':
+                        value = params['value']
+                        if not isinstance(value, str) or not re.fullmatch(r'[\x21-\x7e]{8,4096}', value):
+                            raise ValueError('Invalid credential')
+                        return eleven_voice.store_key(value)
+                    if type(params['preview']) is not bool:
+                        raise ValueError('Invalid voice preview')
+                    return eleven_voice.session_parameters(name, params['preview'], preset)
                 if operation == 'voice.preferences':
-                    return save_preferences(params['voice'], params['complete'])
+                    return {**save_preferences(params['voice'], params['complete']), 'providers': ['openai', 'elevenlabs']}
                 if operation == 'voice.credential':
                     value = params['value']
                     if not isinstance(value, str) or not re.fullmatch(r'[\x21-\x7e]{8,4096}', value):
@@ -272,9 +307,13 @@ class LiveVoice:
                 if not isinstance(sdp, str) or not sdp.startswith('v=0') or len(sdp) > 48_000 or type(params['preview']) is not bool:
                     raise ValueError('Invalid voice offer')
                 return create_session(sdp, name, params['preview'], history, coordination)
+        if sid in self.inflight:
+            raise InvalidOperation('Voice setup is already in progress')
         self.inflight.add(sid)
         try:
-            result = await asyncio.to_thread(execute)
+            result = await asyncio.to_thread(execute_configured)
+            if operation == 'voice.session' and requested == 'elevenlabs':
+                result = await asyncio.to_thread(eleven_voice.create_session, *result)
             if await self.ops.stamp(profile) != self.ops.session_incarnations.get(sid):
                 raise InvalidOperation('This Pebble changed during setup')
             if operation == 'voice.session':

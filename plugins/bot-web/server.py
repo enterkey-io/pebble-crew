@@ -384,7 +384,7 @@ def create_app(token, origins, hosts, gateway=None, trust=None, workspace=None, 
                             runtime = await native.call('bot_web.runtime.verify', {'profile': profile})
                     if not isinstance(runtime, dict) or runtime.get('verified') is not True:
                         raise InvalidOperation('The Hermes plugin update is incomplete. Finish runtime synchronization and restart the stopped services before chatting.', 'UPDATE_REQUIRED')
-            if operation in {'voice.status', 'voice.preferences', 'voice.credential', 'voice.session', 'voice.submit', 'voice.end'}:
+            if operation in {'voice.status', 'voice.preferences', 'voice.credential', 'voice.session', 'voice.submit', 'voice.end', 'voice.provider', 'voice.voices', 'voice.vox_import'}:
                 result = await voice.invoke(operation, params)
             elif operation in {'chat.commands', 'chat.command'}:
                 from .commands import invoke as command
