@@ -33,7 +33,8 @@ export const voiceErrors = {
 
 const atmeeErrors = {
   ATMEE_KEY_REJECTED: 'Atmee rejected this API key.',
-  ATMEE_KEY_SCOPE: 'This Atmee key needs access to sessions and characters.',
+  ATMEE_KEY_SCOPE: 'Enable character read access for this key in Atmee Studio.',
+  ATMEE_KEY_SAVE_FAILED: 'Hermes couldn’t save this Atmee key. Try again.',
   ATMEE_UNAVAILABLE: 'Atmee is unavailable. Try again shortly.',
   ATMEE_AVATAR_UNAVAILABLE: 'Select an available Atmee character in this Pebble’s Voice settings.',
   ATMEE_CALL_LIMIT: 'Check your Atmee credits or end the other video call.',

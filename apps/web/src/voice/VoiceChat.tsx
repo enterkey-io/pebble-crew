@@ -1,4 +1,5 @@
 import { createPortal } from 'react-dom';
+import { ClientError } from '@hermes-client/core';
 import type { ReactNode } from 'react';
 import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from 'react';
 import type { SessionClient, BridgeEvent } from '@hermes-client/protocol';
@@ -132,28 +133,41 @@ export const VoiceChat = forwardRef<
     return applySettings(decodeSettings(await rpc('voice.status')), requestKey);
   }
   const [elevenLabels, setElevenLabels] = useState<Record<string, string>>({});
+  const [catalogState, setCatalogState] = useState<'loading' | 'ready' | 'key' | 'error'>(
+    'loading',
+  );
+  const [catalogAttempt, setCatalogAttempt] = useState(0);
   const loadElevenVoices =
     mode === 'settings' &&
+    step === 'settings' &&
     settings?.supported &&
     settings.provider === 'elevenlabs' &&
     settings.keyConfirmed &&
     visible;
   useEffect(() => {
     setElevenLabels({});
+    setCatalogState('loading');
     if (!loadElevenVoices) return;
     let active = true;
     void rpc('voice.voices')
       .then((value) => {
         if (!active) return;
-        setElevenLabels(voiceLabels(record(value).voices));
+        setElevenLabels(voiceLabels(record(record(value).voices)));
+        setCatalogState('ready');
       })
-      .catch(() => {
-        // Presets and the default voice remain available if the key cannot list voices.
+      .catch((cause) => {
+        if (!active) return;
+        setCatalogState(
+          cause instanceof ClientError &&
+            ['ELEVEN_KEY_REJECTED', 'ELEVEN_ACCESS_DENIED'].includes(cause.code)
+            ? 'key'
+            : 'error',
+        );
       });
     return () => {
       active = false;
     };
-  }, [loadElevenVoices, client, sessionId]);
+  }, [loadElevenVoices, client, sessionId, catalogAttempt]);
   async function open() {
     if (inputBlocked && mode === 'chat') return;
     setVisible(true);
@@ -520,6 +534,31 @@ export const VoiceChat = forwardRef<
                 }
               : settings
           }
+          voiceCatalog={
+            loadElevenVoices && (
+              <>
+                {catalogState === 'loading' && <LoadingBar active label="Loading My Voices" />}
+                {catalogState === 'ready' && Object.keys(elevenLabels).length === 0 && (
+                  <p className="text-sm text-muted-foreground">No saved voices in ElevenLabs.</p>
+                )}
+                {(catalogState === 'key' || catalogState === 'error') && (
+                  <Alert>
+                    <AlertDescription>
+                      {catalogState === 'key'
+                        ? 'Couldn’t load My Voices. Check that your ElevenLabs key has Voices read access.'
+                        : 'Couldn’t load My Voices from ElevenLabs.'}
+                      <Button
+                        variant="link"
+                        onClick={() => setCatalogAttempt((value) => value + 1)}
+                      >
+                        Retry
+                      </Button>
+                    </AlertDescription>
+                  </Alert>
+                )}
+              </>
+            )
+          }
           value={value}
           onChange={setValue}
           step={step}
@@ -584,31 +623,6 @@ export const VoiceChat = forwardRef<
             setNotice('');
             void rpc('voice.provider', { provider: next })
               .then((value) => applySettings(decodeSettings(value)))
-              .catch((cause) => setError(voiceFailure(cause)))
-              .finally(() => setSaving(false));
-          }}
-          onImportVox={(file) => {
-            if (file.size > 64 * 1024) {
-              setError('Choose a Vox voice export smaller than 64 KB.');
-              return;
-            }
-            setSaving(true);
-            setError('');
-            setNotice('');
-            void file
-              .text()
-              .then(async (value) => {
-                let presets: unknown;
-                try {
-                  presets = JSON.parse(value);
-                } catch {
-                  setError('This file isn’t a Vox voice export.');
-                  return;
-                }
-                await rpc('voice.vox_import', { presets });
-                await loadSettings();
-                setNotice('Vox voices imported.');
-              })
               .catch((cause) => setError(voiceFailure(cause)))
               .finally(() => setSaving(false));
           }}

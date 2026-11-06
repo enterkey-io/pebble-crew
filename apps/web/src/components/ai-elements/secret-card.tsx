@@ -13,6 +13,7 @@ export function SecretCard({
   label,
   description,
   onSubmit,
+  submissionError,
   onSkip,
   initialValue = '',
   onValueChange,
@@ -23,6 +24,7 @@ export function SecretCard({
   label: string;
   description: string;
   onSubmit: (value: string) => Promise<void>;
+  submissionError?: (cause: unknown) => string;
   onSkip: () => void;
 }) {
   const field = useRef<HTMLInputElement>(null);
@@ -41,7 +43,9 @@ export function SecretCard({
           setBusy(true);
           setError('');
           void onSubmit(value)
-            .catch(() => setError('The key could not be saved. Try again.'))
+            .catch((cause) =>
+              setError(submissionError?.(cause) ?? 'The key could not be saved. Try again.'),
+            )
             .finally(() => setBusy(false));
         }}
       >

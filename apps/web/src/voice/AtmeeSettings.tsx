@@ -19,6 +19,30 @@ import { SecretCard } from '../components/ai-elements/secret-card';
 import { FormSection } from '../ui/primitives';
 import { AtmeeCharacterBuilder } from './AtmeeCharacterBuilder';
 
+function AtmeeKeyForm({
+  client,
+  onSaved,
+  onClose,
+}: {
+  client: SessionClient;
+  onSaved: () => void;
+  onClose: () => void;
+}) {
+  return (
+    <SecretCard
+      title="Atmee API key"
+      label="API key"
+      description="Use an Atmee key with character read access. To create characters, choose Every avatar and enable character and generation write access."
+      onSkip={onClose}
+      submissionError={(cause) => safeError(cause).message}
+      onSubmit={async (value) => {
+        await new AtmeeDomain(client).saveKey(value);
+        onSaved();
+      }}
+    />
+  );
+}
+
 export function AtmeeConnectionSettings({ client }: { client: SessionClient }) {
   const [configured, setConfigured] = useState<boolean>();
   const [editing, setEditing] = useState(false);
@@ -64,23 +88,12 @@ export function AtmeeConnectionSettings({ client }: { client: SessionClient }) {
         </Alert>
       )}
       {editing && (
-        <SecretCard
-          title="Atmee API key"
-          label="API key"
-          description="Saved privately in Hermes. Use sessions and character read access. To create characters here, use an account-wide key with character and generation write access."
-          onSkip={() => {
+        <AtmeeKeyForm
+          client={client}
+          onClose={() => setEditing(false)}
+          onSaved={() => {
+            setConfigured(true);
             setEditing(false);
-            setError('');
-          }}
-          onSubmit={async (value) => {
-            try {
-              setError('');
-              await new AtmeeDomain(client).saveKey(value);
-              setConfigured(true);
-              setEditing(false);
-            } catch (cause) {
-              setError(safeError(cause).message);
-            }
           }}
         />
       )}
@@ -102,9 +115,12 @@ export function AtmeeCharacterSettings({
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
   const [revision, setRevision] = useState(0);
+  const [editingKey, setEditingKey] = useState(false);
+  const [keyRejected, setKeyRejected] = useState(false);
   useEffect(() => {
     let current = true;
     setError('');
+    setKeyRejected(false);
     void new AtmeeDomain(client).characters(botId).then(
       (value) => {
         if (current) {
@@ -113,7 +129,11 @@ export function AtmeeCharacterSettings({
         }
       },
       (cause) => {
-        if (current) setError(safeError(cause).message);
+        if (current) {
+          const failure = safeError(cause);
+          setError(failure.message);
+          setKeyRejected(['ATMEE_KEY_REJECTED', 'ATMEE_KEY_SCOPE'].includes(failure.code));
+        }
       },
     );
     return () => {
@@ -148,17 +168,36 @@ export function AtmeeCharacterSettings({
   return (
     <FormSection title="Video" description="Your Atmee character supplies the face and voice.">
       {!characters && !error && <LoadingBar active label="Loading Atmee characters" />}
-      {characters?.configured === false && (
-        <p className="text-sm text-muted-foreground">
-          Add an Atmee API key in Settings → Connections.
-        </p>
-      )}
-      {characters?.configured && !characters.canCreate && (
-        <p className="text-sm text-muted-foreground">
-          To create a character here, add an account-wide Atmee key with character and generation
-          write access.
-        </p>
-      )}
+      {editingKey ? (
+        <AtmeeKeyForm
+          client={client}
+          onClose={() => setEditingKey(false)}
+          onSaved={() => {
+            setEditingKey(false);
+            setCharacters(undefined);
+            setRevision((value) => value + 1);
+          }}
+        />
+      ) : characters?.configured === false || keyRejected ? (
+        <Button
+          type="button"
+          variant="secondary"
+          className="justify-self-start"
+          onClick={() => setEditingKey(true)}
+        >
+          {keyRejected ? 'Replace Atmee API key' : 'Add Atmee API key'}
+        </Button>
+      ) : characters?.configured && !characters.canCreate ? (
+        <div className="grid justify-items-start gap-2">
+          <p className="text-sm text-muted-foreground">
+            This key can select characters. To create one, use an Atmee key with access to every
+            avatar and character and generation write permissions.
+          </p>
+          <Button type="button" variant="quiet" onClick={() => setEditingKey(true)}>
+            Replace Atmee API key
+          </Button>
+        </div>
+      ) : null}
       {characters?.configured && characters.avatars.length > 0 && (
         <div className="grid max-w-sm gap-2">
           <Label htmlFor={id}>Character</Label>

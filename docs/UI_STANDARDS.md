@@ -244,7 +244,7 @@ and name the earlier ID when a rule is superseded.
 - Date: 2026-11-05
 - Decision: Use the shared segmented control for provider selection, the private Secret Card for keys, and the same voice selector, preview and call bar for both providers.
 - Why: A Pebble has one place to set up or change its voice. Voice previews play a sample without activating the microphone.
-- Evidence: The [ElevenLabs voice browser journey](../test/chat-workspace/eleven-voice.spec.ts) exercises provider selection, a Vox preset, preview, interruption and the call receipt.
+- Evidence: The [ElevenLabs voice browser journey](../test/chat-workspace/eleven-voice.spec.ts) exercises provider selection, the saved voice catalog, preview, interruption and the call receipt.
 
 ### UI-image-download-contrast Keep image actions legible on every message
 
@@ -308,3 +308,9 @@ and name the earlier ID when a rule is superseded.
 - Decision: The resizable panel owns the sidebar width at every desktop breakpoint. Its content fills the panel. Keep a thin divider with a wider pointer target and keyboard resizing.
 - Why: A fixed-width child can hide the effect of a working resize handle.
 - Evidence: The [sidebar journey](../test/chat-workspace/interface-preferences.spec.ts) drags the visible rail at 1,100px and checks saved width and keyboard resizing.
+
+### Voice provider setup feedback
+
+- Decision: Show saved ElevenLabs voices in the voice picker, with a retryable catalog error next to the field. Use the same private Atmee key card in Connections and a Pebble’s Video settings.
+- Why: A provider request can fail independently of a saved selection. Key errors need to be visible where the owner enters the key, and a confirmed save should immediately unlock the character controls.
+- Evidence: The ElevenLabs browser journey retries a catalog failure and selects a returned voice. Atmee browser and native owner journeys exercise a rejected key, a confirmed save, and character selection.

@@ -16,7 +16,7 @@ BASE = 'https://api.atmanity.us'
 KEY = 'ATMEE_API_KEY'
 UUID = re.compile(r'[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}', re.IGNORECASE)
 KEY_FORMAT = re.compile(r'sk_(?:atmee|live)_[A-Za-z0-9_-]{8,240}')
-ERROR_CODES = {'ATMEE_KEY_REJECTED', 'ATMEE_KEY_SCOPE', 'ATMEE_UNAVAILABLE', 'ATMEE_AVATAR_UNAVAILABLE', 'ATMEE_CALL_LIMIT',
+ERROR_CODES = {'ATMEE_KEY_REJECTED', 'ATMEE_KEY_SCOPE', 'ATMEE_KEY_SAVE_FAILED', 'ATMEE_UNAVAILABLE', 'ATMEE_AVATAR_UNAVAILABLE', 'ATMEE_CALL_LIMIT',
                'ATMEE_BUILD_SCOPE', 'ATMEE_BUILD_CREDITS', 'ATMEE_BUILD_INPUT'}
 CALL_SECONDS = 300
 MAX_CAPTIONS = 240
@@ -80,10 +80,14 @@ def read_key():
 def save_key(value):
     from hermes_cli.config import save_env_value_secure
     from hermes_cli.web_server_profiles import _config_profile_scope
-    with _config_profile_scope('default'):
-        receipt = save_env_value_secure(KEY, value)
-    if receipt.get('success') is not True or read_key() != value:
-        raise InvalidOperation('Hermes could not confirm the key save', 'ATMEE_UNAVAILABLE')
+    try:
+        with _config_profile_scope('default'):
+            receipt = save_env_value_secure(KEY, value)
+        if receipt.get('success') is True and read_key() == value:
+            return
+    except (OSError, ValueError):
+        pass
+    raise InvalidOperation('Hermes could not save the Atmee key', 'ATMEE_KEY_SAVE_FAILED')
 
 
 def key_permissions(key):

@@ -104,6 +104,9 @@ test('Atmee setup, private camera preview and both sides of the call reach Herme
     const { operation, params } = route.request().postDataJSON();
     if (!operation.startsWith('atmee.')) return route.fallback();
     operations.push(operation);
+    if (operation === 'atmee.key' && params.value === 'sk_atmee_missing-scope') {
+      return route.fulfill({ status: 400, json: { code: 'ATMEE_KEY_SCOPE' } });
+    }
     const result = (() => {
       switch (operation) {
         case 'atmee.status':
@@ -156,22 +159,19 @@ test('Atmee setup, private camera preview and both sides of the call reach Herme
     'aria-selected',
     'true',
   );
-  await expect(page.getByText('Add an Atmee API key in Settings → Connections.')).toBeVisible();
+  const addKey = page.getByRole('button', { name: 'Add Atmee API key' });
+  await expect(addKey).toBeVisible();
   expect(operations).not.toContain('atmee.start');
-  await page.getByRole('button', { name: 'Close Edit Arlo' }).click();
-  if (info.project.use.isMobile)
-    await page.getByRole('button', { name: 'Toggle navigation', exact: true }).tap();
-  await page.getByRole('button', { name: 'Your account' }).click();
-  await page.getByRole('menuitem', { name: 'Settings', exact: true }).click();
-  await page.getByRole('tab', { name: 'Connections', exact: true }).click();
-  await page.getByRole('button', { name: 'Add API key' }).click();
+  await addKey.click();
   const key = page.getByRole('form', { name: 'Atmee API key' });
   await expect(key.getByLabel('API key')).toHaveAttribute('type', 'password');
+  await key.getByLabel('API key').fill('sk_atmee_missing-scope');
+  await key.getByRole('button', { name: 'Submit' }).click();
+  await expect(key.getByRole('alert')).toContainText('Enable character read access');
   await key.getByLabel('API key').fill('sk_atmee_fixture-only');
   await key.getByRole('button', { name: 'Submit' }).click();
-  await expect(page.getByText('API key saved')).toBeVisible();
-  await page.getByRole('button', { name: 'Close Settings' }).click();
-  await start.click();
+  await expect(key).toHaveCount(0);
+  await expect(addKey).toHaveCount(0);
   await page.getByRole('combobox', { name: 'Character', exact: true }).click();
   await page.getByRole('option', { name: 'Aimee' }).click();
   await expect(page.getByRole('combobox', { name: 'Character' })).toContainText('Aimee');

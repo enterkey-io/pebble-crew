@@ -70,7 +70,6 @@ class WorkspaceStore:
             CREATE TABLE IF NOT EXISTS atmee_caption(
                 seq INTEGER PRIMARY KEY, call TEXT NOT NULL, line TEXT NOT NULL,
                 speaker TEXT NOT NULL, text TEXT NOT NULL, UNIQUE(call,line));
-            CREATE TABLE IF NOT EXISTS vox_voice_presets(handle TEXT PRIMARY KEY,voice_id TEXT NOT NULL,label TEXT NOT NULL);
             CREATE TABLE IF NOT EXISTS voice_calls(
                 id TEXT PRIMARY KEY, incarnation TEXT NOT NULL, conversation TEXT NOT NULL,
                 ended_at REAL NOT NULL);

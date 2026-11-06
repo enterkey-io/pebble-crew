@@ -789,13 +789,6 @@
       ],
       "effect": "read"
     },
-    "voice.vox_import": {
-      "preferred": "rpc",
-      "accepted": [
-        "rpc"
-      ],
-      "effect": "write"
-    },
     "voice.end": {
       "preferred": "rpc",
       "accepted": [

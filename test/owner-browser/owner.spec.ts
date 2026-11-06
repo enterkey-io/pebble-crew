@@ -1222,10 +1222,19 @@ test('owner creates and selects Aurora from Pebble Crew without a voice recordin
     .getByRole('button', { name: /^(Add API key|Replace key)$/ })
     .click();
   const key = page.getByRole('form', { name: 'Atmee API key' });
+  await key.getByLabel('API key').fill('invalid-atmee-key');
+  await key.getByRole('button', { name: 'Submit' }).click();
+  await expect(key.getByRole('alert')).toContainText('Atmee rejected this API key.');
   await key.getByLabel('API key').fill('sk_atmee_native-builder');
   await key.getByRole('button', { name: 'Submit' }).click();
   await expect(page.getByText('API key saved')).toBeVisible();
   await expect(key).toBeHidden();
+  const home = (
+    await readFile(resolve(process.env.WORKSPACE_TEST_STATE!, 'native-home.txt'), 'utf8')
+  ).trim();
+  const stored = await readFile(resolve(home, '.env'), 'utf8');
+  expect(stored.includes('ATMEE_API_KEY=sk_atmee_native-builder')).toBe(true);
+
   await page.getByRole('button', { name: 'Close Settings' }).click();
   const openVideo = async () => {
     await openSidebarMenu(page, 'Aurora');

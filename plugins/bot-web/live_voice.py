@@ -221,8 +221,7 @@ class LiveVoice:
                 'text': text, 'surface': 'voice-live', 'voice_context': context, 'queued': True})
         allowed = {'voice.status': ['session_id'], 'voice.preferences': ['session_id', 'voice', 'complete'],
                    'voice.credential': ['session_id', 'value'], 'voice.session': ['session_id', 'sdp', 'preview'],
-                   'voice.provider': ['session_id', 'provider'], 'voice.voices': ['session_id'],
-                   'voice.vox_import': ['session_id', 'presets']}
+                   'voice.provider': ['session_id', 'provider'], 'voice.voices': ['session_id']}
         if operation not in allowed:
             raise InvalidOperation('Unsupported voice operation')
         requested = params.get('provider', 'openai')
@@ -233,8 +232,6 @@ class LiveVoice:
         if requested not in ('openai', 'elevenlabs'):
             raise InvalidOperation('Choose a supported voice provider')
         from . import eleven_voice
-        if operation == 'voice.vox_import':
-            return eleven_voice.import_presets(self.workspace, params['presets'])
         if operation == 'voice.voices':
             def catalog():
                 from hermes_cli.web_server_profiles import _config_profile_scope
@@ -267,7 +264,6 @@ class LiveVoice:
                 if before in visited:
                     raise NativeError('Voice context history did not advance')
                 visited.add(before)
-        preset = eleven_voice.vox_preset(self.workspace, profile)
         bot = await self.ops.bot(profile)
         name = self.ops.summary(bot)['name']
         from .coordination import voice_context
@@ -279,13 +275,13 @@ class LiveVoice:
                     eleven_voice.save_voice({'pebble_provider': requested})
                 selected = eleven_voice.provider()
                 if operation in {'voice.status', 'voice.provider'}:
-                    status = eleven_voice.preferences(preset) if selected == 'elevenlabs' else preferences()
+                    status = eleven_voice.preferences() if selected == 'elevenlabs' else preferences()
                     return {**status, 'providers': ['openai', 'elevenlabs']}
                 if requested != selected:
                     raise InvalidOperation('Voice provider changed. Reopen voice settings.', 'VOICE_PREFERENCES_FAILED')
                 if selected == 'elevenlabs':
                     if operation == 'voice.preferences':
-                        return {**eleven_voice.save_preferences(params['voice'], params['complete'], preset), 'providers': ['openai', 'elevenlabs']}
+                        return {**eleven_voice.save_preferences(params['voice'], params['complete']), 'providers': ['openai', 'elevenlabs']}
                     if operation == 'voice.credential':
                         value = params['value']
                         if not isinstance(value, str) or not re.fullmatch(r'[\x21-\x7e]{8,4096}', value):
@@ -293,7 +289,7 @@ class LiveVoice:
                         return eleven_voice.store_key(value)
                     if type(params['preview']) is not bool:
                         raise ValueError('Invalid voice preview')
-                    return eleven_voice.session_parameters(name, params['preview'], preset)
+                    return eleven_voice.session_parameters(name, params['preview'])
                 if operation == 'voice.preferences':
                     return {**save_preferences(params['voice'], params['complete']), 'providers': ['openai', 'elevenlabs']}
                 if operation == 'voice.credential':

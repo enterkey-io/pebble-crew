@@ -68,6 +68,19 @@ class AtmeeVideoTests(unittest.IsolatedAsyncioTestCase):
             self.assertFalse(any(call.args[0] == '/v1/sessions' for call in provider.call_args_list))
         self.ops.gateway.call.assert_not_awaited()
 
+    async def test_storage_refusal_returns_save_failure(self):
+        from contextlib import nullcontext
+        from types import SimpleNamespace
+        config = SimpleNamespace(save_env_value_secure=Mock(side_effect=ValueError('private path')))
+        profile_scope = SimpleNamespace(_config_profile_scope=lambda profile: nullcontext())
+        with patch('bot_web.atmee_video.provider', side_effect=self.vendor), \
+             patch.dict('sys.modules', {'hermes_cli.config': config,
+                                       'hermes_cli.web_server_profiles': profile_scope}):
+            with self.assertRaises(InvalidOperation) as failure:
+                await self.service.invoke('atmee.key', {'value': KEY})
+        self.assertEqual(failure.exception.code, 'ATMEE_KEY_SAVE_FAILED')
+        self.assertNotIn('private path', str(failure.exception))
+
     async def test_two_way_context_reaches_original_bot_even_without_delegation(self):
         with patch('bot_web.atmee_video.provider', side_effect=self.vendor), \
                 patch('bot_web.atmee_video.read_key', return_value=KEY):
