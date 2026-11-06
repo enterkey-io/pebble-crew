@@ -217,3 +217,10 @@ and name the earlier ID when a rule is superseded.
 - Decision: Batch visible photos after the roster resolves. Use stable Pebble identities and recheck native incarnation before returning a 256 px thumbnail. Keep the reserved avatar space during loading.
 - Why: A cold app load otherwise queues many redundant roster scans and makes photos appear one at a time.
 - Evidence: The [browser check](../test/chat-workspace/interface-preferences.spec.ts) loads 35 photos twice with bounded batches. The [owner journey](../test/owner-browser/owner.spec.ts) verifies the real plugin returns a saved native photo through the batch route.
+
+### UI-nested-pebble-editor Return to the Pebble details panel after editing
+
+- Date: 2026-11-05
+- Decision: Keep the details panel in phone navigation history when its Edit Pebble dialog opens. Close and browser Back dismiss the editor first.
+- Why: Returning directly to chat skips the panel the user opened the editor from.
+- Evidence: The [installed-shell browser checks](../test/mobile/installed-shell.spec.ts) exercise both dismissals and a second Back from the details panel to chat.

@@ -836,7 +836,12 @@ export function App({ owner }: { owner?: OwnerConnection }) {
       );
   }
   useOverlayHistory(
-    details && !documentReader.state && phone && !settings && !pickingAgents && !searchOpen,
+    details &&
+      !documentReader.state &&
+      phone &&
+      (!settings || settingsTab === 'agents') &&
+      !pickingAgents &&
+      !searchOpen,
     () => {
       toggleDetails(false);
       return true;

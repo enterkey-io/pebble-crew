@@ -246,27 +246,46 @@ for (const title of ['Settings', 'Org chart']) {
   });
 }
 
-test('details and the pebble editor keep their close controls in the phone safe area', async ({
-  page,
-}, info) => {
-  await page.getByRole('button', { name: /Show details/ }).tap();
-  const details = page.getByRole('button', { name: 'Close details', exact: true });
-  await fullyExposed(details);
-  const detailBounds = await details.boundingBox();
-  if (!detailBounds) throw new Error('The details close control is missing');
-  expect(detailBounds.y).toBeGreaterThanOrEqual(62);
-  await page.screenshot({ animations: 'disabled', path: info.outputPath('installed-details.png') });
+for (const dismissal of ['close button', 'browser back'] as const) {
+  test(`the pebble editor returns to details after ${dismissal}`, async ({ page }, info) => {
+    const composer = page.getByLabel('Message', { exact: true });
+    await composer.fill('Keep this draft');
+    await composer.blur();
+    const identity = page.getByRole('button', { name: /Show details/ });
+    await identity.tap();
+    const details = page.getByRole('button', { name: 'Close details', exact: true });
+    await fullyExposed(details);
+    const detailsHistory = await page.evaluate(() => history.state?.pebbleDrawer);
+    expect(typeof detailsHistory).toBe('string');
+    const detailBounds = await details.boundingBox();
+    if (!detailBounds) throw new Error('The details close control is missing');
+    expect(detailBounds.y).toBeGreaterThanOrEqual(62);
+    await page.screenshot({
+      animations: 'disabled',
+      path: info.outputPath('installed-details.png'),
+    });
 
-  await page.getByRole('button', { name: 'Edit Arlo', exact: true }).tap();
-  const editor = page.getByRole('dialog', { name: 'Edit pebble', exact: true });
-  const editorClose = editor.getByRole('button', { name: 'Close Edit Arlo', exact: true });
-  await fullyExposed(editorClose);
-  const editorBounds = await editor.boundingBox();
-  if (!editorBounds) throw new Error('The pebble editor is missing');
-  expect(editorBounds.y).toBeGreaterThanOrEqual(62);
-  expect(editorBounds.y + editorBounds.height).toBeLessThanOrEqual(956 - 34);
-  await editorClose.tap();
-  await expect(editor).toHaveCount(0);
-  await details.tap();
-  await expect(page.getByLabel('Message', { exact: true })).toBeEnabled();
-});
+    await page.getByRole('button', { name: 'Edit Arlo', exact: true }).tap();
+    const editor = page.getByRole('dialog', { name: 'Edit pebble', exact: true });
+    const editorClose = editor.getByRole('button', { name: 'Close Edit Arlo', exact: true });
+    await fullyExposed(editorClose);
+    const editorBounds = await editor.boundingBox();
+    if (!editorBounds) throw new Error('The pebble editor is missing');
+    expect(editorBounds.y).toBeGreaterThanOrEqual(62);
+    expect(editorBounds.y + editorBounds.height).toBeLessThanOrEqual(956 - 34);
+    if (dismissal === 'close button') await editorClose.tap();
+    else await page.goBack();
+    await expect(editor).toHaveCount(0);
+    await fullyExposed(details);
+    await expect.poll(() => page.evaluate(() => history.state?.pebbleDrawer)).toBe(detailsHistory);
+    await page.screenshot({
+      animations: 'disabled',
+      path: info.outputPath('installed-details-after-edit.png'),
+    });
+
+    await page.goBack();
+    await expect(details).not.toBeVisible();
+    await expect(composer).toBeEnabled();
+    await expect(composer).toHaveValue('Keep this draft');
+  });
+}
