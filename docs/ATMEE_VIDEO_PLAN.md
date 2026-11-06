@@ -24,6 +24,8 @@ Atmee handles the microphone audio, its video and voice, the call notes and prio
 
 Create a private V2 avatar from Aurora's approved portrait, voice sample, and short persona description. Atmee accepts these inputs in a manifest or a ZIP. The provisioning key needs account-wide `avatars:write`. Use a separate capped key bound to Aurora with `sessions` and `avatars:read` for Pebble Crew. Add it under **Settings → Connections → Atmee** once the character is ready. [Create an avatar](https://www.atmee.ai/docs/api/create-avatar) · [API keys](https://www.atmee.ai/docs/api/api-keys)
 
+For the first phone test, request portrait `384 × 672` if the account offers it. Keep the full head and neck in the frame with some room around the hair. Atmee captures alternate takes from the same source portrait. To keep distinct outfits selectable, create separate characters such as **Aurora · Studio** and **Aurora · Casual**. Either can be selected for the same Pebble with an account-wide call key. They share Hermes memory and the canonical Bot Chat. Call notes and prior video excerpts stay scoped to the selected character. [Atmee portrait guide](https://www.atmee.ai/docs/guides/negative-examples)
+
 Free includes API access and V1. The V2 Aurora test needs an account with access to V2. Confirm the plan and pricing before spending credits.
 
 [Pricing](https://www.atmee.ai/pricing) · [Integration modes](https://www.atmee.ai/docs/api/choose-integration) · [OpenAPI](https://www.atmee.ai/docs/openapi.yaml) · [Room protocol](https://github.com/Atmanity/atmee-toolkit/blob/main/plugins/atmee/skills/build-avatar-app/references/room.md)

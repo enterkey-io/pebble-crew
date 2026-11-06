@@ -71,7 +71,12 @@ export function AtmeeCall({
   const [caption, setCaption] = useState('');
   const [working, setWorking] = useState(false);
   const [hasVideo, setHasVideo] = useState(false);
+  const [videoRatio, setVideoRatio] = useState(1);
   const domain = new AtmeeCallDomain(client, sessionId);
+
+  function fitVideo(width: number, height: number) {
+    if (width > 0 && height > 0) setVideoRatio(width / height);
+  }
 
   function stopCamera(call: ActiveCall) {
     call.camera?.getTracks().forEach((track) => track.stop());
@@ -110,6 +115,7 @@ export function AtmeeCall({
       setCaption('');
       setAudioBlocked(false);
       setHasVideo(false);
+      setVideoRatio(1);
     }
     onActive(false);
   }
@@ -284,7 +290,7 @@ export function AtmeeCall({
       }
       room.on(RoomEvent.ParticipantConnected, queueContext);
       room.on(RoomEvent.ParticipantAttributesChanged, queueContext);
-      room.on(RoomEvent.TrackSubscribed, (track, _publication, participant) => {
+      room.on(RoomEvent.TrackSubscribed, (track, publication, participant) => {
         if (
           active.current !== call ||
           !participant.isAgent ||
@@ -297,7 +303,13 @@ export function AtmeeCall({
         }
         const element = track.kind === Track.Kind.Video ? video.current : audio.current;
         if (element) track.attach(element);
-        if (track.kind === Track.Kind.Video) setHasVideo(true);
+        if (track.kind === Track.Kind.Video) {
+          if (publication.dimensions) {
+            const { width, height } = publication.dimensions;
+            fitVideo(width, height);
+          }
+          setHasVideo(true);
+        }
       });
       room.on(RoomEvent.TrackUnsubscribed, (track) => {
         track.detach();
@@ -430,6 +442,8 @@ export function AtmeeCall({
     setMuted(next);
   }
 
+  const portraitVideo = videoRatio < 1;
+  const frameWidth = `min(100%, ${videoRatio * (portraitVideo ? 440 : 340)}px, calc(var(--app-viewport-height, 100dvh) * ${videoRatio * (portraitVideo ? 0.46 : 0.32)}))`;
   const panel =
     phase !== 'idle' || error ? (
       <section
@@ -438,14 +452,21 @@ export function AtmeeCall({
       >
         {phase !== 'idle' && (
           <>
-            <div className="relative isolate flex h-[min(32dvh,340px)] items-center justify-center overflow-hidden rounded-2xl bg-black">
+            <div
+              className="relative isolate mx-auto overflow-hidden rounded-2xl bg-black"
+              style={{ aspectRatio: videoRatio, width: frameWidth }}
+            >
               <video
                 ref={video}
                 playsInline
                 autoPlay
                 muted
                 aria-label={`${name}’s video`}
-                className="size-full object-contain"
+                className="absolute inset-0 size-full object-contain"
+                onResize={(event) => {
+                  const { videoWidth, videoHeight } = event.currentTarget;
+                  fitVideo(videoWidth, videoHeight);
+                }}
               />
               <audio ref={audio} autoPlay />
               {!hasVideo && (

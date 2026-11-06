@@ -1,6 +1,6 @@
 import type { Page } from '@playwright/test';
 
-export async function installAtmeeRoom(page: Page) {
+export async function installAtmeeRoom(page: Page, dimensions = { width: 512, height: 512 }) {
   await page.addInitScript(() => {
     const Media = globalThis.MediaStream;
     if (!Media)
@@ -47,8 +47,23 @@ export async function installAtmeeRoom(page: Page) {
             };
           }
           async connect() {
-            const picture = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256"><rect width="256" height="256" fill="#35384c"/><circle cx="128" cy="111" r="49" fill="#eab79b"/><path d="M52 256a76 85 0 0 1 152 0" fill="#8293a9"/></svg>';
-            this.handlers.TrackSubscribed({ kind: 'video', attach: (node) => { node.poster = 'data:image/svg+xml,' + encodeURIComponent(picture); } }, null, this.renderer);
+            const dimensions = ${JSON.stringify(dimensions)};
+            this.handlers.TrackSubscribed({
+              kind: 'video',
+              attach: (node) => {
+                window.__atmeeResizeVideo = (width, height) => {
+                  const unit = Math.min(width, height);
+                  const picture = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ' + width + ' ' + height + '"><rect width="100%" height="100%" fill="#35384c"/><circle cx="' + width / 2 + '" cy="' + height * .43 + '" r="' + unit * .23 + '" fill="#eab79b"/><ellipse cx="' + width / 2 + '" cy="' + height * .92 + '" rx="' + unit * .4 + '" ry="' + height * .24 + '" fill="#8293a9"/></svg>';
+                  node.poster = 'data:image/svg+xml,' + encodeURIComponent(picture);
+                  Object.defineProperties(node, {
+                    videoWidth: { configurable: true, value: width },
+                    videoHeight: { configurable: true, value: height },
+                  });
+                  node.dispatchEvent(new Event('resize'));
+                };
+                window.__atmeeResizeVideo(dimensions.width, dimensions.height);
+              },
+            }, { dimensions }, this.renderer);
             this.handlers.TrackSubscribed({ kind: 'audio', attach() {} }, null, this.renderer);
             window.__caption = (identity, text) => this.receiveCaption({
               withAbortSignal() { return this; },

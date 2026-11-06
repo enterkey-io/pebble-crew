@@ -277,9 +277,9 @@ and name the earlier ID when a rule is superseded.
 ### UI-video-self-view Keep camera preview local
 
 - Date: 2026-11-06
-- Decision: Keep Video separate from audio provider selection. Place the opt-in local camera preview in the lower-right corner of the avatar video. Keep the conversation and approval controls accessible below the call.
+- Decision: Keep Video separate from audio provider selection. Fit the call frame to the avatar stream's dimensions and limit its height so chat and approvals stay accessible. Place the opt-in local camera preview inside the lower-right corner of the video.
 - Why: The user can see their camera while speaking and can resolve Hermes requests without ending the call.
-- Evidence: The [video browser journey](../test/chat-workspace/atmee.spec.ts) checks the shared settings and self-view placement, and verifies that only the microphone is published.
+- Evidence: The [video browser journey](../test/chat-workspace/atmee.spec.ts) checks portrait and landscape framing, self-view placement, and verifies that only the microphone is published.
 
 ### UI-video-call-notes Show what is shared with the character
 

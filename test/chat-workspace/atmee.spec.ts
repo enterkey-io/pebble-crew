@@ -16,7 +16,7 @@ test('Atmee setup, private camera preview and both sides of the call reach Herme
   let note = '';
   const operations: string[] = [];
   const captured: unknown[] = [];
-  await installAtmeeRoom(page);
+  await installAtmeeRoom(page, { width: 384, height: 672 });
   await page.route('**/v1/rpc', async (route) => {
     const { operation, params } = route.request().postDataJSON();
     if (!operation.startsWith('atmee.')) return route.fallback();
@@ -111,9 +111,13 @@ test('Atmee setup, private camera preview and both sides of the call reach Herme
   const selfie = stage.locator('video[aria-label="Your camera preview"]');
   await expect(selfie).toBeVisible();
   const bounds = (await selfie.boundingBox())!;
-  const remote = (await stage.locator('video').first().boundingBox())!;
+  const remoteVideo = stage.getByLabel('Arlo’s video', { exact: true });
+  const remote = (await remoteVideo.boundingBox())!;
+  expect(Math.abs(remote.width / remote.height - 384 / 672)).toBeLessThan(0.02);
   expect(bounds.x).toBeGreaterThan(remote.x + remote.width / 2);
   expect(bounds.y + bounds.height).toBeGreaterThan(remote.y + remote.height / 2);
+  expect(bounds.x + bounds.width).toBeLessThan(remote.x + remote.width);
+  expect(bounds.y + bounds.height).toBeLessThan(remote.y + remote.height);
   expect(
     await page.evaluate(
       () => (window as unknown as { __mediaPublished: string[] }).__mediaPublished,
@@ -165,6 +169,14 @@ test('Atmee setup, private camera preview and both sides of the call reach Herme
       );
   });
   await page.screenshot({ animations: 'disabled', path: info.outputPath('atmee-self-view.png') });
+  await page.evaluate(() => Reflect.get(window, '__atmeeResizeVideo')(672, 384));
+  await expect
+    .poll(async () => {
+      const frame = (await remoteVideo.boundingBox())!;
+      return Math.abs(frame.width / frame.height - 672 / 384);
+    })
+    .toBeLessThan(0.02);
+  await page.screenshot({ animations: 'disabled', path: info.outputPath('atmee-landscape.png') });
   await stage.getByRole('button', { name: 'End video call' }).click();
   await expect(stage).toBeHidden();
   await expect
