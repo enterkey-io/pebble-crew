@@ -360,6 +360,13 @@ test('native group chats, avatar switching and role persistence', async ({ page,
     'aria-pressed',
     'true',
   );
+  const thumbnail = page.waitForResponse((response) => {
+    const payload = response.request().postDataJSON();
+    return (
+      payload?.operation === 'bots.appearance.thumbnails' &&
+      payload.params.targets.some((target: { profile: string }) => target.profile === 'alpha')
+    );
+  });
   const savedPhoto = page.waitForRequest(
     (request) =>
       request.url().endsWith('/v1/avatar') &&
@@ -374,6 +381,7 @@ test('native group chats, avatar switching and role persistence', async ({ page,
       .filter({ has: page.getByText('Alpha', { exact: true }) })
       .locator('.agent-avatar img'),
   ).toHaveCount(1);
+  expect((await (await thumbnail).json()).result.photos.alpha).toMatch(/^data:image\/png;base64,/);
   await page.getByRole('button', { name: 'Animated', exact: true }).click();
   await page.getByRole('button', { name: 'Save profile', exact: true }).click();
   await expect(

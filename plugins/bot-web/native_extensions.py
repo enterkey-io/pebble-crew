@@ -92,6 +92,29 @@ def register(source):
     server.method('bot_web.runtime.verify')(verify_runtime)
 
 
+    def avatar_assets(rid, params):
+        from hermes_cli.profiles import get_profile_dir
+        from lifecycle_native import incarnation
+        if not isinstance(params, dict) or not 1 <= len(params) <= 8:
+            return server._err(rid, -32602, 'Invalid avatar batch')
+        assets = {}
+        for profile, stamp in params.items():
+            if not isinstance(stamp, str) or len(stamp) != 64:
+                continue
+            try:
+                home = get_profile_dir(profile)
+                if incarnation(home) != stamp:
+                    continue
+                asset = server._methods['profiles.get_asset'](rid, {'name': profile, 'asset': 'avatar'}).get('result', {})
+                data = asset.get('data')
+                if asset.get('found') and isinstance(data, str) and len(data) <= 2_800_000 and incarnation(home) == stamp:
+                    assets[profile] = data
+            except (OSError, ValueError, TypeError):
+                continue
+        return server._ok(rid, {'assets': assets})
+
+    server.method('bot_web.avatar.assets')(avatar_assets)
+
     def resume(rid, params):
         if not isinstance(params, dict) or set(params) != {'profile', 'session_id'}:
             return server._err(rid, -32602, 'Invalid conversation resume')

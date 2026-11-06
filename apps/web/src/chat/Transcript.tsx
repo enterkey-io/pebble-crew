@@ -21,7 +21,8 @@ import { memo, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 import type { SessionClient } from '@hermes-client/protocol';
 import { motion, useReducedMotion } from 'motion/react';
-import { MessageBody, CopyMessage } from '../MessageBody';
+import type { MentionIndex } from './mentions';
+import { MessageBody, PlainMessageBody, CopyMessage } from '../MessageBody';
 import { messageDate } from '../conversation';
 import { CardPositions, projectTimeline } from './presentation';
 import type { TranscriptCard } from './presentation';
@@ -50,6 +51,7 @@ export function Transcript({
   footer,
   cards = [],
   suppressedTools,
+  mentions,
 }: {
   conversationKey: string;
   messages: ChatMessage[];
@@ -69,6 +71,7 @@ export function Transcript({
   footer?: ReactNode;
   cards?: readonly TranscriptCard[];
   suppressedTools?: ReadonlySet<string>;
+  mentions?: MentionIndex | undefined;
 }) {
   const content = useRef<HTMLDivElement>(null);
   const reduced = useReducedMotion();
@@ -227,6 +230,7 @@ export function Transcript({
             key={key}
             rowKey={key}
             m={m}
+            mentions={mentions}
             dayLabel={dayLabel}
             timeFormatter={formats.time}
             live={live}
@@ -257,6 +261,7 @@ export function Transcript({
 
 const TranscriptMessage = memo(function TranscriptMessage({
   m,
+  mentions,
   rowKey,
   dayLabel,
   timeFormatter,
@@ -275,6 +280,7 @@ const TranscriptMessage = memo(function TranscriptMessage({
   openDocument,
 }: {
   m: ChatMessage;
+  mentions: MentionIndex | undefined;
   rowKey: string;
   dayLabel: string | undefined;
   timeFormatter: Intl.DateTimeFormat;
@@ -342,10 +348,11 @@ const TranscriptMessage = memo(function TranscriptMessage({
       >
         {m.text.trim() &&
           (m.role === 'user' ? (
-            <p className="whitespace-pre-wrap">{m.text}</p>
+            <PlainMessageBody text={m.text} mentions={mentions} />
           ) : (
             <MessageBody
               text={m.text}
+              mentions={mentions}
               client={client}
               sessionId={sessionId}
               rowId={m.id}

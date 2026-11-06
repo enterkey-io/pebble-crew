@@ -30,6 +30,7 @@ export class BotBridgeClient {
   #existingAgents = false;
   #workspace = false;
   #workspaceSettings = false;
+  #avatarThumbnails = false;
   #reporting = false;
   #projects = false;
   #attachments = false;
@@ -99,6 +100,10 @@ export class BotBridgeClient {
     return this.#generatedMedia;
   }
 
+  get supportsAvatarThumbnails(): boolean {
+    return this.#avatarThumbnails;
+  }
+
   get supportsWorkspaceSettings(): boolean {
     return this.#workspaceSettings;
   }
@@ -144,6 +149,8 @@ export class BotBridgeClient {
     this.#workspace = !!data.capabilities && record(data.capabilities).workspace === true;
     this.#workspaceSettings =
       !!data.capabilities && record(data.capabilities).workspace_settings === true;
+    this.#avatarThumbnails =
+      !!data.capabilities && record(data.capabilities).avatar_thumbnails === true;
     this.#attachments = !!data.capabilities && record(data.capabilities).attachments === true;
     this.#generatedMedia =
       !!data.capabilities && record(data.capabilities).generated_media === true;

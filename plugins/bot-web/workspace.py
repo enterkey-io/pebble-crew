@@ -247,7 +247,7 @@ def normalize_photo(data, *, size=512):
 
 class WorkspaceService:
     METHODS = {'workspace.features.set', 'room.create', 'exchange.references', 'exchange.read', 'reporting.describe', 'bots.profile.update', 'agent.onboard', 'agent.welcome', 'organization.get', 'organization.save', 'organization.chat', 'crews.save', 'workspace.snapshot', 'presentation.read', 'presentation.order', 'agent.pin', 'agent.hide', 'agent.delete', 'agent.propose', 'room.send', 'room.log', 'room.react', 'agent.enable', 'workspace.describe', 'workspace.detect_primary', 'workspace.initialize', 'workspace.welcome', 'workspace.set_orchestrator',
-        'bots.update_handle', 'bots.appearance.get', 'bots.appearance.update', 'roles.update', 'teams.save',
+        'bots.update_handle', 'bots.appearance.get', 'bots.appearance.thumbnails', 'bots.appearance.update', 'roles.update', 'teams.save',
         'models.describe', 'agent.model', 'agent.create', 'agent.update', 'agent.attach', 'requests.reconcile', 'requests.get', 'requests.review', 'requests.list', 'requests.approve', 'requests.deny',
         'connections.add', 'connections.permissions', 'connections.set_key', 'connections.list', 'connections.test', 'services.catalog', 'agent.capabilities'}
 
@@ -359,7 +359,37 @@ class WorkspaceService:
         state['bots'][profile]['handle'] = handle
         return handle
 
+    async def thumbnails(self, params):
+        fields(params, ['targets'])
+        targets = params['targets']
+        if not isinstance(targets, list) or not 1 <= len(targets) <= 8:
+            raise InvalidOperation('Choose up to eight avatar thumbnails')
+        bots = self.store.read()['bots']
+        stamps = {}
+        for target in targets:
+            fields(target, ['profile', 'id'])
+            profile, ident = identifier(target['profile']), identifier(target['id'])
+            bot = bots.get(profile) or {}
+            stamp = bot.get('native_incarnation')
+            if bot.get('id') == ident and bot.get('available') and not bot.get('deleted') and stamp:
+                stamps[profile] = stamp
+        if not stamps:
+            return {'photos': {}}
+        assets = (await self.ops.gateway.call('bot_web.avatar.assets', stamps)).get('assets', {})
+        def convert():
+            photos = {}
+            for profile in stamps:
+                if profile in assets:
+                    try:
+                        photos[profile] = normalize_photo(assets[profile], size=256)
+                    except InvalidOperation:
+                        continue
+            return {'photos': photos}
+        return await asyncio.to_thread(convert)
+
     async def invoke(self, operation, params):
+        if operation == 'bots.appearance.thumbnails':
+            return await self.thumbnails(params)
         async with self.lock:
             return await self._invoke(operation, params)
 

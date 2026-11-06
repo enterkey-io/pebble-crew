@@ -386,3 +386,62 @@ test('reopening a section reuses its photo and an edited photo refreshes', async
   await expect(avatar).toHaveAttribute('src', edited!);
   expect(reads).toBe(2);
 });
+
+test('cold sidebar photo avatars arrive in bounded batches without per-profile RPCs', async ({
+  page,
+  context,
+}, info) => {
+  const fixture = await installFixture(context, { avatarThumbnails: true });
+  const template = fixture.state.bots[2]!;
+  while (fixture.state.bots.length < 35) {
+    const index = fixture.state.bots.length;
+    const profile = `photo-${index}`;
+    fixture.state.bots.push({
+      ...template,
+      profile,
+      id: `identity-${index}`,
+      handle: profile,
+      name: `Photo Pebble ${index}`,
+      read_key: `bot:identity-${index}`,
+    });
+  }
+  for (const bot of fixture.state.bots) bot.appearance = { ...bot.appearance, kind: 'photo' };
+  const photo = await page.evaluate(() => {
+    const canvas = document.createElement('canvas');
+    canvas.width = canvas.height = 32;
+    const paint = canvas.getContext('2d')!;
+    paint.fillStyle = '#4a746c';
+    paint.fillRect(0, 0, 32, 32);
+    return canvas.toDataURL();
+  });
+  const requests: string[][] = [];
+  let individual = 0;
+  await page.route('https://hermes.fixture.invalid/**/rpc', async (route) => {
+    const { operation, params } = route.request().postDataJSON();
+    if (operation === 'bots.appearance.get') individual++;
+    if (operation !== 'bots.appearance.thumbnails') return route.fallback();
+    const profiles = (params.targets as { profile: string }[]).map((target) => target.profile);
+    requests.push(profiles);
+    return route.fulfill({
+      json: { result: { photos: Object.fromEntries(profiles.map((profile) => [profile, photo])) } },
+    });
+  });
+  for (let load = 0; load < 2; load++) {
+    requests.length = 0;
+    if (load === 0) await page.goto('/');
+    else await page.reload();
+    await expect(page.getByLabel('Message', { exact: true })).toBeEnabled();
+    if (info.project.use.isMobile)
+      await page.getByRole('button', { name: 'Toggle navigation', exact: true }).click();
+    const list = page.getByRole('navigation', { name: 'Pebbles', exact: true });
+    await expect(list.locator('.agent-avatar img')).toHaveCount(35);
+    expect(individual).toBe(0);
+    expect(requests.every((batch) => batch.length > 0 && batch.length <= 8)).toBe(true);
+    expect(requests.length).toBeLessThanOrEqual(6);
+    expect(new Set(requests.flat()).size).toBe(35);
+  }
+  await page.screenshot({
+    path: info.outputPath('batched-photo-avatars.png'),
+    animations: 'disabled',
+  });
+});

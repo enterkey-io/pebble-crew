@@ -23,7 +23,7 @@ import {
   AttachmentAction,
 } from './components/ui/attachment';
 import { conversationCapabilities } from './chat/capability-ledger';
-import { useEffect, useLayoutEffect, useRef, useState, useCallback } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState, useCallback, useMemo } from 'react';
 import { safeError } from '@hermes-client/core';
 import {
   ConversationDomain,
@@ -56,6 +56,7 @@ import { fileSize } from './chat/FilesPanel';
 import { Rail, PebbleAvatar, CrewAvatar } from './chat/Rail';
 import type { ChatBot as Bot } from './chat/Rail';
 import { useAgentExchanges } from './chat/AgentExchanges';
+import { messageMentions } from './chat/mentions';
 import { LiveTranscript } from './chat/LiveTranscript';
 import { LiveText } from './chat/live-text';
 import { Chat, ChatViewport } from './components/ai-elements/chat';
@@ -464,6 +465,7 @@ export function App({ owner }: { owner?: OwnerConnection }) {
       ),
     [workspace],
   );
+  const mentions = useMemo(() => messageMentions(workspace?.bots ?? [], rooms), [workspace, rooms]);
   const authorName = useCallback((name: string) => authorBot(name)?.name ?? name, [authorBot]);
   const authorAvatar = useCallback(
     (name: string) => {
@@ -2736,6 +2738,7 @@ export function App({ owner }: { owner?: OwnerConnection }) {
                           </div>
                         )}
                       <LiveTranscript
+                        mentions={mentions}
                         text={liveText}
                         projection={sendProjection.current}
                         files={sharedFiles}

@@ -16,6 +16,11 @@ import {
 } from './components/ui/code-block';
 import { memo, useEffect, useMemo, useState } from 'react';
 import Markdown, { defaultUrlTransform } from 'react-markdown';
+import type { PluggableList } from 'unified';
+import { remarkMentions, plainMentions } from './chat/mention-markdown';
+import { noMentions } from './chat/mentions';
+import type { MentionIndex } from './chat/mentions';
+import { MessageMention } from './chat/MessageMention';
 import type { Components } from 'react-markdown';
 import type { SessionClient } from '@hermes-client/protocol';
 import remarkGfm from 'remark-gfm';
@@ -135,7 +140,7 @@ const components: Components = {
       <span>{children}</span>
     ),
 };
-const plugins = [remarkGfm, remarkMedia];
+
 function transformUrl(url: string, key: string) {
   return key === 'src' || key === 'href'
     ? localReference(url)
@@ -151,8 +156,10 @@ export const MessageBody = memo(function MessageBody({
   sessionId,
   rowId,
   conversationKey,
+  mentions = noMentions,
 }: {
   text: string;
+  mentions?: MentionIndex | undefined;
   client?: SessionClient | undefined;
   sessionId?: string | undefined;
   rowId?: string | undefined;
@@ -170,19 +177,64 @@ export const MessageBody = memo(function MessageBody({
         }
       : { kind: 'pending', identity: `${conversationKey ?? sessionId}:${rowId ?? ''}` };
   }, [client, sessionId, rowId, conversationKey]);
+  const plugins = useMemo<PluggableList>(
+    () => [remarkGfm, remarkMedia, [remarkMentions, mentions]],
+    [mentions],
+  );
+  const renderers = useMemo<Components>(
+    () => ({
+      ...components,
+      span: ({ node, children }) => {
+        const token = node?.properties['data-mention-token'];
+        const bot = typeof token === 'string' ? mentions.get(token) : undefined;
+        return bot ? (
+          <MessageMention bot={bot}>{children}</MessageMention>
+        ) : (
+          <span>{children}</span>
+        );
+      },
+    }),
+    [mentions],
+  );
   return (
     <MessageMediaContext.Provider value={media}>
       <div className="message-body min-w-0 space-y-4 wrap-break-word [&_li>ul]:mt-2 [&_li>ol]:mt-2">
         <Markdown
           skipHtml
           remarkPlugins={plugins}
-          components={components}
+          components={renderers}
           urlTransform={transformUrl}
         >
           {text}
         </Markdown>
       </div>
     </MessageMediaContext.Provider>
+  );
+});
+
+export const PlainMessageBody = memo(function PlainMessageBody({
+  text,
+  mentions = noMentions,
+}: {
+  text: string;
+  mentions?: MentionIndex | undefined;
+}) {
+  let offset = 0;
+  const parts = plainMentions(text, mentions).map((match) => {
+    const before = text.slice(offset, match.start);
+    offset = match.end;
+    return (
+      <span key={match.start}>
+        {before}
+        <MessageMention bot={match.bot}>{match.text}</MessageMention>
+      </span>
+    );
+  });
+  return (
+    <p className="whitespace-pre-wrap">
+      {parts}
+      {text.slice(offset)}
+    </p>
   );
 });
 
