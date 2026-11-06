@@ -427,7 +427,11 @@ export function App({ owner }: { owner?: OwnerConnection }) {
   const workspaceRef = useRef(workspace);
   workspaceRef.current = workspace;
   const scrollPositions = useRef(new Map<string, { top: number; follow: boolean }>());
-  const closeNav = useCallback(() => setNav(false), []);
+  const restoreNavigationButton = useRef(false);
+  const closeNav = useCallback((restoreFocus = false) => {
+    restoreNavigationButton.current = restoreFocus === true;
+    setNav(false);
+  }, []);
   useOverlayHistory(phone && nav, closeNav);
   useOverlayHistory(unavailableChat !== undefined, () => setUnavailableChat(undefined));
   const navigationWasOpen = useRef(false);
@@ -436,9 +440,12 @@ export function App({ owner }: { owner?: OwnerConnection }) {
     const target = nav
       ? '.pc-mobile-navigation'
       : navigationWasOpen.current
-        ? '.pc-chat-header [aria-label="Toggle navigation"]'
+        ? restoreNavigationButton.current
+          ? '.pc-chat-header [aria-label="Toggle navigation"]'
+          : '.pc-chat-header'
         : null;
     if (target) document.querySelector<HTMLElement>(target)?.focus({ preventScroll: true });
+    restoreNavigationButton.current = false;
     navigationWasOpen.current = nav;
   }, [nav, phone]);
   const closeReview = useCallback(() => setReview(undefined), []);
@@ -736,8 +743,19 @@ export function App({ owner }: { owner?: OwnerConnection }) {
     const opening = key !== transcriptContext.current;
     transcriptContext.current = key;
     if (followLatest.current && !scrollAnimating.current) {
-      if (opening) transcriptFollow.current.snap();
-      else transcriptFollow.current.follow();
+      if (!opening) {
+        transcriptFollow.current.follow();
+        return;
+      }
+      transcriptFollow.current.snap();
+      const rows = pane.querySelectorAll<HTMLElement>('.message-group[data-message-role]');
+      const target =
+        rows[rows.length - 1] ?? pane.querySelector<HTMLElement>('[data-earlier-history]');
+      if (target && target.getBoundingClientRect().bottom <= pane.getBoundingClientRect().top) {
+        followLatest.current = false;
+        setShowLatest(true);
+        transcriptFollow.current.snap(target);
+      }
     }
   }, [messages, pickingAgents, running, selection, settings, starting]);
   useLayoutEffect(() => {
@@ -2556,7 +2574,9 @@ export function App({ owner }: { owner?: OwnerConnection }) {
                       <LoadingBar active={switching} label="Opening conversation" />
                     </div>
                     <header
-                      className="pc-chat-header chat-header"
+                      className="pc-chat-header chat-header outline-none"
+                      data-slot="chat-header"
+                      tabIndex={-1}
                       data-has-requests={requestCount > 0}
                     >
                       <IconButton
@@ -2723,7 +2743,10 @@ export function App({ owner }: { owner?: OwnerConnection }) {
                       {selection?.kind === 'bot' &&
                         historyPage?.sessionId === selection.sessionId &&
                         historyPage.older && (
-                          <div className="flex flex-col items-center gap-1 py-3">
+                          <div
+                            data-earlier-history
+                            className="flex flex-col items-center gap-1 py-3"
+                          >
                             <Button
                               variant="quiet"
                               size="sm"

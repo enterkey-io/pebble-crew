@@ -25,6 +25,9 @@ export type ConversationMessage = {
   commentary?: string[];
   reactions?: MessageReaction[];
 };
+export function isConversationMessage(row: ConversationMessage): boolean {
+  return row.role !== 'tool' && Boolean(row.text.trim() || row.files?.length);
+}
 export type HistoryCoverage = {
   readonly count: number;
   readonly maxRow: number;
@@ -566,8 +569,45 @@ export class ConversationDomain {
     const snapshot = decodeBotConversation(await this.bridge.invoke('bot.open', { profile }));
     return {
       ...snapshot,
-      history: await this.cover(snapshot.history, retained, snapshot.sessionId),
+      history: retained.length
+        ? await this.cover(snapshot.history, retained, snapshot.sessionId)
+        : await this.withRecentConversation(snapshot.history, snapshot.sessionId),
     };
+  }
+  private async withRecentConversation(
+    recent: ConversationHistory,
+    sessionId: string,
+  ): Promise<ConversationHistory> {
+    let history = recent;
+    const visited = new Set<string>();
+    // An activity burst can occupy an entire native page. Fill a small,
+    // contiguous window while keeping deeper history available on demand.
+    while (
+      history.page?.older &&
+      !history.messages.some(isConversationMessage) &&
+      visited.size < 3
+    ) {
+      const cursor = history.page.older;
+      if (visited.has(cursor)) break;
+      visited.add(cursor);
+      const earlier = await this.older(sessionId, cursor).catch(() => undefined);
+      if (!earlier?.page || (earlier.page.older && visited.has(earlier.page.older))) break;
+      const known = new Set(history.messages.map((row) => row.id).filter(Boolean));
+      history = {
+        page: earlier.page,
+        messages: [
+          ...earlier.messages.filter((row) => !row.id || !known.has(row.id)),
+          ...history.messages,
+        ],
+        voiceCalls: [...(earlier.voiceCalls ?? []), ...(history.voiceCalls ?? [])],
+        coverage: {
+          count: earlier.coverage.count + history.coverage.count,
+          maxRow: Math.max(earlier.coverage.maxRow, history.coverage.maxRow),
+          rowIds: [...(earlier.coverage.rowIds ?? []), ...(history.coverage.rowIds ?? [])],
+        },
+      };
+    }
+    return history;
   }
   async createGroup(id: string, name: string, profiles: string[]) {
     const data = record(await this.bridge.invoke('room.create', { room_id: id, name, profiles }));

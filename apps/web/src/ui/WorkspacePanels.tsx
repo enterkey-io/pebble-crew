@@ -34,7 +34,7 @@ export function WorkspacePanels({
   navigation: ReactNode;
   phone: boolean;
   navigationOpen?: boolean;
-  onCloseNavigation?: () => void;
+  onCloseNavigation?: (restoreFocus?: boolean) => void;
   onOpenNavigation?: () => void;
   edgeNavigation?: boolean;
   children: ReactNode;
@@ -72,7 +72,7 @@ export function WorkspacePanels({
         )
       ) {
         event.preventDefault();
-        closeNavigation.current?.();
+        closeNavigation.current?.(true);
       }
     };
     document.addEventListener('keydown', escape);

@@ -1,4 +1,4 @@
-import { useId } from 'react';
+import { useId, useRef, useState } from 'react';
 import { Field, FieldLabel } from '../components/ui/field';
 import {
   Select,
@@ -25,18 +25,29 @@ export function VoiceOptions({
   onChange: (value: VoiceChoices) => void;
 }) {
   const id = useId();
+  const trigger = useRef<HTMLButtonElement>(null);
+  const [boundary, setBoundary] = useState<Element | null>(null);
   return (
     <Field>
       <FieldLabel htmlFor={`${id}-voice`}>Voice</FieldLabel>
       <Select
         value={value.voice}
         disabled={disabled}
+        onOpenChange={(open) => {
+          if (open) setBoundary(trigger.current?.closest('[data-slot="dialog-content"]') ?? null);
+        }}
         onValueChange={(voice) => onChange({ ...value, voice })}
       >
-        <SelectTrigger id={`${id}-voice`} className="w-full" aria-label="Voice">
+        <SelectTrigger ref={trigger} id={`${id}-voice`} className="w-full" aria-label="Voice">
           <SelectValue />
         </SelectTrigger>
-        <SelectContent>
+        <SelectContent
+          position="popper"
+          align="start"
+          collisionBoundary={boundary ?? undefined}
+          collisionPadding={8}
+          className="max-h-[min(16rem,var(--radix-select-content-available-height))] overscroll-contain"
+        >
           {voiceGroups([value.voice, ...voices]).map((group) => (
             <SelectGroup key={group.label}>
               <SelectLabel>{group.label}</SelectLabel>
