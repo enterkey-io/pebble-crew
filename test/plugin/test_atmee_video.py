@@ -102,6 +102,42 @@ class AtmeeVideoTests(unittest.IsolatedAsyncioTestCase):
             await self.service.end(self.service.call)
             self.ops.gateway.call.assert_awaited_once()
 
+    async def test_call_briefing_uses_only_selected_character_and_conversation(self):
+        other_character = 'da86f31a-6dc7-405d-bb87-a63d5ecdf151'
+        with self.store.db:
+            for index, incarnation, conversation, avatar, text in [
+                (1, 'alpha-stamp', 'alpha-chat', CHARACTER, 'Previous same-character call'),
+                (2, 'alpha-stamp', 'other-chat', CHARACTER, 'Other conversation'),
+                (3, 'alpha-stamp', 'alpha-chat', other_character, 'Other character'),
+                (4, 'other-stamp', 'alpha-chat', CHARACTER, 'Other Pebble'),
+            ]:
+                ident = f'previous-{index}'
+                self.store.db.execute('INSERT INTO atmee_call(id,incarnation,conversation,ended_at) VALUES(?,?,?,?)',
+                                      (ident, incarnation, conversation, index))
+                self.store.db.execute('INSERT INTO atmee_call_character VALUES(?,?)', (ident, avatar))
+                self.store.db.execute('INSERT INTO atmee_caption(call,line,speaker,text) VALUES(?,?,?,?)',
+                                      (ident, 'one', 'owner', text))
+        with (
+            patch('bot_web.atmee_video.provider', side_effect=self.vendor) as provider,
+            patch('bot_web.atmee_video.read_key', return_value=KEY),
+        ):
+            await self.service.invoke('atmee.select', {'bot_id': 'alpha-id', 'avatar_id': CHARACTER})
+            self.assertEqual(await self.service.invoke('atmee.context', {
+                'bot_id': 'alpha-id', 'avatar_id': CHARACTER, 'note': 'Keep check-ins brief.',
+            }), {'note': 'Keep check-ins brief.'})
+            with self.assertRaises(InvalidOperation):
+                await self.service.invoke('atmee.context', {
+                    'bot_id': 'alpha-id', 'avatar_id': other_character, 'note': 'Wrong character',
+                })
+            self.assertEqual((await self.service.invoke('atmee.avatars', {'bot_id': 'alpha-id'}))['note'],
+                             'Keep check-ins brief.')
+            ticket = await self.service.invoke('atmee.start', {'session_id': 'sid-alpha', 'bot_id': 'alpha-id'})
+            self.assertIn('Keep check-ins brief.', ticket['context'])
+            self.assertIn('Previous same-character call', ticket['context'])
+            self.assertNotIn('Other ', ticket['context'])
+            self.assertNotIn('Keep check-ins brief.', json.dumps(provider.call_args.args[2]))
+            await self.service.end(self.service.call, deliver=False)
+
     def test_catalog_stops_on_repeated_vendor_cursor(self):
         with patch('bot_web.atmee_video.provider', side_effect=[
             {'active': True, 'scopes': ['sessions', 'avatars:read']},

@@ -10,6 +10,12 @@ function configured(data: Record<string, unknown>) {
   return data.configured;
 }
 
+function videoText(value: unknown, limit: number) {
+  if (value === undefined) return '';
+  if (typeof value !== 'string' || value.length > limit) throw new ClientError('INVALID_RESPONSE');
+  return value;
+}
+
 export class AtmeeDomain {
   constructor(private readonly bridge: RpcPort) {}
   async status() {
@@ -30,6 +36,7 @@ export class AtmeeDomain {
     return {
       configured: configured(data),
       selected: data.selected,
+      note: videoText(data.note, 2000),
       avatars: data.avatars.map((item): AtmeeCharacter => {
         const avatar = record(item);
         if (
@@ -50,10 +57,29 @@ export class AtmeeDomain {
       await this.bridge.invoke('atmee.select', { bot_id: botId, avatar_id: avatarId }),
     );
     if (receipt.selected !== avatarId) throw new ClientError('INVALID_RESPONSE');
+    return videoText(receipt.note, 2000);
+  }
+  async saveNote(botId: string, avatarId: string, note: string) {
+    const value = note.trim();
+    const receipt = record(
+      await this.bridge.invoke('atmee.context', {
+        bot_id: botId,
+        avatar_id: avatarId,
+        note: value,
+      }),
+    );
+    if (receipt.note !== value) throw new ClientError('INVALID_RESPONSE');
+    return receipt.note;
   }
 }
 
-export type AtmeeRoom = { id: string; url: string; token: string; duration: number };
+export type AtmeeRoom = {
+  id: string;
+  url: string;
+  token: string;
+  duration: number;
+  context: string;
+};
 export type AtmeeCaption = { id: string; speaker: 'owner' | 'avatar'; text: string };
 
 export class AtmeeCallDomain {
@@ -84,7 +110,13 @@ export class AtmeeCallDomain {
       data.duration > 300
     )
       throw new ClientError('INVALID_RESPONSE');
-    return { id: data.id, url: data.url, token: data.token, duration: data.duration };
+    return {
+      id: data.id,
+      url: data.url,
+      token: data.token,
+      duration: data.duration,
+      context: videoText(data.context, 3858),
+    };
   }
   async caption(callId: string, caption: AtmeeCaption) {
     const data = record(

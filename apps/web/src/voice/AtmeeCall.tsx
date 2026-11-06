@@ -27,6 +27,7 @@ type ActiveCall = {
   captions: Set<Promise<void>>;
   lastOwner?: AtmeeCaption & { at: number };
   work?: Work;
+  contextTimer?: ReturnType<typeof setTimeout>;
   lastLine?: string;
   // Closing stops new writes; existing captions get a brief drain.
   closing?: boolean;
@@ -83,6 +84,7 @@ export function AtmeeCall({
     if (!call) return;
     active.current = undefined;
     call.closing = true;
+    clearTimeout(call.contextTimer);
     call.work?.reply('The call ended. Look for the result in chat.');
     stopCamera(call);
     call.mic?.getTracks().forEach((track) => track.stop());
@@ -152,7 +154,7 @@ export function AtmeeCall({
     },
   }));
 
-  async function delegate(call: ActiveCall): Promise<string> {
+  async function delegate(call: ActiveCall, callerIdentity: string): Promise<string> {
     // A tool request can overtake the matching final speech stream.
     await new Promise((resolve) => setTimeout(resolve, 500));
     await Promise.allSettled([...call.captions]);
@@ -176,7 +178,10 @@ export function AtmeeCall({
             resolve(text);
           } else if (active.current === call && call.room) {
             void call.room.localParticipant
-              .sendText(JSON.stringify({ type: 'event', text, ttl_s: 60 }), { topic: 'atmee.app' })
+              .sendText(JSON.stringify({ type: 'event', text, ttl_s: 60 }), {
+                topic: 'atmee.app',
+                destinationIdentities: [callerIdentity],
+              })
               .catch(() => undefined);
           }
         },
@@ -245,6 +250,40 @@ export function AtmeeCall({
         Array.from(room.remoteParticipants.values()).find(
           (participant) => participant.isAgent && participant.attributes['lk.agent.name'],
         )?.identity;
+      let microphonePublished = false;
+      let avatarArrived = false;
+      let reconnecting = false;
+      let contextSent = false;
+      function queueContext() {
+        if (
+          !ticket.context ||
+          contextSent ||
+          call.contextTimer ||
+          !microphonePublished ||
+          !avatarArrived ||
+          reconnecting ||
+          active.current !== call ||
+          !agentIdentity()
+        )
+          return;
+        // Atmee drops app messages before the agent links to the caller.
+        call.contextTimer = setTimeout(() => {
+          delete call.contextTimer;
+          const identity = agentIdentity();
+          if (active.current !== call || reconnecting || !identity) return;
+          contextSent = true;
+          void room.localParticipant
+            .sendText(JSON.stringify({ type: 'state', text: ticket.context }), {
+              topic: 'atmee.app',
+              destinationIdentities: [identity],
+            })
+            .catch(() => {
+              contextSent = false;
+            });
+        }, 2500);
+      }
+      room.on(RoomEvent.ParticipantConnected, queueContext);
+      room.on(RoomEvent.ParticipantAttributesChanged, queueContext);
       room.on(RoomEvent.TrackSubscribed, (track, _publication, participant) => {
         if (
           active.current !== call ||
@@ -252,6 +291,10 @@ export function AtmeeCall({
           !participant.attributes['lk.publish_on_behalf']
         )
           return;
+        if (track.kind === Track.Kind.Audio) {
+          avatarArrived = true;
+          queueContext();
+        }
         const element = track.kind === Track.Kind.Video ? video.current : audio.current;
         if (element) track.attach(element);
         if (track.kind === Track.Kind.Video) setHasVideo(true);
@@ -264,9 +307,14 @@ export function AtmeeCall({
         if (active.current === call) setAudioBlocked(!room.canPlaybackAudio);
       });
       room.on(RoomEvent.Reconnecting, () => {
+        reconnecting = true;
+        clearTimeout(call.contextTimer);
+        delete call.contextTimer;
         if (active.current === call) setPhase('reconnecting');
       });
       room.on(RoomEvent.Reconnected, () => {
+        reconnecting = false;
+        queueContext();
         if (active.current === call) setPhase('live');
       });
       room.on(RoomEvent.Disconnected, () => {
@@ -280,6 +328,10 @@ export function AtmeeCall({
               ? 'avatar'
               : undefined;
         if (!speaker || !call.id || call.closing) return;
+        if (speaker === 'avatar') {
+          avatarArrived = true;
+          queueContext();
+        }
         const id = call.id;
         const job = (async () => {
           let text = '';
@@ -307,7 +359,7 @@ export function AtmeeCall({
           return 'Unsupported request.';
         try {
           const request = JSON.parse(payload);
-          if (request?.name === 'ask_pebble') return await delegate(call);
+          if (request?.name === 'ask_pebble') return await delegate(call, callerIdentity);
         } catch {
           return 'The request could not be read.';
         }
@@ -322,6 +374,8 @@ export function AtmeeCall({
       await room.localParticipant.publishTrack(mic.getAudioTracks()[0]!, {
         source: Track.Source.Microphone,
       });
+      microphonePublished = true;
+      queueContext();
       void room.startAudio().catch(() => setAudioBlocked(true));
       if (active.current === call) setPhase('live');
     } catch (cause) {

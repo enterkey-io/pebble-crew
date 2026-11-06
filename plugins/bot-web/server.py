@@ -393,7 +393,7 @@ def create_app(token, origins, hosts, gateway=None, trust=None, workspace=None, 
             if operation == 'room.disband' and (not owner_trust or (
                     client['principal'] != 'operator' and request.scope.get('bot.ticket_expires') is None)):
                 raise InvalidOperation('Owner authentication is required')
-            if operation in {'atmee.status', 'atmee.key', 'atmee.avatars', 'atmee.select', 'atmee.ready',
+            if operation in {'atmee.status', 'atmee.key', 'atmee.avatars', 'atmee.select', 'atmee.context', 'atmee.ready',
                              'atmee.start', 'atmee.caption', 'atmee.delegate', 'atmee.end'}:
                 if not atmee or (client['principal'] != 'operator' and request.scope.get('bot.ticket_expires') is None):
                     raise InvalidOperation('Owner authentication is required')

@@ -280,3 +280,10 @@ and name the earlier ID when a rule is superseded.
 - Decision: Keep Video separate from audio provider selection. Place the opt-in local camera preview in the lower-right corner of the avatar video. Keep the conversation and approval controls accessible below the call.
 - Why: The user can see their camera while speaking and can resolve Hermes requests without ending the call.
 - Evidence: The [video browser journey](../test/chat-workspace/atmee.spec.ts) checks the shared settings and self-view placement, and verifies that only the microphone is published.
+
+### UI-video-call-notes Show what is shared with the character
+
+- Date: 2026-11-06
+- Decision: Put optional Call notes below the selected character in the Video section. Use the shared Label, Textarea, and Button, with one explicit save. Place the Atmee sharing disclosure next to the field. Keep Video available in the Voice tab when audio providers are unavailable.
+- Why: Preferences apply to the selected character, and users should see what Atmee receives before saving.
+- Evidence: The [video browser journey](../test/chat-workspace/atmee.spec.ts) saves notes and confirms that the room sends them only to the character.

@@ -1109,3 +1109,95 @@ test('a native video call without a tool request hands both sides to the existin
   await page.reload();
   await expect(transcript.getByText('Video call ended', { exact: true })).toBeVisible();
 });
+
+test('Aurora remembers a text fact in video and a video correction in text and the next call', async ({
+  page,
+  context,
+}) => {
+  await context.addCookies(ownerCookies);
+  await installAtmeeRoom(page);
+  await page.goto('/');
+  await expect(page.locator('.chat-header')).toContainText('Aurora');
+  const nativeHome = (
+    await readFile(resolve(process.env.WORKSPACE_TEST_STATE!, 'native-home.txt'), 'utf8')
+  ).trim();
+  const memory = () => readFile(resolve(nativeHome, 'memories', 'MEMORY.md'), 'utf8');
+  const composer = page.getByLabel('Message', { exact: true });
+  const transcript = page.getByRole('log');
+  const start = page.getByRole('button', { name: 'Start video call' });
+  const call = page.getByRole('region', { name: 'Video call with Aurora' });
+  const type = async (text: string) => {
+    await expect(composer).toBeEnabled();
+    await composer.fill(text);
+    await submitMessage(page);
+  };
+  const startCall = async () => {
+    await start.click();
+    await expect(call.getByRole('button', { name: 'Mute microphone' })).toBeEnabled({
+      timeout: 20000,
+    });
+  };
+  const speak = (speaker: 'owner' | 'agent', text: string) =>
+    page.evaluate(
+      ({ speaker, text }) => {
+        (
+          window as unknown as {
+            __caption: (identity: string, text: string) => void;
+          }
+        ).__caption(speaker, text);
+      },
+      { speaker, text },
+    );
+  const ask = (identity = 'agent') =>
+    page.evaluate(
+      (identity) =>
+        (window as unknown as { __askPebble: (identity: string) => Promise<string> }).__askPebble(
+          identity,
+        ),
+      identity,
+    );
+  const endCall = async () => {
+    const ended = page.waitForResponse(
+      (response) =>
+        response.url().endsWith('/v1/rpc') &&
+        response.request().postDataJSON()?.operation === 'atmee.end' &&
+        response.ok(),
+    );
+    await call.getByRole('button', { name: 'End video call' }).click();
+    await ended;
+    await expect(call).toBeHidden();
+  };
+  await type('nativevideo remember Cedar');
+  await expect(transcript.getByText('Aurora saved Cedar', { exact: true })).toBeVisible({
+    timeout: 30000,
+  });
+  expect(await memory()).toContain('meeting location is Cedar.');
+  await startCall();
+  await speak('owner', 'nativevideo recall');
+  expect(await ask('renderer')).toBe('Unsupported request.');
+  expect(await ask()).toBe('Aurora remembers Cedar');
+  await speak('owner', 'nativevideo correct: the location is Juniper');
+  expect(await ask()).toBe('Aurora saved Juniper');
+  expect(await memory()).toContain('meeting location is Juniper.');
+  expect(await memory()).not.toContain('meeting location is Cedar.');
+  await speak('agent', 'Juniper is the new meeting location.');
+  await endCall();
+  await page.reload();
+  await type('nativevideo recall in text');
+  await expect(transcript.getByText('Aurora remembers Juniper', { exact: true })).toBeVisible({
+    timeout: 30000,
+  });
+  await startCall();
+  await expect
+    .poll(() =>
+      page.evaluate(
+        () =>
+          (window as unknown as { __atmeeApp: { message: { text: string } }[] }).__atmeeApp[0]
+            ?.message.text,
+      ),
+    )
+    .toContain('Character: Juniper is the new meeting location.');
+  await speak('owner', 'nativevideo recall in the next call');
+  expect(await ask()).toBe('Aurora remembers Juniper');
+  await endCall();
+});

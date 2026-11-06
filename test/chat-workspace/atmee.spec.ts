@@ -13,6 +13,7 @@ test('Atmee setup, private camera preview and both sides of the call reach Herme
   await installFixture(context, { atmee: true });
   let configured = false;
   let selected: string | null = null;
+  let note = '';
   const operations: string[] = [];
   const captured: unknown[] = [];
   await installAtmeeRoom(page);
@@ -33,11 +34,16 @@ test('Atmee setup, private camera preview and both sides of the call reach Herme
             configured,
             avatars: configured ? [{ id: character, name: 'Aimee', ready: true }] : [],
             selected,
+            note,
           };
         case 'atmee.select':
           expect(params.bot_id).toBe('identity-0');
           selected = params.avatar_id;
-          return { selected };
+          return { selected, note };
+        case 'atmee.context':
+          expect(params.avatar_id).toBe(character);
+          note = params.note;
+          return { note };
         case 'atmee.ready':
           return { ready: configured && !!selected };
         case 'atmee.start':
@@ -47,6 +53,7 @@ test('Atmee setup, private camera preview and both sides of the call reach Herme
             url: 'wss://atmanity.livekit.cloud',
             token: 'fixture-room-token-12345',
             duration: 300,
+            context: note,
           };
         case 'atmee.caption':
           captured.push(params);
@@ -62,6 +69,10 @@ test('Atmee setup, private camera preview and both sides of the call reach Herme
   await page.goto('/');
   const start = page.getByRole('button', { name: 'Start video call' });
   await start.click();
+  await expect(page.getByRole('tab', { name: 'Voice', exact: true })).toHaveAttribute(
+    'aria-selected',
+    'true',
+  );
   await expect(page.getByText('Add an Atmee API key in Settings → Connections.')).toBeVisible();
   expect(operations).not.toContain('atmee.start');
   await page.getByRole('button', { name: 'Close Edit Arlo' }).click();
@@ -81,6 +92,16 @@ test('Atmee setup, private camera preview and both sides of the call reach Herme
   await page.getByRole('combobox', { name: 'Character', exact: true }).click();
   await page.getByRole('option', { name: 'Aimee' }).click();
   await expect(page.getByRole('combobox', { name: 'Character' })).toContainText('Aimee');
+  await page.getByLabel('Call notes', { exact: true }).fill('Keep check-ins brief.');
+  const save = page.getByRole('button', { name: 'Save call notes' });
+  await save.click();
+  await expect(page.getByLabel('Call notes', { exact: true })).toBeEnabled();
+  await expect(save).toBeDisabled();
+  expect(note).toBe('Keep check-ins brief.');
+  await expect(
+    page.getByText('The voice connection could not start.', { exact: false }),
+  ).toHaveCount(0);
+  await page.screenshot({ animations: 'disabled', path: info.outputPath('atmee-call-notes.png') });
   expect(operations).not.toContain('atmee.start');
   await page.getByRole('button', { name: 'Close Edit Arlo' }).click();
 
@@ -98,6 +119,14 @@ test('Atmee setup, private camera preview and both sides of the call reach Herme
       () => (window as unknown as { __mediaPublished: string[] }).__mediaPublished,
     ),
   ).toEqual(['microphone']);
+  await expect
+    .poll(() => page.evaluate(() => (window as unknown as { __atmeeApp: unknown[] }).__atmeeApp))
+    .toEqual([
+      {
+        message: { type: 'state', text: 'Keep check-ins brief.' },
+        options: { topic: 'atmee.app', destinationIdentities: ['agent'] },
+      },
+    ]);
   for (const [identity, text] of [
     ['owner', 'Should we meet tomorrow?'],
     ['agent', 'Tomorrow works.'],

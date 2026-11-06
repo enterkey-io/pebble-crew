@@ -229,7 +229,9 @@ export function PebbleEditor({
           { id: 'identity', label: 'Profile' },
           { id: 'role', label: 'Role' },
           { id: 'tools', label: 'Tools & skills' },
-          ...(client.supportsLiveVoice ? [{ id: 'voice', label: 'Voice' }] : []),
+          ...(client.supportsLiveVoice || client.supportsAtmeeSetup
+            ? [{ id: 'voice', label: 'Voice' }]
+            : []),
         ]}
         value={tab}
         onChange={(id) => {
@@ -420,16 +422,18 @@ export function PebbleEditor({
         )}
         {tab === 'voice' && !retired && (
           <div className="grid gap-6">
-            <VoiceSettingsEditor
-              client={client}
-              profile={bot.profile}
-              callActive={callActive}
-              request={voiceRequest}
-              requestResolved={!!voiceRequest && resolvedVoiceRequest === voiceRequest}
-              onCredentialConfirmed={() => setResolvedVoiceRequest(voiceRequest)}
-              onReady={onVoiceReady}
-              onClose={close}
-            />
+            {client.supportsLiveVoice && (
+              <VoiceSettingsEditor
+                client={client}
+                profile={bot.profile}
+                callActive={callActive}
+                request={voiceRequest}
+                requestResolved={!!voiceRequest && resolvedVoiceRequest === voiceRequest}
+                onCredentialConfirmed={() => setResolvedVoiceRequest(voiceRequest)}
+                onReady={onVoiceReady}
+                onClose={close}
+              />
+            )}
             {client.supportsAtmeeSetup && (
               <AtmeeCharacterSettings key={bot.id} client={client} botId={bot.id} />
             )}

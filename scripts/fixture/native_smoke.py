@@ -183,6 +183,11 @@ class Model(BaseHTTPRequestHandler):
                                   if messages[index].get('role') == 'user'), -1)
         current_results = [message.get('content') for message in messages[latest_user_index + 1:]
                            if message.get('role') == 'tool']
+        body = str(latest_user.get('content'))
+        video_actions = re.findall(r'\bnativevideo (remember|correct|recall)\b', body)
+        video_action = video_actions[-1] if video_actions and 'The Atmee video call ended.' not in body else None
+        previous_fact = 'Aurora video continuity fixture: meeting location is Cedar.'
+        current_fact = 'Aurora video continuity fixture: meeting location is Juniper.'
         document_results = json.dumps(current_results)
         def document_receipt(value):
             if isinstance(value, str):
@@ -195,7 +200,41 @@ class Model(BaseHTTPRequestHandler):
                         or any(document_receipt(child) for child in value.values()))
             return isinstance(value, list) and any(document_receipt(child) for child in value)
         shared_document = document_receipt(current_results)
-        if document_turn and not shared_document:
+        if video_action in {'remember', 'correct'}:
+            updating = video_action == 'correct'
+            if updating:
+                assert 'Your reply may be sent to Atmee' in json.dumps(messages), 'Video guidance was not injected'
+            if not current_results:
+                assert can_call('memory'), 'Hermes memory tool is unavailable'
+                arguments = ({'action': 'replace', 'old_text': previous_fact, 'content': current_fact}
+                             if updating else {'action': 'add', 'content': previous_fact})
+                message = {'role': 'assistant', 'content': None, 'tool_calls': [{
+                    'id': 'fixture-memory', 'type': 'function', 'function': {
+                        'name': 'memory', 'arguments': json.dumps({'target': 'memory', **arguments}),
+                    },
+                }]}
+                finish = 'tool_calls'
+            else:
+                receipt = json.loads(current_results[-1])
+                assert receipt.get('success') is True and receipt.get('target') == 'memory', current_results
+                text = 'Aurora saved Juniper' if updating else 'Aurora saved Cedar'
+                message = {'role': 'assistant', 'content': text}
+        elif video_action == 'recall':
+            # Hermes freezes its system memory snapshot when a session starts.
+            # A later acknowledgement of a confirmed write is fresher.
+            observations = (str(m.get('content')) for m in reversed(messages)
+                            if m.get('role') in {'system', 'assistant'})
+            location = 'unavailable'
+            for value in observations:
+                if value == 'Aurora saved Juniper' or current_fact in value:
+                    location = 'Juniper'
+                    break
+                if value == 'Aurora saved Cedar' or previous_fact in value:
+                    location = 'Cedar'
+                    break
+            text = f'Aurora remembers {location}'
+            message = {'role': 'assistant', 'content': text}
+        elif document_turn and not shared_document:
             if 'pebble_open_document' not in tool_names and 'parameters' not in document_results:
                 assert 'tool_describe(names=[\"pebble_open_document\"])' in json.dumps(data).replace('\\\"', '\"'), 'Document discovery guidance missing'
                 name, arguments = 'tool_describe', {'names': ['pebble_open_document']}
@@ -271,7 +310,7 @@ def seed(home, port):
               "agent:\n  max_turns: 3\n  bot_mode_protocol: true\n"
               "approvals:\n  mode: manual\n"
               "toolsets:\n  - terminal\n")
-    (home / "config.yaml").write_text(config)
+    (home / "config.yaml").write_text(config + '  - memory\n')
     (home / ".env").write_text("# No user credentials\n")
     for name in ("alpha", "beta"):
         path = create_profile(name, no_alias=True, no_skills=True)
@@ -584,9 +623,9 @@ def main():
                             kwargs['stderr'] = sys.stderr
                         return await original_spawn(*argv, **kwargs)
                     patch('bot_web.native.asyncio.create_subprocess_exec', diagnostic_spawn).start()
+                    synthetic_calls = set()
                     def synthetic_atmee(path, key, payload=None):
                         character = 'bbcb7c08-35d3-44c2-86cd-28825ed7165e'
-                        call = '9c53b2f5-5c43-4b51-b553-504fa870e0e2'
                         if key != 'sk_atmee_native-synthetic':
                             raise AssertionError('Only disposable fixture keys are accepted')
                         if path == '/v1/api_keys/current':
@@ -595,9 +634,12 @@ def main():
                             return {'id': character, 'name': 'Synthetic character', 'kind': 'conversational', 'readyToChat': True}
                         if path == '/v1/sessions':
                             assert payload['avatarId'] == character and 'visitorId' not in payload
+                            assert 'remember, correct' in payload['appTools']['instructions']
+                            call = str(uuid.uuid4())
+                            synthetic_calls.add(call)
                             return {'sessionId': call, 'serverUrl': 'wss://atmanity.livekit.cloud',
                                     'userToken': 'native-fixture-token-123456', 'actualDurationSeconds': 300}
-                        if path == '/v1/sessions/' + call + '/end':
+                        if path.startswith('/v1/sessions/') and path.endswith('/end') and path.split('/')[3] in synthetic_calls:
                             return {'alreadyEnded': False}
                         raise AssertionError('Unexpected synthetic vendor operation')
                     patch('bot_web.atmee_video.provider', synthetic_atmee).start()

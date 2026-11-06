@@ -536,6 +536,13 @@
       ],
       "effect": "write"
     },
+    "atmee.context": {
+      "preferred": "rpc",
+      "accepted": [
+        "rpc"
+      ],
+      "effect": "write"
+    },
     "atmee.ready": {
       "preferred": "rpc",
       "accepted": [

@@ -7,6 +7,7 @@ import { Button } from '../components/ui/button';
 import { Item, ItemActions, ItemContent, ItemDescription, ItemTitle } from '../components/ui/item';
 import { Label } from '../components/ui/label';
 import { LoadingBar } from '../components/ui/loading-bar';
+import { Textarea } from '../components/ui/textarea';
 import {
   Select,
   SelectContent,
@@ -95,6 +96,7 @@ export function AtmeeCharacterSettings({
 }) {
   const id = useId();
   const [characters, setCharacters] = useState<Awaited<ReturnType<AtmeeDomain['characters']>>>();
+  const [note, setNote] = useState('');
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
   const [revision, setRevision] = useState(0);
@@ -103,7 +105,10 @@ export function AtmeeCharacterSettings({
     setError('');
     void new AtmeeDomain(client).characters(botId).then(
       (value) => {
-        if (current) setCharacters(value);
+        if (current) {
+          setCharacters(value);
+          setNote(value.note);
+        }
       },
       (cause) => {
         if (current) setError(safeError(cause).message);
@@ -140,8 +145,9 @@ export function AtmeeCharacterSettings({
               setSaving(true);
               setError('');
               try {
-                await new AtmeeDomain(client).select(botId, value);
-                setCharacters((current) => current && { ...current, selected: value });
+                const saved = await new AtmeeDomain(client).select(botId, value);
+                setCharacters((current) => current && { ...current, selected: value, note: saved });
+                setNote(saved);
               } catch (cause) {
                 setError(safeError(cause).message);
               } finally {
@@ -161,6 +167,51 @@ export function AtmeeCharacterSettings({
               ))}
             </SelectContent>
           </Select>
+          {characters.avatars.some(
+            (avatar) => avatar.id === characters.selected && avatar.ready,
+          ) && (
+            <div className="mt-2 grid gap-2">
+              <Label htmlFor={id + '-note'}>Call notes</Label>
+              <Textarea
+                id={id + '-note'}
+                aria-describedby={id + '-note-description'}
+                rows={3}
+                maxLength={1000}
+                disabled={saving}
+                value={note}
+                onChange={(event) => setNote(event.target.value)}
+              />
+              <p id={id + '-note-description'} className="text-sm text-muted-foreground">
+                Atmee receives these notes and brief excerpts from the last video call.
+              </p>
+              <Button
+                type="button"
+                variant="secondary"
+                className="justify-self-start"
+                disabled={saving || !characters.selected || note.trim() === characters.note}
+                onClick={async () => {
+                  if (!characters.selected) return;
+                  setSaving(true);
+                  setError('');
+                  try {
+                    const saved = await new AtmeeDomain(client).saveNote(
+                      botId,
+                      characters.selected,
+                      note,
+                    );
+                    setCharacters((current) => current && { ...current, note: saved });
+                    setNote(saved);
+                  } catch (cause) {
+                    setError(safeError(cause).message);
+                  } finally {
+                    setSaving(false);
+                  }
+                }}
+              >
+                Save call notes
+              </Button>
+            </div>
+          )}
         </div>
       )}
       {error && (
