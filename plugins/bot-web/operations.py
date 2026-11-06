@@ -38,6 +38,7 @@ class BotOperations:
         self.gateway = gateway
         self.sessions = {}
         self.session_incarnations = {}
+        self.session_conversations = {}
         self.open_lock = asyncio.Lock()
 
     async def profiles(self):
@@ -171,6 +172,7 @@ class BotOperations:
                     raise InvalidOperation('Profile changed while opening this conversation')
                 self.sessions[sid] = bot["name"]
                 self.session_incarnations[sid] = stamp
+                self.session_conversations[sid] = canonical["id"]
                 if bind is not None:
                     bind(sid)
                 await self.gateway.call('bot_web.reactions.enable', {'session_id': sid})

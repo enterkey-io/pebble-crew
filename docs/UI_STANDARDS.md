@@ -195,3 +195,10 @@ and name the earlier ID when a rule is superseded.
 - Decision: Paint loaded avatars when section rows return. Keep a bounded cache of successful photo thumbnails in the current app session. A new appearance revision fetches the updated photo.
 - Why: Closing a section removes its rows from view. Reopening it should show familiar avatars immediately.
 - Evidence: The [sidebar browser checks](../test/chat-workspace/interface-preferences.spec.ts) reopen a section and verify that its photos appear with a single request per profile.
+
+### UI-voice-call-history Show completed calls in the conversation
+
+- Date: 2026-11-05
+- Decision: Use a compact trace row with a phone icon, “Voice call ended” and the local end time. Place it between messages by time. Keep it visible after reloading, independent of the optional follow-up. Voice previews produce no entry.
+- Why: A call is useful conversation history even if neither side spoke or the agent sends no follow-up.
+- Evidence: The [voice browser journeys](../test/chat-workspace/voice.spec.ts) verify receipt placement, reload persistence and a real loopback call ending without captions.

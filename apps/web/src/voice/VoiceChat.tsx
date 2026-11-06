@@ -12,7 +12,8 @@ import { choices } from './VoiceOptions';
 import type { VoiceChoices } from './VoiceOptions';
 import type { AudioActivityHandle } from '../components/ai-elements/audio-activity';
 import { rejectedVoiceKey, voiceFailure } from './errors';
-import { ConversationDomain } from '@hermes-client/protocol';
+import { ConversationDomain, decodeVoiceCall } from '@hermes-client/protocol';
+import type { VoiceCallRecord } from '@hermes-client/protocol';
 import type { ChatMessage } from '../conversation';
 import { record, settings as decodeSettings, sessionAnswer } from './decode';
 import type { VoiceSettings, VoiceSettingsRequest } from './decode';
@@ -29,6 +30,7 @@ export const VoiceChat = forwardRef<
     running: boolean;
     inputBlocked?: boolean;
     onAccepted: (message: ChatMessage) => void;
+    onCallEnded?: (call: VoiceCallRecord) => void;
     onOpenSettings?: (request: VoiceSettingsRequest) => void;
     settingsRequest?: VoiceSettingsRequest | undefined;
     requestResolved?: boolean;
@@ -49,6 +51,7 @@ export const VoiceChat = forwardRef<
     running,
     inputBlocked = false,
     onAccepted,
+    onCallEnded,
     onOpenSettings,
     settingsRequest,
     requestResolved = false,
@@ -83,6 +86,7 @@ export const VoiceChat = forwardRef<
   const live = useRef<VoiceLiveSession | undefined>(undefined),
     generation = useRef(0),
     mounted = useRef(true);
+  const startedCallId = useRef<string | null>(null);
   const receipts = useRef(new DelegationReceipts());
   const seenDelegations = useRef(new Set<string>());
   const active = useRef(false),
@@ -160,12 +164,47 @@ export const VoiceChat = forwardRef<
     onActiveChange?.(state !== 'idle');
     return () => onActiveChange?.(false);
   }, [state, onActiveChange]);
-  function end() {
+  function end(followUp = false) {
     generation.current++;
     clearTimeout(previewTimer.current);
     clearTimeout(setupTimer.current);
     const previous = live.current;
     live.current = undefined;
+    const callId = startedCallId.current;
+    startedCallId.current = null;
+    if (previous && callId) {
+      const transcript = followUp
+        ? previous
+            .contextWindow()
+            .map(
+              (fragment) => `${fragment.speaker === 'user' ? 'User' : agentName}: ${fragment.text}`,
+            )
+            .join('\n')
+            .slice(-6000)
+        : '';
+      const epoch = generation.current;
+      void client
+        .invoke('voice.end', { session_id: sessionId, call_id: callId, transcript })
+        .then((value) => {
+          const result = record(value);
+          const saved = decodeVoiceCall(result.call);
+          if (saved) onCallEnded?.(saved);
+          if (
+            result.follow_up_unconfirmed === true &&
+            mounted.current &&
+            generation.current === epoch
+          ) {
+            setVisible(true);
+            setError('The call was saved. Its text follow-up could not be confirmed.');
+          }
+        })
+        .catch(() => {
+          if (mounted.current && generation.current === epoch) {
+            setVisible(true);
+            setError('The call ended, but its history entry could not be confirmed.');
+          }
+        });
+    }
     previous?.close();
     queue.current = [];
     seenDelegations.current.clear();
@@ -181,26 +220,8 @@ export const VoiceChat = forwardRef<
     }
   }
   function stopCall() {
-    const call = live.current;
-    const transcript =
-      call
-        ?.contextWindow()
-        .map((fragment) => `${fragment.speaker === 'user' ? 'User' : agentName}: ${fragment.text}`)
-        .join('\n')
-        .slice(-6000) ?? '';
-    const callId = call?.sessionId;
-    const followUp = state === 'live' && call?.connected && callId && transcript.trim();
-    end();
+    end(true);
     if (mode === 'chat' && state !== 'preview') setVisible(false);
-    if (followUp)
-      void client
-        .invoke('voice.end', { session_id: sessionId, call_id: callId, transcript })
-        .catch(() => {
-          if (mounted.current) {
-            setVisible(true);
-            setError('The call ended, but its text follow-up could not be confirmed.');
-          }
-        });
   }
   async function finish(result: Completion) {
     const id = receipts.current.take(result),
@@ -348,7 +369,10 @@ export const VoiceChat = forwardRef<
               },
               previewHeard ? 30000 : 15000,
             );
-          } else setState('live');
+          } else {
+            startedCallId.current ??= call.sessionId;
+            setState('live');
+          }
         },
         onDelegation(id, context) {
           if (preview || generation.current !== epoch) return;

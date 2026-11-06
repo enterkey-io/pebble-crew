@@ -292,8 +292,18 @@ test('real browser WebRTC preview and call preserve native receipt ownership and
     statusPending = false,
     releaseStatus = () => {};
   const followups: string[] = [];
+  const callRecords: { id: string; ended_at: number }[] = [];
   const messages = [{ row_id: 1, role: 'assistant', text: 'Ready.', timestamp: 1700000000 }];
-  await installFixture(context, { voice: true, messages });
+  await installFixture(context, {
+    voice: true,
+    open: (profile) => ({
+      session_id: `session-${profile}`,
+      messages,
+      voice_calls: callRecords,
+      running: false,
+    }),
+    historyPage: () => ({ messages, voice_calls: callRecords }),
+  });
   await context.grantPermissions(['microphone']);
   const initialize = () => {
     let micReads = 0,
@@ -445,7 +455,24 @@ test('real browser WebRTC preview and call preserve native receipt ownership and
     }
     if (operation === 'voice.end') {
       followups.push(params.transcript);
-      return route.fulfill({ json: { result: { submitted: true } } });
+      const call = {
+        id: String(callRecords.length + 1).repeat(64),
+        ended_at: Date.now() / 1000,
+      };
+      callRecords.push(call);
+      await page.evaluate(
+        (payload) =>
+          Reflect.get(
+            window,
+            '__chatEvent',
+          )({
+            type: 'voice.call.ended',
+            session_id: 'session-arlo',
+            payload,
+          }),
+        call,
+      );
+      return route.fulfill({ json: { result: { submitted: !!params.transcript, call } } });
     }
     if (operation === 'voice.submit') {
       expect(params.text).toBe('Check the report.');
@@ -637,6 +664,15 @@ test('real browser WebRTC preview and call preserve native receipt ownership and
   expect(await page.evaluate(() => window.__voiceTest.stopped())).toBe(true);
   await expect.poll(() => followups.length).toBe(1);
   expect(followups[0]).toContain('Check the report.');
+  const entry = page.getByText('Voice call ended', { exact: true });
+  await expect(entry).toHaveCount(1);
+  const transcript = page.getByRole('log');
+  await expect(transcript).toContainText(/The report is ready\.[\s\S]*Voice call ended/);
+  await entry.scrollIntoViewIfNeeded();
+  await page.screenshot({
+    path: info.outputPath('voice-call-history.png'),
+    animations: 'disabled',
+  });
   await expect(page.getByRole('button', { name: 'Start call', exact: true })).not.toBeVisible();
   holdStatus = true;
   await page.getByRole('button', { name: 'Voice chat', exact: true }).click();
@@ -646,7 +682,12 @@ test('real browser WebRTC preview and call preserve native receipt ownership and
   releaseStatus();
   await expect(page.getByRole('button', { name: 'Mute microphone' })).toBeVisible();
   expect(await page.evaluate(() => window.__voiceTest.micReads())).toBe(2);
-  await page.getByRole('button', { name: 'Stop voice call' }).click();
+  await page.evaluate(() => window.__voiceTest.send({ type: 'session.closed' }));
+  await expect(entry).toHaveCount(2);
+  expect(followups[1]).toBe('');
+  await page.reload();
+  await expect(page.getByLabel('Message', { exact: true })).toBeEnabled();
+  await expect(entry).toHaveCount(2);
 });
 
 test('denied microphone returns to intact text chat without creating a provider session', async ({
@@ -832,4 +873,29 @@ test('Preview reports a saved-key rejection without requesting or blaming the mi
   await page.getByRole('button', { name: 'Preview', exact: true }).click();
   await expect(page.getByRole('alert')).toContainText('rate limiting', { timeout: 20000 });
   expect(microphoneRequests).toBe(0);
+});
+
+test('saved voice calls appear in chronological order between messages on reload', async ({
+  page,
+  context,
+}, info) => {
+  const messages = [
+    { row_id: 1, role: 'user', text: 'Before the call', timestamp: 1700000000 },
+    { row_id: 2, role: 'assistant', text: 'After the call', timestamp: 1700000020 },
+  ];
+  const voice_calls = [{ id: 'a'.repeat(64), ended_at: 1700000010 }];
+  await installFixture(context, {
+    open: (profile) => ({ session_id: `session-${profile}`, messages, voice_calls }),
+    historyPage: () => ({ messages, voice_calls }),
+  });
+  await page.goto('/');
+  await expect(page.getByLabel('Message', { exact: true })).toBeEnabled();
+  await page.reload();
+  await expect(page.getByLabel('Message', { exact: true })).toBeEnabled();
+  const log = page.getByRole('log');
+  await expect(log).toContainText(/Before the call[\s\S]*Voice call ended[\s\S]*After the call/);
+  const entry = log.getByText('Voice call ended', { exact: true });
+  await expect(entry).toHaveCount(1);
+  await entry.scrollIntoViewIfNeeded();
+  await page.screenshot({ path: info.outputPath('saved-voice-call.png'), animations: 'disabled' });
 });

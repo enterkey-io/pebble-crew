@@ -458,6 +458,10 @@ def create_app(token, origins, hosts, gateway=None, trust=None, workspace=None, 
             if files and operation in {'bot.open', 'chat.snapshot', 'chat.history'} and isinstance(result, dict) and isinstance(result.get('messages'), list):
                 sid = result.get('session_id') if operation == 'bot.open' else params.get('session_id')
                 result = {**result, 'messages': await files.present(ops, client['principal'], sid, result['messages'])}
+                page = result.get('history_page') or {}
+                bounds = page.pop('timeline_bounds', None)
+                if bounds is not None or 'before' not in params:
+                    result['voice_calls'] = voice.history(sid, bounds or (None, None))
             return {"result": result}
         except (TypeError, KeyError, ValueError) as error:
             raise InvalidOperation("Invalid operation values") from error

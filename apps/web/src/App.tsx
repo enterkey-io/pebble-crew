@@ -29,10 +29,16 @@ import {
   ConversationDomain,
   decodeApprovals,
   decodeRoomReactions,
+  decodeVoiceCall,
   approvalKey,
   StreamHandoff,
 } from '@hermes-client/protocol';
-import type { BridgeEvent, ConversationApproval, HistoryCoverage } from '@hermes-client/protocol';
+import type {
+  BridgeEvent,
+  ConversationApproval,
+  ConversationHistory,
+  VoiceCallRecord,
+} from '@hermes-client/protocol';
 import { FirstRun } from './FirstRun';
 import { lazy, Suspense } from 'react';
 const NewPebble = lazy(() => import('./NewPebble').then((m) => ({ default: m.NewPebble })));
@@ -58,6 +64,7 @@ import { Icon } from './chat/Icon';
 import { Drawer } from './chat/Drawer';
 import { RequestReview } from './chat/RequestReview';
 import { DetailsDock } from './ui/DetailsDock';
+import { VoiceCallEntry } from './voice/VoiceCallEntry';
 import { VoiceChat } from './voice/VoiceChat';
 import type { VoiceChatHandle } from './voice/VoiceChat';
 import type { VoiceSettingsRequest } from './voice/decode';
@@ -191,6 +198,10 @@ export function App({ owner }: { owner?: OwnerConnection }) {
   const [selection, setSelection] = useState<Selection>();
   const [starting, setStarting] = useState(true);
   const [messages, setMessages] = useState<Message[]>([]);
+  const [voiceCalls, setVoiceCalls] = useState<{
+    key: string;
+    entries: readonly VoiceCallRecord[];
+  }>();
   const retainedMessages = useRef(messages);
   retainedMessages.current = messages;
   const [historyPage, setHistoryPage] = useState<{ sessionId: string; older: string | null }>();
@@ -472,8 +483,20 @@ export function App({ owner }: { owner?: OwnerConnection }) {
   const [showLatest, setShowLatest] = useState(false);
   const displayedRead = useRef<{ key: string; cursor: number } | undefined>(undefined);
   const acknowledgedRead = useRef(new Map<string, number>());
-  function observedHistory(target: Selection, coverage: HistoryCoverage) {
+  function observeCalls(target: Selection, entries: readonly VoiceCallRecord[], replace = false) {
+    const key = draftKey(target);
+    setVoiceCalls((current) => {
+      if (replace || current?.key !== key) return { key, entries };
+      const known = new Set(current.entries.map((call) => call.id));
+      const added = entries.filter((call) => !known.has(call.id) && !!known.add(call.id));
+      return added.length ? { key, entries: [...current.entries, ...added] } : current;
+    });
+  }
+  function observedHistory(target: Selection, history: ConversationHistory, replace = false) {
     if (target.kind !== 'bot') return;
+    if (replace || history.voiceCalls?.length)
+      observeCalls(target, history.voiceCalls ?? [], replace);
+    const { coverage } = history;
     const bot = workspaceRef.current?.bots.find((b) => b.id === target.bot.id);
     // Only acknowledge a native roster cursor covered by the loaded history.
     // A later background snapshot cannot mark unseen messages as read.
@@ -917,6 +940,7 @@ export function App({ owner }: { owner?: OwnerConnection }) {
       captureDetailsAnchor();
       prependAnchor.current = true;
       setMessages((previous) => sendProjection.current.prepend(page.messages, previous));
+      if (page.voiceCalls?.length) observeCalls(target, page.voiceCalls);
       setHistoryPage({ sessionId: target.sessionId, older: page.page?.older ?? null });
     } catch {
       if (current.current === connection && selected.current === target)
@@ -932,7 +956,7 @@ export function App({ owner }: { owner?: OwnerConnection }) {
       restoreDetailsAnchor();
       rememberScroll();
     }
-  }, [messages, restoreDetailsAnchor]);
+  }, [messages, voiceCalls, restoreDetailsAnchor]);
   useEffect(() => {
     const target = selected.current;
     if (!client || !details || documentReader.state || target?.kind !== 'bot') return;
@@ -965,7 +989,7 @@ export function App({ owner }: { owner?: OwnerConnection }) {
         terminalEpoch === runEpoch.current &&
         (!sendProjection.current.replying || complete)
       ) {
-        observedHistory(target, data.coverage);
+        observedHistory(target, data);
         setMessages(sendProjection.current.project(data.messages, complete));
         if (complete) {
           setStream('');
@@ -1058,7 +1082,7 @@ export function App({ owner }: { owner?: OwnerConnection }) {
     if (
       openingChat.current &&
       event.session_id &&
-      /^(message\.|tool\.|status\.|error$)/.test(event.type)
+      /^(message\.|tool\.|status\.|voice\.call\.ended$|error$)/.test(event.type)
     ) {
       if (openingChat.current.events.length < 4096) openingChat.current.events.push(event);
       else if (openingChat.current.events.length === 4096)
@@ -1066,6 +1090,11 @@ export function App({ owner }: { owner?: OwnerConnection }) {
       return;
     }
     if (!target || target.kind !== 'bot' || event.session_id !== target.sessionId) return;
+    if (event.type === 'voice.call.ended') {
+      const call = decodeVoiceCall(event.payload);
+      if (call) observeCalls(target, [call]);
+      return;
+    }
     if (event.type === 'document.open') {
       try {
         const request = decodeDocumentRequest(event.payload);
@@ -1329,7 +1358,7 @@ export function App({ owner }: { owner?: OwnerConnection }) {
         selectionEpoch.current = owned.bindingEpoch;
         const restored = sendProjection.current.restore(snapshot);
         streamHandoff.current.restore(snapshot.streamPosition, snapshot.running);
-        observedHistory(target, snapshot.history.coverage);
+        observedHistory(target, snapshot.history);
         setMessages(restored.messages);
         setStream(restored.stream);
         setRunning(snapshot.running);
@@ -1461,7 +1490,7 @@ export function App({ owner }: { owner?: OwnerConnection }) {
       if (workspace && id) rememberConversation(workspace.id, { kind: 'bot', id });
       setBlocked(false);
       setChatBound(true);
-      observedHistory(target, data.history.coverage);
+      observedHistory(target, data.history, !retaining);
       const restored = sendProjection.current.restore(data);
       streamHandoff.current.restore(data.streamPosition, data.running);
       setMessages(restored.messages);
@@ -1509,7 +1538,7 @@ export function App({ owner }: { owner?: OwnerConnection }) {
         if (current.current !== client || selected.current !== target) return 'superseded';
         const final = sendProjection.current.restore(snapshot);
         streamHandoff.current.restore(snapshot.streamPosition, snapshot.running);
-        observedHistory(target, snapshot.history.coverage);
+        observedHistory(target, snapshot.history);
         setMessages(final.messages);
         setRunning(snapshot.running);
         setStream(final.stream);
@@ -2714,6 +2743,13 @@ export function App({ owner }: { owner?: OwnerConnection }) {
                         suppressedTools={agentExchanges.suppressedTools}
                         cards={[
                           ...agentExchanges.cards,
+                          ...(selection?.kind === 'bot' && voiceCalls?.key === draftKey(selection)
+                            ? voiceCalls.entries.map((call) => ({
+                                id: `voice-call-${call.id}`,
+                                createdAt: call.endedAt,
+                                content: <VoiceCallEntry call={call} />,
+                              }))
+                            : []),
                           ...nativeCards.filter((card) => !card.needsInput),
                           ...questionCards.filter((card) => !card.needsInput),
                           ...secretCards.filter((card) => !card.needsInput),
@@ -2768,6 +2804,10 @@ export function App({ owner }: { owner?: OwnerConnection }) {
                                     setSettings(true);
                                   })
                                 }
+                                onCallEnded={(call) => {
+                                  if (selected.current === selection)
+                                    observeCalls(selection, [call]);
+                                }}
                                 onAccepted={(message) =>
                                   setMessages((previous) =>
                                     previous.some((item) => item.id === message.id)

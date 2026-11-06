@@ -97,6 +97,7 @@ def read_page(server, session, before=None):
             legacy = [{**row, 'id': row['_row_id']} for row in db.get_messages_as_conversation(
                 key, include_ancestors=True, include_row_ids=True) if type(row.get('_row_id')) is int]
         offset, selected, anchor = 0, [], row_id
+        upper = None
         while True:
             batch = legacy[::-1][offset:][:PAGE_ROWS + 1][::-1] if legacy is not None else db.get_messages(
                 key, include_compacted=True, include_ancestors=True, latest=True, limit=PAGE_ROWS + 1, offset=offset)
@@ -105,6 +106,8 @@ def read_page(server, session, before=None):
                 break
             index = next((i for i, row in enumerate(batch) if row['id'] == anchor), None)
             if index is not None:
+                if anchor == row_id:
+                    upper = batch[index].get('timestamp')
                 # Only take predecessors from the SAME native read as the
                 # durable anchor. Never combine offset pages across a write:
                 # concurrent appends can otherwise duplicate or skip rows.
@@ -140,5 +143,7 @@ def read_page(server, session, before=None):
         # Hidden native rows advance coverage/cursors, but are not owner message
         # records (including the internal end-of-call instruction).
         visible = [m for m in messages if m.get('role') in {'user', 'assistant', 'tool'}]
+        lower = next((row.get('timestamp') for row in chosen if row['id'] == first), None) if more else None
         return {'messages': visible, 'history_page': {
-            'older': cursor(bound_key, first) if more and first else None, 'coverage': coverage}}
+            'older': cursor(bound_key, first) if more and first else None, 'coverage': coverage,
+            'timeline_bounds': [lower, upper]}}

@@ -12,7 +12,7 @@ from bot_web.conversation_history import read_page, boundary, cursor, PAGE_ROWS
 
 class HistoryPagesTests(unittest.TestCase):
     def setUp(self):
-        self.rows = [{'id': i, 'role': 'assistant' if i % 2 else 'user', 'content': f'Native row {i}'} for i in range(1, 306)]
+        self.rows = [{'id': i, 'role': 'assistant' if i % 2 else 'user', 'content': f'Native row {i}', 'timestamp': float(i)} for i in range(1, 306)]
         self.calls = []
         self.append_during_reads = False
         def get_messages(key, **options):
@@ -45,6 +45,15 @@ class HistoryPagesTests(unittest.TestCase):
         self.assertEqual(seen, list(range(1, 306)))
         self.assertEqual(self.rows[:305], original)
         self.assertTrue(all(call['limit'] == PAGE_ROWS + 1 for call in self.calls))
+
+    def test_voice_timeline_bounds_include_the_gap_between_pages(self):
+        recent = read_page(self.server, {})['history_page']
+        previous = read_page(self.server, {}, recent['older'])['history_page']
+        self.assertEqual(recent['timeline_bounds'], [246, None])
+        self.assertEqual(previous['timeline_bounds'], [186, 246])
+        while previous['older']:
+            previous = read_page(self.server, {}, previous['older'])['history_page']
+        self.assertEqual(previous['timeline_bounds'], [None, 6])
 
     def test_appends_between_native_offset_reads_cannot_duplicate_or_skip_predecessors(self):
         page = read_page(self.server, {})

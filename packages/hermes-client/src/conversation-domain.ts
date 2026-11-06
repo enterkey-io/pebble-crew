@@ -30,9 +30,25 @@ export type HistoryCoverage = {
   readonly maxRow: number;
   readonly rowIds?: readonly number[];
 };
+export type VoiceCallRecord = { readonly id: string; readonly endedAt: number };
+
+export function decodeVoiceCall(value: unknown): VoiceCallRecord | undefined {
+  const call = optionalRecord(value);
+  return call &&
+    typeof call.id === 'string' &&
+    /^[a-f0-9]{64}$/.test(call.id) &&
+    typeof call.ended_at === 'number' &&
+    Number.isFinite(call.ended_at) &&
+    call.ended_at > 0 &&
+    call.ended_at < 8.64e12
+    ? { id: call.id, endedAt: call.ended_at * 1000 }
+    : undefined;
+}
+
 export type ConversationHistory = {
   readonly messages: ConversationMessage[];
   readonly coverage: HistoryCoverage;
+  readonly voiceCalls?: readonly VoiceCallRecord[];
   readonly page?: { readonly older: string | null };
 };
 function optionalRecord(value: unknown): Record<string, unknown> | undefined {
@@ -292,6 +308,13 @@ export function decodeHistory(value: unknown): ConversationHistory {
     throw new ClientError('INVALID_RESPONSE');
   return {
     messages: decodeNativeMessages(source),
+    ...(Array.isArray(data.voice_calls)
+      ? {
+          voiceCalls: data.voice_calls
+            .slice(0, 1000)
+            .flatMap((value) => decodeVoiceCall(value) ?? []),
+        }
+      : {}),
     coverage: {
       ...(coverage
         ? { count: Number(coverage.count), maxRow: Number(coverage.max_row) }
@@ -586,6 +609,7 @@ export class ConversationDomain {
     if (!recent.page || !retained.length) return recent;
     const known = new Set(retained.flatMap((row) => (row.id ? [row.id] : [])));
     let messages = recent.messages;
+    const voiceCalls = [...(recent.voiceCalls ?? [])];
     let older = recent.page.older;
     const visited = new Set<string>();
     while (older && !messages.some((row) => row.id && known.has(row.id))) {
@@ -593,6 +617,7 @@ export class ConversationDomain {
       visited.add(older);
       const page = await this.older(sessionId, older);
       messages = [...page.messages, ...messages];
+      voiceCalls.push(...(page.voiceCalls ?? []));
       older = page.page?.older ?? null;
     }
     const boundary = retained.findIndex(
@@ -602,6 +627,7 @@ export class ConversationDomain {
     const ids = new Set<string>();
     return {
       ...recent,
+      ...(voiceCalls.length ? { voiceCalls } : {}),
       messages: [...prefix, ...messages].filter(
         (row) => !row.id || (!ids.has(row.id) && !!ids.add(row.id)),
       ),
