@@ -1,9 +1,12 @@
 """Owner-held ElevenLabs credentials and fixed Realtime session configuration."""
+import base64
 import hashlib
 import json
 import re
 import secrets
+import time
 import urllib.error
+from urllib.parse import unquote, urlencode, urlsplit
 import urllib.request
 
 from .operations import InvalidOperation
@@ -11,7 +14,6 @@ from .operations import InvalidOperation
 PROVIDER = 'elevenlabs'
 KEY = 'ELEVENLABS_API_KEY'
 VOICE_ID = re.compile(r'[A-Za-z0-9_-]{1,80}')
-HANDLE = re.compile(r'[a-zA-Z0-9_-]{1,80}')
 DEFAULT_VOICE = 'brian'
 MODEL = 'eleven_realtime_v1_max'
 
@@ -68,56 +70,20 @@ def store_key(value):
     return {'saved': True, 'validated': False}
 
 
-def vox_preset(workspace, profile):
-    if not workspace:
-        return None
-    bot = workspace.read()['bots'].get(profile) or {}
-    handles = [value for value in (bot.get('handle'), profile) if isinstance(value, str)]
-    for handle in handles:
-        row = workspace.db.execute('SELECT voice_id,label FROM vox_voice_presets WHERE handle=?', (handle.lower(),)).fetchone()
-        if row:
-            return row
-    return None
-
-
-def import_presets(workspace, data):
-    """Only accept the owner's narrow Vox export; no external URL or credential."""
-    if not workspace or not isinstance(data, list) or not 1 <= len(data) <= 250:
-        raise InvalidOperation('Choose a Vox voice preset export')
-    entries = {}
-    for row in data:
-        if not isinstance(row, dict) or set(row) != {'handle', 'voice_id', 'label'}:
-            raise InvalidOperation('Invalid Vox voice preset')
-        handle, voice, label = row['handle'], row['voice_id'], row['label']
-        if (not isinstance(handle, str) or not HANDLE.fullmatch(handle)
-            or not isinstance(voice, str) or not VOICE_ID.fullmatch(voice)
-            or not isinstance(label, str) or not 0 < len(label.strip()) <= 100 or not label.isprintable()
-            or handle.lower() in entries):
-            raise InvalidOperation('Invalid or duplicate Vox voice preset')
-        entries[handle.lower()] = (voice, label.strip())
-    with workspace.db:
-        workspace.db.executemany('INSERT INTO vox_voice_presets VALUES(?,?,?) ON CONFLICT(handle) '
-            'DO UPDATE SET voice_id=excluded.voice_id,label=excluded.label',
-            [(handle, voice, label) for handle, (voice, label) in entries.items()])
-    return {'imported': len(entries)}
-
-
-def preferences(preset):
+def preferences():
     config = voice_config().get('elevenlabs') or {}
     key, confirmed = source()
     voice = config.get('pebble_voice')
     if not isinstance(voice, str) or not VOICE_ID.fullmatch(voice):
-        voice = preset[0] if preset else DEFAULT_VOICE
+        voice = DEFAULT_VOICE
     labels = {DEFAULT_VOICE: 'Brian'}
-    if preset:
-        labels[preset[0]] = preset[1]
     return {'supported': True, 'provider': PROVIDER, 'configured': bool(key),
         'voice': voice, 'voices': list(dict.fromkeys([*labels, voice])), 'voice_labels': labels,
         'setup_complete': confirmed and config.get('pebble_setup_complete') is True,
         'key_confirmed': confirmed, 'can_change_key': True}
 
 
-def save_preferences(voice, complete, preset):
+def save_preferences(voice, complete):
     if not isinstance(voice, str) or not VOICE_ID.fullmatch(voice) or type(complete) is not bool:
         raise InvalidOperation('Choose a valid ElevenLabs voice')
     key, confirmed = source()
@@ -128,7 +94,7 @@ def save_preferences(voice, complete, preset):
     if complete:
         settings['pebble_setup_complete'] = True
     save_voice({'elevenlabs': settings})
-    return preferences(preset)
+    return preferences()
 
 
 class NoRedirect(urllib.request.HTTPRedirectHandler):
@@ -136,18 +102,23 @@ class NoRedirect(urllib.request.HTTPRedirectHandler):
         return None
 
 
-def request(path, key, payload=None):
+def request(path, key, payload=None, *, timeout=15, max_bytes=256_000):
     req = urllib.request.Request('https://api.elevenlabs.io' + path,
         data=None if payload is None else json.dumps(payload).encode(),
         headers={'xi-api-key': key, 'Content-Type': 'application/json'})
     try:
-        with urllib.request.build_opener(NoRedirect()).open(req, timeout=15) as response:
-            value = json.loads(response.read(256_000))
+        with urllib.request.build_opener(NoRedirect()).open(req, timeout=timeout) as response:
+            body = response.read(max_bytes + 1)
+            if len(body) > max_bytes:
+                raise ValueError("Response exceeds the size limit")
+            value = json.loads(body)
             if not isinstance(value, dict):
                 raise ValueError('Expected an object')
             return value
     except urllib.error.HTTPError as error:
         code = {401: 'ELEVEN_KEY_REJECTED', 403: 'ELEVEN_ACCESS_DENIED', 429: 'ELEVEN_RATE_LIMITED'}.get(error.code, 'ELEVEN_CONNECTION_FAILED')
+        if error.code == 404 and path.startswith('/v1/voices/'):
+            code = 'ELEVEN_SAMPLE_UNAVAILABLE'
         error.close()
         raise InvalidOperation('ElevenLabs refused the voice request', code) from None
     except (OSError, ValueError) as error:
@@ -157,23 +128,69 @@ def request(path, key, payload=None):
 def catalog(key):
     if not key:
         return {'voices': {}}
-    value = request('/v2/voices?page_size=100', key)
+    query = {'page_size': 20, 'include_total_count': 'false'}
     voices = {}
-    entries = value.get('voices')
-    for entry in entries if isinstance(entries, list) else ():
-        if not isinstance(entry, dict):
-            continue
-        ident, name = entry.get('voice_id'), entry.get('name')
-        if isinstance(ident, str) and VOICE_ID.fullmatch(ident) and isinstance(name, str) and 0 < len(name) <= 100:
-            voices[ident] = name
-    return {'voices': voices}
+    visited = set()
+    deadline = time.monotonic() + 15
+    while len(visited) < 100:
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            break
+        page = request('/v2/voices?' + urlencode(query), key, timeout=remaining, max_bytes=1_048_576)
+        entries = page.get('voices')
+        has_more = page.get('has_more')
+        if not isinstance(entries, list) or type(has_more) is not bool:
+            break
+        for entry in entries:
+            if not isinstance(entry, dict):
+                continue
+            ident, name = entry.get('voice_id'), entry.get('name')
+            if isinstance(ident, str) and VOICE_ID.fullmatch(ident) and isinstance(name, str) and 0 < len(name) <= 100:
+                voices.setdefault(ident, name)
+        if not has_more:
+            return {'voices': voices}
+        cursor = page.get('next_page_token')
+        if not isinstance(cursor, str) or not 0 < len(cursor) <= 4096 or cursor in visited:
+            break
+        visited.add(cursor)
+        query['next_page_token'] = cursor
+    raise InvalidOperation('ElevenLabs returned an incomplete voice list', 'ELEVEN_CONNECTION_FAILED')
 
 
-def session_parameters(name, preview, preset):
+def sample(key, voice):
+    if not isinstance(voice, str) or not VOICE_ID.fullmatch(voice):
+        raise InvalidOperation('Choose an ElevenLabs voice')
+    metadata = request('/v1/voices/' + voice, key, max_bytes=1_048_576)
+    try:
+        url = metadata.get('preview_url')
+        parsed = urlsplit(url if isinstance(url, str) else '')
+        path = unquote(parsed.path)
+        trusted = (
+            parsed.hostname == 'storage.googleapis.com' and path.startswith('/eleven-public-prod/')
+            or parsed.hostname in {'api.elevenlabs.io', 'api.us.elevenlabs.io', 'api.eu.elevenlabs.io'}
+            and re.fullmatch(r'/v1/voices/[A-Za-z0-9_-]+/[A-Za-z0-9_-]+/audio', path)
+        )
+        if (not trusted or parsed.scheme != 'https' or parsed.username or parsed.password
+                or parsed.port is not None or parsed.fragment or '..' in path.split('/')):
+            raise ValueError()
+        with urllib.request.build_opener(NoRedirect()).open(urllib.request.Request(url), timeout=12) as response:
+            limit = 8 * 1024 * 1024
+            mime = response.headers.get_content_type()
+            if mime not in {'audio/mpeg', 'audio/wav', 'audio/x-wav', 'audio/mp4', 'audio/ogg'}:
+                raise ValueError()
+            audio = response.read(limit + 1)
+        if not 0 < len(audio) <= limit:
+            raise ValueError()
+        return {'audio': base64.b64encode(audio).decode('ascii')}
+    except (OSError, ValueError):
+        raise InvalidOperation('ElevenLabs sample is unavailable', 'ELEVEN_SAMPLE_UNAVAILABLE') from None
+
+
+def session_parameters(name, preview):
     key, confirmed = source()
     if not confirmed:
         raise InvalidOperation('Approve an ElevenLabs key first', 'ELEVEN_KEY_REQUIRED')
-    voice = preferences(preset)['voice']
+    voice = preferences()['voice']
     instructions = ('Read the supplied preview line once. Then wait silently.' if preview else
         f'You are the speaking voice for {name}, a Hermes Pebble. Talk naturally. '
         'For work, tools, personal facts, or decisions that depend on workspace context, call ask_pebble. '

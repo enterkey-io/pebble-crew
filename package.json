@@ -1,6 +1,6 @@
 {
   "name": "pebble-crew",
-  "version": "0.7.22-preview.1",
+  "version": "0.7.22-preview.10",
   "private": true,
   "type": "module",
   "workspaces": [
@@ -47,6 +47,7 @@
     "class-variance-authority": "0.7.1",
     "jose": "6.2.3",
     "kysely": "0.29.6",
+    "livekit-client": "2.22.3",
     "lucide-react": "1.58.0",
     "motion": "14.3.0",
     "qrcode": "1.5.4",

@@ -125,7 +125,7 @@ if (command === 'init' || command === 'recover') {
   if (bridgePort !== undefined && headers['Content-Security-Policy'])
     headers['Content-Security-Policy'] = headers['Content-Security-Policy'].replace(
       "connect-src 'self' https: wss:",
-      `connect-src 'self' ${settings.origin.replace(/^https:/, 'wss:')} wss://api.elevenlabs.io`,
+      `connect-src 'self' ${settings.origin.replace(/^https:/, 'wss:')} wss://api.elevenlabs.io https://*.livekit.cloud wss://*.livekit.cloud`,
     );
   const mime: Record<string, string> = {
     '.html': 'text/html; charset=utf-8',

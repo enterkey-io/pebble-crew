@@ -33,7 +33,11 @@ export type HistoryCoverage = {
   readonly maxRow: number;
   readonly rowIds?: readonly number[];
 };
-export type VoiceCallRecord = { readonly id: string; readonly endedAt: number };
+export type VoiceCallRecord = {
+  readonly id: string;
+  readonly endedAt: number;
+  readonly kind?: 'video';
+};
 
 export function decodeVoiceCall(value: unknown): VoiceCallRecord | undefined {
   const call = optionalRecord(value);
@@ -44,7 +48,11 @@ export function decodeVoiceCall(value: unknown): VoiceCallRecord | undefined {
     Number.isFinite(call.ended_at) &&
     call.ended_at > 0 &&
     call.ended_at < 8.64e12
-    ? { id: call.id, endedAt: call.ended_at * 1000 }
+    ? {
+        id: call.id,
+        endedAt: call.ended_at * 1000,
+        ...(call.kind === 'video' ? { kind: 'video' as const } : {}),
+      }
     : undefined;
 }
 

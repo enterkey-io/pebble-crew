@@ -4,7 +4,7 @@ import { emit, installFixture } from './fixtures';
 
 test.use({ serviceWorkers: 'block' });
 
-test('ElevenLabs preview, Hermes delegation, and call history use the selected Vox voice', async ({
+test('ElevenLabs preview, Hermes delegation, and call history use the selected ElevenLabs voice', async ({
   page,
   context,
 }, info) => {
@@ -14,12 +14,26 @@ test('ElevenLabs preview, Hermes delegation, and call history use the selected V
     confirmed = false,
     completed = false,
     submissions = 0,
-    ends = 0;
+    ends = 0,
+    catalogs = 0;
   const providerMessages: { type: string; item?: unknown; response?: unknown }[] = [];
   const sockets: WebSocketRoute[] = [];
   const pcm = Buffer.alloc(24000 * 2);
   for (let i = 0; i < 24000; i++)
     pcm.writeInt16LE(Math.sin((i * 2 * Math.PI * 440) / 24000) * 2500, i * 2);
+  const wav = Buffer.alloc(44);
+  wav.write('RIFF', 0);
+  wav.writeUInt32LE(pcm.length + 36, 4);
+  wav.write('WAVEfmt ', 8);
+  wav.writeUInt32LE(16, 16);
+  wav.writeUInt16LE(1, 20);
+  wav.writeUInt16LE(1, 22);
+  wav.writeUInt32LE(24000, 24);
+  wav.writeUInt32LE(48000, 28);
+  wav.writeUInt16LE(2, 32);
+  wav.writeUInt16LE(16, 34);
+  wav.write('data', 36);
+  wav.writeUInt32LE(pcm.length, 40);
   await installFixture(context, { voice: true, messages });
   await page.addInitScript(() => {
     const tracks: MediaStreamTrack[] = [];
@@ -56,17 +70,6 @@ test('ElevenLabs preview, Hermes delegation, and call history use the selected V
     route.onMessage((raw) => {
       const data = JSON.parse(String(raw));
       providerMessages.push(data);
-      if (data.type === 'response.create' && data.response?.instructions) {
-        route.send(JSON.stringify({ type: 'response.created' }));
-        route.send(
-          JSON.stringify({
-            type: 'response.output_audio.delta',
-            item_id: 'preview',
-            delta: pcm.toString('base64'),
-          }),
-        );
-        route.send(JSON.stringify({ type: 'response.done' }));
-      }
     });
     route.send(JSON.stringify({ type: 'session.created' }));
   });
@@ -75,13 +78,6 @@ test('ElevenLabs preview, Hermes delegation, and call history use the selected V
     const reply = (result: unknown) => route.fulfill({ json: { result } });
     if (operation === 'secrets.pending') return reply({ requests: [] });
     if (operation === 'voice.provider') provider = params.provider;
-    if (operation === 'voice.vox_import') {
-      expect(params.presets).toEqual([
-        { handle: 'arlo', voice_id: 'vox_arlo', label: 'Vox · Arlo' },
-      ]);
-      voice = 'vox_arlo';
-      return reply({ imported: 1 });
-    }
     if (operation === 'voice.preferences') {
       expect(params.provider).toBe('elevenlabs');
       confirmed = true;
@@ -97,15 +93,21 @@ test('ElevenLabs preview, Hermes delegation, and call history use the selected V
         configured: true,
         voice: eleven ? voice : 'marin',
         voices: eleven ? [voice, 'brian'] : ['marin', 'cedar'],
-        voice_labels:
-          eleven && voice === 'vox_arlo'
-            ? { vox_arlo: 'Vox · Arlo', brian: 'Brian' }
-            : { brian: 'Brian' },
+        voice_labels: { brian: 'Brian' },
         setup_complete: eleven && completed,
         key_confirmed: eleven && confirmed,
       });
     }
-    if (operation === 'voice.voices') return reply({ voices: { another_voice: 'Another voice' } });
+    if (operation === 'voice.voices') {
+      catalogs++;
+      if (catalogs === 1)
+        return route.fulfill({ status: 400, json: { code: 'ELEVEN_ACCESS_DENIED' } });
+      return reply({ voices: { soft_voice: 'Soft Voice', bright_voice: 'Bright Voice' } });
+    }
+    if (operation === 'voice.sample') {
+      expect(params.voice).toBe('soft_voice');
+      return reply({ audio: Buffer.concat([wav, pcm]).toString('base64') });
+    }
     if (operation === 'voice.session') {
       expect(params.provider).toBe('elevenlabs');
       expect(params).not.toHaveProperty('sdp');
@@ -136,27 +138,23 @@ test('ElevenLabs preview, Hermes delegation, and call history use the selected V
   await page.getByText('ElevenLabs', { exact: true }).click();
   await expect(page.getByRole('form', { name: 'ElevenLabs API key' })).toBeVisible();
   await page.getByRole('button', { name: 'Use saved key' }).click();
-  await page.locator('[aria-label="Voice settings"] input[type="file"]').setInputFiles({
-    name: 'vox.json',
-    mimeType: 'application/json',
-    buffer: Buffer.from(
-      JSON.stringify([{ handle: 'arlo', voice_id: 'vox_arlo', label: 'Vox · Arlo' }]),
-    ),
-  });
-  await expect(page.getByRole('combobox', { name: 'Voice' })).toContainText('Vox · Arlo');
+  await expect(page.getByRole('alert')).toContainText('Voices read access');
+  await page.getByRole('button', { name: 'Retry', exact: true }).click();
+  const picker = page.getByRole('combobox', { name: 'Voice' });
+  await expect(page.getByRole('alert')).toHaveCount(0);
+  await picker.click();
+  await expect(page.getByRole('option', { name: 'Bright Voice' })).toBeVisible();
+  await page.getByRole('option', { name: 'Soft Voice' }).click();
+  await expect(picker).toContainText('Soft Voice');
+  await expect(page.getByRole('button', { name: 'Import Vox voices' })).toHaveCount(0);
   await page.screenshot({
     path: info.outputPath('eleven-voice-settings.png'),
     animations: 'disabled',
   });
   await page.getByRole('button', { name: 'Preview', exact: true }).click();
-  await expect
-    .poll(() => providerMessages.find((message) => message.type === 'response.create')?.response)
-    .toEqual({
-      instructions:
-        'Read this sample once, exactly as written: Hi, this is the Vox · Arlo voice on Pebble Crew. How do I sound?',
-    });
   await expect(page.getByRole('button', { name: 'Stop preview', exact: true })).toBeEnabled();
   expect(await page.evaluate(() => Reflect.get(window, '__elevenMic')())).toEqual([]);
+  expect(sockets).toHaveLength(0);
   await page.getByRole('button', { name: 'Stop preview', exact: true }).click();
   await page.getByRole('button', { name: 'Start call', exact: true }).click();
   await expect(page.getByRole('button', { name: 'Mute microphone' })).toBeVisible();

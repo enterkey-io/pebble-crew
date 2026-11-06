@@ -17,6 +17,7 @@ from fastapi.responses import JSONResponse, Response, StreamingResponse, Redirec
 from .native import NativeError, NativeGateway
 from .operations import BotOperations, InvalidOperation
 from .live_voice import VOICE_ERROR_CODES
+from .atmee_video import AtmeeVideo, ERROR_CODES as ATMEE_ERROR_CODES
 from .compatibility import check_native_adapter
 from .pairing import BrowserPairing
 from .version import VERSION
@@ -75,11 +76,14 @@ def create_app(token, origins, hosts, gateway=None, trust=None, workspace=None, 
     computer = Computer(native, ops, clients, origins, hosts, enabled=os.environ.get("HERMES_BOT_WEB_EXPERIMENTAL_COMPUTER") == "1")
     pairing = BrowserPairing()
     owner_trust = trust
+    atmee = AtmeeVideo(workspace.store, ops, voice) if workspace and owner_trust else None
 
     @asynccontextmanager
     async def lifespan(app):
         check_native_adapter()
         await native.start()
+        if atmee:
+            atmee.recover()
         if workspace:
             from .reporting import recover
             recover(workspace.store)
@@ -184,6 +188,8 @@ def create_app(token, origins, hosts, gateway=None, trust=None, workspace=None, 
             watcher.cancel()
             with suppress(asyncio.CancelledError):
                 await watcher
+            if atmee:
+                await atmee.shutdown()
             await native.stop()
             if workspace:
                 workspace.store.db.close()
@@ -284,7 +290,7 @@ def create_app(token, origins, hosts, gateway=None, trust=None, workspace=None, 
 
     @app.exception_handler(InvalidOperation)
     async def invalid(request, error):
-        return JSONResponse({"error": "Operation unavailable or invalid. Refresh and check the connection.", "code": error.code if error.code in VOICE_ERROR_CODES | {"CONVERSATION_CHANGED", "BOT_CHAT_MISSING", "LEASE_GONE", "STREAM_ACTIVE", "NATIVE_UNAVAILABLE", "CAPACITY", "UPDATE_REQUIRED", "UNSUPPORTED_COMMAND", "STALE_REVISION", "HANDLE_TAKEN", "INVALID_REPORTING", "MODEL_UNAVAILABLE", "REQUIRES_SETUP", "INVALID_PHOTO", "INVALID_PARAMETERS", "INVALID_ATTACHMENT", "ATTACHMENT_QUOTA"} else "INVALID_PARAMETERS"}, 409 if error.code == "STALE_REVISION" else 400)
+        return JSONResponse({"error": "Operation unavailable or invalid. Refresh and check the connection.", "code": error.code if error.code in VOICE_ERROR_CODES | ATMEE_ERROR_CODES | {"CONVERSATION_CHANGED", "BOT_CHAT_MISSING", "LEASE_GONE", "STREAM_ACTIVE", "NATIVE_UNAVAILABLE", "CAPACITY", "UPDATE_REQUIRED", "UNSUPPORTED_COMMAND", "STALE_REVISION", "HANDLE_TAKEN", "INVALID_REPORTING", "MODEL_UNAVAILABLE", "REQUIRES_SETUP", "INVALID_PHOTO", "INVALID_PARAMETERS", "INVALID_ATTACHMENT", "ATTACHMENT_QUOTA"} else "INVALID_PARAMETERS"}, 409 if error.code == "STALE_REVISION" else 400)
 
     @app.exception_handler(NativeError)
     async def native_error(request, error):
@@ -316,7 +322,7 @@ def create_app(token, origins, hosts, gateway=None, trust=None, workspace=None, 
                                "expires": request.scope.get("bot.ticket_expires"), "ended": None}
         build = getattr(native, "build", None) or {}
         return {"connection": connection, "protocol": "hermes-bot-web.v1", "bridge_version": VERSION,
-                "capabilities": {"connection_recovery": 1, "exchanges": bool(workspace), "exchange_events": bool(workspace), "existing_agents": True, "owner_login": owner_trust is not None, "workspace": bool(workspace), "workspace_settings": bool(workspace), "avatar_thumbnails": bool(workspace), "reporting": 1 if workspace else None, "projects": bool(workspace and getattr(native, 'work_supported', False)), "attachments": bool(files), "generated_media": True, "reactions": True, "room_reactions": bool(workspace), "room_disband": bool(workspace and owner_trust and getattr(native, "room_disband_supported", False)), "live_voice": live_voice_supported(), "secrets": bool(getattr(native, "build", None) and native.build.get("server_requests")), "questions": bool(getattr(native, "build", None)), "computer": computer.supported},
+                "capabilities": {"connection_recovery": 1, "exchanges": bool(workspace), "exchange_events": bool(workspace), "existing_agents": True, "owner_login": owner_trust is not None, "workspace": bool(workspace), "workspace_settings": bool(workspace), "avatar_thumbnails": bool(workspace), "reporting": 1 if workspace else None, "projects": bool(workspace and getattr(native, 'work_supported', False)), "attachments": bool(files), "generated_media": True, "reactions": True, "room_reactions": bool(workspace), "room_disband": bool(workspace and owner_trust and getattr(native, "room_disband_supported", False)), "atmee_setup": bool(atmee and (request.scope["bot.principal"] == "operator" or request.scope.get("bot.ticket_expires"))), "live_voice": live_voice_supported(), "secrets": bool(getattr(native, "build", None) and native.build.get("server_requests")), "questions": bool(getattr(native, "build", None)), "computer": computer.supported},
                 "hermes_version": build.get("version"), "hermes_revision": build.get("revision")}
 
     @app.post("/v1/renew")
@@ -387,7 +393,16 @@ def create_app(token, origins, hosts, gateway=None, trust=None, workspace=None, 
             if operation == 'room.disband' and (not owner_trust or (
                     client['principal'] != 'operator' and request.scope.get('bot.ticket_expires') is None)):
                 raise InvalidOperation('Owner authentication is required')
-            if operation in {'voice.status', 'voice.preferences', 'voice.credential', 'voice.session', 'voice.submit', 'voice.end', 'voice.provider', 'voice.voices', 'voice.vox_import'}:
+            if operation in {'atmee.status', 'atmee.key', 'atmee.avatars', 'atmee.select', 'atmee.context', 'atmee.ready',
+                             'atmee.build.start', 'atmee.build.status', 'atmee.build.profile', 'atmee.build.recording',
+                             'atmee.voice.design', 'atmee.voice.status', 'atmee.voice.sample',
+                             'atmee.start', 'atmee.caption', 'atmee.delegate', 'atmee.end'}:
+                if not atmee or (client['principal'] != 'operator' and request.scope.get('bot.ticket_expires') is None):
+                    raise InvalidOperation('Owner authentication is required')
+                if 'session_id' in params and params['session_id'] not in client['sessions']:
+                    raise InvalidOperation('Session belongs to another connection')
+                result = await atmee.invoke(operation, params)
+            elif operation in {'voice.status', 'voice.preferences', 'voice.credential', 'voice.session', 'voice.submit', 'voice.end', 'voice.provider', 'voice.voices', 'voice.sample'}:
                 result = await voice.invoke(operation, params)
             elif operation in {'chat.commands', 'chat.command', 'chat.model.options', 'chat.model.select'}:
                 from .commands import invoke as command

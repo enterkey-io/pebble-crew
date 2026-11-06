@@ -1,6 +1,7 @@
 import { useRecoveryRevision } from './connection/recovery-context';
 import { usePageTitle } from './ui/page-title';
 import { VoiceSettingsEditor } from './voice/VoiceSettingsEditor';
+import { AtmeeCharacterSettings } from './voice/AtmeeSettings';
 import type { VoiceSettingsRequest } from './voice/decode';
 import { Label } from './components/ui/label';
 import { Checkbox } from './components/ui/checkbox';
@@ -228,7 +229,9 @@ export function PebbleEditor({
           { id: 'identity', label: 'Profile' },
           { id: 'role', label: 'Role' },
           { id: 'tools', label: 'Tools & skills' },
-          ...(client.supportsLiveVoice ? [{ id: 'voice', label: 'Voice' }] : []),
+          ...(client.supportsLiveVoice || client.supportsAtmeeSetup
+            ? [{ id: 'voice', label: 'Voice' }]
+            : []),
         ]}
         value={tab}
         onChange={(id) => {
@@ -418,16 +421,23 @@ export function PebbleEditor({
           </FormSection>
         )}
         {tab === 'voice' && !retired && (
-          <VoiceSettingsEditor
-            client={client}
-            profile={bot.profile}
-            callActive={callActive}
-            request={voiceRequest}
-            requestResolved={!!voiceRequest && resolvedVoiceRequest === voiceRequest}
-            onCredentialConfirmed={() => setResolvedVoiceRequest(voiceRequest)}
-            onReady={onVoiceReady}
-            onClose={close}
-          />
+          <div className="grid gap-6">
+            {client.supportsLiveVoice && (
+              <VoiceSettingsEditor
+                client={client}
+                profile={bot.profile}
+                callActive={callActive}
+                request={voiceRequest}
+                requestResolved={!!voiceRequest && resolvedVoiceRequest === voiceRequest}
+                onCredentialConfirmed={() => setResolvedVoiceRequest(voiceRequest)}
+                onReady={onVoiceReady}
+                onClose={close}
+              />
+            )}
+            {client.supportsAtmeeSetup && (
+              <AtmeeCharacterSettings key={bot.id} client={client} bot={bot} />
+            )}
+          </div>
         )}
       </TabbedEditor>
       {busy && (

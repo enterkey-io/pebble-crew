@@ -80,6 +80,7 @@ export async function installFixture(
     reactions?: boolean;
     attachments?: boolean;
     voice?: boolean;
+    atmee?: boolean;
     avatarThumbnails?: boolean;
     exchanges?: boolean;
     exchangeEvents?: boolean;
@@ -273,6 +274,7 @@ export async function installFixture(
             exchanges: options.exchanges === true,
             exchange_events: options.exchangeEvents === true,
             live_voice: options.voice === true,
+            atmee_setup: options.atmee === true,
             secrets: options.voice === true,
             questions: options.voice === true,
             workspace: true,

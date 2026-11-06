@@ -508,6 +508,125 @@
       ],
       "effect": "write"
     },
+    "atmee.status": {
+      "preferred": "rpc",
+      "accepted": [
+        "rpc"
+      ],
+      "effect": "read"
+    },
+    "atmee.key": {
+      "preferred": "rpc",
+      "accepted": [
+        "rpc"
+      ],
+      "effect": "write"
+    },
+    "atmee.avatars": {
+      "preferred": "rpc",
+      "accepted": [
+        "rpc"
+      ],
+      "effect": "read"
+    },
+    "atmee.select": {
+      "preferred": "rpc",
+      "accepted": [
+        "rpc"
+      ],
+      "effect": "write"
+    },
+    "atmee.context": {
+      "preferred": "rpc",
+      "accepted": [
+        "rpc"
+      ],
+      "effect": "write"
+    },
+    "atmee.build.start": {
+      "preferred": "avatar",
+      "accepted": [
+        "avatar"
+      ],
+      "effect": "write"
+    },
+    "atmee.build.recording": {
+      "preferred": "upload",
+      "accepted": [
+        "upload"
+      ],
+      "effect": "write"
+    },
+    "atmee.build.status": {
+      "preferred": "rpc",
+      "accepted": [
+        "rpc"
+      ],
+      "effect": "read"
+    },
+    "atmee.build.profile": {
+      "preferred": "rpc",
+      "accepted": [
+        "rpc"
+      ],
+      "effect": "read"
+    },
+    "atmee.voice.design": {
+      "preferred": "rpc",
+      "accepted": [
+        "rpc"
+      ],
+      "effect": "write"
+    },
+    "atmee.voice.status": {
+      "preferred": "rpc",
+      "accepted": [
+        "rpc"
+      ],
+      "effect": "read"
+    },
+    "atmee.voice.sample": {
+      "preferred": "rpc",
+      "accepted": [
+        "rpc"
+      ],
+      "effect": "read"
+    },
+    "atmee.ready": {
+      "preferred": "rpc",
+      "accepted": [
+        "rpc"
+      ],
+      "effect": "read"
+    },
+    "atmee.start": {
+      "preferred": "rpc",
+      "accepted": [
+        "rpc"
+      ],
+      "effect": "write"
+    },
+    "atmee.caption": {
+      "preferred": "rpc",
+      "accepted": [
+        "rpc"
+      ],
+      "effect": "write"
+    },
+    "atmee.delegate": {
+      "preferred": "rpc",
+      "accepted": [
+        "rpc"
+      ],
+      "effect": "write"
+    },
+    "atmee.end": {
+      "preferred": "rpc",
+      "accepted": [
+        "rpc"
+      ],
+      "effect": "write"
+    },
     "room.create": {
       "preferred": "rpc",
       "accepted": [
@@ -705,12 +824,12 @@
       ],
       "effect": "read"
     },
-    "voice.vox_import": {
+    "voice.sample": {
       "preferred": "rpc",
       "accepted": [
         "rpc"
       ],
-      "effect": "write"
+      "effect": "read"
     },
     "voice.end": {
       "preferred": "rpc",
