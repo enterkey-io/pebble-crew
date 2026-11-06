@@ -1,6 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
-import { useEdgeNavigation } from './edge-navigation';
+import { isInstalledWorkspace, useEdgeNavigation } from './edge-navigation';
 import { usePanelRef } from 'react-resizable-panels';
 import { ResizablePanelGroup, ResizablePanel, ResizableHandle } from '../components/ui/resizable';
 
@@ -44,8 +44,8 @@ export function WorkspacePanels({
   const panel = usePanelRef();
   const page = useRef<HTMLDivElement>(null);
   const sidebarScroll = useRef(0);
-  const nativeSidebarScroll =
-    phone && navigationOpen && Reflect.get(navigator, 'standalone') === true;
+  const installed = phone && isInstalledWorkspace();
+  const nativeSidebarScroll = installed && navigationOpen;
   useEdgeNavigation(
     page,
     phone && edgeNavigation,
@@ -102,6 +102,7 @@ export function WorkspacePanels({
       className={phone ? 'pc-phone-pages' : undefined}
       data-navigation-open={phone ? navigationOpen : undefined}
       data-native-sidebar-scroll={nativeSidebarScroll || undefined}
+      data-edge-navigation={(installed && edgeNavigation) || undefined}
       style={nativeSidebarScroll ? { height: 'auto', overflow: 'clip' } : undefined}
       onLayoutChanged={(_layout, meta) => {
         if (!phone && meta.isUserInteraction) rememberWidth(width.current);

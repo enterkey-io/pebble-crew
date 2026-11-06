@@ -74,9 +74,9 @@ and name the earlier ID when a rule is superseded.
 ### UI-sidebar-layout Keep the sidebar controls and role labels consistent
 
 - Date: 2026-11-05
-- Decision: Keep brand and search above the list and account below it. Share role labels between pins and rows. Support both phone edge swipes.
+- Decision: Keep brand and search above the list and account below it. Share role labels between pins and rows. Support both installed phone edge swipes. Keep normal scrolling and row taps available outside the outer gesture gutter.
 - Why: A different phone layout made controls harder to find and removed the direct way back to a conversation.
-- Evidence: The [installed-shell tests](../test/mobile/installed-shell.spec.ts) check the actual controls and labels.
+- Evidence: The [installed-shell tests](../test/mobile/installed-shell.spec.ts) check the actual controls and labels. The [gesture tests](../test/mobile/composition-and-gesture.spec.ts) also send browser touch input in both directions.
 
 ### UI-docked-sidebar-footer Keep account settings available while the list scrolls
 

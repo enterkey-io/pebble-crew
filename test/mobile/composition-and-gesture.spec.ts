@@ -80,6 +80,41 @@ test('installed PWA leading-edge swipe returns to the list without losing chat o
   await expect.poll(() => log!.evaluate((node) => node.scrollTop)).toBeCloseTo(readingPosition, 0);
 });
 
+test('installed swipe uses browser touch input in both directions', async ({
+  page,
+  context,
+  browserName,
+}) => {
+  test.skip(browserName !== 'chromium', 'Playwright exposes touch sequences through CDP.');
+  await page.addInitScript(() => Object.defineProperty(navigator, 'standalone', { value: true }));
+  await installFixture(context);
+  await page.goto('/');
+  await expect(page.getByLabel('Message', { exact: true })).toBeEnabled();
+  const navigation = page.getByRole('region', { name: 'navigation', exact: true });
+  const client = await context.newCDPSession(page);
+  const width = page.viewportSize()?.width ?? 0;
+  const drag = async (from: number, to: number) => {
+    const point = (x: number) => [{ x, y: 220, id: 1 }];
+    await client.send('Input.dispatchTouchEvent', {
+      type: 'touchStart',
+      touchPoints: point(from),
+    });
+    for (let step = 1; step <= 8; step++) {
+      await client.send('Input.dispatchTouchEvent', {
+        type: 'touchMove',
+        touchPoints: point(from + ((to - from) * step) / 8),
+      });
+    }
+    await client.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+  };
+  await drag(24, 160);
+  await expect(navigation).toBeVisible();
+  await expect.poll(async () => (await navigation.boundingBox())?.x).toBeCloseTo(0, 0);
+  await drag(width - 24, width - 160);
+  await expect(navigation).not.toBeVisible();
+  await expect(page.getByLabel('Message', { exact: true })).not.toBeFocused();
+});
+
 test('ordinary mobile browser keeps its native edge navigation', async ({ page, context }) => {
   await installFixture(context);
   await page.goto('/');

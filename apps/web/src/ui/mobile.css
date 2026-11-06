@@ -63,9 +63,14 @@
   min-height: 76px;
   padding: 12px 16px 14px;
 }
-/* UIKit sends its status-bar scroll to the document, not the nested roster. */
+/* Give the installed sidebar one vertical scroll owner: the viewport. */
+html:has(.pc-phone-pages[data-native-sidebar-scroll]),
 body:has(.pc-phone-pages[data-native-sidebar-scroll]) {
   overflow: visible;
+  overscroll-behavior-y: auto;
+}
+.pc-phone-pages[data-edge-navigation] {
+  touch-action: pan-y pinch-zoom;
 }
 .pc-shell:has(.pc-phone-pages[data-native-sidebar-scroll]) {
   height: auto;

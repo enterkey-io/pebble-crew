@@ -393,7 +393,7 @@ test('cold sidebar photo avatars arrive in bounded batches without per-profile R
 }, info) => {
   const fixture = await installFixture(context, { avatarThumbnails: true });
   const template = fixture.state.bots[2]!;
-  while (fixture.state.bots.length < 35) {
+  while (fixture.state.bots.filter((bot) => bot.managed).length < 35) {
     const index = fixture.state.bots.length;
     const profile = `photo-${index}`;
     fixture.state.bots.push({
