@@ -86,7 +86,6 @@
   position: absolute;
   right: 6px;
   bottom: 6px;
-  background: var(--popover);
 }
 .message-image-error {
   display: flex;

@@ -936,6 +936,9 @@ test('the installed phone voice picker stays in the safe dialog and scrolls inde
   await picker.click();
   const list = page.getByRole('listbox');
   await expect(list).toBeVisible();
+  await list.evaluate((element) =>
+    Promise.all(element.getAnimations().map((motion) => motion.finished)),
+  );
   const dialogBox = await dialog.boundingBox();
   const listBox = await list.boundingBox();
   expect(dialogBox).not.toBeNull();

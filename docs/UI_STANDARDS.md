@@ -245,3 +245,10 @@ and name the earlier ID when a rule is superseded.
 - Decision: Use the shared segmented control for provider selection, the private Secret Card for keys, and the same voice selector, preview and call bar for both providers.
 - Why: A Pebble has one place to set up or change its voice. Voice previews play a sample without activating the microphone.
 - Evidence: The [ElevenLabs voice browser journey](../test/chat-workspace/eleven-voice.spec.ts) exercises provider selection, a Vox preset, preview, interruption and the call receipt.
+
+### UI-image-download-contrast Keep image actions legible on every message
+
+- Date: 2026-11-05
+- Decision: Use the shared secondary button colors for image downloads and the accent surface on hover. The glyph has its own foreground in every state.
+- Why: A download icon could inherit the outgoing message’s dark text while sitting on a dark overlay.
+- Evidence: The [pasted-image browser checks](../test/chat-workspace/agent-media.spec.ts) measure the icon against its surface in both themes, including hover and focus.

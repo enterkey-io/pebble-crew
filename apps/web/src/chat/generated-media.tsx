@@ -346,7 +346,8 @@ export function GeneratedImage({
             )}
           </Dialog>
           <IconButton
-            className="message-image-download"
+            variant="secondary"
+            className="message-image-download rounded-full hover:bg-accent hover:text-accent-foreground"
             label={`Download ${state.file.name}`}
             icon={Download}
             onClick={() => state.kind === 'ready' && save(state.file)}

@@ -50,6 +50,7 @@ export function VoiceOptions({
           align="start"
           collisionBoundary={boundary ?? undefined}
           collisionPadding={8}
+          scrollButtons={false}
           className="max-h-[min(16rem,var(--radix-select-content-available-height))] overscroll-contain"
         >
           {provider === 'elevenlabs'

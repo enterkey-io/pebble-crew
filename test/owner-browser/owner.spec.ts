@@ -951,3 +951,46 @@ test('owner-wide Tasks setting survives native reload and restores the existing 
   );
   expectNoChatSends(signals);
 });
+
+test('voice provider selection persists in the native owner without opening a paid session', async ({
+  page,
+  context,
+}) => {
+  await context.addCookies(ownerCookies);
+  const signals = observeOwner(page);
+  const voiceSessions: string[] = [];
+  page.on('request', (request) => {
+    if (request.url().endsWith('/v1/rpc') && request.postDataJSON()?.operation === 'voice.session')
+      voiceSessions.push(request.url());
+  });
+  const openVoice = async () => {
+    await expect(page.getByLabel('Message', { exact: true })).toBeEnabled({ timeout: 30000 });
+    await openSidebarMenu(page, 'Alpha Stone');
+    await page.getByRole('menuitem', { name: 'Edit pebble', exact: true }).click();
+    const settings = page.getByRole('region', { name: 'Edit Alpha Stone', exact: true });
+    await settings.getByRole('tab', { name: 'Voice', exact: true }).click();
+    await expect(settings.getByRole('radiogroup', { name: 'Voice provider' })).toBeVisible();
+    return settings;
+  };
+  await page.goto('/');
+  let settings = await openVoice();
+  await expect(settings.getByRole('radio', { name: 'OpenAI' })).toHaveAttribute(
+    'aria-checked',
+    'true',
+  );
+  await settings.getByRole('radio', { name: 'ElevenLabs' }).click();
+  await expect(settings.getByRole('form', { name: 'ElevenLabs API key' })).toBeVisible();
+  await page.reload();
+  settings = await openVoice();
+  await expect(settings.getByRole('radio', { name: 'ElevenLabs' })).toHaveAttribute(
+    'aria-checked',
+    'true',
+  );
+  await settings.getByRole('radio', { name: 'OpenAI' }).click();
+  await expect(settings.getByRole('radio', { name: 'OpenAI' })).toHaveAttribute(
+    'aria-checked',
+    'true',
+  );
+  expect(voiceSessions).toEqual([]);
+  expectNoChatSends(signals);
+});
