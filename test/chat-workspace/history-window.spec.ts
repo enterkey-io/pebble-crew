@@ -12,6 +12,7 @@ async function historyFixture(context: BrowserContext) {
   }));
   const calls: string[] = [];
   const behavior = { failOlder: false, running: false };
+  const callsEnded: { id: string; ended_at: number }[] = [];
   const page = (before?: number) => {
     const earlier = before ? rows.filter((row) => row.row_id < before) : rows;
     const messages = earlier.slice(-60);
@@ -25,6 +26,7 @@ async function historyFixture(context: BrowserContext) {
     open: (profile) => ({
       session_id: `session-${profile}`,
       ...page(),
+      voice_calls: callsEnded,
       running: behavior.running,
       ...(behavior.running ? { inflight: { assistant: 'Live response' } } : {}),
     }),
@@ -38,7 +40,7 @@ async function historyFixture(context: BrowserContext) {
       return route.fulfill({ status: 400, json: { code: 'INVALID_PARAMETERS' } });
     return route.fallback();
   });
-  return { rows, calls, behavior, fixture };
+  return { rows, calls, callsEnded, behavior, fixture };
 }
 async function loaded(page: Page) {
   await page.goto('/');
@@ -81,6 +83,36 @@ test('startup transfers one recent page and defers unopened details', async ({
     'aria-selected',
     'true',
   );
+});
+
+test('an activity-only tail opens on the last real message and keeps earlier history on demand', async ({
+  page,
+  context,
+}, info) => {
+  const fixture = await historyFixture(context);
+  for (const row of fixture.rows.slice(-120)) {
+    row.role = 'tool';
+    row.text = '';
+  }
+  fixture.callsEnded.push(
+    ...Array.from({ length: 20 }, (_, i) => ({
+      id: i.toString(16).padStart(64, '0'),
+      ended_at: 1700000280 + i,
+    })),
+  );
+  await page.goto('/');
+  await expect(page.getByLabel('Message', { exact: true })).toBeEnabled();
+  const recent = page.getByText(/History row 240\./);
+  await expect(recent).toBeInViewport();
+  await expect(page.getByText(/History row 180\./)).toHaveCount(0);
+  expect(fixture.calls.filter((op) => op === 'bot.open')).toHaveLength(1);
+  expect(fixture.calls.filter((op) => op === 'chat.history')).toHaveLength(2);
+  await page.screenshot({ path: info.outputPath('activity-tail-recent-message.png') });
+  const earlier = page.getByRole('button', { name: 'Earlier messages', exact: true });
+  await earlier.scrollIntoViewIfNeeded();
+  await earlier.click();
+  await expect(page.getByText(/History row 180\./)).toHaveCount(1);
+  await expect(recent).toHaveCount(1);
 });
 
 test('older history loads on demand without moving the visible message or changing IDs', async ({

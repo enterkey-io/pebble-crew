@@ -293,6 +293,16 @@ class BotOperations:
                 for key in [*keys, "execution_generation"]) for action in pending):
                 raise InvalidOperation("Room approval is no longer pending")
             return await self.gateway.call("groups.approve", checked)
+        if operation == "room.disband":
+            fields(params, ["room_id"])
+            if not getattr(self.gateway, 'room_disband_supported', False):
+                raise InvalidOperation("Group deletion is unavailable on this Hermes build")
+            room_id = identifier(params["room_id"])
+            result = await self.gateway.call("groups.disband", {"room_id": room_id})
+            receipt = result.get("tombstone")
+            if not isinstance(receipt, dict) or receipt.get("room_id") != room_id:
+                raise NativeError("Group deletion could not be confirmed")
+            return {"deleted": room_id}
         if operation in {"room.state", "room.log", "room.send", "room.stop"}:
             extras = {"room.log": ["since_seq"], "room.send": ["event_id", "text"]}.get(operation, [])
             fields(params, ["room_id", *extras])

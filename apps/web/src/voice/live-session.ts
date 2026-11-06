@@ -32,7 +32,7 @@ export interface VoiceLiveHandlers {
   onStarted?: () => void;
   onAudioLevel?: (level: number) => void;
   onAutoplayBlocked?: () => void;
-  onDelegation: (delegationId: string, context: LiveTranscriptFragment[]) => void;
+  onDelegation: (delegationId: string, context: LiveTranscriptFragment[], request?: string) => void;
   /** Vendor-side error. `fatal` when the session is gone. */
   onError: (message: string, fatal: boolean) => void;
   /** `session.closed` arrived (or the transport dropped without it). */
@@ -159,6 +159,14 @@ export class VoiceLiveSession {
     this.handlers = handlers;
     this.audio = new Audio();
     this.audio.autoplay = true;
+  }
+
+  get playing() {
+    return !this.audio.paused;
+  }
+
+  resumeAudio() {
+    return this.audio.play();
   }
 
   get connected(): boolean {

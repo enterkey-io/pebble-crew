@@ -4,17 +4,50 @@ Interactive terminal, destructive lifecycle and arbitrary plugin commands stay
 out of the browser catalog until their native response contracts are supported.
 """
 import asyncio
+import re
 from .operations import InvalidOperation, fields, identifier
 
 COMMANDS = frozenset({'model', 'context', 'usage', 'status', 'tools', 'help'})
 
 async def invoke(ops, operation, params):
-    fields(params, ['session_id', 'text'])
-    sid, text = identifier(params['session_id']), params['text']
+    fields(params, ['session_id', *{
+        'chat.model.options': [], 'chat.model.select': ['provider', 'model', 'confirm'],
+    }.get(operation, ['text'])])
+    sid = identifier(params['session_id'])
     profile = ops.sessions.get(sid)
     if not profile or await ops.stamp(profile) != ops.session_incarnations.get(sid):
         raise InvalidOperation('Reopen this Pebble before using commands')
     await ops.bot(profile)
+    if operation == 'chat.model.options':
+        result = await ops.gateway.call('model.options', {'session_id': sid, 'explicit_only': True})
+        providers = []
+        for item in result.get('providers', [])[:80]:
+            slug, label = item.get('slug'), item.get('name')
+            if not isinstance(slug, str) or not re.fullmatch(r'[A-Za-z0-9_.:-]{1,128}', slug):
+                continue
+            models = list(dict.fromkeys(model for model in item.get('models', [])[:3000]
+                if isinstance(model, str) and re.fullmatch(r'[A-Za-z0-9_./:@+-]{1,250}', model)
+                and not model.startswith('-')))
+            if models and item.get('authenticated') is not False:
+                providers.append({'id': slug, 'name': str(label or slug)[:120], 'models': models})
+        return {'model': str(result.get('model') or '')[:250], 'provider': str(result.get('provider') or '')[:128],
+                'providers': providers}
+    if operation == 'chat.model.select':
+        model, provider, confirm = params['model'], params['provider'], params['confirm']
+        if (not isinstance(provider, str) or not re.fullmatch(r'[A-Za-z0-9_.:-]{1,128}', provider)
+            or provider.startswith('-') or not isinstance(model, str)
+            or not re.fullmatch(r'[A-Za-z0-9_./:@+-]{1,250}', model) or model.startswith('-')
+            or type(confirm) is not bool):
+            raise InvalidOperation('Invalid model selection')
+        selected = await ops.gateway.call('config.set', {
+            'session_id': sid, 'key': 'model', 'value': f'{model} --provider {provider} --session',
+            'confirm_expensive_model': confirm,
+        })
+        return {'value': str(selected.get('value') or '')[:250],
+                'confirm_required': selected.get('confirm_required') is True,
+                'message': str(selected.get('confirm_message') or selected.get('warning') or '')[:1000],
+                'deferred': selected.get('deferred') is True}
+    text = params['text']
     if not isinstance(text, str) or not text.startswith('/') or len(text) > 1000 or '\n' in text or '\r' in text:
         raise InvalidOperation('Invalid command')
     name = text[1:].split(' ', 1)[0].lower()

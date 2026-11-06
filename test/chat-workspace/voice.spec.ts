@@ -899,3 +899,58 @@ test('saved voice calls appear in chronological order between messages on reload
   await entry.scrollIntoViewIfNeeded();
   await page.screenshot({ path: info.outputPath('saved-voice-call.png'), animations: 'disabled' });
 });
+
+test('the installed phone voice picker stays in the safe dialog and scrolls independently', async ({
+  page,
+  context,
+}, info) => {
+  await page.setViewportSize({ width: 390, height: 620 });
+  await page.addInitScript(() => Object.defineProperty(navigator, 'standalone', { value: true }));
+  await installFixture(context, { voice: true });
+  const voices = ['marin', ...Array.from({ length: 24 }, (_, index) => `studio${index}`)];
+  await page.route('**/v1/rpc', async (route) => {
+    const { operation } = route.request().postDataJSON();
+    if (operation !== 'voice.status') return route.fallback();
+    return route.fulfill({
+      json: {
+        result: {
+          supported: true,
+          configured: true,
+          key_confirmed: true,
+          setup_complete: false,
+          voice: 'marin',
+          voices,
+        },
+      },
+    });
+  });
+  await page.goto('/');
+  await page.evaluate(() => {
+    document.documentElement.style.setProperty('--app-safe-top', '62px');
+    document.documentElement.style.setProperty('--app-safe-bottom', '34px');
+  });
+  await expect(page.getByLabel('Message', { exact: true })).toBeEnabled();
+  await page.getByRole('button', { name: 'Voice chat', exact: true }).click();
+  const dialog = page.locator('[data-slot="dialog-content"][aria-label="Edit pebble"]');
+  const picker = dialog.getByRole('combobox', { name: 'Voice', exact: true });
+  await picker.click();
+  const list = page.getByRole('listbox');
+  await expect(list).toBeVisible();
+  await list.evaluate((element) =>
+    Promise.all(element.getAnimations().map((motion) => motion.finished)),
+  );
+  const dialogBox = await dialog.boundingBox();
+  const listBox = await list.boundingBox();
+  expect(dialogBox).not.toBeNull();
+  expect(listBox).not.toBeNull();
+  expect(listBox!.y).toBeGreaterThanOrEqual(dialogBox!.y);
+  expect(listBox!.y + listBox!.height).toBeLessThanOrEqual(dialogBox!.y + dialogBox!.height);
+  const last = list.getByRole('option', { name: 'Studio23', exact: true });
+  await last.scrollIntoViewIfNeeded();
+  await expect(last).toBeInViewport();
+  expect((await list.boundingBox())!.y).toBeCloseTo(listBox!.y, 0);
+  await page.screenshot({ path: info.outputPath('installed-voice-picker.png') });
+  await last.click();
+  await expect(picker).toContainText('Studio23');
+  expect((await dialog.boundingBox())!.y).toBeCloseTo(dialogBox!.y, 0);
+});

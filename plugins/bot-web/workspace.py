@@ -54,6 +54,7 @@ class WorkspaceStore:
             CREATE TRIGGER IF NOT EXISTS request_update_clock AFTER UPDATE ON requests BEGIN UPDATE request_clock SET generation=generation+1 WHERE id=1; END;
             CREATE TRIGGER IF NOT EXISTS request_delete_clock AFTER DELETE ON requests BEGIN UPDATE request_clock SET generation=generation+1 WHERE id=1; END;
             CREATE INDEX IF NOT EXISTS request_pending ON requests(state,created,id);
+            CREATE TABLE IF NOT EXISTS vox_voice_presets(handle TEXT PRIMARY KEY,voice_id TEXT NOT NULL,label TEXT NOT NULL);
             CREATE TABLE IF NOT EXISTS voice_calls(
                 id TEXT PRIMARY KEY, incarnation TEXT NOT NULL, conversation TEXT NOT NULL,
                 ended_at REAL NOT NULL);
@@ -246,7 +247,7 @@ def normalize_photo(data, *, size=512):
 
 
 class WorkspaceService:
-    METHODS = {'workspace.features.set', 'room.create', 'exchange.references', 'exchange.read', 'reporting.describe', 'bots.profile.update', 'agent.onboard', 'agent.welcome', 'organization.get', 'organization.save', 'organization.chat', 'crews.save', 'workspace.snapshot', 'presentation.read', 'presentation.order', 'agent.pin', 'agent.hide', 'agent.delete', 'agent.propose', 'room.send', 'room.log', 'room.react', 'agent.enable', 'workspace.describe', 'workspace.detect_primary', 'workspace.initialize', 'workspace.welcome', 'workspace.set_orchestrator',
+    METHODS = {'workspace.features.set', 'room.create', 'room.disband', 'exchange.references', 'exchange.read', 'reporting.describe', 'bots.profile.update', 'agent.onboard', 'agent.welcome', 'organization.get', 'organization.save', 'organization.chat', 'crews.save', 'workspace.snapshot', 'presentation.read', 'presentation.order', 'agent.pin', 'agent.hide', 'agent.delete', 'agent.propose', 'room.send', 'room.log', 'room.react', 'agent.enable', 'workspace.describe', 'workspace.detect_primary', 'workspace.initialize', 'workspace.welcome', 'workspace.set_orchestrator',
         'bots.update_handle', 'bots.appearance.get', 'bots.appearance.thumbnails', 'bots.appearance.update', 'roles.update', 'teams.save',
         'models.describe', 'agent.model', 'agent.create', 'agent.update', 'agent.attach', 'requests.reconcile', 'requests.get', 'requests.review', 'requests.list', 'requests.approve', 'requests.deny',
         'connections.add', 'connections.permissions', 'connections.set_key', 'connections.list', 'connections.test', 'services.catalog', 'agent.capabilities'}
@@ -400,6 +401,11 @@ class WorkspaceService:
             result = self.store.set_tasks(params['tasks'], params['expected_revision'], params['workspace_id'])
             self._snapshot = None
             return result
+        if operation == 'room.disband':
+            try:
+                return await self.ops.invoke(operation, params)
+            finally:
+                self._snapshot = None
         if operation == 'room.create':
             # Serialize room creation with snapshots, including uncertain native outcomes.
             self._snapshot = None

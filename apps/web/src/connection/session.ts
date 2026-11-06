@@ -99,6 +99,9 @@ export class OwnerSession {
       get supportsRoomReactions() {
         return capabilities()?.supportsRoomReactions ?? false;
       },
+      get supportsRoomDisband() {
+        return capabilities()?.supportsRoomDisband ?? false;
+      },
       get supportsAttachments() {
         return capabilities()?.supportsAttachments ?? false;
       },

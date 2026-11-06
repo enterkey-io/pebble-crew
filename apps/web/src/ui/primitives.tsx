@@ -1,7 +1,7 @@
 import { Alert, AlertDescription } from '../components/ui/alert';
 import { Typography } from '../components/ui/typography';
 import type { LucideIcon } from 'lucide-react';
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 import { X, MoreHorizontal, PanelLeftOpen } from 'lucide-react';
 import { IconButton } from '../components/ui/icon-button';
@@ -169,8 +169,44 @@ export function ContextActions({
 }) {
   const keyboardTarget = useRef<HTMLElement | null>(null);
   const dragOwnsGesture = useRef(false);
+  const hold = useRef<
+    | {
+        target: HTMLElement;
+        pointerId: number;
+        x: number;
+        y: number;
+        timer: number;
+        opened: boolean;
+      }
+    | undefined
+  >(undefined);
   const [open, setOpen] = useState(false);
+  useEffect(() => () => window.clearTimeout(hold.current?.timer), []);
   const finishDrag = () => setOpen(false);
+  const openAt = (target: HTMLElement, x: number, y: number) =>
+    target.dispatchEvent(
+      new MouseEvent('contextmenu', {
+        bubbles: true,
+        cancelable: true,
+        clientX: x,
+        clientY: y,
+      }),
+    );
+  function openHold() {
+    const press = hold.current;
+    if (!press || press.opened || !press.target.isConnected) return;
+    press.opened = true;
+    window.clearTimeout(press.timer);
+    openAt(press.target, press.x, press.y);
+  }
+  function releaseHold() {
+    window.clearTimeout(hold.current?.timer);
+  }
+  function resetHold() {
+    releaseHold();
+    hold.current?.target.removeAttribute('data-stationary-press');
+    hold.current = undefined;
+  }
   return (
     <ContextMenu open={open} onOpenChange={(next) => setOpen(next && !dragOwnsGesture.current)}>
       <ContextMenuTrigger
@@ -178,11 +214,49 @@ export function ContextActions({
         data-context-label={label}
         asChild
         onPointerDown={(event) => {
+          resetHold();
           keyboardTarget.current = null;
           dragOwnsGesture.current = false;
+          if (
+            items.length &&
+            event.isPrimary &&
+            (event.pointerType === 'touch' || event.pointerType === 'pen') &&
+            event.button === 0
+          ) {
+            const target = event.currentTarget;
+            target.setAttribute('data-stationary-press', '');
+            hold.current = {
+              target,
+              pointerId: event.pointerId,
+              x: event.clientX,
+              y: event.clientY,
+              timer: window.setTimeout(openHold, 450),
+              opened: false,
+            };
+          }
           event.stopPropagation();
         }}
-        onDragStartCapture={() => {
+        onPointerMove={(event) => {
+          const press = hold.current;
+          if (press?.pointerId !== event.pointerId) return;
+          if (Math.hypot(event.clientX - press.x, event.clientY - press.y) > 10) resetHold();
+        }}
+        onPointerUp={releaseHold}
+        onPointerCancel={releaseHold}
+        onClickCapture={(event) => {
+          if (!hold.current?.opened) return;
+          event.preventDefault();
+          event.stopPropagation();
+          resetHold();
+        }}
+        onDragStartCapture={(event) => {
+          if (hold.current) {
+            // WebKit can start a native drag from a stationary touch.
+            event.preventDefault();
+            event.stopPropagation();
+            openHold();
+            return;
+          }
           dragOwnsGesture.current = true;
           setOpen(false);
         }}
@@ -190,7 +264,15 @@ export function ContextActions({
         onDropCapture={finishDrag}
         onContextMenu={(event) => {
           event.stopPropagation();
-          if (dragOwnsGesture.current) event.preventDefault();
+          if (dragOwnsGesture.current) {
+            event.preventDefault();
+            return;
+          }
+          if (hold.current && event.nativeEvent.isTrusted) {
+            if (hold.current.opened) event.preventDefault();
+            hold.current.opened = true;
+            releaseHold();
+          }
         }}
         onKeyDown={(event) => {
           if (event.key !== 'ContextMenu' && !(event.shiftKey && event.key === 'F10')) return;
@@ -199,13 +281,10 @@ export function ContextActions({
           dragOwnsGesture.current = false;
           keyboardTarget.current = event.target instanceof HTMLElement ? event.target : null;
           const bounds = event.currentTarget.getBoundingClientRect();
-          event.currentTarget.dispatchEvent(
-            new MouseEvent('contextmenu', {
-              bubbles: true,
-              cancelable: true,
-              clientX: bounds.left + bounds.width / 2,
-              clientY: bounds.top + bounds.height / 2,
-            }),
+          openAt(
+            event.currentTarget,
+            bounds.left + bounds.width / 2,
+            bounds.top + bounds.height / 2,
           );
         }}
       >

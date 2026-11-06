@@ -43,6 +43,7 @@ class NativeGateway:
         self.questions = {}
         self.approval_notices = {}
         self.work_supported = False
+        self.room_disband_supported = False
         from .reactions import ReactionDisplay
         self.display = ReactionDisplay()
         from .stream_position import StreamPositions
@@ -89,6 +90,8 @@ class NativeGateway:
             capabilities = await self.call("groups.capabilities", {})
             if capabilities.get("driver") is not True:
                 raise NativeError("Native room driver unavailable")
+            methods = capabilities.get('methods')
+            self.room_disband_supported = isinstance(methods, list) and 'groups.disband' in methods
             work = await self.call('bot_web.work', {'operation': 'work.capabilities', 'params': {}})
             self.work_supported = work.get('supported') is True
         except BaseException:

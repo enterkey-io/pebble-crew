@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { renderToStaticMarkup } from 'react-dom/server';
-import { MessageBody, PlainMessageBody } from './MessageBody';
+import { MessageBody } from './MessageBody';
 import type { WorkspaceBot } from '@hermes-client/protocol';
 import { TooltipProvider } from './components/ui/tooltip';
 
@@ -105,17 +105,21 @@ describe('resolved message mentions', () => {
   });
 });
 
-describe('owner message mentions', () => {
-  it('keeps literal Markdown and whitespace while exposing the same profile control', () => {
+describe('owner message Markdown', () => {
+  it('formats Markdown while preserving line breaks, escaped mentions and code', () => {
     const html = renderToStaticMarkup(
-      <PlainMessageBody
-        text={'Hello  **@tina**\n`@tina`\n@unknown'}
-        mentions={new Map([['tina', tina]])}
-      />,
+      <TooltipProvider>
+        <MessageBody
+          owner
+          text={'Hello  **@tina**\n_italic_ `@tina` \\@tina'}
+          mentions={new Map([['tina', tina]])}
+        />
+      </TooltipProvider>,
     );
     expect(html.match(/data-mention-id="synthetic-tina-id"/g) ?? []).toHaveLength(1);
-    expect(html).toContain('Hello  **');
-    expect(html).toContain('**\n`@tina`\n@unknown');
-    expect(html).not.toContain('<strong>');
+    expect(html).toContain('<strong>');
+    expect(html).toContain('<em class="italic">italic</em>');
+    expect(html).toContain('Hello  ');
+    expect(html).toContain('whitespace-pre-wrap');
   });
 });

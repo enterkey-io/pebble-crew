@@ -1,3 +1,4 @@
+import { ModelPicker } from './chat/ModelPicker';
 import type { ApprovalChoice } from '@hermes-client/protocol';
 import { ProactiveSetup } from './proactive/ProactiveSetup';
 import { PlansArea, BoardOutcome } from './work/PlansArea';
@@ -75,6 +76,7 @@ import { IconButton } from './components/ui/icon-button';
 import { Alert, AlertDescription, AlertAction } from './components/ui/alert';
 import {
   AlertDialog,
+  AlertDialogAction,
   AlertDialogCancel,
   AlertDialogContent,
   AlertDialogDescription,
@@ -141,6 +143,7 @@ function text(value: unknown): string {
 export function App({ owner }: { owner?: OwnerConnection }) {
   const ownerRef = useRef(owner);
   ownerRef.current = owner;
+  const [modelPicker, setModelPicker] = useState<string>();
   const [commandResult, setCommandResult] = useState<{
     sessionId: string;
     command: string;
@@ -259,6 +262,9 @@ export function App({ owner }: { owner?: OwnerConnection }) {
   );
   const [error, setError] = useState('');
   const [unavailableChat, setUnavailableChat] = useState<string>();
+  const [groupToDelete, setGroupToDelete] = useState<{ id: string; name: string }>();
+  const [deletingGroup, setDeletingGroup] = useState(false);
+  const [groupDeleteError, setGroupDeleteError] = useState('');
   const [nav, setNav] = useState(false);
   const phone = useMedia('(max-width: 767px)');
   const [details, setDetails] = useState(
@@ -427,18 +433,31 @@ export function App({ owner }: { owner?: OwnerConnection }) {
   const workspaceRef = useRef(workspace);
   workspaceRef.current = workspace;
   const scrollPositions = useRef(new Map<string, { top: number; follow: boolean }>());
-  const closeNav = useCallback(() => setNav(false), []);
+  const restoreNavigationButton = useRef(false);
+  const closeNav = useCallback((restoreFocus = false) => {
+    restoreNavigationButton.current = restoreFocus === true;
+    setNav(false);
+  }, []);
   useOverlayHistory(phone && nav, closeNav);
   useOverlayHistory(unavailableChat !== undefined, () => setUnavailableChat(undefined));
+  useOverlayHistory(modelPicker !== undefined, () => setModelPicker(undefined));
+  useOverlayHistory(groupToDelete !== undefined, () => {
+    if (deletingGroup) return false;
+    setGroupToDelete(undefined);
+    return true;
+  });
   const navigationWasOpen = useRef(false);
   useLayoutEffect(() => {
     if (!phone) return;
     const target = nav
       ? '.pc-mobile-navigation'
       : navigationWasOpen.current
-        ? '.pc-chat-header [aria-label="Toggle navigation"]'
+        ? restoreNavigationButton.current
+          ? '.pc-chat-header [aria-label="Toggle navigation"]'
+          : '.pc-chat-header'
         : null;
     if (target) document.querySelector<HTMLElement>(target)?.focus({ preventScroll: true });
+    restoreNavigationButton.current = false;
     navigationWasOpen.current = nav;
   }, [nav, phone]);
   const closeReview = useCallback(() => setReview(undefined), []);
@@ -736,8 +755,19 @@ export function App({ owner }: { owner?: OwnerConnection }) {
     const opening = key !== transcriptContext.current;
     transcriptContext.current = key;
     if (followLatest.current && !scrollAnimating.current) {
-      if (opening) transcriptFollow.current.snap();
-      else transcriptFollow.current.follow();
+      if (!opening) {
+        transcriptFollow.current.follow();
+        return;
+      }
+      transcriptFollow.current.snap();
+      const rows = pane.querySelectorAll<HTMLElement>('.message-group[data-message-role]');
+      const target =
+        rows[rows.length - 1] ?? pane.querySelector<HTMLElement>('[data-earlier-history]');
+      if (target && target.getBoundingClientRect().bottom <= pane.getBoundingClientRect().top) {
+        followLatest.current = false;
+        setShowLatest(true);
+        transcriptFollow.current.snap(target);
+      }
     }
   }, [messages, pickingAgents, running, selection, settings, starting]);
   useLayoutEffect(() => {
@@ -1160,6 +1190,27 @@ export function App({ owner }: { owner?: OwnerConnection }) {
     if (event.type === 'error') setError('Hermes reported an error. Refresh before retrying.');
   }
 
+  function clearRemovedConversation(message: string) {
+    selectGeneration.current++;
+    setOpeningBot(undefined);
+    setBusy(false);
+    selected.current = undefined;
+    setSelection(undefined);
+    setRemovedDraft(inputDraft.current.get());
+    setDraft('');
+    sendProjection.current = new SendProjection();
+    setMessages([]);
+    setStream('');
+    setRunning(false);
+    setStopping(false);
+    setApprovals([]);
+    setRoutines([]);
+    setError(message);
+    autoOpened.current = true;
+    restoreProfile.current = '';
+    restoreRoom.current = '';
+  }
+
   async function loadRoster(connection: SessionClient, invalidate = false) {
     return rosterLoader.current.load(
       connection,
@@ -1219,24 +1270,7 @@ export function App({ owner }: { owner?: OwnerConnection }) {
             target &&
             ((target.kind === 'bot' && !surviving) || (target.kind === 'room' && !roomSurviving))
           ) {
-            selectGeneration.current++;
-            setOpeningBot(undefined);
-            setBusy(false);
-            selected.current = undefined;
-            setSelection(undefined);
-            setRemovedDraft(inputDraft.current.get());
-            setDraft('');
-            sendProjection.current = new SendProjection();
-            setMessages([]);
-            setStream('');
-            setRunning(false);
-            setStopping(false);
-            setApprovals([]);
-            setRoutines([]);
-            setError('This conversation is no longer in your sidebar.');
-            autoOpened.current = true;
-            restoreProfile.current = '';
-            restoreRoom.current = '';
+            clearRemovedConversation('This conversation is no longer in your sidebar.');
           }
           if (surviving && target?.kind === 'bot' && target.bot.profile !== surviving.profile) {
             // Reopen a proven native rename, retaining this incarnation's draft.
@@ -1792,6 +1826,11 @@ export function App({ owner }: { owner?: OwnerConnection }) {
         setError('Send files separately from commands.');
         return;
       }
+      if ((commandOverride ?? draft).trim().toLowerCase() === '/model') {
+        confirmSubmittedDraft();
+        setModelPicker(target.sessionId);
+        return;
+      }
       setBusy(true);
       const commandFlight = Symbol('command');
       sendFlight.current = commandFlight;
@@ -2028,6 +2067,30 @@ export function App({ owner }: { owner?: OwnerConnection }) {
       expected_revision: workspace!.revision,
       hidden,
     });
+  }
+  async function deleteGroup() {
+    if (!client?.supportsRoomDisband || !groupToDelete || deletingGroup) return;
+    setDeletingGroup(true);
+    setGroupDeleteError('');
+    try {
+      await new ConversationDomain(client).disbandGroup(groupToDelete.id);
+      if (current.current !== client) return;
+      setGroupToDelete(undefined);
+      const active = selected.current;
+      if (active?.kind === 'room' && active.room.room_id === groupToDelete.id)
+        clearRemovedConversation('');
+      setRooms((current) => current.filter((room) => room.room_id !== groupToDelete.id));
+      void loadRoster(client, true).catch(() => undefined);
+    } catch {
+      if (current.current === client) {
+        setGroupDeleteError(
+          'Hermes couldn’t confirm the deletion. Refresh the list before trying again.',
+        );
+        void loadRoster(client, true).catch(() => undefined);
+      }
+    } finally {
+      setDeletingGroup(false);
+    }
   }
   async function proposeDelete(bot: WorkspaceBot) {
     if (!client || !workspace) return;
@@ -2304,6 +2367,10 @@ export function App({ owner }: { owner?: OwnerConnection }) {
       onPin={(bot, pinned) => void pinPebble(bot, pinned)}
       onVisibility={(bot, hidden) => void visibility(bot, hidden)}
       onDelete={(bot) => void proposeDelete(bot)}
+      onDeleteGroup={(group) => {
+        setGroupDeleteError('');
+        setGroupToDelete(group);
+      }}
       onOrder={(ids) =>
         presentationAction('presentation.order', {
           ids,
@@ -2556,7 +2623,9 @@ export function App({ owner }: { owner?: OwnerConnection }) {
                       <LoadingBar active={switching} label="Opening conversation" />
                     </div>
                     <header
-                      className="pc-chat-header chat-header"
+                      className="pc-chat-header chat-header outline-none"
+                      data-slot="chat-header"
+                      tabIndex={-1}
                       data-has-requests={requestCount > 0}
                     >
                       <IconButton
@@ -2723,7 +2792,10 @@ export function App({ owner }: { owner?: OwnerConnection }) {
                       {selection?.kind === 'bot' &&
                         historyPage?.sessionId === selection.sessionId &&
                         historyPage.older && (
-                          <div className="flex flex-col items-center gap-1 py-3">
+                          <div
+                            data-earlier-history
+                            className="flex flex-col items-center gap-1 py-3"
+                          >
                             <Button
                               variant="quiet"
                               size="sm"
@@ -3251,6 +3323,19 @@ export function App({ owner }: { owner?: OwnerConnection }) {
               })
             }
           />
+          {modelPicker && selection?.kind === 'bot' && selection.sessionId === modelPicker && (
+            <ModelPicker
+              key={modelPicker}
+              client={client}
+              sessionId={modelPicker}
+              onClose={() => setModelPicker(undefined)}
+              onResult={(output) => {
+                setCommandResult({ sessionId: modelPicker, command: '/model', output });
+                followLatest.current = true;
+                setShowLatest(false);
+              }}
+            />
+          )}
           <AlertDialog
             open={unavailableChat !== undefined}
             onOpenChange={(open) => {
@@ -3266,6 +3351,39 @@ export function App({ owner }: { owner?: OwnerConnection }) {
                 <AlertDialogCancel variant="secondary" className="min-w-20 max-md:min-h-11">
                   Close
                 </AlertDialogCancel>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
+          <AlertDialog
+            open={groupToDelete !== undefined}
+            onOpenChange={(open) => {
+              if (!open && !deletingGroup) setGroupToDelete(undefined);
+            }}
+          >
+            <AlertDialogContent size="sm">
+              <AlertDialogHeader>
+                <AlertDialogTitle>Delete {groupToDelete?.name}?</AlertDialogTitle>
+                <AlertDialogDescription>
+                  This permanently closes the group chat and stops work in it.
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              {groupDeleteError && (
+                <Alert variant="destructive">
+                  <AlertDescription>{groupDeleteError}</AlertDescription>
+                </Alert>
+              )}
+              <AlertDialogFooter>
+                <AlertDialogCancel disabled={deletingGroup}>Cancel</AlertDialogCancel>
+                <AlertDialogAction
+                  variant="destructive"
+                  disabled={deletingGroup}
+                  onClick={(event) => {
+                    event.preventDefault();
+                    void deleteGroup();
+                  }}
+                >
+                  {deletingGroup ? 'Deleting…' : 'Delete group'}
+                </AlertDialogAction>
               </AlertDialogFooter>
             </AlertDialogContent>
           </AlertDialog>

@@ -33,7 +33,7 @@ export async function expectPinnedLayout(pins: Locator) {
         titleOffset: title.top - card.top,
         titleTextHeight: range.getBoundingClientRect().height,
         titleHeight: title.height,
-        titleOverflow: titleNode.scrollWidth > titleNode.clientWidth + 1,
+        titleLineHeight: Number.parseFloat(getComputedStyle(titleNode).lineHeight),
         nameColor: getComputedStyle(nameNode).color,
         foreground: getComputedStyle(document.body).color,
         ancestors,
@@ -56,7 +56,7 @@ export async function expectPinnedLayout(pins: Locator) {
     expect(tile.nameColor).toBe(tile.foreground);
     expect(tile.ancestors.every((opacity) => opacity === '1')).toBe(true);
     expect(tile.titleTextHeight).toBeLessThanOrEqual(tile.titleHeight + 1);
-    expect(tile.titleOverflow).toBe(false);
+    expect(tile.titleHeight).toBeLessThanOrEqual(tile.titleLineHeight + 2);
     expect(tile.avatarTop).toBeCloseTo(layout[0]!.avatarTop, 0);
     expect(tile.nameOffset).toBeCloseTo(layout[0]!.nameOffset, 0);
     expect(tile.titleOffset).toBeCloseTo(layout[0]!.titleOffset, 0);
@@ -69,7 +69,6 @@ export async function expectPinnedLayout(pins: Locator) {
     expect(tile.titleBottom).toBeLessThanOrEqual(tile.cardBottom);
     expect(tile.menuCount).toBe(0);
   }
-  // Equal-height pins can have labels with different line counts.
   expect(Math.min(...layout.map((tile) => tile.cardBottom - tile.titleBottom))).toBeLessThanOrEqual(
     12,
   );
@@ -112,6 +111,9 @@ export async function expectPinRoleContrast(pins: Locator) {
     )
     .toBeGreaterThanOrEqual(4.5);
   for (const role of await roles.all()) {
-    await expect(role).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
+    await expect(role).not.toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
+    await expect(role).toHaveCSS('border-top-color', 'rgba(0, 0, 0, 0)');
+    await expect(role).toHaveCSS('white-space', 'nowrap');
+    await expect(role).toHaveCSS('text-overflow', 'ellipsis');
   }
 }
