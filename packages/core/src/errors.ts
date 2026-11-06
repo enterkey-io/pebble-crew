@@ -31,7 +31,7 @@ export const voiceErrors = {
   VOICE_PREFERENCES_FAILED: 'Hermes could not save your voice settings.',
 } as const;
 
-const atmeeErrors = {
+export const atmeeErrors = {
   ATMEE_KEY_REJECTED: 'Atmee rejected this API key.',
   ATMEE_KEY_SCOPE: 'Enable character read access for this key in Atmee Studio.',
   ATMEE_KEY_SAVE_FAILED: 'Hermes couldn’t save this Atmee key. Try again.',

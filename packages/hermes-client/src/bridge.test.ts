@@ -165,6 +165,8 @@ describe('direct Bot Mode bridge', () => {
   it('uses only allowlisted error codes and discards untrusted private diagnostics', async () => {
     for (const [code, expected] of [
       ['STALE_REVISION', 'STALE_REVISION'],
+      ['ATMEE_KEY_SCOPE', 'ATMEE_KEY_SCOPE'],
+      ['ATMEE_KEY_SAVE_FAILED', 'ATMEE_KEY_SAVE_FAILED'],
       ['PRIVATE_PROVIDER_ERROR', 'RPC_FAILED'],
     ]) {
       const client = new BotBridgeClient(

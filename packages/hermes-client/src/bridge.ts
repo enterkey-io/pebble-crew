@@ -1,4 +1,5 @@
 import {
+  atmeeErrors,
   ClientError,
   ConnectionLifetime,
   endpointUrl,
@@ -469,7 +470,8 @@ export class BotBridgeClient {
       ] as const;
       const match =
         known.find((item) => item === code) ??
-        Object.keys(voiceErrors).find((item): item is keyof typeof voiceErrors => item === code);
+        Object.keys(voiceErrors).find((item): item is keyof typeof voiceErrors => item === code) ??
+        Object.keys(atmeeErrors).find((item): item is keyof typeof atmeeErrors => item === code);
       const retry = Number(response.headers.get('Retry-After'));
       throw new ClientError(
         match ?? 'RPC_FAILED',
