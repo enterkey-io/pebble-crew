@@ -1141,6 +1141,10 @@ test('Aurora remembers a text fact in video and a video correction in text and t
       timeout: 20000,
     });
   };
+  const briefing = () =>
+    page.evaluate(
+      () => (Reflect.get(window, '__atmeeApp') as { message: { text: string } }[])[0]?.message.text,
+    );
   const speak = (speaker: 'owner' | 'agent', text: string) =>
     page.evaluate(
       ({ speaker, text }) => {
@@ -1177,6 +1181,7 @@ test('Aurora remembers a text fact in video and a video correction in text and t
   });
   expect(await memory()).toContain('meeting location is Cedar.');
   await startCall();
+  await expect.poll(briefing, { timeout: 10000 }).toContain('Aurora saved Cedar');
   await speak('owner', 'nativevideo recall');
   expect(await ask('renderer')).toBe('Unsupported request.');
   expect(await ask()).toBe('Aurora remembers Cedar');
@@ -1192,15 +1197,8 @@ test('Aurora remembers a text fact in video and a video correction in text and t
     timeout: 30000,
   });
   await startCall();
-  await expect
-    .poll(() =>
-      page.evaluate(
-        () =>
-          (window as unknown as { __atmeeApp: { message: { text: string } }[] }).__atmeeApp[0]
-            ?.message.text,
-      ),
-    )
-    .toContain('Character: Juniper is the new meeting location.');
+  await expect.poll(briefing, { timeout: 10000 }).toContain('Juniper is the new meeting location.');
+  expect(await briefing()).toContain('nativevideo recall in text');
   await speak('owner', 'nativevideo recall in the next call');
   expect(await ask()).toBe('Aurora remembers Juniper');
   await endCall();

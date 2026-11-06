@@ -98,7 +98,6 @@ export class AtmeeDomain {
     return {
       configured: configured(data),
       selected: data.selected,
-      note: videoText(data.note, 2000),
       canCreate: data.can_create === true,
       canDesign: data.can_design === true,
       avatars: data.avatars.map((item): AtmeeCharacter => {
@@ -121,19 +120,6 @@ export class AtmeeDomain {
       await this.bridge.invoke('atmee.select', { bot_id: botId, avatar_id: avatarId }),
     );
     if (receipt.selected !== avatarId) throw new ClientError('INVALID_RESPONSE');
-    return videoText(receipt.note, 2000);
-  }
-  async saveNote(botId: string, avatarId: string, note: string) {
-    const value = note.trim();
-    const receipt = record(
-      await this.bridge.invoke('atmee.context', {
-        bot_id: botId,
-        avatar_id: avatarId,
-        note: value,
-      }),
-    );
-    if (receipt.note !== value) throw new ClientError('INVALID_RESPONSE');
-    return receipt.note;
   }
   async buildProfile(botId: string) {
     const data = record(await this.bridge.invoke('atmee.build.profile', { bot_id: botId }));

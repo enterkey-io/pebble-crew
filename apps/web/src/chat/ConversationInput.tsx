@@ -46,6 +46,7 @@ export function ConversationInput({
   onSend,
   onStop,
   onVoice,
+  beforeAction,
   children,
 }: {
   draft: ComposerDraft;
@@ -65,6 +66,7 @@ export function ConversationInput({
   onSend: (command?: string) => void;
   onStop: () => void;
   onVoice: () => void;
+  beforeAction?: ReactNode;
   children: ReactNode;
 }) {
   const value = useSyncExternalStore(draft.subscribe, draft.get);
@@ -176,6 +178,7 @@ export function ConversationInput({
             }
           }}
         />
+        {beforeAction}
         <ComposerAction
           mode={
             running && !composing

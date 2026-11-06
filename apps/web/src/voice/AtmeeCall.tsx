@@ -1,7 +1,7 @@
 import { useEffect, useImperativeHandle, useRef, useState } from 'react';
 import type { Ref } from 'react';
 import { createPortal } from 'react-dom';
-import { Camera, CameraOff, Captions, Mic, MicOff, PhoneOff, Video } from 'lucide-react';
+import { Camera, CameraOff, Captions, Mic, MicOff, PhoneOff } from 'lucide-react';
 import type { Room } from 'livekit-client';
 import { AtmeeCallDomain, ConversationDomain } from '@hermes-client/protocol';
 import type { AtmeeCaption, BridgeEvent, SessionClient } from '@hermes-client/protocol';
@@ -12,7 +12,7 @@ import { IconButton } from '../components/ui/icon-button';
 import { LoadingBar } from '../components/ui/loading-bar';
 import { completion, DelegationReceipts } from './delegations';
 
-export type AtmeeCallHandle = { event: (event: BridgeEvent) => void };
+export type AtmeeCallHandle = { start: () => void; event: (event: BridgeEvent) => void };
 
 type Work = {
   receipts: DelegationReceipts;
@@ -148,6 +148,7 @@ export function AtmeeCall({
     }
   }
   useImperativeHandle(ref, () => ({
+    start: () => void start(),
     event(event) {
       const call = active.current;
       if (event.type === 'bridge.resync' && call) {
@@ -260,10 +261,12 @@ export function AtmeeCall({
       let avatarArrived = false;
       let reconnecting = false;
       let contextSent = false;
+      let contextAttempts = 0;
       function queueContext() {
         if (
           !ticket.context ||
           contextSent ||
+          contextAttempts >= 2 ||
           call.contextTimer ||
           !microphonePublished ||
           !avatarArrived ||
@@ -278,6 +281,7 @@ export function AtmeeCall({
           const identity = agentIdentity();
           if (active.current !== call || reconnecting || !identity) return;
           contextSent = true;
+          contextAttempts++;
           void room.localParticipant
             .sendText(JSON.stringify({ type: 'state', text: ticket.context }), {
               topic: 'atmee.app',
@@ -285,6 +289,7 @@ export function AtmeeCall({
             })
             .catch(() => {
               contextSent = false;
+              queueContext();
             });
         }, 2500);
       }
@@ -541,16 +546,5 @@ export function AtmeeCall({
         )}
       </section>
     ) : null;
-  return (
-    <>
-      <IconButton
-        quiet
-        label="Start video call"
-        icon={Video}
-        disabled={blocked || phase !== 'idle'}
-        onClick={() => void start()}
-      />
-      {portal && panel && createPortal(panel, portal)}
-    </>
-  );
+  return portal && panel ? createPortal(panel, portal) : null;
 }

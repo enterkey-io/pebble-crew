@@ -36,6 +36,7 @@ class AtmeeVideoTests(unittest.IsolatedAsyncioTestCase):
         self.ops = Mock(sessions={'sid-alpha': 'alpha'}, session_incarnations={'sid-alpha': 'alpha-stamp'},
                         session_conversations={'sid-alpha': 'alpha-chat'})
         self.ops.stamp = AsyncMock(return_value='alpha-stamp')
+        self.ops.invoke = AsyncMock(return_value={'messages': []})
         self.ops.gateway.call = AsyncMock(return_value={'status': 'streaming', 'user_row_id': 7})
         self.voice = LiveVoice(self.ops, self.store)
         self.service = AtmeeVideo(self.store, self.ops, self.voice)
@@ -139,6 +140,17 @@ class AtmeeVideoTests(unittest.IsolatedAsyncioTestCase):
                 self.store.db.execute('INSERT INTO atmee_call_character VALUES(?,?)', (ident, avatar))
                 self.store.db.execute('INSERT INTO atmee_caption(call,line,speaker,text) VALUES(?,?,?,?)',
                                       (ident, 'one', 'owner', text))
+        self.ops.invoke.return_value = {'messages': [
+            {'role': 'user', 'text': 'Old context that should not be sent.'},
+            {'role': 'user', 'text': 'I moved the check-in to Thursday.'},
+            {'role': 'assistant', 'text': 'Thursday works.'},
+            {'role': 'assistant', 'text': 'Share https://storage.example/clip?sig=secret-url-value'},
+            {'role': 'user', 'text': 'Bearer private_token_which_should_never_leave'},
+            {'role': 'tool', 'text': 'Private tool output'},
+            {'role': 'user', 'display_kind': 'hidden', 'text': 'Private internal prompt'},
+            {'role': 'user', 'display_kind': 'process_complete', 'text': 'Private background message'},
+            {'role': 'assistant', 'display_commentary': True, 'text': 'Private commentary'},
+        ]}
         with (
             patch('bot_web.atmee_video.provider', side_effect=self.vendor) as provider,
             patch('bot_web.atmee_video.read_key', return_value=KEY),
@@ -154,10 +166,17 @@ class AtmeeVideoTests(unittest.IsolatedAsyncioTestCase):
             self.assertEqual((await self.service.invoke('atmee.avatars', {'bot_id': 'alpha-id'}))['note'],
                              'Keep check-ins brief.')
             ticket = await self.service.invoke('atmee.start', {'session_id': 'sid-alpha', 'bot_id': 'alpha-id'})
-            self.assertIn('Keep check-ins brief.', ticket['context'])
-            self.assertIn('Previous same-character call', ticket['context'])
-            self.assertNotIn('Other ', ticket['context'])
-            self.assertNotIn('Keep check-ins brief.', json.dumps(provider.call_args.args[2]))
+            self.ops.invoke.assert_awaited_once_with('chat.history', {'session_id': 'sid-alpha'})
+            self.ops.gateway.call.assert_not_awaited()
+            context = ticket['context']
+            self.assertIn('I moved the check-in to Thursday.', context)
+            self.assertIn('Thursday works.', context)
+            self.assertLess(context.index('I moved the check-in to Thursday.'), context.index('Thursday works.'))
+            self.assertIn('Previous same-character call', context)
+            for excluded in ('Keep check-ins brief.', 'Old context', 'Other ', 'Private ',
+                             'private_token_which_should_never_leave', 'secret-url-value'):
+                self.assertNotIn(excluded, context)
+            self.assertNotIn('I moved the check-in to Thursday.', json.dumps(provider.call_args.args[2]))
             await self.service.end(self.service.call, deliver=False)
 
     def test_catalog_stops_on_repeated_vendor_cursor(self):

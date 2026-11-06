@@ -72,7 +72,7 @@ import type { AtmeeCallHandle } from './voice/AtmeeCall';
 import { VoiceChat } from './voice/VoiceChat';
 import type { VoiceChatHandle } from './voice/VoiceChat';
 import type { VoiceSettingsRequest } from './voice/decode';
-import { File, Image, Inbox, ArrowLeft, RefreshCw, X, Terminal } from 'lucide-react';
+import { File, Image, Inbox, ArrowLeft, RefreshCw, X, Terminal, Video } from 'lucide-react';
 import { Button } from './components/ui/button';
 import { IconButton } from './components/ui/icon-button';
 import { Alert, AlertDescription, AlertAction } from './components/ui/alert';
@@ -2481,6 +2481,11 @@ export function App({ owner }: { owner?: OwnerConnection }) {
   const awaitingInput = attentionItems.length > 0 && !inputMinimized;
   const actionBlocked =
     blocked || !connectionAvailable || (selection?.kind === 'bot' && !chatBound) || awaitingInput;
+  const videoBot =
+    owner && client?.supportsAtmeeSetup && selection?.kind === 'bot'
+      ? workspace?.bots.find((bot) => bot.profile === selection.bot.profile)
+      : undefined;
+  const videoBlocked = switching || actionBlocked || voiceActive;
   return (
     <ConnectionRecovery.Provider value={recovery}>
       <DocumentActions.Provider value={openDocument}>
@@ -2708,32 +2713,6 @@ export function App({ owner }: { owner?: OwnerConnection }) {
                             }}
                           />
                         )}
-                        {owner &&
-                          client.supportsAtmeeSetup &&
-                          selection?.kind === 'bot' &&
-                          headerProfile && (
-                            <AtmeeCall
-                              key={selection.sessionId}
-                              ref={videoPanel}
-                              client={client}
-                              sessionId={selection.sessionId}
-                              botId={headerProfile.id}
-                              name={selection.bot.name}
-                              blocked={
-                                switching || !connectionAvailable || voiceActive || awaitingInput
-                              }
-                              portal={voiceBarTarget}
-                              onActive={setVideoActive}
-                              onSetup={() =>
-                                navigate(() => {
-                                  setAgentSettingsTab('voice');
-                                  setEditProfile(selection.bot.profile);
-                                  setSettingsTab('agents');
-                                  setSettings(true);
-                                })
-                              }
-                            />
-                          )}
                         {selection?.kind === 'bot' && (
                           <IconButton
                             quiet
@@ -2744,6 +2723,27 @@ export function App({ owner }: { owner?: OwnerConnection }) {
                         )}
                       </div>
                     </header>
+                    {videoBot && selection?.kind === 'bot' && (
+                      <AtmeeCall
+                        key={selection.sessionId}
+                        ref={videoPanel}
+                        client={client}
+                        sessionId={selection.sessionId}
+                        botId={videoBot.id}
+                        name={selection.bot.name}
+                        blocked={videoBlocked}
+                        portal={voiceBarTarget}
+                        onActive={setVideoActive}
+                        onSetup={() =>
+                          navigate(() => {
+                            setAgentSettingsTab('voice');
+                            setEditProfile(selection.bot.profile);
+                            setSettingsTab('agents');
+                            setSettings(true);
+                          })
+                        }
+                      />
+                    )}
                     <div
                       ref={setVoiceBarTarget}
                       className="shrink-0"
@@ -3140,6 +3140,19 @@ export function App({ owner }: { owner?: OwnerConnection }) {
                             onSend={(command) => void send(command)}
                             onStop={() => void stop()}
                             onVoice={() => voicePanel.current?.open()}
+                            beforeAction={
+                              videoBot && (
+                                <IconButton
+                                  quiet
+                                  className="self-end"
+                                  size="icon"
+                                  label="Start video call"
+                                  icon={Video}
+                                  disabled={videoBlocked || videoActive}
+                                  onClick={() => videoPanel.current?.start()}
+                                />
+                              )
+                            }
                           >
                             {capabilities.attachments && selection?.kind === 'bot' && (
                               <>
