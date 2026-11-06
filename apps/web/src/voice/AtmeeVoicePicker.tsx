@@ -5,6 +5,7 @@ import { AtmeeDomain } from '@hermes-client/protocol';
 import type {
   AtmeeCharacter,
   AtmeeVoice,
+  AtmeeVoiceChoice,
   AtmeeVoiceDesign,
   SessionClient,
 } from '@hermes-client/protocol';
@@ -30,12 +31,12 @@ export function AtmeeVoicePicker({
   name: string;
   voices: AtmeeCharacter[];
   canDesign: boolean;
-  value: AtmeeVoice | null;
-  onChange: (voice: AtmeeVoice | null) => void;
+  value: AtmeeVoiceChoice | null;
+  onChange: (voice: AtmeeVoiceChoice | null) => void;
 }) {
   const id = useId();
-  const [mode, setMode] = useState<'existing' | 'designed'>(
-    voices.length ? 'existing' : 'designed',
+  const [mode, setMode] = useState<'existing' | 'designed' | 'recording'>(
+    voices.length ? 'existing' : canDesign ? 'designed' : 'recording',
   );
   const [description, setDescription] = useState('');
   const [design, setDesign] = useState<AtmeeVoiceDesign | null>(null);
@@ -43,6 +44,8 @@ export function AtmeeVoicePicker({
   const [error, setError] = useState('');
   const [loadingSample, setLoadingSample] = useState('');
   const [sample, setSample] = useState<{ key: string; url: string } | null>(null);
+  const recordingInput = useRef<HTMLInputElement>(null);
+  const recording = useRef<{ file: File; mime: string } | null>(null);
   const requestId = useRef<string | undefined>(undefined);
   const sampleRequest = useRef(0);
   const pending = design?.state === 'pending';
@@ -87,14 +90,19 @@ export function AtmeeVoicePicker({
           voice: { kind: 'existing', id: voice.id },
           key: voice.id,
         }))
-      : design?.state === 'ready'
+      : mode === 'designed' && design?.state === 'ready'
         ? Array.from({ length: design.count }, (_, index) => ({
             name: `Voice ${index + 1}`,
             voice: { kind: 'designed' as const, id: design.id, index },
             key: `${design.id}:${index}`,
           })).filter((option) => !design.used.includes(option.voice.index))
         : [];
-  const selected = value?.kind === 'designed' ? `${value.id}:${value.index}` : (value?.id ?? '');
+  const selected =
+    value?.kind === 'designed'
+      ? `${value.id}:${value.index}`
+      : value?.kind === 'existing'
+        ? value.id
+        : '';
 
   async function generate() {
     setError('');
@@ -130,18 +138,65 @@ export function AtmeeVoicePicker({
     }
   }
 
+  function chooseRecording(file?: File) {
+    sampleRequest.current++;
+    setError('');
+    setSample(null);
+    recording.current = null;
+    onChange(null);
+    if (!file) return;
+    const extension = file.name.toLowerCase().split('.').at(-1);
+    const mime =
+      extension === 'mp3'
+        ? 'audio/mpeg'
+        : extension === 'wav'
+          ? 'audio/wav'
+          : extension === 'm4a'
+            ? 'audio/mp4'
+            : '';
+    if (!mime || !file.size || file.size > 8 * 1024 * 1024) {
+      setError('Choose an MP3, M4A or WAV file up to 8 MB.');
+      return;
+    }
+    recording.current = { file, mime };
+    setSample({ key: 'recording', url: URL.createObjectURL(new Blob([file], { type: mime })) });
+  }
+
+  function acceptRecording(duration: number) {
+    const source = recording.current;
+    if (!source) return;
+    if (!Number.isFinite(duration) || duration < 10 || duration > 60) {
+      setError('Choose a recording that is 10–60 seconds long.');
+      return;
+    }
+    const epoch = sampleRequest.current;
+    const reader = new FileReader();
+    reader.onload = () => {
+      if (epoch === sampleRequest.current && typeof reader.result === 'string') {
+        const encoded = reader.result.split(',', 2)[1];
+        if (encoded) onChange({ kind: 'recording', data: `data:${source.mime};base64,${encoded}` });
+      }
+    };
+    reader.onerror = () => {
+      if (epoch === sampleRequest.current)
+        setError('The recording couldn’t be read. Choose it again.');
+    };
+    reader.readAsDataURL(source.file);
+  }
+
   return (
     <div className="grid gap-3">
       <span className="text-sm font-medium">Voice</span>
-      {canDesign && voices.length > 0 && (
+      {(canDesign || voices.length > 0) && (
         <ToggleGroup
           type="single"
           variant="segmented"
           aria-label="Voice source"
           value={mode}
           onValueChange={(next) => {
-            if (next !== 'existing' && next !== 'designed') return;
+            if (next !== 'existing' && next !== 'designed' && next !== 'recording') return;
             setMode(next);
+            recording.current = null;
             onChange(null);
             setError('');
             sampleRequest.current++;
@@ -149,8 +204,11 @@ export function AtmeeVoicePicker({
             setSample(null);
           }}
         >
-          <ToggleGroupItem value="existing">Reuse Atmee voice</ToggleGroupItem>
-          <ToggleGroupItem value="designed">Design a voice</ToggleGroupItem>
+          {voices.length > 0 && (
+            <ToggleGroupItem value="existing">Reuse Atmee voice</ToggleGroupItem>
+          )}
+          {canDesign && <ToggleGroupItem value="designed">Design a voice</ToggleGroupItem>}
+          <ToggleGroupItem value="recording">Upload recording</ToggleGroupItem>
         </ToggleGroup>
       )}
       {mode === 'designed' && canDesign && (
@@ -178,10 +236,45 @@ export function AtmeeVoicePicker({
           {(designing || pending) && <LoadingBar active label="Generating voice samples" />}
         </Field>
       )}
-      {mode === 'designed' && !canDesign && (
-        <p className="text-sm text-muted-foreground">
-          Add a voice to an avatar in Atmee, or enable voice generation on your key.
-        </p>
+      {mode === 'recording' && (
+        <div className="grid gap-2">
+          <Button
+            className="justify-self-start"
+            type="button"
+            variant="secondary"
+            onClick={() => recordingInput.current?.click()}
+          >
+            {recording.current ? 'Replace recording' : 'Choose recording'}
+          </Button>
+          <input
+            ref={recordingInput}
+            aria-label="Voice recording"
+            type="file"
+            hidden
+            accept=".mp3,.m4a,.wav"
+            onChange={(event) => {
+              chooseRecording(event.currentTarget.files?.[0]);
+              event.currentTarget.value = '';
+            }}
+          />
+          <span className="text-xs text-muted-foreground">
+            10–60 seconds of clear speech. MP3, M4A or WAV, up to 8 MB.
+          </span>
+          {sample?.key === 'recording' && (
+            <audio
+              aria-label="Recording preview"
+              className="w-full"
+              src={sample.url}
+              controls
+              preload="metadata"
+              onLoadedMetadata={(event) => acceptRecording(event.currentTarget.duration)}
+              onError={() => {
+                setError('This recording couldn’t play. Choose another file.');
+                onChange(null);
+              }}
+            />
+          )}
+        </div>
       )}
       {options.length > 0 && (
         <RadioGroup

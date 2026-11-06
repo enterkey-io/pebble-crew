@@ -550,6 +550,13 @@
       ],
       "effect": "write"
     },
+    "atmee.build.recording": {
+      "preferred": "upload",
+      "accepted": [
+        "upload"
+      ],
+      "effect": "write"
+    },
     "atmee.build.status": {
       "preferred": "rpc",
       "accepted": [

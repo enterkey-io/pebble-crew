@@ -5,7 +5,7 @@ import { ImagePlus } from 'lucide-react';
 import type {
   AtmeeBuild,
   AtmeeCharacter,
-  AtmeeVoice,
+  AtmeeVoiceChoice,
   SessionClient,
   WorkspaceBot,
 } from '@hermes-client/protocol';
@@ -46,7 +46,7 @@ export function AtmeeCharacterBuilder({
   const [persona, setPersona] = useState('');
   const [profile, setProfile] = useState<'loading' | 'soul' | 'role'>('loading');
   const [reviewed, setReviewed] = useState(false);
-  const [voice, setVoice] = useState<AtmeeVoice | null>(null);
+  const [voice, setVoice] = useState<AtmeeVoiceChoice | null>(null);
   const photoInput = useRef<HTMLInputElement>(null);
   const [photo, setPhoto] = useState('');
   const [reading, setReading] = useState(false);
@@ -115,8 +115,23 @@ export function AtmeeCharacterBuilder({
     }
   }
 
+  const requirement =
+    profile === 'loading'
+      ? error
+        ? 'Resolve the Atmee setup error above.'
+        : 'Checking Atmee setup…'
+      : !photo
+        ? 'Choose a portrait.'
+        : !voice
+          ? 'Choose a voice sample or upload a recording.'
+          : !reviewed
+            ? 'Open Review Hermes profile before creating.'
+            : !name.trim() || !persona.trim()
+              ? 'Add an avatar name and instructions.'
+              : '';
+
   async function create() {
-    if (submitting || !photo || !name.trim() || !persona.trim() || !voice || !reviewed) return;
+    if (submitting || reading || requirement || !voice) return;
     setSubmitting(true);
     setError('');
     request.current ??= crypto.randomUUID();
@@ -286,6 +301,11 @@ export function AtmeeCharacterBuilder({
               )
             )}
           </fieldset>
+          {requirement && (
+            <p id={id + '-requirement'} role="status" className="text-sm text-muted-foreground">
+              {requirement}
+            </p>
+          )}
           <div className="flex flex-wrap items-center justify-end gap-2">
             <Button
               type="button"
@@ -297,15 +317,8 @@ export function AtmeeCharacterBuilder({
             </Button>
             <Button
               type="submit"
-              disabled={
-                submitting ||
-                reading ||
-                !photo ||
-                !name.trim() ||
-                !persona.trim() ||
-                !voice ||
-                !reviewed
-              }
+              disabled={submitting || reading || Boolean(requirement)}
+              aria-describedby={requirement ? id + '-requirement' : undefined}
             >
               {submitting ? 'Starting…' : 'Create video avatar'}
             </Button>

@@ -394,7 +394,7 @@ def create_app(token, origins, hosts, gateway=None, trust=None, workspace=None, 
                     client['principal'] != 'operator' and request.scope.get('bot.ticket_expires') is None)):
                 raise InvalidOperation('Owner authentication is required')
             if operation in {'atmee.status', 'atmee.key', 'atmee.avatars', 'atmee.select', 'atmee.context', 'atmee.ready',
-                             'atmee.build.start', 'atmee.build.status', 'atmee.build.profile',
+                             'atmee.build.start', 'atmee.build.status', 'atmee.build.profile', 'atmee.build.recording',
                              'atmee.voice.design', 'atmee.voice.status', 'atmee.voice.sample',
                              'atmee.start', 'atmee.caption', 'atmee.delegate', 'atmee.end'}:
                 if not atmee or (client['principal'] != 'operator' and request.scope.get('bot.ticket_expires') is None):

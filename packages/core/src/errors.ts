@@ -42,7 +42,8 @@ export const atmeeErrors = {
   ATMEE_VOICE_UNAVAILABLE:
     'This Atmee voice sample is unavailable. Choose another voice or design a new one.',
   ATMEE_BUILD_SCOPE: 'Use an account-wide Atmee key with avatar and generation write access.',
-  ATMEE_BUILD_CREDITS: 'Check your Atmee credits and V2 access.',
+  ATMEE_BUILD_CREDITS:
+    'This Atmee account has no V2-eligible credits. Check your plan or invite in Atmee Studio.',
   ATMEE_BUILD_INPUT: 'Atmee could not use these inputs. Try another photo or voice style.',
 } as const;
 

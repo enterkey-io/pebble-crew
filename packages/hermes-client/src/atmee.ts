@@ -5,6 +5,7 @@ import type { RpcPort } from './session-client';
 export type AtmeeCharacter = { id: string; name: string; ready: boolean };
 export type AtmeeVoice =
   { kind: 'existing'; id: string } | { kind: 'designed'; id: string; index: number };
+export type AtmeeVoiceChoice = AtmeeVoice | { kind: 'recording'; data: string };
 const designStates = ['pending', 'ready', 'failed'] as const;
 export type AtmeeVoiceDesign = {
   id: string;
@@ -184,19 +185,22 @@ export class AtmeeDomain {
     input: {
       name: string;
       persona: string;
-      voice: AtmeeVoice;
+      voice: AtmeeVoiceChoice;
       photo: string;
     },
   ) {
     const receipt = record(
-      await this.bridge.invoke('atmee.build.start', {
-        bot_id: botId,
-        request_id: requestId,
-        name: input.name.trim(),
-        persona: input.persona.trim(),
-        voice: input.voice,
-        photo: input.photo,
-      }),
+      await this.bridge.invoke(
+        input.voice.kind === 'recording' ? 'atmee.build.recording' : 'atmee.build.start',
+        {
+          bot_id: botId,
+          request_id: requestId,
+          name: input.name.trim(),
+          persona: input.persona.trim(),
+          voice: input.voice,
+          photo: input.photo,
+        },
+      ),
     );
     const build = readBuild(receipt.build);
     if (!build) throw new ClientError('ATMEE_KEY_REJECTED');

@@ -320,3 +320,9 @@ and name the earlier ID when a rule is superseded.
 - Decision: Use a portrait picker, a voice choice with playable samples, and a separate review of the profile prepared from Hermes.
 - Why: Choosing a portrait should look like choosing media. The owner should hear and select a voice before creating an avatar, and see which profile text Atmee receives.
 - Evidence: The desktop and phone avatar journey selects the second sample and requires profile review. The native owner journey reads an isolated SOUL file, then creates and selects the avatar using the chosen sample.
+
+### Atmee avatar requirements and voice recovery
+
+- Decision: Explain the outstanding step next to Create video avatar. Show the provider’s safe reason when voice design fails and offer a recording as a separate voice source.
+- Why: A photo and a voice description do not provide the audio Atmee needs for a video avatar. A provider outage should leave a usable way to finish the form.
+- Evidence: Browser and plugin tests cover failed design, selecting a recording, reviewing the profile, and submitting through the upload route.

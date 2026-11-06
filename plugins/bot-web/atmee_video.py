@@ -18,6 +18,18 @@ UUID = re.compile(r'[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}', re.IGNORECASE)
 KEY_FORMAT = re.compile(r'sk_(?:atmee|live)_[A-Za-z0-9_-]{8,240}')
 ERROR_CODES = {'ATMEE_KEY_REJECTED', 'ATMEE_KEY_SCOPE', 'ATMEE_KEY_SAVE_FAILED', 'ATMEE_UNAVAILABLE', 'ATMEE_AVATAR_UNAVAILABLE', 'ATMEE_CALL_LIMIT',
                'ATMEE_BUILD_SCOPE', 'ATMEE_BUILD_CREDITS', 'ATMEE_BUILD_INPUT', 'ATMEE_VOICE_UNAVAILABLE'}
+VOICE_DESIGN_PATH = '/v1/generation/voices'
+VOICE_DESIGN_ERRORS = {
+    'ATMEE_VOICE_EDGE_BLOCKED': 'Atmee’s gateway blocked voice generation before returning an API response.',
+    'ATMEE_VOICE_MODERATED': 'Atmee flagged the voice description. Edit it before trying again.',
+    'ATMEE_VOICE_INVALID': 'Atmee rejected the voice description. Describe the tone, pace and accent in 20–1,000 characters.',
+    'ATMEE_VOICE_CREDITS': 'Atmee reports insufficient credits or an API key spending limit.',
+    'ATMEE_VOICE_SCOPE': 'Atmee requires avatar write and generation write access for voice design.',
+    'ATMEE_VOICE_BUSY': 'Atmee is busy generating voices. Try again in a moment.',
+    'ATMEE_VOICE_PROVIDER_FAILED': 'Atmee’s voice provider returned no usable samples. Try again later.',
+    'ATMEE_VOICE_GENERATION_OFF': 'Atmee has temporarily disabled voice generation for this API.',
+    'ATMEE_VOICE_UNCONFIRMED': 'Atmee did not confirm the voice request. Check Atmee Studio before submitting another.',
+}
 CALL_SECONDS = 300
 MAX_CAPTIONS = 240
 MAX_NOTE = 1000
@@ -38,6 +50,47 @@ class NoRedirect(HTTPRedirectHandler):
         return None
 
 
+class VoiceDesignFailure(InvalidOperation):
+    def __init__(self, code, retry_after=None):
+        super().__init__(VOICE_DESIGN_ERRORS[code], code)
+        self.retry_after = retry_after
+
+
+def voice_design_failure(error):
+    with error:
+        body = error.read(4097)
+        content_type = error.headers.get_content_type()
+        retry_header = error.headers.get('Retry-After', '')
+    if error.code == 403 and content_type == 'text/html':
+        return VoiceDesignFailure('ATMEE_VOICE_EDGE_BLOCKED')
+    try:
+        parsed = json.loads(body) if len(body) <= 4096 else None
+    except ValueError:
+        parsed = None
+    reason = parsed.get('error') if isinstance(parsed, dict) else None
+    if not isinstance(reason, str):
+        reason = ''
+    if error.code == 401:
+        return InvalidOperation('Atmee rejected this API key', 'ATMEE_KEY_REJECTED')
+    if error.code in {409, 429} and reason in {'request_in_progress', 'rate_limited'}:
+        retry_after = int(retry_header) if retry_header.isascii() and retry_header.isdigit() and len(retry_header) <= 3 else 3
+        return VoiceDesignFailure('ATMEE_VOICE_BUSY', max(1, min(20, retry_after)))
+    code = {
+        'moderation_flagged': 'ATMEE_VOICE_MODERATED',
+        'invalid_input': 'ATMEE_VOICE_INVALID',
+        'insufficient_credits': 'ATMEE_VOICE_CREDITS',
+        'api_key_spend_cap_reached': 'ATMEE_VOICE_CREDITS',
+        'insufficient_scope': 'ATMEE_VOICE_SCOPE',
+        'provider_failed': 'ATMEE_VOICE_PROVIDER_FAILED',
+        'generation_unavailable': 'ATMEE_VOICE_GENERATION_OFF',
+    }.get(reason)
+    if not code:
+        code = {400: 'ATMEE_VOICE_INVALID', 402: 'ATMEE_VOICE_CREDITS', 403: 'ATMEE_VOICE_SCOPE',
+                429: 'ATMEE_VOICE_BUSY', 502: 'ATMEE_VOICE_PROVIDER_FAILED', 503: 'ATMEE_VOICE_GENERATION_OFF'
+                }.get(error.code, 'ATMEE_VOICE_UNCONFIRMED')
+    return VoiceDesignFailure(code)
+
+
 def provider(path, key, payload=None, *, idempotency=None):
     headers = {'Accept': 'application/json', 'Content-Type': 'application/json', 'X-Api-Key': key}
     if idempotency:
@@ -45,7 +98,7 @@ def provider(path, key, payload=None, *, idempotency=None):
     request = Request(BASE + path, data=None if payload is None else json.dumps(payload).encode(),
                       headers=headers)
     try:
-        timeout = 110 if path == '/v1/generation/voices' else 35 if path == '/v1/sessions' else 12
+        timeout = 110 if path == VOICE_DESIGN_PATH else 35 if path == '/v1/sessions' else 12
         with build_opener(NoRedirect()).open(request, timeout=timeout) as response:
             body = response.read(524289)
         if len(body) <= 524288:
@@ -53,11 +106,13 @@ def provider(path, key, payload=None, *, idempotency=None):
             if isinstance(value, dict):
                 return value
     except HTTPError as error:
+        if path == VOICE_DESIGN_PATH:
+            raise voice_design_failure(error) from None
         if error.code in {402, 409, 429} and path == '/v1/sessions':
             raise InvalidOperation('Check Atmee credits and active calls', 'ATMEE_CALL_LIMIT') from None
-        if error.code == 402 and path in {'/v1/avatars', '/v1/generation/voices'}:
+        if error.code == 402 and path == '/v1/avatars':
             raise InvalidOperation('Check credits and Atmee V2 access', 'ATMEE_BUILD_CREDITS') from None
-        if error.code in {400, 422} and path in {'/v1/uploads', '/v1/avatars', '/v1/generation/voices'}:
+        if error.code in {400, 422} and path in {'/v1/uploads', '/v1/avatars'}:
             raise InvalidOperation('Atmee could not use these inputs', 'ATMEE_BUILD_INPUT') from None
         if error.code == 401:
             raise InvalidOperation('Atmee rejected this API key', 'ATMEE_KEY_REJECTED') from None
@@ -67,6 +122,8 @@ def provider(path, key, payload=None, *, idempotency=None):
             raise InvalidOperation('Atmee character unavailable', 'ATMEE_AVATAR_UNAVAILABLE') from None
     except (URLError, OSError, ValueError):
         pass
+    if path == VOICE_DESIGN_PATH:
+        raise VoiceDesignFailure('ATMEE_VOICE_UNCONFIRMED') from None
     raise InvalidOperation('Atmee could not be reached', 'ATMEE_UNAVAILABLE') from None
 
 
@@ -227,7 +284,7 @@ class AtmeeVideo:
         return '\n\n'.join(sections)
 
     async def invoke(self, operation, params):
-        if operation in {'atmee.build.start', 'atmee.build.status', 'atmee.build.profile',
+        if operation in {'atmee.build.start', 'atmee.build.status', 'atmee.build.profile', 'atmee.build.recording',
                          'atmee.voice.design', 'atmee.voice.status', 'atmee.voice.sample'}:
             return await self.builds.invoke(operation, params)
         if operation in {'atmee.start', 'atmee.caption', 'atmee.delegate', 'atmee.end'}:

@@ -24,7 +24,7 @@ STORAGE_HOSTS = ('atmanity.us', 'atmee.ai', 'r2.cloudflarestorage.com', 'amazona
 PENDING = {'preparing', 'creating', 'building'}
 ERRORS = {
     'ATMEE_BUILD_SCOPE': 'Use an account-wide Atmee key with avatar and generation write access.',
-    'ATMEE_BUILD_CREDITS': 'Check your Atmee credits and V2 access.',
+    'ATMEE_BUILD_CREDITS': 'This Atmee account has no V2-eligible credits. Check your plan or invite in Atmee Studio.',
     'ATMEE_BUILD_INPUT': 'Atmee could not use these inputs. Try another photo or voice style.',
     'ATMEE_KEY_REJECTED': 'Atmee rejected this API key.',
     'STALE_REVISION': 'The Atmee key or Pebble changed. Reopen this editor.',
@@ -67,6 +67,17 @@ def prepare_profile(profile, bot):
         soul[:2300], summary, instructions,
     ) if text)
     return {'name': name, 'persona': persona[:3000].rstrip(), 'has_soul': bool(soul)}
+
+
+def video_account(key):
+    account = atmee.provider('/v1/account', key)
+    if (account.get('limits') or {}).get('apiAccess') is False:
+        raise InvalidOperation('Atmee API access is required', 'ATMEE_BUILD_SCOPE')
+    if account.get('v2Access') in {'unavailable', 'invite_required'}:
+        balance = atmee.provider('/v1/account/balance', key)
+        if not balance.get('unlimited') and not (balance.get('v2SpendableMicrocredits') or 0) > 0:
+            raise InvalidOperation('This Atmee account has no V2-eligible credits', 'ATMEE_BUILD_CREDITS')
+    return account
 
 
 def voice_url(value):
@@ -112,8 +123,35 @@ def read_voice(value):
     raise InvalidOperation('Choose an Atmee voice', 'ATMEE_VOICE_UNAVAILABLE')
 
 
+def read_recording(value):
+    if not isinstance(value, dict) or set(value) != {'kind', 'data'} or value['kind'] != 'recording':
+        raise InvalidOperation('Choose an audio recording', 'ATMEE_BUILD_INPUT')
+    data = value['data']
+    if not isinstance(data, str) or len(data) > 11_185_000:
+        raise InvalidOperation('Choose an audio recording up to 8 MB', 'ATMEE_BUILD_INPUT')
+    match = re.fullmatch(r'data:(audio/(?:wav|mpeg|mp4));base64,([A-Za-z0-9+/=]+)', data)
+    if match:
+        mime, encoded = match.groups()
+        try:
+            audio = base64.b64decode(encoded, validate=True)
+        except ValueError:
+            audio = b''
+        signatures = {
+            'audio/wav': audio[:4] == b'RIFF' and audio[8:12] == b'WAVE',
+            'audio/mpeg': audio.startswith(b'ID3') or len(audio) >= 2 and audio[0] == 255 and audio[1] & 224 == 224,
+            'audio/mp4': audio[4:8] == b'ftyp',
+        }
+        if 12 <= len(audio) <= 8 * 1024 * 1024 and signatures[mime]:
+            return {'kind': 'recording', 'mime': mime, 'audio': audio}
+    raise InvalidOperation('Choose an MP3, M4A or WAV recording', 'ATMEE_BUILD_INPUT')
+
+
 def portrait_upload(key, photo):
-    ticket = atmee.provider('/v1/uploads', key, {'kind': 'portrait', 'contentType': 'image/png'})
+    return media_upload(key, 'portrait', 'image/png', base64.b64decode(photo.split(',', 1)[1]))
+
+
+def media_upload(key, kind, mime, blob):
+    ticket = atmee.provider('/v1/uploads', key, {'kind': kind, 'contentType': mime})
     upload, target, supplied = ticket.get('uploadId'), ticket.get('uploadUrl'), ticket.get('uploadHeaders')
     if not isinstance(upload, str) or not atmee.UUID.fullmatch(upload) or not isinstance(supplied, dict):
         raise InvalidOperation('Invalid Atmee upload ticket', 'ATMEE_UNAVAILABLE')
@@ -129,14 +167,13 @@ def portrait_upload(key, photo):
                     or not isinstance(value, str) or not re.fullmatch(r'[ -~]{1,1000}', value)):
                 raise ValueError()
             headers[name.lower()] = value
-        if headers.setdefault('content-type', 'image/png') != 'image/png':
+        if headers.setdefault('content-type', mime) != mime:
             raise ValueError()
-        blob = base64.b64decode(photo.split(',', 1)[1])
         request = Request(target, data=blob, headers=headers, method='PUT')
         with build_opener(atmee.NoRedirect()).open(request, timeout=20):
             pass
     except (URLError, OSError, ValueError, TypeError):
-        raise InvalidOperation('Could not upload portrait', 'ATMEE_UNAVAILABLE') from None
+        raise InvalidOperation('Could not upload Atmee media', 'ATMEE_UNAVAILABLE') from None
     for _ in range(5):
         status = atmee.provider('/v1/uploads/' + upload, key).get('status')
         if status == 'uploaded':
@@ -144,7 +181,7 @@ def portrait_upload(key, photo):
         if status != 'pending':
             break
         time.sleep(0.6)
-    raise InvalidOperation('Could not confirm portrait upload', 'ATMEE_UNAVAILABLE')
+    raise InvalidOperation('Could not confirm Atmee media upload', 'ATMEE_UNAVAILABLE')
 
 
 def generated_voice(key, request_id, name, style):
@@ -205,6 +242,10 @@ class AtmeeBuilds:
         if operation == 'atmee.build.profile':
             fields(params, ['bot_id'])
             profile, bot = self.pebble(identifier(params['bot_id']))
+            key = atmee.read_key()
+            if not key:
+                raise InvalidOperation('Add an Atmee API key', 'ATMEE_KEY_REJECTED')
+            await asyncio.to_thread(video_account, key)
             return await asyncio.to_thread(prepare_profile, profile, bot)
         if operation.startswith('atmee.voice.'):
             return await self.voice_operation(operation, params)
@@ -234,7 +275,10 @@ class AtmeeBuilds:
             return {'build': self.receipt(latest)}
         if len(self.tasks) >= 2:
             raise InvalidOperation('Atmee builds are busy', 'CAPACITY')
-        voice = read_voice(params['voice']) if 'voice' in params else params['voice_style']
+        if operation == 'atmee.build.recording':
+            voice = read_recording(params.get('voice'))
+        else:
+            voice = read_voice(params['voice']) if 'voice' in params else params['voice_style']
         if isinstance(voice, str) and voice not in STYLES:
             raise InvalidOperation('Invalid voice style')
         if not isinstance(voice, (str, dict)):
@@ -260,6 +304,8 @@ class AtmeeBuilds:
         if not row:
             return {'design': None}
         request_id, state, options, error = row
+        if error == 'Atmee could not design a voice. Check Atmee usage before trying again.':
+            error = 'The previous request ended without a saved voice sample. Check Atmee Studio or upload a recording.'
         options = json.loads(options) if options else []
         return {'design': {'id': request_id, 'state': state, 'count': len(options),
                            'used': [index for index, option in enumerate(options) if option.get('build')],
@@ -343,25 +389,46 @@ class AtmeeBuilds:
             if not atmee.can_build(await asyncio.to_thread(atmee.key_permissions, key)):
                 raise InvalidOperation('Key cannot design a voice', 'ATMEE_BUILD_SCOPE')
             self.check_scope(bot, key)
-            result = await asyncio.to_thread(atmee.provider, '/v1/generation/voices', key,
-                                             {'voiceDescription': description, 'avatarName': name, 'language': 'en'},
-                                             idempotency=request_id)
+            await asyncio.to_thread(video_account, key)
+            payload = {
+                'voiceDescription': description, 'avatarName': name, 'language': 'en',
+                'sampleText': (
+                    'Hello, it is good to see you. Let’s take a moment to decide what matters most today, '
+                    'and then we can get started. Tell me what you are working on, what is going well, and '
+                    'where you could use a little help. We can take it one step at a time.'
+                ),
+            }
+            for attempt in range(3):
+                self.check_scope(bot, key)
+                try:
+                    result = await asyncio.to_thread(atmee.provider, atmee.VOICE_DESIGN_PATH, key,
+                                                     payload, idempotency=request_id)
+                    break
+                except atmee.VoiceDesignFailure as failure:
+                    if attempt == 2 or failure.retry_after is None:
+                        raise
+                    await asyncio.sleep(failure.retry_after)
             self.check_scope(bot, key)
             rows = result.get('voices')
             for item in rows[:6] if isinstance(rows, list) else []:
                 upload = item.get('upload') if isinstance(item, dict) else None
                 if not isinstance(upload, str) or not upload.startswith('upload:') or not atmee.UUID.fullmatch(upload[7:]):
                     continue
-                try:
-                    options.append({'upload': upload, 'url': voice_url(item.get('url'))})
-                except ValueError:
+                if item.get('unavailable') is True:
                     continue
+                try:
+                    url = voice_url(item.get('url'))
+                except ValueError:
+                    url = None
+                options.append({'upload': upload, 'url': url})
             if not options:
-                raise InvalidOperation('Atmee returned no playable samples', 'ATMEE_VOICE_UNAVAILABLE')
+                raise atmee.VoiceDesignFailure('ATMEE_VOICE_PROVIDER_FAILED')
+        except atmee.VoiceDesignFailure as failure:
+            error = atmee.VOICE_DESIGN_ERRORS[failure.code]
         except InvalidOperation as failure:
-            error = ERRORS.get(failure.code, 'Atmee could not design a voice. Check Atmee usage before trying again.')
+            error = ERRORS.get(failure.code, 'Atmee did not confirm voice design. Check Atmee Studio before trying again.')
         except (OSError, ValueError, TypeError):
-            error = 'Atmee could not design a voice. Check Atmee usage before trying again.'
+            error = atmee.VOICE_DESIGN_ERRORS['ATMEE_VOICE_UNCONFIRMED']
         with self.db:
             self.db.execute('UPDATE atmee_voice_design SET state=?,options=?,error=? WHERE id=?',
                             ('failed' if error else 'ready', json.dumps(options) if not error else None,
@@ -389,14 +456,8 @@ class AtmeeBuilds:
             permissions = await asyncio.to_thread(atmee.key_permissions, key)
             if not atmee.can_create(permissions) or (isinstance(voice_choice, str) and not atmee.can_build(permissions)):
                 raise InvalidOperation('Key cannot create video avatars', 'ATMEE_BUILD_SCOPE')
-            account = await asyncio.to_thread(atmee.provider, '/v1/account', key)
-            access = account.get('v2Access')
-            plan = (account.get('plan') or {}).get('code')
-            if access == 'unavailable' or (access == 'invite_required' and plan in {'free', 'starter'}):
-                raise InvalidOperation('Atmee V2 access is required', 'ATMEE_BUILD_CREDITS')
+            account = await asyncio.to_thread(video_account, key)
             limits = account.get('limits') or {}
-            if limits.get('apiAccess') is False:
-                raise InvalidOperation('Atmee API access is required', 'ATMEE_BUILD_SCOPE')
             sizes = limits.get('v2Resolutions') or []
             portrait_size = {'width': 384, 'height': 672}
             self.check_scope(bot, key)
@@ -404,6 +465,8 @@ class AtmeeBuilds:
             self.check_scope(bot, key)
             if isinstance(voice_choice, str):
                 voice = await asyncio.to_thread(generated_voice, key, request_id, name, voice_choice)
+            elif voice_choice['kind'] == 'recording':
+                voice = await asyncio.to_thread(media_upload, key, 'voice', voice_choice['mime'], voice_choice['audio'])
             elif voice_choice['kind'] == 'existing':
                 voice = await asyncio.to_thread(existing_voice, key, voice_choice['id'])
             else:

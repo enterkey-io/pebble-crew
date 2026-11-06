@@ -2,14 +2,16 @@ import asyncio
 import base64
 import io
 import json
+from email.message import Message
+from urllib.error import HTTPError
 from pathlib import Path
 from tempfile import TemporaryDirectory
 import unittest
 from unittest.mock import AsyncMock, Mock, patch
 
 from test_security import Native  # Loads the production plugin package under bot_web.
-from bot_web.atmee_video import AtmeeVideo, catalog
-from bot_web.atmee_build import portrait_upload
+from bot_web.atmee_video import AtmeeVideo, VoiceDesignFailure, catalog, provider
+from bot_web.atmee_build import portrait_upload, video_account
 from bot_web.live_voice import LiveVoice
 from bot_web.operations import InvalidOperation
 from bot_web.workspace import WorkspaceStore
@@ -281,6 +283,57 @@ class AtmeeVideoTests(unittest.IsolatedAsyncioTestCase):
                 'name': 'Aurora', 'persona': 'Approved', 'photo': self.portrait(),
                 'voice': {'kind': 'existing', 'id': CHARACTER}})
             await asyncio.gather(*self.service.builds.tasks)
+            self.assertEqual(self.store.db.execute('SELECT state FROM atmee_build').fetchone()[0], 'building')
+
+    def test_voice_errors_preserve_safe_provider_reason_and_retry_delay(self):
+        for status, mime, body, code in (
+            (403, 'text/html', b'<html>Cloudflare private diagnostics</html>', 'ATMEE_VOICE_EDGE_BLOCKED'),
+            (400, 'application/json', b'{"error":"moderation_flagged","message":"private diagnostics"}', 'ATMEE_VOICE_MODERATED'),
+            (409, 'application/json', b'{"error":"request_in_progress"}', 'ATMEE_VOICE_BUSY'),
+            (502, 'application/json', b'{"error":"provider_failed"}', 'ATMEE_VOICE_PROVIDER_FAILED'),
+        ):
+            headers = Message()
+            headers['Content-Type'] = mime
+            headers['Retry-After'] = '5'
+            opener = Mock()
+            opener.open.side_effect = HTTPError('https://api.atmanity.us', status, '', headers, io.BytesIO(body))
+            with patch('bot_web.atmee_video.build_opener', return_value=opener):
+                with self.assertRaises(VoiceDesignFailure) as failure:
+                    provider('/v1/generation/voices', KEY, {}, idempotency=REQUEST)
+            self.assertEqual(failure.exception.code, code)
+            self.assertNotIn('private diagnostics', str(failure.exception))
+            self.assertEqual(failure.exception.retry_after, 5 if status == 409 else None)
+
+    def test_v2_balance_takes_precedence_over_invitation_flag(self):
+        account = {'plan': {'code': 'growth'}, 'v2Access': 'invite_required'}
+        with patch('bot_web.atmee_video.provider', side_effect=[account, {'v2SpendableMicrocredits': 100}]):
+            self.assertIs(video_account(KEY), account)
+        with patch('bot_web.atmee_video.provider', side_effect=[account, {'v2SpendableMicrocredits': 0}]):
+            with self.assertRaises(InvalidOperation) as failure:
+                video_account(KEY)
+        self.assertEqual(failure.exception.code, 'ATMEE_BUILD_CREDITS')
+
+    async def test_recording_creates_avatar_without_a_voice_generation_request(self):
+        wave = b'RIFF' + b'0000' + b'WAVEaudio'
+        def vendor(path, key, payload=None, **kwargs):
+            if path == '/v1/api_keys/current':
+                return {'active': True, 'scopes': ['sessions', 'avatars:read', 'avatars:write']}
+            if path == '/v1/account':
+                return {'v2Access': 'granted'}
+            if path == '/v1/avatars':
+                self.assertEqual(payload['assets']['voice']['url'], 'upload:' + UPLOAD)
+                return {'avatarId': CHARACTER, 'kind': 'conversational', 'status': 'building'}
+            self.fail(path)
+        params = {'bot_id': 'alpha-id', 'request_id': REQUEST, 'name': 'Aurora',
+                  'persona': 'Approved', 'photo': self.portrait(),
+                  'voice': {'kind': 'recording', 'data': 'data:audio/wav;base64,' + base64.b64encode(wave).decode()}}
+        with (patch('bot_web.atmee_video.read_key', return_value=KEY),
+              patch('bot_web.atmee_video.provider', side_effect=vendor),
+              patch('bot_web.atmee_build.portrait_upload', return_value='upload:' + CALL),
+              patch('bot_web.atmee_build.media_upload', return_value='upload:' + UPLOAD) as upload):
+            await self.service.invoke('atmee.build.recording', params)
+            await asyncio.gather(*self.service.builds.tasks)
+            upload.assert_called_once_with(KEY, 'voice', 'audio/wav', wave)
             self.assertEqual(self.store.db.execute('SELECT state FROM atmee_build').fetchone()[0], 'building')
 
     async def test_create_timeout_never_replays_the_vendor_create(self):

@@ -5,19 +5,23 @@ import { atmeePortrait, installAtmeeRoom } from '../atmee-room';
 const character = 'bbcb7c08-35d3-44c2-86cd-28825ed7165e';
 const call = '9c53b2f5-5c43-4b51-b553-504fa870e0e2';
 const voiceDesign = '21a1896b-011e-4dcf-a8db-9382f0875d70';
-const sampleWav = Buffer.alloc(8044, 0x80);
-sampleWav.write('RIFF', 0);
-sampleWav.writeUInt32LE(sampleWav.length - 8, 4);
-sampleWav.write('WAVEfmt ', 8);
-sampleWav.writeUInt32LE(16, 16);
-sampleWav.writeUInt16LE(1, 20);
-sampleWav.writeUInt16LE(1, 22);
-sampleWav.writeUInt32LE(8000, 24);
-sampleWav.writeUInt32LE(8000, 28);
-sampleWav.writeUInt16LE(1, 32);
-sampleWav.writeUInt16LE(8, 34);
-sampleWav.write('data', 36);
-sampleWav.writeUInt32LE(sampleWav.length - 44, 40);
+function wav(seconds: number) {
+  const sampleWav = Buffer.alloc(seconds * 8000 + 44, 0x80);
+  sampleWav.write('RIFF', 0);
+  sampleWav.writeUInt32LE(sampleWav.length - 8, 4);
+  sampleWav.write('WAVEfmt ', 8);
+  sampleWav.writeUInt32LE(16, 16);
+  sampleWav.writeUInt16LE(1, 20);
+  sampleWav.writeUInt16LE(1, 22);
+  sampleWav.writeUInt32LE(8000, 24);
+  sampleWav.writeUInt32LE(8000, 28);
+  sampleWav.writeUInt16LE(1, 32);
+  sampleWav.writeUInt16LE(8, 34);
+  sampleWav.write('data', 36);
+  sampleWav.writeUInt32LE(sampleWav.length - 44, 40);
+  return sampleWav;
+}
+const sampleWav = wav(1);
 
 test.use({ serviceWorkers: 'block' });
 
@@ -146,6 +150,80 @@ test('create a private character from a portrait, voice style and reviewed Pebbl
     'Arlo · Studio',
   );
   expect(submissions).toBe(1);
+});
+
+test('a failed voice design explains the blocked create and accepts a recording instead', async ({
+  page,
+  context,
+}, info) => {
+  await installFixture(context, { atmee: true });
+  let failed = false;
+  let submitted = false;
+  await page.route(/\/v1\/(rpc|avatar|files\/upload)$/, async (route) => {
+    const { operation, params } = route.request().postDataJSON();
+    const ok = (result: unknown) => route.fulfill({ json: { result } });
+    if (operation === 'atmee.ready') return ok({ ready: false });
+    if (operation === 'atmee.avatars')
+      return ok({
+        configured: true,
+        can_create: true,
+        can_design: true,
+        selected: null,
+        avatars: [],
+      });
+    if (operation === 'atmee.build.profile')
+      return ok({ name: 'Arlo', persona: 'You are Arlo.', has_soul: true });
+    if (operation === 'atmee.build.status') return ok({ build: null });
+    const error = 'Atmee’s voice provider returned no usable samples. Try again later.';
+    if (operation === 'atmee.voice.design') {
+      failed = true;
+      return ok({ design: { id: voiceDesign, state: 'pending', count: 0, error: null } });
+    }
+    if (operation === 'atmee.voice.status')
+      return ok({ design: failed ? { id: voiceDesign, state: 'failed', count: 0, error } : null });
+    if (operation === 'atmee.build.recording') {
+      expect(new URL(route.request().url()).pathname).toBe('/v1/files/upload');
+      expect(params.voice).toEqual({
+        kind: 'recording',
+        data: 'data:audio/wav;base64,' + wav(12).toString('base64'),
+      });
+      submitted = true;
+      return ok({
+        build: {
+          id: params.request_id,
+          name: 'Arlo',
+          state: 'preparing',
+          avatar: null,
+          error: null,
+        },
+      });
+    }
+    return route.fallback();
+  });
+  await page.goto('/');
+  await page.getByRole('button', { name: 'Start video call' }).click();
+  await page.getByRole('button', { name: 'New video avatar', exact: true }).click();
+  await page.getByLabel('Portrait', { exact: true }).setInputFiles(await atmeePortrait(page));
+  const create = page.getByRole('button', { name: 'Create video avatar', exact: true });
+  await expect(create).toHaveAccessibleDescription('Choose a voice sample or upload a recording.');
+  await page.getByLabel('Describe the voice').fill('Warm, articulate voice at a measured pace.');
+  await page.getByRole('button', { name: 'Generate voice samples' }).click();
+  await expect(page.getByRole('alert')).toContainText('returned no usable samples');
+  await page.getByRole('radio', { name: 'Upload recording' }).click();
+  await page
+    .getByLabel('Voice recording')
+    .setInputFiles({ name: 'voice.wav', mimeType: 'audio/wav', buffer: wav(12) });
+  await expect(page.getByLabel('Recording preview')).toBeVisible();
+  await expect(create).toHaveAccessibleDescription('Open Review Hermes profile before creating.');
+  await page.getByRole('button', { name: /Review Hermes profile/ }).click();
+  await expect(create).toBeEnabled();
+  await create.scrollIntoViewIfNeeded();
+  await page.screenshot({
+    animations: 'disabled',
+    path: info.outputPath('atmee-recording-ready.png'),
+  });
+  await create.click();
+  await expect.poll(() => submitted).toBe(true);
 });
 
 test('Atmee setup, private camera preview and both sides of the call reach Hermes', async ({
