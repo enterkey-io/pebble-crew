@@ -6,7 +6,10 @@ import sys
 import tempfile
 import unittest
 from unittest.mock import patch
-from test_security import Native
+import httpx
+from test_security import Native, TOKEN, ORIGIN, HOST
+from bot_web.server import create_app
+from bot_web.workspace import WorkspaceService, WorkspaceStore
 from bot_web.operations import BotOperations, InvalidOperation
 from bot_web.attachments import AttachmentStore
 from bot_web.native import NativeError
@@ -58,6 +61,33 @@ class AttachmentTests(unittest.IsolatedAsyncioTestCase):
         self.native.incarnation='b'*64
         with self.assertRaises(InvalidOperation):
             await self.store.invoke(self.ops,'owner','files.read',{'session_id':'live-alpha','id':row['id']})
+    async def test_download_route_returns_safe_image_mime_for_owner_uploads(self):
+        ledger = WorkspaceStore(Path(self.tmp.name) / 'workspace.sqlite')
+        self.addCleanup(ledger.db.close)
+        workspace = WorkspaceService(self.ops, ledger)
+        with patch('bot_web.attachments.AttachmentStore', return_value=self.store):
+            app = create_app(TOKEN, {ORIGIN}, {HOST}, self.native, workspace=workspace)
+        headers = {'Origin': ORIGIN, 'Authorization': 'Bearer ' + TOKEN}
+        png = (Path(__file__).resolve().parents[2] / 'apps/web/public/icons/pebble-192.png').read_bytes()
+        async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url=f'https://{HOST}') as client:
+            lease = await client.post('/v1/connect', headers=headers)
+            headers['X-Bot-Connection'] = lease.json()['connection']
+            opened = await client.post('/v1/rpc', headers=headers, json={
+                'operation': 'bot.open', 'params': {'profile': 'alpha'}})
+            self.assertEqual(opened.status_code, 200, opened.text)
+            for name, content, mime in [('photo.png', png, 'image/png'),
+                                        ('notes.txt', b'<html>still download only</html>', 'application/octet-stream')]:
+                uploaded = await client.post('/v1/files/upload', headers=headers, json={
+                    'operation': 'files.upload', 'params': {'session_id': 'live-alpha',
+                        'name': name, 'data': base64.b64encode(content).decode()}})
+                self.assertEqual(uploaded.status_code, 200, uploaded.text)
+                response = await client.post('/v1/files/read', headers=headers, json={
+                    'operation': 'files.read', 'params': {'session_id': 'live-alpha',
+                        'id': uploaded.json()['result']['id']}})
+                self.assertEqual(response.status_code, 200, response.text)
+                self.assertEqual(response.headers['content-type'], mime)
+                self.assertEqual(response.content, content)
+
     async def test_bad_names_bytes_images_limits_and_symlinks_never_reach_native(self):
         for changes in [{'name':'../x'},{'name':'x\x00.txt'},{'data':'not base64'},{'name':'fake.png'},{'data':''}]:
             with self.assertRaises(InvalidOperation): await self.upload(**changes)

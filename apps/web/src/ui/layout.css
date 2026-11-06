@@ -7,11 +7,15 @@
 }
 .pc-rail {
   width: 100%;
+  height: 100%;
   flex: 1;
   background: var(--rail);
   display: flex;
   flex-direction: column;
   min-height: 0;
+}
+.pc-rail-top {
+  flex-shrink: 0;
 }
 .pc-rail-header {
   height: 64px;
@@ -41,21 +45,30 @@
   flex-wrap: wrap;
   justify-content: center;
   gap: 8px;
-  margin-bottom: 16px;
+  max-inline-size: 352px;
+  margin: 0 auto 16px;
 }
 .pc-pin {
   position: relative;
   flex: 0 0 calc((100% - 16px) / 3);
-  min-width: 0;
-  max-width: 104px;
+  min-inline-size: 100px;
+  max-inline-size: 112px;
   border-radius: 12px;
   transition: background-color var(--motion-hover);
 }
 .pc-pin.is-selected {
   background: var(--surface-selected);
 }
-.pc-pin:hover {
-  background: var(--surface-hover);
+@media (hover: hover) {
+  .pc-pin:not(.is-selected):hover {
+    background: var(--surface-hover);
+  }
+}
+.pc-pin[data-dragging] {
+  background: transparent;
+}
+.pc-pin[data-dragging] .pc-pin-open {
+  opacity: 0;
 }
 .pc-list {
   margin: 16px 0 24px;
@@ -154,6 +167,7 @@
   display: none;
 }
 .pc-rail-footer {
+  flex-shrink: 0;
   min-height: 64px;
   display: flex;
   align-items: center;
@@ -406,6 +420,17 @@
   height: 20px;
   font-size: var(--text-meta);
   outline-color: var(--details);
+}
+.pc-pin .avatar-photo,
+.pc-chat-identity .avatar-photo {
+  height: auto;
+  aspect-ratio: 1;
+}
+.pc-pin .avatar-photo > :is(.avatar-star, .avatar-unread) {
+  /* Center the badge on the circle at 45 degrees. */
+  right: 14.64466%;
+  bottom: 14.64466%;
+  translate: 50% 50%;
 }
 .pc-pin .avatar-star {
   width: 15px;

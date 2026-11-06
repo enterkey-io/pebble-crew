@@ -38,6 +38,7 @@ class BotOperations:
         self.gateway = gateway
         self.sessions = {}
         self.session_incarnations = {}
+        self.session_conversations = {}
         self.open_lock = asyncio.Lock()
 
     async def profiles(self):
@@ -59,16 +60,20 @@ class BotOperations:
         title = meta.get('title') or row.get('display_name') or row['name']
         if not meta.get('workspaceNameConfigured') and title == row['name']:
             title = title.replace('-', ' ').replace('_', ' ').title()
+        chat = row.get('canonical_session') or {}
+        count = max(0, int(chat.get('live_message_count', chat.get('message_count')) or 0))
+        activity = chat.get('last_active')
         return {"profile": row["name"],
                 "name": title,
                 "description": (meta or {}).get("description") or row.get("description") or "",
                 "managed": managed,
-                "canonical": bool((row.get("canonical_session") or {}).get("id")),
+                "canonical": bool(chat.get("id")),
                 "hidden": meta.get('hidden') is True, "pinned": meta.get('pinned') is True,
                 "pin_configured": 'pinned' in meta,
-                "preview": str((row.get('canonical_session') or {}).get('preview') or '')[:500],
-                "cursor": max(0, int((row.get('canonical_session') or {}).get('live_message_count', (row.get('canonical_session') or {}).get('message_count')) or 0)),
-                "conversation_id": str((row.get('canonical_session') or {}).get('resolved_id') or (row.get('canonical_session') or {}).get('id') or ''), **row.get('_presentation_clock', {})}
+                "preview": str(chat.get('preview') or '')[:500],
+                "cursor": count,
+                "last_activity": activity if count and type(activity) in {int, float} and 0 < activity < float('inf') else 0,
+                "conversation_id": str(chat.get('resolved_id') or chat.get('id') or ''), **row.get('_presentation_clock', {})}
 
     async def greet(self, profile, text, title='Introduction in Pebble Crew', queued=False):
         opened = await self.invoke('bot.open', {'profile': profile})
@@ -167,6 +172,7 @@ class BotOperations:
                     raise InvalidOperation('Profile changed while opening this conversation')
                 self.sessions[sid] = bot["name"]
                 self.session_incarnations[sid] = stamp
+                self.session_conversations[sid] = canonical["id"]
                 if bind is not None:
                     bind(sid)
                 await self.gateway.call('bot_web.reactions.enable', {'session_id': sid})

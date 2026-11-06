@@ -51,6 +51,7 @@ test('document titles follow the visible page and restore the conversation after
   await expect(page).toHaveTitle('Mica — Pebble Crew');
   await rail(page);
   await page.getByRole('radio', { name: 'Tasks', exact: true }).click();
+  if (page.viewportSize()!.width < 768) await page.keyboard.press('Escape');
   await expect(page).toHaveTitle('General tasks — Pebble Crew');
   await page.getByRole('button', { name: 'New task', exact: true }).click();
   await expect(page).toHaveTitle('New task — Pebble Crew');

@@ -30,6 +30,7 @@ export class BotBridgeClient {
   #existingAgents = false;
   #workspace = false;
   #workspaceSettings = false;
+  #avatarThumbnails = false;
   #reporting = false;
   #projects = false;
   #attachments = false;
@@ -99,6 +100,10 @@ export class BotBridgeClient {
     return this.#generatedMedia;
   }
 
+  get supportsAvatarThumbnails(): boolean {
+    return this.#avatarThumbnails;
+  }
+
   get supportsWorkspaceSettings(): boolean {
     return this.#workspaceSettings;
   }
@@ -144,6 +149,8 @@ export class BotBridgeClient {
     this.#workspace = !!data.capabilities && record(data.capabilities).workspace === true;
     this.#workspaceSettings =
       !!data.capabilities && record(data.capabilities).workspace_settings === true;
+    this.#avatarThumbnails =
+      !!data.capabilities && record(data.capabilities).avatar_thumbnails === true;
     this.#attachments = !!data.capabilities && record(data.capabilities).attachments === true;
     this.#generatedMedia =
       !!data.capabilities && record(data.capabilities).generated_media === true;
@@ -261,11 +268,12 @@ export class BotBridgeClient {
       throw new ClientError('INVALID_RESPONSE');
     return result as { id: string; name: string; size: number; kind: string; state: string };
   }
-  async downloadFile(sessionId: string, id: string): Promise<Blob> {
+  async downloadFile(sessionId: string, id: string, signal?: AbortSignal): Promise<Blob> {
     const generation = this.#lifetime.capture();
     return this.#withSlot(() => {
       this.#lifetime.assertCurrent(generation);
-      return this.#downloadBinary('files.read', { session_id: sessionId, id }).then(
+      signal?.throwIfAborted();
+      return this.#downloadBinary('files.read', { session_id: sessionId, id }, signal).then(
         (file) => file.blob,
       );
     });

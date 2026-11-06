@@ -1,6 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
-import { useEdgeNavigation } from './edge-navigation';
+import { isInstalledWorkspace, useEdgeNavigation } from './edge-navigation';
 import { usePanelRef } from 'react-resizable-panels';
 import { ResizablePanelGroup, ResizablePanel, ResizableHandle } from '../components/ui/resizable';
 
@@ -43,6 +43,9 @@ export function WorkspacePanels({
   const width = useRef(initialWidth);
   const panel = usePanelRef();
   const page = useRef<HTMLDivElement>(null);
+  const sidebarScroll = useRef(0);
+  const installed = phone && isInstalledWorkspace();
+  const nativeSidebarScroll = installed && navigationOpen;
   useEdgeNavigation(
     page,
     phone && edgeNavigation,
@@ -78,6 +81,19 @@ export function WorkspacePanels({
   useLayoutEffect(() => {
     if (!phone) panel.current?.resize(savedWidth());
   }, [phone, panel]);
+  useLayoutEffect(() => {
+    if (!nativeSidebarScroll || !document.scrollingElement) return;
+    const root = document.scrollingElement;
+    root.scrollTop = sidebarScroll.current;
+    const remember = () => {
+      sidebarScroll.current = root.scrollTop;
+    };
+    document.addEventListener('scroll', remember, { passive: true });
+    return () => {
+      document.removeEventListener('scroll', remember);
+      root.scrollTop = 0;
+    };
+  }, [nativeSidebarScroll]);
   return (
     <ResizablePanelGroup
       elementRef={page}
@@ -85,6 +101,9 @@ export function WorkspacePanels({
       disabled={phone}
       className={phone ? 'pc-phone-pages' : undefined}
       data-navigation-open={phone ? navigationOpen : undefined}
+      data-native-sidebar-scroll={nativeSidebarScroll || undefined}
+      data-edge-navigation={(installed && edgeNavigation) || undefined}
+      style={nativeSidebarScroll ? { height: 'auto', overflow: 'clip' } : undefined}
       onLayoutChanged={(_layout, meta) => {
         if (!phone && meta.isUserInteraction) rememberWidth(width.current);
       }}
@@ -93,7 +112,7 @@ export function WorkspacePanels({
         id="navigation-panel"
         panelRef={panel}
         disabled={phone}
-        style={phone ? { display: 'contents' } : undefined}
+        style={phone ? { display: 'contents' } : { overflow: 'clip' }}
         defaultSize={phone ? 0 : initialWidth}
         minSize={phone ? 0 : 280}
         maxSize={phone ? 0 : 960}

@@ -21,7 +21,8 @@ import { memo, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 import type { SessionClient } from '@hermes-client/protocol';
 import { motion, useReducedMotion } from 'motion/react';
-import { MessageBody, CopyMessage } from '../MessageBody';
+import type { MentionIndex } from './mentions';
+import { MessageBody, PlainMessageBody, CopyMessage } from '../MessageBody';
 import { messageDate } from '../conversation';
 import { CardPositions, projectTimeline } from './presentation';
 import type { TranscriptCard } from './presentation';
@@ -30,6 +31,7 @@ import { MessageReactions, ReactionPicker } from './MessageReactions';
 import type { ReactionAction } from './MessageReactions';
 import { ActivityLine } from './ActivityLine';
 import { ownerBubbleStyle } from './bubble-color';
+import { GeneratedImage } from './generated-media';
 export function Transcript({
   conversationKey,
   messages,
@@ -49,6 +51,7 @@ export function Transcript({
   footer,
   cards = [],
   suppressedTools,
+  mentions,
 }: {
   conversationKey: string;
   messages: ChatMessage[];
@@ -68,6 +71,7 @@ export function Transcript({
   footer?: ReactNode;
   cards?: readonly TranscriptCard[];
   suppressedTools?: ReadonlySet<string>;
+  mentions?: MentionIndex | undefined;
 }) {
   const content = useRef<HTMLDivElement>(null);
   const reduced = useReducedMotion();
@@ -226,6 +230,7 @@ export function Transcript({
             key={key}
             rowKey={key}
             m={m}
+            mentions={mentions}
             dayLabel={dayLabel}
             timeFormatter={formats.time}
             live={live}
@@ -256,6 +261,7 @@ export function Transcript({
 
 const TranscriptMessage = memo(function TranscriptMessage({
   m,
+  mentions,
   rowKey,
   dayLabel,
   timeFormatter,
@@ -274,6 +280,7 @@ const TranscriptMessage = memo(function TranscriptMessage({
   openDocument,
 }: {
   m: ChatMessage;
+  mentions: MentionIndex | undefined;
   rowKey: string;
   dayLabel: string | undefined;
   timeFormatter: Intl.DateTimeFormat;
@@ -341,43 +348,53 @@ const TranscriptMessage = memo(function TranscriptMessage({
       >
         {m.text.trim() &&
           (m.role === 'user' ? (
-            <p className="whitespace-pre-wrap">{m.text}</p>
+            <PlainMessageBody text={m.text} mentions={mentions} />
           ) : (
             <MessageBody
               text={m.text}
+              mentions={mentions}
               client={client}
               sessionId={sessionId}
               rowId={m.id}
               conversationKey={conversationKey}
             />
           ))}
-        {m.files?.map((file) => (
-          <Attachment key={file.id} className="message-file my-1" size="sm" state="done">
-            <AttachmentMedia>
-              <FileText />
-            </AttachmentMedia>
-            <AttachmentContent>
-              <AttachmentTitle>{file.name}</AttachmentTitle>
-              <AttachmentDescription>{fileSize(file.size)}</AttachmentDescription>
-            </AttachmentContent>
-            {documentFormat(file.name) && openDocument && client && sessionId && (
-              <IconButton
-                label={`View ${file.name}`}
-                icon={Eye}
-                onClick={() =>
-                  openDocument({
-                    name: file.name,
-                    load: () => client.downloadFile(sessionId, file.id),
-                  })
-                }
-              />
-            )}
-            <AttachmentTrigger
-              aria-label={`Download ${file.name}`}
-              onClick={() => onDownloadFile(file)}
+        {m.files?.map((file) =>
+          client && sessionId && /\.(?:png|jpe?g|webp)$/i.test(file.name) ? (
+            <GeneratedImage
+              key={file.id}
+              source={file.id}
+              alt={file.name}
+              upload={{ client, sessionId }}
             />
-          </Attachment>
-        ))}
+          ) : (
+            <Attachment key={file.id} className="message-file my-1" size="sm" state="done">
+              <AttachmentMedia>
+                <FileText />
+              </AttachmentMedia>
+              <AttachmentContent>
+                <AttachmentTitle>{file.name}</AttachmentTitle>
+                <AttachmentDescription>{fileSize(file.size)}</AttachmentDescription>
+              </AttachmentContent>
+              {documentFormat(file.name) && openDocument && client && sessionId && (
+                <IconButton
+                  label={`View ${file.name}`}
+                  icon={Eye}
+                  onClick={() =>
+                    openDocument({
+                      name: file.name,
+                      load: () => client.downloadFile(sessionId, file.id),
+                    })
+                  }
+                />
+              )}
+              <AttachmentTrigger
+                aria-label={`Download ${file.name}`}
+                onClick={() => onDownloadFile(file)}
+              />
+            </Attachment>
+          ),
+        )}
       </Message>
     </motion.div>
   );

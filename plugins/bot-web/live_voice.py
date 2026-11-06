@@ -4,6 +4,7 @@ No speech engine, media relay, provider-key response or auxiliary reasoning mode
 """
 import asyncio
 from copy import deepcopy
+import hashlib
 import json
 import re
 import threading
@@ -12,6 +13,7 @@ import urllib.request
 import urllib.error
 import socket
 
+from .native import NativeError
 from .native import NativeError
 from .operations import InvalidOperation, fields, identifier
 from .voice_credentials import resolve_source, confirm_source, save_shared_key
@@ -149,6 +151,29 @@ class LiveVoice:
         self.inflight = set()
         self.calls = {}
 
+    def history(self, sid, bounds):
+        conversation = self.ops.session_conversations.get(sid)
+        if not self.workspace or not conversation:
+            return []
+        lower, upper = bounds
+        rows = self.workspace.db.execute(
+            'SELECT id, ended_at FROM voice_calls WHERE incarnation=? AND conversation=? '
+            'AND ended_at>=? AND ended_at<? ORDER BY ended_at DESC,id LIMIT 1000',
+            (self.ops.session_incarnations[sid], conversation, lower or 0, upper or float('inf')))
+        return [{'id': row[0], 'ended_at': row[1]} for row in rows]
+
+    def record_call(self, sid, call_id):
+        conversation = self.ops.session_conversations.get(sid)
+        if not self.workspace or not conversation:
+            return None, True
+        stamp = self.ops.session_incarnations[sid]
+        ident = hashlib.sha256(json.dumps([stamp, conversation, call_id]).encode()).hexdigest()
+        with self.workspace.db:
+            added = self.workspace.db.execute('INSERT OR IGNORE INTO voice_calls VALUES(?,?,?,?)',
+                (ident, stamp, conversation, time.time())).rowcount
+            ended_at, = self.workspace.db.execute('SELECT ended_at FROM voice_calls WHERE id=?', (ident,)).fetchone()
+        return {'id': ident, 'ended_at': ended_at}, bool(added)
+
     async def invoke(self, operation, params):
         if not supported():
             if operation == 'voice.status':
@@ -161,19 +186,28 @@ class LiveVoice:
         if operation == 'voice.end':
             fields(params, ['session_id', 'call_id', 'transcript'])
             call_id, transcript = params['call_id'], params['transcript']
-            if not isinstance(call_id, str) or not isinstance(transcript, str) or not transcript.strip() or len(transcript) > 6000:
+            if not isinstance(call_id, str) or not isinstance(transcript, str) or not 0 < len(call_id) <= 256 or len(transcript) > 6000:
                 raise InvalidOperation('Invalid call follow-up')
             call = self.calls.get(call_id)
             if not call or call['session_id'] != sid or call['preview'] or call['expires'] < time.monotonic():
                 raise InvalidOperation('Call follow-up unavailable')
-            if call['followed_up']:
-                return {'submitted': False}
-            # Consume before dispatch. A timed-out accepted turn is never retried.
+            saved, added = self.record_call(sid, call_id)
+            result = {'submitted': False, **({'call': saved} if saved else {})}
+            if not added or call['followed_up']:
+                return result
+            if saved:
+                self.ops.gateway._publish({'type': 'voice.call.ended', 'session_id': sid, 'payload': saved})
+            if not transcript.strip():
+                return result
+            # An uncertain follow-up cannot undo the durable call record or trigger a second prompt.
             call['followed_up'] = True
-            receipt = await self.ops.gateway.call('prompt.submit', {'session_id': sid,
-                'text': 'The live voice call has ended. Send one brief, natural follow-up in this text chat, in your existing personality. Refer only to the actual discussion in the voice context. If a decision was left open, offer to pick it up when the owner is ready. Do not claim actions happened or treat discussion as approval. Do not use tools, make changes, or start tasks. Do not invent unfinished work.',
-                'surface': 'voice-live', 'voice_context': transcript, 'display_kind': 'hidden', 'queued': True})
-            return {'submitted': True, **receipt}
+            try:
+                receipt = await self.ops.gateway.call('prompt.submit', {'session_id': sid,
+                    'text': 'The live voice call has ended. Send one brief, natural follow-up in this text chat, in your existing personality. Refer only to the actual discussion in the voice context. If a decision was left open, offer to pick it up when the owner is ready. Do not claim actions happened or treat discussion as approval. Do not use tools, make changes, or start tasks. Do not invent unfinished work.',
+                    'surface': 'voice-live', 'voice_context': transcript, 'display_kind': 'hidden', 'queued': True})
+            except NativeError:
+                return {**result, 'follow_up_unconfirmed': True}
+            return {**result, **receipt, 'submitted': True}
         if operation == 'voice.submit':
             fields(params, ['session_id', 'text', 'context'])
             text, context = params['text'], params['context']

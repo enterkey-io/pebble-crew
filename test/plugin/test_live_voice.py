@@ -1,10 +1,13 @@
 import asyncio
 import json
+from pathlib import Path
+from tempfile import TemporaryDirectory
+import time
 from types import SimpleNamespace
 import unittest
 from unittest.mock import AsyncMock, Mock, patch
 from test_security import Native
-from bot_web.native import NativeGateway
+from bot_web.native import NativeError, NativeGateway
 from bot_web.operations import BotOperations, InvalidOperation
 from bot_web.live_voice import LiveVoice
 
@@ -85,6 +88,46 @@ class VoiceBoundaryTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(request['display_kind'], 'hidden')
         self.assertEqual(request['voice_context'], params['transcript'])
         self.assertIn('Do not use tools', request['text'])
+
+    async def test_call_records_survive_reopen_and_followup_failure_without_leaking_transcripts(self):
+        from bot_web.workspace import WorkspaceStore
+        with TemporaryDirectory() as root, patch('bot_web.live_voice.supported', return_value=True):
+            path = Path(root) / 'workspace.sqlite'
+            self.voice.workspace = WorkspaceStore(path)
+            self.native._publish = Mock()
+            self.ops.session_conversations['live-alpha'] = 'root-alpha'
+            self.voice.calls = {key: {'session_id': 'live-alpha', 'preview': False,
+                'expires': time.monotonic() + 60, 'followed_up': False} for key in ('silent', 'spoken')}
+            silent = await self.voice.invoke('voice.end', {'session_id': 'live-alpha', 'call_id': 'silent', 'transcript': ''})
+            self.assertFalse(silent['submitted'])
+            self.assertEqual([m for m, _ in self.native.calls], ['bot_web.lifecycle'])
+            original_call = self.native.call
+            async def fail_followup(method, params):
+                if method == 'prompt.submit':
+                    raise NativeError('unconfirmed')
+                return await original_call(method, params)
+            self.native.call = AsyncMock(side_effect=fail_followup)
+            params = {'session_id': 'live-alpha', 'call_id': 'spoken', 'transcript': 'Private voice context'}
+            spoken = await self.voice.invoke('voice.end', params)
+            self.assertTrue(spoken['follow_up_unconfirmed'])
+            duplicate = await self.voice.invoke('voice.end', params)
+            self.assertEqual(duplicate, {'submitted': False, 'call': spoken['call']})
+            self.assertEqual([c.args[0] for c in self.native.call.await_args_list].count('prompt.submit'), 1)
+            self.assertEqual(self.native._publish.call_count, 2)
+            self.voice.workspace.db.close()
+            self.assertNotIn(b'Private voice context', path.read_bytes())
+            store = WorkspaceStore(path)
+            try:
+                reopened = LiveVoice(self.ops, store)
+                self.ops.session_conversations['new-live-id'] = 'root-alpha'
+                self.ops.session_incarnations['new-live-id'] = 'a'*64
+                history = reopened.history('new-live-id', (None, None))
+                self.assertCountEqual(history, [silent['call'], spoken['call']])
+                self.assertEqual(reopened.history('new-live-id', (None, silent['call']['ended_at'])), [])
+                self.ops.session_incarnations['new-live-id'] = 'b'*64
+                self.assertEqual(reopened.history('new-live-id', (None, None)), [])
+            finally:
+                store.db.close()
 
     async def test_expired_secret_cannot_be_answered(self):
         native = NativeGateway()

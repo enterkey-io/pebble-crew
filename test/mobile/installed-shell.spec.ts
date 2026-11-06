@@ -1,6 +1,7 @@
 import { test, expect } from '@playwright/test';
 import type { Locator, Page } from '@playwright/test';
 import { installFixture } from '../chat-workspace/fixtures';
+import { expectPinRoleContrast } from '../chat-workspace/pinned-layout';
 
 test.use({
   serviceWorkers: 'block',
@@ -79,6 +80,63 @@ test('the document covers the full PWA canvas and all composer controls are expo
   });
 });
 
+test('the first tap after a cold open focuses the editable message field', async ({ page }) => {
+  const composer = page.getByLabel('Message', { exact: true });
+  await expect(composer).toBeEditable();
+  await expect(composer).not.toBeFocused();
+  await composer.tap();
+  await expect(composer).toBeFocused();
+  await composer.fill('First tap draft');
+  await page.reload();
+  await loaded(page);
+  await expect(composer).toHaveValue('First tap draft');
+  await expect(composer).not.toBeFocused();
+  await composer.tap();
+  await expect(composer).toBeFocused();
+});
+
+test('the installed sidebar follows the document scroll-to-top while the chat keeps its draft', async ({
+  page,
+}, info) => {
+  const composer = page.getByLabel('Message', { exact: true });
+  await composer.fill('Keep this while browsing the roster');
+  await composer.blur();
+  const open = page.getByRole('button', { name: 'Toggle navigation', exact: true });
+  const navigation = page.getByRole('region', { name: 'navigation', exact: true });
+  const account = navigation.getByRole('button', { name: 'Your account', exact: true });
+  const search = navigation.getByRole('button', { name: 'Search Pebble Crew', exact: true });
+  const offset = () => page.evaluate(() => window.scrollY);
+  await open.tap();
+  await fullyExposed(search);
+  await fullyExposed(account);
+  const headerY = (await search.boundingBox())!.y;
+  const footerY = (await account.boundingBox())!.y;
+
+  await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight));
+  await expect.poll(offset).toBeGreaterThan(100);
+  const lastOffset = await offset();
+  await fullyExposed(search);
+  await fullyExposed(account);
+  expect((await search.boundingBox())!.y).toBeCloseTo(headerY, 0);
+  expect((await account.boundingBox())!.y).toBeCloseTo(footerY, 0);
+
+  await page.keyboard.press('Escape');
+  await expect(composer).toHaveValue('Keep this while browsing the roster');
+  await expect.poll(offset).toBe(0);
+  await open.tap();
+  await expect.poll(offset).toBe(lastOffset);
+
+  // Playwright can reset the document offset but cannot tap UIKit's status bar.
+  await page.evaluate(() => window.scrollTo(0, 0));
+  await expect.poll(offset).toBe(0);
+  await fullyExposed(navigation.getByRole('button', { name: /^Arlo .*Bot Chat$/ }));
+  await fullyExposed(account);
+  await page.screenshot({
+    animations: 'disabled',
+    path: info.outputPath('installed-sidebar-after-scroll-to-top.png'),
+  });
+});
+
 test('the phone header is centered and navigation glyphs are readable at every supported phone width', async ({
   page,
 }, info) => {
@@ -129,13 +187,12 @@ for (const theme of ['dark', 'light'])
         ),
       ).toBe(true);
     }
-    const styles = await pin.evaluate((e) => ({
-      size: getComputedStyle(e).fontSize,
-      background: getComputedStyle(e).backgroundColor,
-    }));
-    await expect(row).toHaveCSS('font-size', styles.size);
-    await expect(row).toHaveCSS('background-color', styles.background);
-    expect(styles.background).not.toBe('rgba(0, 0, 0, 0)');
+    await expect(row).toHaveCSS(
+      'font-size',
+      await pin.evaluate((e) => getComputedStyle(e).fontSize),
+    );
+    await expect(row).not.toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
+    await expectPinRoleContrast(navigation.locator('.pc-pins'));
     for (const button of await header.getByRole('button').all()) {
       const svg = button.locator('svg').first();
       if (await svg.count()) expect((await svg.boundingBox())!.width).toBeGreaterThanOrEqual(20);
@@ -189,27 +246,46 @@ for (const title of ['Settings', 'Org chart']) {
   });
 }
 
-test('details and the pebble editor keep their close controls in the phone safe area', async ({
-  page,
-}, info) => {
-  await page.getByRole('button', { name: /Show details/ }).tap();
-  const details = page.getByRole('button', { name: 'Close details', exact: true });
-  await fullyExposed(details);
-  const detailBounds = await details.boundingBox();
-  if (!detailBounds) throw new Error('The details close control is missing');
-  expect(detailBounds.y).toBeGreaterThanOrEqual(62);
-  await page.screenshot({ animations: 'disabled', path: info.outputPath('installed-details.png') });
+for (const dismissal of ['close button', 'browser back'] as const) {
+  test(`the pebble editor returns to details after ${dismissal}`, async ({ page }, info) => {
+    const composer = page.getByLabel('Message', { exact: true });
+    await composer.fill('Keep this draft');
+    await composer.blur();
+    const identity = page.getByRole('button', { name: /Show details/ });
+    await identity.tap();
+    const details = page.getByRole('button', { name: 'Close details', exact: true });
+    await fullyExposed(details);
+    const detailsHistory = await page.evaluate(() => history.state?.pebbleDrawer);
+    expect(typeof detailsHistory).toBe('string');
+    const detailBounds = await details.boundingBox();
+    if (!detailBounds) throw new Error('The details close control is missing');
+    expect(detailBounds.y).toBeGreaterThanOrEqual(62);
+    await page.screenshot({
+      animations: 'disabled',
+      path: info.outputPath('installed-details.png'),
+    });
 
-  await page.getByRole('button', { name: 'Edit Arlo', exact: true }).tap();
-  const editor = page.getByRole('dialog', { name: 'Edit pebble', exact: true });
-  const editorClose = editor.getByRole('button', { name: 'Close Edit Arlo', exact: true });
-  await fullyExposed(editorClose);
-  const editorBounds = await editor.boundingBox();
-  if (!editorBounds) throw new Error('The pebble editor is missing');
-  expect(editorBounds.y).toBeGreaterThanOrEqual(62);
-  expect(editorBounds.y + editorBounds.height).toBeLessThanOrEqual(956 - 34);
-  await editorClose.tap();
-  await expect(editor).toHaveCount(0);
-  await details.tap();
-  await expect(page.getByLabel('Message', { exact: true })).toBeEnabled();
-});
+    await page.getByRole('button', { name: 'Edit Arlo', exact: true }).tap();
+    const editor = page.getByRole('dialog', { name: 'Edit pebble', exact: true });
+    const editorClose = editor.getByRole('button', { name: 'Close Edit Arlo', exact: true });
+    await fullyExposed(editorClose);
+    const editorBounds = await editor.boundingBox();
+    if (!editorBounds) throw new Error('The pebble editor is missing');
+    expect(editorBounds.y).toBeGreaterThanOrEqual(62);
+    expect(editorBounds.y + editorBounds.height).toBeLessThanOrEqual(956 - 34);
+    if (dismissal === 'close button') await editorClose.tap();
+    else await page.goBack();
+    await expect(editor).toHaveCount(0);
+    await fullyExposed(details);
+    await expect.poll(() => page.evaluate(() => history.state?.pebbleDrawer)).toBe(detailsHistory);
+    await page.screenshot({
+      animations: 'disabled',
+      path: info.outputPath('installed-details-after-edit.png'),
+    });
+
+    await page.goBack();
+    await expect(details).not.toBeVisible();
+    await expect(composer).toBeEnabled();
+    await expect(composer).toHaveValue('Keep this draft');
+  });
+}

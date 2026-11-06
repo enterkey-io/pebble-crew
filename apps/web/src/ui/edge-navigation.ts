@@ -1,6 +1,13 @@
 import { useEffect, useRef } from 'react';
 import type { RefObject } from 'react';
 
+export function isInstalledWorkspace() {
+  return (
+    matchMedia('(display-mode: standalone)').matches ||
+    Reflect.get(navigator, 'standalone') === true
+  );
+}
+
 /** A deliberate single-finger edge swipe moves between the two retained phone pages. */
 export function useEdgeNavigation(
   container: RefObject<HTMLDivElement | null>,
@@ -13,10 +20,7 @@ export function useEdgeNavigation(
   useEffect(() => {
     const node = container.current;
     if (!node || !enabled) return;
-    const installed =
-      matchMedia('(display-mode: standalone)').matches ||
-      Reflect.get(navigator, 'standalone') === true;
-    if (!installed) return;
+    if (!isInstalledWorkspace()) return;
     const sign = direction === 'to-list' ? 1 : -1;
     let gesture: { x: number; y: number; accepted: boolean } | undefined;
     const cancel = () => {
@@ -27,12 +31,9 @@ export function useEdgeNavigation(
       const touch = event.touches[0];
       if (!touch || event.touches.length !== 1) return;
       const bounds = node.getBoundingClientRect();
-      if (
-        direction === 'to-list'
-          ? touch.clientX > bounds.left + 24
-          : touch.clientX < bounds.right - 24
-      )
-        return;
+      const edge =
+        direction === 'to-list' ? touch.clientX - bounds.left : bounds.right - touch.clientX;
+      if (edge < 0 || edge > 36) return;
       if (
         document.querySelector(
           '[role="dialog"][data-state="open"], [role="menu"][data-state="open"], [role="listbox"]',
@@ -44,6 +45,16 @@ export function useEdgeNavigation(
         event.target.closest('input,textarea,select,[contenteditable="true"],[role="slider"]')
       )
         return;
+      // iOS can claim a physical-edge swipe before the first touchmove.
+      // Reserve only the empty outer gutter so row taps and vertical scrolling still work.
+      if (
+        edge <= 10 &&
+        event.cancelable &&
+        event.target instanceof Element &&
+        !event.target.closest('button,a,[role="button"],[draggable="true"]')
+      ) {
+        event.preventDefault();
+      }
       gesture = { x: touch.clientX, y: touch.clientY, accepted: false };
     };
     const move = (event: TouchEvent) => {
@@ -66,15 +77,15 @@ export function useEdgeNavigation(
       const distance = (touch.clientX - current.x) * sign;
       if (distance >= Math.max(60, node.clientWidth * 0.15)) navigate.current?.();
     };
-    node.addEventListener('touchstart', start, { passive: true });
-    node.addEventListener('touchmove', move, { passive: false });
-    node.addEventListener('touchend', end, { passive: true });
-    node.addEventListener('touchcancel', cancel, { passive: true });
+    node.addEventListener('touchstart', start, { capture: true, passive: false });
+    node.addEventListener('touchmove', move, { capture: true, passive: false });
+    node.addEventListener('touchend', end, { capture: true, passive: true });
+    node.addEventListener('touchcancel', cancel, { capture: true, passive: true });
     return () => {
-      node.removeEventListener('touchstart', start);
-      node.removeEventListener('touchmove', move);
-      node.removeEventListener('touchend', end);
-      node.removeEventListener('touchcancel', cancel);
+      node.removeEventListener('touchstart', start, true);
+      node.removeEventListener('touchmove', move, true);
+      node.removeEventListener('touchend', end, true);
+      node.removeEventListener('touchcancel', cancel, true);
     };
   }, [container, enabled, direction]);
 }

@@ -14,7 +14,8 @@ building blocks came from. Earlier design plans are historical.
 | Sections and group chats | Sections organize the sidebar. A group chat has explicitly selected members. Moving a row or adding a shortcut leaves conversation membership and reporting intact. Start a drag from the row itself. Cancel the hold menu if that gesture becomes a drag.                                                                                                                                               | [Organization rail](../apps/web/src/ui/OrganizationRail.tsx), [sections and groups contract](SECTIONS_AND_GROUPS_IMPLEMENTATION.md)                                                                                                                         |
 | Editors and dialogs      | Use a shared page header or dialog close control. Keep the header and actions reachable when a form scrolls. Put editor tabs and scroll behavior in the shared editor layout. Use the shared discard confirmation for unsaved changes.                                                                                                                                                                   | [Page header](../apps/web/src/ui/primitives.tsx), [editor layout](../apps/web/src/ui/EditorSurface.tsx), [discard confirmation](../apps/web/src/ui/DiscardChanges.tsx)                                                                                      |
 | Chat and approvals       | Use shared Message, Prompt Input, and Confirmation compositions. Keep Send, Stop, and Voice in one action position. When composing, show Send. On a phone, Return inserts a line break. Preserve the draft and reading position through navigation and recovery. Keep pending input reachable and leave a compact receipt when resolved. Explain unavailable conversations without launching setup.      | [Transcript](../apps/web/src/chat/Transcript.tsx), [composer](../apps/web/src/chat/ConversationInput.tsx), [AI Elements](../apps/web/src/components/ai-elements)                                                                                            |
-| Pins and photo avatars   | Fit three pinned tiles across the minimum desktop sidebar and a narrow phone. Keep the avatar above its name and shared role label. Show photo avatars as circles at every size and serve a thumbnail from the owner host. Reserve the avatar space on the first load and reuse loaded thumbnails when a section reopens.                                                                                | [Pinned tile](../apps/web/src/ui/PebbleTile.tsx), [layout](../apps/web/src/ui/layout.css), [avatar delivery](../plugins/bot-web/workspace.py)                                                                                                               |
+| Pins and photo avatars   | Give pin tiles a 100 px minimum and wrap when space runs out. Keep role labels outlined and readable in every tile state. Show circular photo thumbnails from the owner host, reserve their space on startup, and reuse loaded photos when a section reopens.                                                                                                                                            | [Pinned tile](../apps/web/src/ui/PebbleTile.tsx), [layout](../apps/web/src/ui/layout.css), [avatar delivery](../plugins/bot-web/workspace.py)                                                                                                               |
+| Message mentions         | Resolve known public handles, native profile aliases and unambiguous local roster aliases to stable identities in direct and group messages. Use neutral inline controls with a visible underline, keyboard focus and a read-only profile popover. Preserve the original token and copy text.                                                                                                            | [Mention rendering](../apps/web/src/chat/MessageMention.tsx), [identity lookup](../apps/web/src/chat/mentions.ts)                                                                                                                                           |
 | Startup                  | Center one animated shape above the progress line, with no role badge. Use the Main Pebble's saved shape and color when available, including for photo avatars. Use the default Iris pebble before setup and while connecting. Sign out belongs in the account menu.                                                                                                                                     | [Startup screen](../apps/web/src/StartupScreen.tsx), [shared avatar](../apps/web/src/AgentAvatar.tsx)                                                                                                                                                       |
 | Motion and feedback      | Use the shared timings and respect reduced motion. Keep automatic transcript movement under one controller and yield when the reader scrolls away. Pair meaningful color states with text or another visible cue. Keep button names and focus available to keyboard and touch users.                                                                                                                     | [Theme tokens](../apps/web/src/ui/foundation.css), [transcript controller](../apps/web/src/chat/viewport-motion.ts), [icon button](../apps/web/src/components/ui/icon-button.tsx)                                                                           |
 
@@ -73,9 +74,37 @@ and name the earlier ID when a rule is superseded.
 ### UI-sidebar-layout Keep the sidebar controls and role labels consistent
 
 - Date: 2026-11-05
-- Decision: Keep brand and search above the list and account below it. Share role labels between pins and rows. Support both phone edge swipes.
+- Decision: Keep brand and search above the list and account below it. Share role labels between pins and rows. Support both installed phone edge swipes. Keep normal scrolling and row taps available outside the outer gesture gutter.
 - Why: A different phone layout made controls harder to find and removed the direct way back to a conversation.
-- Evidence: The [installed-shell tests](../test/mobile/installed-shell.spec.ts) check the actual controls and labels.
+- Evidence: The [installed-shell tests](../test/mobile/installed-shell.spec.ts) check the actual controls and labels. The [gesture tests](../test/mobile/composition-and-gesture.spec.ts) also send browser touch input in both directions.
+
+### UI-docked-sidebar-footer Keep account settings available while the list scrolls
+
+- Date: 2026-11-05
+- Decision: Keep the header and account footer outside the scrollable list. Fill the available sidebar height on desktop and respect the app safe areas on phones.
+- Why: The desktop resizable panel could scroll the entire sidebar and leave the account controls below the visible window.
+- Evidence: The [sidebar browser checks](../test/chat-workspace/interface-preferences.spec.ts) scroll a long roster in a short viewport and open Settings from the stationary footer.
+
+### UI-installed-sidebar-scroll-to-top Use native status-bar scrolling in the installed iOS sidebar
+
+- Date: 2026-11-05
+- Decision: Let the document own vertical scrolling while the standalone iOS sidebar is open. Dock the header and account footer inside the safe areas. Preserve the sidebar offset when returning to chat and keep the transcript's own scroll position.
+- Why: [WebKit disables native scroll-to-top on nested scroll views](https://github.com/WebKit/WebKit/blob/main/Source/WebKit/UIProcess/RemoteLayerTree/ios/ScrollingTreeScrollingNodeDelegateIOS.mm#L359-L365).
+- Evidence: The [installed-shell browser test](../test/mobile/installed-shell.spec.ts) verifies the document offset, docked controls, and retained draft. Confirm the status-bar tap on an installed iPhone before release.
+
+### UI-sidebar-navigation Keep area switching and reordering in the sidebar
+
+- Date: 2026-11-05
+- Decision: Chat and Tasks switch the contents of the open phone sidebar. Open the conversation or board after selection. Sort active conversations by recency within their own section. Pins use the saved order and preview displacement during manual drag. Persist only on drop.
+- Why: Area switching should leave the next selection in reach. Recency should never change a deliberate pin order.
+- Evidence: [Sidebar order](../test/chat-workspace/sidebar-order.spec.ts) and [area switching](../test/chat-workspace/work.spec.ts) browser checks.
+
+### UI-sent-image-preview Open sent images inside the conversation
+
+- Date: 2026-11-05
+- Decision: Use the same inline image and zoom viewer for supported sent image attachments and agent-shared images. Keep the conversation and its draft when closing the viewer.
+- Why: A generic download can take an installed web app away from the conversation.
+- Evidence: The [attachment browser check](../test/chat-workspace/agent-media.spec.ts) pastes and sends an image, opens it in chat, and verifies the same composer remains after close.
 
 ### UI-connection-label Give the connection dot a visible label
 
@@ -133,6 +162,27 @@ and name the earlier ID when a rule is superseded.
 - Why: Pinning a third pebble should leave room for the conversation. A shared circular crop keeps photos consistent across sizes, and the thumbnail avoids sending the native original to the browser.
 - Evidence: The [browser checks](../test/chat-workspace/interface-preferences.spec.ts) verify narrow pin layout, circular crops, and a single photo request without a placeholder. The [native acceptance](../scripts/fixture/management_smoke.py) verifies thumbnail size and confirms the saved original is preserved.
 
+### UI-pin-reflow Keep pinned roles readable when the sidebar narrows
+
+- Date: 2026-11-05
+- Decision: Reserve at least 100 px per pin and wrap as space narrows. Keep the avatar above the name and let the role wrap. Use the shared role label in its outline treatment on pins. Keep at least [4.5:1 text contrast](https://www.w3.org/WAI/WCAG22/Understanding/contrast-minimum) at rest, on hover and when selected. Hover changes the tile surface and preserves the selected fill.
+- Why: Forcing three pins at every width cramped titles and made the light-theme tag compete with the hover surface. This supersedes the three-pins-at-minimum-width rule in UI-compact-pins-circle-photos.
+- Evidence: The [browser checks](../test/chat-workspace/interface-preferences.spec.ts) verify wrapping, three-across at wider widths, and label contrast over the light-mode tile surfaces.
+
+### UI-pin-photo-badge Center status badges on the photo edge
+
+- Date: 2026-11-05
+- Decision: Place the center of the Main Pebble star and unread dot on the lower-right circumference of a pinned photo. Use the same anchor for both so the unread dot replaces the star in place. In a chat header, center the activity dot on the lower-left edge of the photo and separate it with a 1 px border.
+- Why: A circular crop and its rectangular layout box have different edges.
+- Evidence: The [unread browser checks](../test/chat-workspace/unread.spec.ts) measure each badge center against the displayed photo radius in both themes.
+
+### UI-conversation-opening Show the requested identity while a conversation opens
+
+- Date: 2026-11-05
+- Decision: Show the requested agent name and the shared loading line during an explicit conversation switch. Hide the previous transcript and composer until the requested conversation can accept input. Preserve the previous draft and restore the previous view on a failed switch.
+- Why: A visible read-only composer for the previous agent invites a tap that cannot open the iOS keyboard.
+- Evidence: The [held-open browser test](../test/chat-workspace/composition-integrity.spec.ts) delays the requested agent and checks its identity, the loading line, and the absence of a composer.
+
 ### UI-missing-bot-chat Explain why an existing pebble’s chat cannot open
 
 - Date: 2026-11-05
@@ -146,3 +196,31 @@ and name the earlier ID when a rule is superseded.
 - Decision: Paint loaded avatars when section rows return. Keep a bounded cache of successful photo thumbnails in the current app session. A new appearance revision fetches the updated photo.
 - Why: Closing a section removes its rows from view. Reopening it should show familiar avatars immediately.
 - Evidence: The [sidebar browser checks](../test/chat-workspace/interface-preferences.spec.ts) reopen a section and verify that its photos appear with a single request per profile.
+
+### UI-voice-call-history Show completed calls in the conversation
+
+- Date: 2026-11-05
+- Decision: Use a compact trace row with a phone icon, “Voice call ended” and the local end time. Place it between messages by time. Keep it visible after reloading, independent of the optional follow-up. Voice previews produce no entry.
+- Why: A call is useful conversation history even if neither side spoke or the agent sends no follow-up.
+- Evidence: The [voice browser journeys](../test/chat-workspace/voice.spec.ts) verify receipt placement, reload persistence and a real loopback call ending without captions.
+
+### UI-message-mentions Identify people within message text
+
+- Date: 2026-11-05
+- Decision: Give known mentions a neutral inline background and dotted underline. Open a read-only profile popover with the current public handle. Resolve only unambiguous enrolled identities supported by workspace profiles or local room rosters. Preserve original token spelling in history and clipboard text.
+- Why: Plaintext mentions were indistinguishable from prose after public handles changed. Reading a profile must leave chat, drafts and agent execution alone.
+- Evidence: The message-rendering unit checks cover code, links, emails and unknown tokens. Added production mention journeys for direct and group messages, keyboard activation, clipboard preservation, both themes and phone layouts using synthetic identities. Browser execution and settled screenshot review remain pending because the sandbox blocks loopback listeners.
+
+### UI-cold-avatar-batches Load sidebar photos without a per-photo roster scan
+
+- Date: 2026-11-05
+- Decision: Batch visible photos after the roster resolves. Use stable Pebble identities and recheck native incarnation before returning a 256 px thumbnail. Keep the reserved avatar space during loading.
+- Why: A cold app load otherwise queues many redundant roster scans and makes photos appear one at a time.
+- Evidence: The [browser check](../test/chat-workspace/interface-preferences.spec.ts) loads 35 photos twice with bounded batches. The [owner journey](../test/owner-browser/owner.spec.ts) verifies the real plugin returns a saved native photo through the batch route.
+
+### UI-nested-pebble-editor Return to the Pebble details panel after editing
+
+- Date: 2026-11-05
+- Decision: Keep the details panel in phone navigation history when its Edit Pebble dialog opens. Close and browser Back dismiss the editor first.
+- Why: Returning directly to chat skips the panel the user opened the editor from.
+- Evidence: The [installed-shell browser checks](../test/mobile/installed-shell.spec.ts) exercise both dismissals and a second Back from the details panel to chat.

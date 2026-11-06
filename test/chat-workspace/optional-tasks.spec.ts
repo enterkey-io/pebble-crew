@@ -148,7 +148,6 @@ test('Tasks can be hidden for the installation without hiding group chats or pro
   await page.getByRole('button', { name: 'Close Settings', exact: true }).click();
   await rail(page);
   await page.getByRole('radio', { name: 'Tasks', exact: true }).click();
-  await rail(page);
   await expect(page.getByRole('navigation', { name: 'Project boards' })).toContainText(
     'General tasks',
   );
@@ -244,7 +243,6 @@ test('turning Tasks off in another tab preserves an open plan draft and does not
   await expect(page.getByLabel('Message', { exact: true })).toBeEnabled();
   await rail(page);
   await page.getByRole('radio', { name: 'Tasks', exact: true }).click();
-  await rail(page);
   await page.getByRole('button', { name: 'Plans', exact: true }).click();
   await page.getByRole('button', { name: 'New plan', exact: true }).click();
   const editor = page.getByRole('dialog', { name: 'New plan', exact: true });

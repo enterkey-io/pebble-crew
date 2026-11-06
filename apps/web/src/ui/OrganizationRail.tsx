@@ -47,6 +47,7 @@ type RailPebble = {
   title: string;
   preview: string;
   pinned: boolean;
+  activity: number;
   unread?: boolean;
 };
 export type RailGroup = {
@@ -55,6 +56,7 @@ export type RailGroup = {
   name: string;
   preview: string;
   unread: boolean;
+  activity: number;
 };
 const dragFormat = 'application/x-pebble-crew-rail';
 
@@ -216,6 +218,18 @@ export function OrganizationRail({
       'data-drop-edge': over.startsWith(`${key}:`) ? over.slice(key.length + 1) : undefined,
     };
   }
+  const pebbleActivity = new Map(pebbles.map((pebble) => [pebble.id, pebble.activity]));
+  const groupActivity = new Map(groups.map((group) => [group.readKey, group.activity]));
+  function activity(item: RailItem) {
+    return (
+      (item.kind === 'pebble' ? pebbleActivity.get(item.id) : groupActivity.get(item.readKey)) ?? 0
+    );
+  }
+  function orderedRows(section: Organization['sections'][number]) {
+    return section.items
+      .toSorted((left, right) => activity(right) - activity(left))
+      .map((item) => row(item, section.id));
+  }
   function row(item: RailItem, sectionId: string) {
     const pebble = item.kind === 'pebble' ? pebbles.find((p) => p.id === item.id) : undefined;
     if (item.kind === 'pebble' && (!pebble || (pebble.pinned && !item.shortcut))) return null;
@@ -322,7 +336,7 @@ export function OrganizationRail({
             aria-label="Unsectioned conversations"
             {...targetEvents(section.id)}
           >
-            {section.items.map((item) => row(item, section.id))}
+            {orderedRows(section)}
           </motion.div>
         ) : (
           <motion.section
@@ -386,7 +400,7 @@ export function OrganizationRail({
                   style={{ overflow: 'hidden' }}
                   className="pc-section-items"
                 >
-                  {section.items.map((item) => row(item, section.id))}
+                  {orderedRows(section)}
                 </motion.div>
               )}
             </AnimatePresence>

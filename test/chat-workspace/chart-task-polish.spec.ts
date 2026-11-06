@@ -12,6 +12,7 @@ async function tasks(page: Page, info: TestInfo) {
   await expect(page.getByLabel('Message', { exact: true })).toBeEnabled();
   await navigation(page, info);
   await page.getByRole('radio', { name: 'Tasks', exact: true }).click();
+  if (info.project.use.isMobile) await page.keyboard.press('Escape');
 }
 
 for (const theme of ['light', 'dark']) {
@@ -244,6 +245,7 @@ test('cards reorder within a column, retain their order after reload, and keep n
   await expect(page.getByLabel('Message', { exact: true })).toBeEnabled();
   await navigation(page, info);
   await page.getByRole('radio', { name: 'Tasks', exact: true }).click();
+  if (info.project.use.isMobile) await page.keyboard.press('Escape');
   await expect
     .poll(async () => (await labels()).map((label) => label.trim().split('Unassigned')[0]))
     .toEqual(['Third', 'First', 'Second']);

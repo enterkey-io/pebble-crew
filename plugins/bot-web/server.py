@@ -316,7 +316,7 @@ def create_app(token, origins, hosts, gateway=None, trust=None, workspace=None, 
                                "expires": request.scope.get("bot.ticket_expires"), "ended": None}
         build = getattr(native, "build", None) or {}
         return {"connection": connection, "protocol": "hermes-bot-web.v1", "bridge_version": VERSION,
-                "capabilities": {"connection_recovery": 1, "exchanges": bool(workspace), "exchange_events": bool(workspace), "existing_agents": True, "owner_login": owner_trust is not None, "workspace": bool(workspace), "workspace_settings": bool(workspace), "reporting": 1 if workspace else None, "projects": bool(workspace and getattr(native, 'work_supported', False)), "attachments": bool(files), "generated_media": True, "reactions": True, "room_reactions": bool(workspace), "live_voice": live_voice_supported(), "secrets": bool(getattr(native, "build", None) and native.build.get("server_requests")), "questions": bool(getattr(native, "build", None)), "computer": computer.supported},
+                "capabilities": {"connection_recovery": 1, "exchanges": bool(workspace), "exchange_events": bool(workspace), "existing_agents": True, "owner_login": owner_trust is not None, "workspace": bool(workspace), "workspace_settings": bool(workspace), "avatar_thumbnails": bool(workspace), "reporting": 1 if workspace else None, "projects": bool(workspace and getattr(native, 'work_supported', False)), "attachments": bool(files), "generated_media": True, "reactions": True, "room_reactions": bool(workspace), "live_voice": live_voice_supported(), "secrets": bool(getattr(native, "build", None) and native.build.get("server_requests")), "questions": bool(getattr(native, "build", None)), "computer": computer.supported},
                 "hermes_version": build.get("version"), "hermes_revision": build.get("revision")}
 
     @app.post("/v1/renew")
@@ -368,17 +368,22 @@ def create_app(token, origins, hosts, gateway=None, trust=None, workspace=None, 
                 raise InvalidOperation("Session belongs to another connection")
             if workspace and operation in {'bot.open','chat.send'}:
                 if operation == 'bot.open':
-                    from .operations import fields
+                    from .operations import fields, identifier
                     fields(params, ['profile'])
-                    await ops.bot(params['profile'], require_chat=True)
-                profile=params.get('profile') if operation=='bot.open' else ops.sessions.get(params.get('session_id'))
+                    profile = identifier(params['profile'])
+                else:
+                    profile = ops.sessions.get(params.get('session_id'))
                 if profile:
-                    runtime=await native.call('bot_web.runtime.verify',{'profile':profile})
-                    if operation=='bot.open' and isinstance(runtime,dict) and runtime.get('state')=='absent':
-                        await native.call('bot_web.runtime.prepare',{'profile':profile})
-                        runtime=await native.call('bot_web.runtime.verify',{'profile':profile})
-                    if not isinstance(runtime,dict) or runtime.get('verified') is not True:
-                        raise InvalidOperation('The Hermes plugin update is incomplete. Finish runtime synchronization and restart the stopped services before chatting.','UPDATE_REQUIRED')
+                    runtime = await native.call('bot_web.runtime.verify', {'profile': profile})
+                    if operation == 'bot.open' and (not isinstance(runtime, dict) or runtime.get('verified') is not True):
+                        # The normal open already checks the managed canonical chat.
+                        # Before provisioning, separately prove the target is eligible.
+                        await ops.bot(profile, require_chat=True)
+                        if isinstance(runtime, dict) and runtime.get('state') == 'absent':
+                            await native.call('bot_web.runtime.prepare', {'profile': profile})
+                            runtime = await native.call('bot_web.runtime.verify', {'profile': profile})
+                    if not isinstance(runtime, dict) or runtime.get('verified') is not True:
+                        raise InvalidOperation('The Hermes plugin update is incomplete. Finish runtime synchronization and restart the stopped services before chatting.', 'UPDATE_REQUIRED')
             if operation in {'voice.status', 'voice.preferences', 'voice.credential', 'voice.session', 'voice.submit', 'voice.end'}:
                 result = await voice.invoke(operation, params)
             elif operation in {'chat.commands', 'chat.command'}:
@@ -406,7 +411,9 @@ def create_app(token, origins, hosts, gateway=None, trust=None, workspace=None, 
                 elif operation == 'files.read':
                     row, blob = await files.invoke(ops, client['principal'], operation, params)
                     from urllib.parse import quote
-                    return Response(blob, media_type='application/octet-stream', headers={'Content-Disposition': "attachment; filename*=UTF-8''" + quote(row['name'], safe='')})
+                    from .attachments import image_type
+                    mime = image_type(blob) if row['kind'] == 'image' else 'application/octet-stream'
+                    return Response(blob, media_type=mime, headers={'Content-Disposition': "attachment; filename*=UTF-8''" + quote(row['name'], safe='')})
                 elif operation in {'files.list', 'files.remove', 'files.reconcile', 'files.discard'}:
                     result = await files.invoke(ops, client['principal'], operation, params)
                 else:
@@ -451,6 +458,10 @@ def create_app(token, origins, hosts, gateway=None, trust=None, workspace=None, 
             if files and operation in {'bot.open', 'chat.snapshot', 'chat.history'} and isinstance(result, dict) and isinstance(result.get('messages'), list):
                 sid = result.get('session_id') if operation == 'bot.open' else params.get('session_id')
                 result = {**result, 'messages': await files.present(ops, client['principal'], sid, result['messages'])}
+                page = result.get('history_page') or {}
+                bounds = page.pop('timeline_bounds', None)
+                if bounds is not None or 'before' not in params:
+                    result['voice_calls'] = voice.history(sid, bounds or (None, None))
             return {"result": result}
         except (TypeError, KeyError, ValueError) as error:
             raise InvalidOperation("Invalid operation values") from error

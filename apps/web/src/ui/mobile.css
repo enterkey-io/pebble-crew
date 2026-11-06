@@ -52,21 +52,8 @@
   padding: 8px 12px 20px;
 }
 .pc-mobile-navigation .pc-pins {
-  flex-wrap: nowrap;
   margin-bottom: 12px;
   padding-block: 4px;
-  overflow-x: auto;
-  scrollbar-width: none;
-}
-.pc-mobile-navigation .pc-pins:has(> :nth-child(4)) {
-  justify-content: flex-start;
-}
-.pc-mobile-navigation .pc-pin {
-  max-width: 120px;
-}
-.pc-mobile-navigation .pc-pin.is-selected,
-.pc-mobile-navigation .pc-pin:hover {
-  background: transparent;
 }
 .pc-mobile-navigation .pc-row:not(.pc-crew-member) .pc-member-face > .agent-avatar {
   width: 48px;
@@ -76,6 +63,47 @@
   min-height: 76px;
   padding: 12px 16px 14px;
 }
+/* Give the installed sidebar one vertical scroll owner: the viewport. */
+html:has(.pc-phone-pages[data-native-sidebar-scroll]),
+body:has(.pc-phone-pages[data-native-sidebar-scroll]) {
+  overflow: visible;
+  overscroll-behavior-y: auto;
+}
+.pc-phone-pages[data-edge-navigation] {
+  touch-action: pan-y pinch-zoom;
+}
+.pc-shell:has(.pc-phone-pages[data-native-sidebar-scroll]) {
+  height: auto;
+}
+.pc-phone-pages[data-native-sidebar-scroll] .pc-mobile-navigation {
+  position: relative;
+  inset: auto;
+  width: 100vw;
+  flex: none;
+  min-height: var(--app-viewport-height, 100dvh);
+  padding-block: 0;
+}
+.pc-phone-pages[data-native-sidebar-scroll] .pc-mobile-conversation {
+  height: var(--app-viewport-height, 100dvh);
+}
+.pc-phone-pages[data-native-sidebar-scroll] .pc-rail-scroll {
+  overflow: visible;
+}
+.pc-phone-pages[data-native-sidebar-scroll] :is(.pc-rail-top, .pc-rail-footer) {
+  position: sticky;
+  z-index: 10;
+  background: var(--rail);
+}
+.pc-phone-pages[data-native-sidebar-scroll] .pc-rail-top {
+  top: 0;
+  padding-top: var(--app-safe-top);
+}
+.pc-phone-pages[data-native-sidebar-scroll] .pc-rail-footer {
+  bottom: 0;
+  min-height: calc(76px + var(--app-bottom-inset));
+  padding-bottom: calc(14px + var(--app-bottom-inset));
+}
+
 @media (max-width: 767px) {
   .pc-details-chevron {
     width: 18px;

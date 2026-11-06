@@ -38,7 +38,6 @@ export function ConversationInput({
   title,
   busy,
   blocked,
-  switching,
   running,
   stopping,
   uploads,
@@ -58,7 +57,6 @@ export function ConversationInput({
   title: string;
   busy: boolean;
   blocked: boolean;
-  switching: boolean;
   running: boolean;
   stopping: boolean;
   uploads: ReturnType<typeof useUploads>;
@@ -132,7 +130,6 @@ export function ConversationInput({
           value={value}
           {...mentions.inputProps}
           disabled={!target}
-          readOnly={switching}
           maxLength={16000}
           onPaste={(e) => {
             if (

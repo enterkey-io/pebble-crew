@@ -7,8 +7,11 @@ test.use({ serviceWorkers: 'block' });
 const phone = (info: TestInfo) =>
   info.project.name.includes('iphone') || info.project.name.includes('android');
 async function navigation(page: Page, info: TestInfo) {
-  if (phone(info))
-    await page.getByRole('button', { name: 'Toggle navigation', exact: true }).click();
+  const open = page.getByRole('button', { name: 'Toggle navigation', exact: true });
+  if (phone(info) && (await open.isVisible())) await open.click();
+}
+async function chooseDefaultBoard(page: Page, info: TestInfo) {
+  if (phone(info)) await page.getByRole('button', { name: 'General tasks', exact: true }).click();
 }
 async function newItem(page: Page, info: TestInfo, name: string) {
   await navigation(page, info);
@@ -52,7 +55,10 @@ test('project boards and tasks work through global creation and preserve the cha
   );
   await navigation(page, info);
   await page.getByRole('radio', { name: 'Tasks', exact: true }).click();
-  await navigation(page, info);
+  await expect(page.getByRole('navigation', { name: 'Project boards' })).toBeVisible();
+  await page.getByRole('radio', { name: 'Chat', exact: true }).click();
+  await expect(page.getByRole('navigation', { name: 'Pebbles' })).toBeVisible();
+  await page.getByRole('radio', { name: 'Tasks', exact: true }).click();
   await page.getByRole('button', { name: 'Research launch', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'Research launch', exact: true })).toBeVisible();
   await expect(page).toHaveTitle('Research launch — Pebble Crew');
@@ -110,6 +116,7 @@ test('project boards and tasks work through global creation and preserve the cha
   await expect(page).toHaveTitle('Research evidence — Pebble Crew');
   await navigation(page, info);
   await page.getByRole('radio', { name: 'Chat', exact: true }).click();
+  if (phone(info)) await page.keyboard.press('Escape');
   await expect(page.getByLabel('Message', { exact: true })).toHaveValue(
     'Keep this conversation draft',
   );
@@ -138,6 +145,7 @@ test('native changes and restored transport preserve an open task draft until it
   await expect(page.getByLabel('Message', { exact: true })).toBeEnabled();
   await navigation(page, info);
   await page.getByRole('radio', { name: 'Tasks', exact: true }).click();
+  await chooseDefaultBoard(page, info);
   await page.getByRole('button', { name: 'Open task Original title', exact: true }).click();
   await page.getByLabel('Title', { exact: true }).fill('My unsaved title');
   task.body = 'Changed directly in Hermes';
@@ -231,6 +239,7 @@ for (const theme of ['light', 'dark'] as const) {
     );
     expect(colors[0]).not.toBe(colors[1]);
     await toggle.getByRole('radio', { name: 'Tasks', exact: true }).click();
+    await chooseDefaultBoard(page, info);
     await page.getByRole('button', { name: 'New task', exact: true }).click();
     await page.getByLabel('Title', { exact: true }).fill('Check clear task controls');
     await page.getByRole('button', { name: 'Create task', exact: true }).click();
@@ -321,6 +330,7 @@ test('tasks move through their status control and comments autocomplete Pebble h
   await expect(page.getByLabel('Message', { exact: true })).toBeEnabled();
   await navigation(page, info);
   await page.getByRole('radio', { name: 'Tasks', exact: true }).click();
+  await chooseDefaultBoard(page, info);
   await page.getByRole('button', { name: 'New task', exact: true }).click();
   await page.getByLabel('Title', { exact: true }).fill('Follow up original sources');
   await page.getByRole('combobox', { name: 'Assigned to', exact: true }).click();
@@ -381,6 +391,7 @@ test('a late task move cannot put an old board’s task into the newly opened pr
   await expect(page.getByLabel('Message', { exact: true })).toBeEnabled();
   await navigation(page, info);
   await page.getByRole('radio', { name: 'Tasks', exact: true }).click();
+  await chooseDefaultBoard(page, info);
   await page.getByRole('button', { name: 'New task', exact: true }).click();
   await page.getByLabel('Title', { exact: true }).fill('Keep on original board');
   await page.getByRole('button', { name: 'Create task', exact: true }).click();
@@ -395,7 +406,8 @@ test('a late task move cannot put an old board’s task into the newly opened pr
     .click();
   await page.getByRole('menuitem', { name: 'Move to', exact: true }).click();
   await page.getByRole('menuitem', { name: 'To do', exact: true }).click();
-  await navigation(page, info);
+  if (phone(info))
+    await page.getByRole('button', { name: 'Toggle navigation', exact: true }).click();
   await page.getByRole('button', { name: 'Other project', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'Other project', exact: true })).toBeVisible();
   await expect(page.getByLabel('Task columns', { exact: true })).toBeVisible();
@@ -455,6 +467,7 @@ for (const theme of ['light', 'dark']) {
     await expect(page.getByLabel('Message', { exact: true })).toBeEnabled();
     await navigation(page, info);
     await page.getByRole('radio', { name: 'Tasks', exact: true }).click();
+    await chooseDefaultBoard(page, info);
     const action = page.getByRole('button', { name: 'New task', exact: true });
     const colors = await action.evaluate((node) => {
       const style = getComputedStyle(node);

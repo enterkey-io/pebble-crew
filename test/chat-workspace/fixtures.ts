@@ -80,6 +80,7 @@ export async function installFixture(
     reactions?: boolean;
     attachments?: boolean;
     voice?: boolean;
+    avatarThumbnails?: boolean;
     exchanges?: boolean;
     exchangeEvents?: boolean;
     projects?: boolean;
@@ -87,6 +88,8 @@ export async function installFixture(
     organization?: OrganizationState;
     messages?: (Record<string, unknown> & { row_id: number })[];
     open?: (profile: string) => unknown | Promise<unknown>;
+    roomMembers?: Record<string, unknown>[];
+    roomLog?: (params: Record<string, unknown>) => unknown | Promise<unknown>;
     historyPage?: (params: Record<string, unknown>) => unknown | Promise<unknown>;
   } = {},
 ) {
@@ -272,6 +275,7 @@ export async function installFixture(
             secrets: options.voice === true,
             questions: options.voice === true,
             workspace: true,
+            avatar_thumbnails: options.avatarThumbnails === true,
             reporting: 1,
             projects: options.projects === true,
             workspace_settings: options.workspaceSettings !== false,
@@ -329,9 +333,9 @@ export async function installFixture(
           {
             room_id: 'crew-1',
             name: 'Research crew',
-            members: state.bots
-              .slice(0, 4)
-              .map((b) => ({ profile: b.profile, member_id: b.profile })),
+            members:
+              options.roomMembers ??
+              state.bots.slice(0, 4).map((b) => ({ profile: b.profile, member_id: b.profile })),
             created_at: 1700000000,
             cursor: 2,
             read_key: 'room:crew-1:1700000000',
@@ -656,6 +660,7 @@ export async function installFixture(
         cursor: 2 + messages.length,
         has_more: false,
       };
+      if (options.roomLog) result = await options.roomLog(params);
     }
     if (operation === 'room.state')
       result = {

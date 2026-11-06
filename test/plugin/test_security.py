@@ -238,6 +238,7 @@ class RuntimeAdmissionTests(unittest.IsolatedAsyncioTestCase):
     async def test_changed_or_disabled_runtime_cannot_open_or_submit_with_or_without_attachments(self):
         opened = await self.invoke('bot.open', {'profile':'alpha'})
         self.assertEqual(opened.status_code, 200, opened.text)
+        self.assertEqual(sum(method == 'profiles.list' for method, _ in self.native.calls), 1)
         for state in ('changed', 'disabled'):
             self.native.runtime = {'verified':False,'state':state,'loaded':'unknown'}
             for operation, params in (
@@ -263,7 +264,7 @@ class RuntimeAdmissionTests(unittest.IsolatedAsyncioTestCase):
         response = await self.invoke('bot.open', {'profile': 'alpha'})
         self.assertEqual(response.status_code, 400, response.text)
         self.assertEqual(response.json()['code'], 'BOT_CHAT_MISSING')
-        self.assertEqual([method for method, _ in self.native.calls], ['profiles.list'])
+        self.assertEqual([method for method, _ in self.native.calls], ['bot_web.runtime.verify', 'profiles.list'])
 
     async def test_only_absent_runtime_is_provisioned_before_first_open_without_a_model(self):
         self.native.runtime={'verified':False,'state':'absent','loaded':'unknown'}

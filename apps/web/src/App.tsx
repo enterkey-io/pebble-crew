@@ -23,16 +23,22 @@ import {
   AttachmentAction,
 } from './components/ui/attachment';
 import { conversationCapabilities } from './chat/capability-ledger';
-import { useEffect, useLayoutEffect, useRef, useState, useCallback } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState, useCallback, useMemo } from 'react';
 import { safeError } from '@hermes-client/core';
 import {
   ConversationDomain,
   decodeApprovals,
   decodeRoomReactions,
+  decodeVoiceCall,
   approvalKey,
   StreamHandoff,
 } from '@hermes-client/protocol';
-import type { BridgeEvent, ConversationApproval, HistoryCoverage } from '@hermes-client/protocol';
+import type {
+  BridgeEvent,
+  ConversationApproval,
+  ConversationHistory,
+  VoiceCallRecord,
+} from '@hermes-client/protocol';
 import { FirstRun } from './FirstRun';
 import { lazy, Suspense } from 'react';
 const NewPebble = lazy(() => import('./NewPebble').then((m) => ({ default: m.NewPebble })));
@@ -50,6 +56,7 @@ import { fileSize } from './chat/FilesPanel';
 import { Rail, PebbleAvatar, CrewAvatar } from './chat/Rail';
 import type { ChatBot as Bot } from './chat/Rail';
 import { useAgentExchanges } from './chat/AgentExchanges';
+import { messageMentions } from './chat/mentions';
 import { LiveTranscript } from './chat/LiveTranscript';
 import { LiveText } from './chat/live-text';
 import { Chat, ChatViewport } from './components/ai-elements/chat';
@@ -58,6 +65,7 @@ import { Icon } from './chat/Icon';
 import { Drawer } from './chat/Drawer';
 import { RequestReview } from './chat/RequestReview';
 import { DetailsDock } from './ui/DetailsDock';
+import { VoiceCallEntry } from './voice/VoiceCallEntry';
 import { VoiceChat } from './voice/VoiceChat';
 import type { VoiceChatHandle } from './voice/VoiceChat';
 import type { VoiceSettingsRequest } from './voice/decode';
@@ -191,6 +199,10 @@ export function App({ owner }: { owner?: OwnerConnection }) {
   const [selection, setSelection] = useState<Selection>();
   const [starting, setStarting] = useState(true);
   const [messages, setMessages] = useState<Message[]>([]);
+  const [voiceCalls, setVoiceCalls] = useState<{
+    key: string;
+    entries: readonly VoiceCallRecord[];
+  }>();
   const retainedMessages = useRef(messages);
   retainedMessages.current = messages;
   const [historyPage, setHistoryPage] = useState<{ sessionId: string; older: string | null }>();
@@ -235,7 +247,8 @@ export function App({ owner }: { owner?: OwnerConnection }) {
   const [running, setRunning] = useState(false);
   const [busy, setBusy] = useState(false);
   const sendFlight = useRef<symbol | null>(null);
-  const [switching, setSwitching] = useState(false);
+  const [openingBot, setOpeningBot] = useState<Bot>();
+  const switching = !!openingBot;
   const [blocked, setBlocked] = useState(false);
   const [streamState, setStreamState] = useState<'opening' | 'live' | 'lost'>('opening');
   const work = useWorkCatalog(
@@ -452,6 +465,7 @@ export function App({ owner }: { owner?: OwnerConnection }) {
       ),
     [workspace],
   );
+  const mentions = useMemo(() => messageMentions(workspace?.bots ?? [], rooms), [workspace, rooms]);
   const authorName = useCallback((name: string) => authorBot(name)?.name ?? name, [authorBot]);
   const authorAvatar = useCallback(
     (name: string) => {
@@ -471,8 +485,20 @@ export function App({ owner }: { owner?: OwnerConnection }) {
   const [showLatest, setShowLatest] = useState(false);
   const displayedRead = useRef<{ key: string; cursor: number } | undefined>(undefined);
   const acknowledgedRead = useRef(new Map<string, number>());
-  function observedHistory(target: Selection, coverage: HistoryCoverage) {
+  function observeCalls(target: Selection, entries: readonly VoiceCallRecord[], replace = false) {
+    const key = draftKey(target);
+    setVoiceCalls((current) => {
+      if (replace || current?.key !== key) return { key, entries };
+      const known = new Set(current.entries.map((call) => call.id));
+      const added = entries.filter((call) => !known.has(call.id) && !!known.add(call.id));
+      return added.length ? { key, entries: [...current.entries, ...added] } : current;
+    });
+  }
+  function observedHistory(target: Selection, history: ConversationHistory, replace = false) {
     if (target.kind !== 'bot') return;
+    if (replace || history.voiceCalls?.length)
+      observeCalls(target, history.voiceCalls ?? [], replace);
+    const { coverage } = history;
     const bot = workspaceRef.current?.bots.find((b) => b.id === target.bot.id);
     // Only acknowledge a native roster cursor covered by the loaded history.
     // A later background snapshot cannot mark unseen messages as read.
@@ -623,7 +649,7 @@ export function App({ owner }: { owner?: OwnerConnection }) {
     setDraft('');
     setRunning(false);
     setBusy(false);
-    setSwitching(false);
+    setOpeningBot(undefined);
     setBlocked(false);
     setStreamState('opening');
     setError('');
@@ -810,7 +836,12 @@ export function App({ owner }: { owner?: OwnerConnection }) {
       );
   }
   useOverlayHistory(
-    details && !documentReader.state && phone && !settings && !pickingAgents && !searchOpen,
+    details &&
+      !documentReader.state &&
+      phone &&
+      (!settings || settingsTab === 'agents') &&
+      !pickingAgents &&
+      !searchOpen,
     () => {
       toggleDetails(false);
       return true;
@@ -916,6 +947,7 @@ export function App({ owner }: { owner?: OwnerConnection }) {
       captureDetailsAnchor();
       prependAnchor.current = true;
       setMessages((previous) => sendProjection.current.prepend(page.messages, previous));
+      if (page.voiceCalls?.length) observeCalls(target, page.voiceCalls);
       setHistoryPage({ sessionId: target.sessionId, older: page.page?.older ?? null });
     } catch {
       if (current.current === connection && selected.current === target)
@@ -931,7 +963,7 @@ export function App({ owner }: { owner?: OwnerConnection }) {
       restoreDetailsAnchor();
       rememberScroll();
     }
-  }, [messages, restoreDetailsAnchor]);
+  }, [messages, voiceCalls, restoreDetailsAnchor]);
   useEffect(() => {
     const target = selected.current;
     if (!client || !details || documentReader.state || target?.kind !== 'bot') return;
@@ -964,7 +996,7 @@ export function App({ owner }: { owner?: OwnerConnection }) {
         terminalEpoch === runEpoch.current &&
         (!sendProjection.current.replying || complete)
       ) {
-        observedHistory(target, data.coverage);
+        observedHistory(target, data);
         setMessages(sendProjection.current.project(data.messages, complete));
         if (complete) {
           setStream('');
@@ -1057,7 +1089,7 @@ export function App({ owner }: { owner?: OwnerConnection }) {
     if (
       openingChat.current &&
       event.session_id &&
-      /^(message\.|tool\.|status\.|error$)/.test(event.type)
+      /^(message\.|tool\.|status\.|voice\.call\.ended$|error$)/.test(event.type)
     ) {
       if (openingChat.current.events.length < 4096) openingChat.current.events.push(event);
       else if (openingChat.current.events.length === 4096)
@@ -1065,6 +1097,11 @@ export function App({ owner }: { owner?: OwnerConnection }) {
       return;
     }
     if (!target || target.kind !== 'bot' || event.session_id !== target.sessionId) return;
+    if (event.type === 'voice.call.ended') {
+      const call = decodeVoiceCall(event.payload);
+      if (call) observeCalls(target, [call]);
+      return;
+    }
     if (event.type === 'document.open') {
       try {
         const request = decodeDocumentRequest(event.payload);
@@ -1183,7 +1220,7 @@ export function App({ owner }: { owner?: OwnerConnection }) {
             ((target.kind === 'bot' && !surviving) || (target.kind === 'room' && !roomSurviving))
           ) {
             selectGeneration.current++;
-            setSwitching(false);
+            setOpeningBot(undefined);
             setBusy(false);
             selected.current = undefined;
             setSelection(undefined);
@@ -1328,7 +1365,7 @@ export function App({ owner }: { owner?: OwnerConnection }) {
         selectionEpoch.current = owned.bindingEpoch;
         const restored = sendProjection.current.restore(snapshot);
         streamHandoff.current.restore(snapshot.streamPosition, snapshot.running);
-        observedHistory(target, snapshot.history.coverage);
+        observedHistory(target, snapshot.history);
         setMessages(restored.messages);
         setStream(restored.stream);
         setRunning(snapshot.running);
@@ -1404,7 +1441,7 @@ export function App({ owner }: { owner?: OwnerConnection }) {
     }
     rememberScroll();
     const generation = ++selectGeneration.current;
-    setSwitching(!restore);
+    setOpeningBot(restore ? undefined : bot);
     setError('');
     setBusy(true);
     if (!restore) {
@@ -1456,12 +1493,11 @@ export function App({ owner }: { owner?: OwnerConnection }) {
       selectionConnection.current = client;
       selectionEpoch.current = session.current?.bindingEpoch ?? -1;
       setSelection(target);
-      setSwitching(false);
       const id = workspace?.bots.find((entry) => entry.profile === bot.profile)?.id;
       if (workspace && id) rememberConversation(workspace.id, { kind: 'bot', id });
       setBlocked(false);
       setChatBound(true);
-      observedHistory(target, data.history.coverage);
+      observedHistory(target, data.history, !retaining);
       const restored = sendProjection.current.restore(data);
       streamHandoff.current.restore(data.streamPosition, data.running);
       setMessages(restored.messages);
@@ -1481,21 +1517,20 @@ export function App({ owner }: { owner?: OwnerConnection }) {
         });
       }
       setAttachmentUncertain(false);
-      if (client.supportsAttachments) {
-        const receipt = (await client.invoke('files.reconcile', {
-          session_id: target.sessionId,
-        })) as { state: string };
-        if (current.current !== client || selected.current !== target) return 'superseded';
-        if (receipt.state === 'uncertain') {
-          setAttachmentUncertain(true);
-          setBlocked(true);
-          setError(
-            'An earlier file send has not been confirmed. Check its outcome before sending again.',
-          );
-        }
-      }
-      await refreshApprovals(client, target);
+      const [receipt] = await Promise.all([
+        client.supportsAttachments
+          ? client.invoke('files.reconcile', { session_id: target.sessionId })
+          : undefined,
+        refreshApprovals(client, target),
+      ]);
       if (current.current !== client || selected.current !== target) return 'superseded';
+      if (receipt && object(receipt).state === 'uncertain') {
+        setAttachmentUncertain(true);
+        setBlocked(true);
+        setError(
+          'An earlier file send has not been confirmed. Check its outcome before sending again.',
+        );
+      }
       if (data.history.page) {
         // The native binding is installed before its snapshot. Buffered events
         // have native stream positions, so a second history transfer is redundant.
@@ -1510,7 +1545,7 @@ export function App({ owner }: { owner?: OwnerConnection }) {
         if (current.current !== client || selected.current !== target) return 'superseded';
         const final = sendProjection.current.restore(snapshot);
         streamHandoff.current.restore(snapshot.streamPosition, snapshot.running);
-        observedHistory(target, snapshot.history.coverage);
+        observedHistory(target, snapshot.history);
         setMessages(final.messages);
         setRunning(snapshot.running);
         setStream(final.stream);
@@ -1553,7 +1588,7 @@ export function App({ owner }: { owner?: OwnerConnection }) {
       if (generation === selectGeneration.current) {
         focusOnReady.current = matchMedia('(pointer: fine)').matches;
         setBusy(false);
-        setSwitching(false);
+        setOpeningBot(undefined);
       }
     }
   }
@@ -1588,7 +1623,7 @@ export function App({ owner }: { owner?: OwnerConnection }) {
       setPickingAgents(false);
     }
     selectGeneration.current++;
-    setSwitching(false);
+    setOpeningBot(undefined);
     const target: Selection = { kind: 'room', room };
     if (!restore || !selected.current) setDraft(drafts.current.get(draftKey(target)) ?? '');
     selected.current = target;
@@ -2083,6 +2118,9 @@ export function App({ owner }: { owner?: OwnerConnection }) {
               selection.room.name,
           )
         : 'Chats';
+  const headerBot = openingBot ?? (selection?.kind === 'bot' ? selection.bot : undefined);
+  const headerTitle = openingBot?.name ?? title;
+  const headerProfile = workspace?.bots.find((bot) => bot.profile === headerBot?.profile);
   usePageTitle(
     settings || pickingAgents || workDialog
       ? undefined
@@ -2098,7 +2136,7 @@ export function App({ owner }: { owner?: OwnerConnection }) {
               ? workBoard === '$plans'
                 ? 'Plans'
                 : (work.catalog?.boards.find((board) => board.slug === workBoard)?.name ?? 'Tasks')
-              : title,
+              : headerTitle,
   );
 
   if (!client)
@@ -2160,7 +2198,6 @@ export function App({ owner }: { owner?: OwnerConnection }) {
           setArea(area);
           setOrgOpen(false);
           setSettings(false);
-          setNav(false);
         })
       }
       onBoard={(board) =>
@@ -2268,7 +2305,7 @@ export function App({ owner }: { owner?: OwnerConnection }) {
       onVisibility={(bot, hidden) => void visibility(bot, hidden)}
       onDelete={(bot) => void proposeDelete(bot)}
       onOrder={(ids) =>
-        void presentationAction('presentation.order', {
+        presentationAction('presentation.order', {
           ids,
           expected_revision: preferencesRevision.current,
         })
@@ -2393,7 +2430,7 @@ export function App({ owner }: { owner?: OwnerConnection }) {
             onCloseNavigation={closeNav}
             onOpenNavigation={() => setNav(true)}
             edgeNavigation={
-              area === 'chat' && !settings && !orgOpen && !details && !documentReader.state
+              (nav || area === 'chat') && !settings && !orgOpen && !details && !documentReader.state
             }
           >
             <Chat
@@ -2532,24 +2569,23 @@ export function App({ owner }: { owner?: OwnerConnection }) {
                         onClick={() => setNav(true)}
                       />
                       <ConversationIdentity
-                        title={title}
+                        title={headerTitle}
                         description={
-                          selection?.kind === 'bot'
-                            ? workspace?.bots.find((b) => b.profile === selection.bot.profile)?.role
-                                .title ||
-                              `@${workspace?.bots.find((b) => b.profile === selection.bot.profile)?.handle ?? selection.bot.profile}`
+                          headerBot
+                            ? headerProfile?.role.title ||
+                              `@${headerProfile?.handle ?? headerBot.profile}`
                             : undefined
                         }
-                        expanded={details}
-                        disabled={!selection}
+                        expanded={!switching && details}
+                        disabled={!selection || switching}
                         onClick={() => toggleDetails(!details)}
                         media={
-                          selection?.kind === 'bot' ? (
+                          headerBot ? (
                             <PebbleAvatar
-                              bot={selection.bot}
+                              bot={headerBot}
                               workspace={workspace}
                               client={client}
-                              state={agentStates[selection.bot.profile]}
+                              state={agentStates[headerBot.profile]}
                             />
                           ) : selection?.kind === 'room' ? (
                             <CrewAvatar
@@ -2651,6 +2687,8 @@ export function App({ owner }: { owner?: OwnerConnection }) {
                     )}
                     <ChatViewport
                       ref={transcriptPane}
+                      style={switching ? { visibility: 'hidden' } : undefined}
+                      inert={switching}
                       className={`pc-transcript transcript ${pickingAgents ? 'choosing-agents' : ''}`}
                       role={pickingAgents ? undefined : 'log'}
                       aria-live={pickingAgents ? undefined : 'off'}
@@ -2705,6 +2743,7 @@ export function App({ owner }: { owner?: OwnerConnection }) {
                           </div>
                         )}
                       <LiveTranscript
+                        mentions={mentions}
                         text={liveText}
                         projection={sendProjection.current}
                         files={sharedFiles}
@@ -2712,6 +2751,13 @@ export function App({ owner }: { owner?: OwnerConnection }) {
                         suppressedTools={agentExchanges.suppressedTools}
                         cards={[
                           ...agentExchanges.cards,
+                          ...(selection?.kind === 'bot' && voiceCalls?.key === draftKey(selection)
+                            ? voiceCalls.entries.map((call) => ({
+                                id: `voice-call-${call.id}`,
+                                createdAt: call.endedAt,
+                                content: <VoiceCallEntry call={call} />,
+                              }))
+                            : []),
                           ...nativeCards.filter((card) => !card.needsInput),
                           ...questionCards.filter((card) => !card.needsInput),
                           ...secretCards.filter((card) => !card.needsInput),
@@ -2766,6 +2812,10 @@ export function App({ owner }: { owner?: OwnerConnection }) {
                                     setSettings(true);
                                   })
                                 }
+                                onCallEnded={(call) => {
+                                  if (selected.current === selection)
+                                    observeCalls(selection, [call]);
+                                }}
                                 onAccepted={(message) =>
                                   setMessages((previous) =>
                                     previous.some((item) => item.id === message.id)
@@ -2844,7 +2894,7 @@ export function App({ owner }: { owner?: OwnerConnection }) {
                       </LiveTranscript>
                       {agentExchanges.viewer}
                     </ChatViewport>
-                    {!pickingAgents && (
+                    {!pickingAgents && !switching && (
                       <div className="relative shrink-0">
                         {showLatest && (
                           <Button
@@ -2975,7 +3025,6 @@ export function App({ owner }: { owner?: OwnerConnection }) {
                             title={title}
                             busy={busy}
                             blocked={actionBlocked}
-                            switching={switching}
                             running={running}
                             stopping={stopping}
                             uploads={uploads}

@@ -205,6 +205,14 @@ with `surface=voice-live` and `queued=true`; it never sets `voice_turn` or invok
 whole-session interruption. A saved `user_row_id` must match a completion before
 a final result is read aloud. Unattributed queued results stay in chat.
 
+`voice.end` records a started call as an owner-local timeline entry before
+attempting its optional text follow-up. An empty `transcript` saves the entry
+without submitting a model turn. `voice.call.ended` delivers the same receipt to
+bound clients. Conversation snapshots and history pages return receipts in
+`voice_calls`, separate from native message rows and their coverage. Receipts
+contain an opaque ID and `ended_at` (epoch seconds). The record stores no audio
+or transcript, and previews produce no receipt.
+
 `secret.changed` announces that native private prompts changed; its event has no
 secret value. `secrets.pending` returns only request ID, prompt and field label
 for the authorized session. `secrets.respond` answers an existing native request

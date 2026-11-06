@@ -26,7 +26,56 @@ type AvatarPhoto = { request: Promise<string | undefined>; data?: string };
 const photoCache = new WeakMap<SessionClient, Map<string, AvatarPhoto>>();
 const maxCachedPhotos = 64;
 
-function requestAvatarPhoto(client: SessionClient, profile: string, key: string) {
+type PhotoRequest = {
+  profile: string;
+  id: string;
+  resolve: (photo: unknown) => void;
+  reject: (reason: unknown) => void;
+};
+const photoBatches = new WeakMap<SessionClient, PhotoRequest[]>();
+
+function loadAvatarPhoto(client: SessionClient, profile: string, id: string) {
+  if (!client.supportsAvatarThumbnails || id === profile)
+    return client
+      .invoke('bots.appearance.get', { profile })
+      .then((value) =>
+        value && typeof value === 'object' && 'data' in value ? value.data : undefined,
+      );
+  return new Promise<unknown>((resolve, reject) => {
+    const queued = photoBatches.get(client);
+    if (queued) {
+      queued.push({ profile, id, resolve, reject });
+      return;
+    }
+    const requests = [{ profile, id, resolve, reject }];
+    photoBatches.set(client, requests);
+    queueMicrotask(() => {
+      photoBatches.delete(client);
+      for (let offset = 0; offset < requests.length; offset += 8) {
+        const batch = requests.slice(offset, offset + 8);
+        void client
+          .invoke('bots.appearance.thumbnails', {
+            targets: batch.map(({ profile, id }) => ({ profile, id })),
+          })
+          .then((value) => {
+            const photos =
+              value && typeof value === 'object' && 'photos' in value ? value.photos : undefined;
+            for (const item of batch)
+              item.resolve(
+                photos && typeof photos === 'object' && Object.hasOwn(photos, item.profile)
+                  ? Reflect.get(photos, item.profile)
+                  : undefined,
+              );
+          })
+          .catch((reason) => {
+            for (const item of batch) item.reject(reason);
+          });
+      }
+    });
+  });
+}
+
+function requestAvatarPhoto(client: SessionClient, profile: string, identity: string, key: string) {
   let cache = photoCache.get(client);
   if (!cache) {
     cache = new Map();
@@ -40,18 +89,11 @@ function requestAvatarPhoto(client: SessionClient, profile: string, key: string)
   }
 
   const entry: AvatarPhoto = {
-    request: client
-      .invoke('bots.appearance.get', { profile })
-      .then((value) => {
-        if (
-          value &&
-          typeof value === 'object' &&
-          'data' in value &&
-          typeof value.data === 'string' &&
-          /^data:image\/(png|jpeg|webp);base64,/.test(value.data)
-        ) {
-          entry.data = value.data;
-          return value.data;
+    request: loadAvatarPhoto(client, profile, identity)
+      .then((data) => {
+        if (typeof data === 'string' && /^data:image\/(png|jpeg|webp);base64,/.test(data)) {
+          entry.data = data;
+          return data;
         }
         if (cache.get(key) === entry) cache.delete(key);
         return '';
@@ -78,7 +120,7 @@ function useSavedAvatarPhoto(
   useEffect(() => {
     if (!client || !profile || !identity) return;
     let current = true;
-    void requestAvatarPhoto(client, profile, key).then((data) => {
+    void requestAvatarPhoto(client, profile, identity, key).then((data) => {
       if (current && data !== undefined) setLoaded({ client, identity, data });
     });
     return () => {
@@ -180,9 +222,7 @@ export function AgentAvatar({
         <>
           <img src={image} alt="" draggable={false} />
           {state !== 'ready' && state !== 'done' && (
-            <span className="photo-status" aria-label={state}>
-              ●
-            </span>
+            <span className="photo-status" role="img" aria-label={state} />
           )}
         </>
       )}

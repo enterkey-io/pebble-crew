@@ -1,6 +1,7 @@
 import { test, expect } from '@playwright/test';
 import AxeBuilder from '@axe-core/playwright';
 import { emit, installFixture } from './fixtures';
+import { expectPinRoleContrast } from './pinned-layout';
 
 test.use({ serviceWorkers: 'block' });
 test('appearance is applied before the application module starts', async ({ page, context }) => {
@@ -133,13 +134,66 @@ test('sidebar resizes from its edge, keeps row contents inside, supports keyboar
   await expect(rail).toHaveCSS('width', '352px');
 });
 
-test('three compact pins fit the narrow sidebar and photos stay circular', async ({
+test('the account stays at the visible bottom while the roster scrolls', async ({
+  page,
+  context,
+}, info) => {
+  const phone = !!info.project.use.isMobile;
+  await page.setViewportSize({ width: phone ? 390 : 1440, height: phone ? 620 : 500 });
+  await installFixture(context);
+  await page.goto('/');
+  await expect(page.getByLabel('Message', { exact: true })).toBeEnabled();
+  if (phone) await page.getByRole('button', { name: 'Toggle navigation', exact: true }).click();
+
+  const rail = phone
+    ? page.getByRole('region', { name: 'navigation', exact: true })
+    : page.getByRole('complementary', { name: 'Pebbles and crews', exact: true });
+  const list = rail.locator('.pc-rail-scroll');
+  const position = () =>
+    rail.evaluate((node) => {
+      const bounds = node.getBoundingClientRect();
+      const footer = node.querySelector('footer')!.getBoundingClientRect();
+      const account = node.querySelector('footer button')!;
+      const button = account.getBoundingClientRect();
+      const hit = document.elementFromPoint(
+        button.left + button.width / 2,
+        button.top + button.height / 2,
+      );
+      return {
+        gap: Math.round(
+          bounds.bottom - footer.bottom - parseFloat(getComputedStyle(node).paddingBottom),
+        ),
+        bottom: Math.round(footer.bottom),
+        viewportBottom: Math.round(window.visualViewport?.height ?? window.innerHeight),
+        accountHit: hit !== null && account.contains(hit),
+      };
+    });
+  await expect.poll(position).toMatchObject({ accountHit: true, gap: 0 });
+  const before = await position();
+  expect(before.bottom).toBeLessThanOrEqual(before.viewportBottom);
+  await list.evaluate((node) => {
+    node.scrollTop = node.scrollHeight;
+  });
+  expect(await list.evaluate((node) => node.scrollTop)).toBeGreaterThan(0);
+  expect(await position()).toEqual(before);
+  await page.screenshot({
+    animations: 'disabled',
+    path: info.outputPath('sidebar-docked-account.png'),
+  });
+  await rail.getByRole('button', { name: 'Your account', exact: true }).click();
+  await expect(page.getByRole('menuitem', { name: 'Settings', exact: true })).toBeVisible();
+});
+
+test('pinned pebbles wrap at a readable width and photos stay circular', async ({
   page,
   context,
 }, info) => {
   const phone = page.viewportSize()!.width < 768;
   if (phone) await page.setViewportSize({ width: 320, height: 720 });
-  await context.addInitScript(() => localStorage.setItem('pebble-crew.sidebar-width', '280'));
+  await context.addInitScript(() => {
+    localStorage.setItem('pebble-crew.sidebar-width', '280');
+    localStorage.setItem('pebble-crew.appearance', 'light');
+  });
   const fixture = await installFixture(context);
   const [main, , third] = fixture.state.bots;
   main!.appearance.kind = 'photo';
@@ -210,22 +264,59 @@ test('three compact pins fit the narrow sidebar and photos stay circular', async
     .toBe(await pinPhoto.evaluate((image) => image.getBoundingClientRect().height));
   await expect(tiles.first().getByRole('img', { name: 'Main Pebble' })).toBeVisible();
   await expect(tiles.nth(1).getByText('Executive assistant')).toBeVisible();
-  const cards = await tiles.evaluateAll((nodes) =>
-    nodes.map((node) => {
-      const rect = node.getBoundingClientRect();
-      return { top: rect.top, height: rect.height };
-    }),
-  );
-  expect(cards.map((card) => card.top)).toEqual(Array(3).fill(cards[0]?.top));
+  const selected = tiles.first().locator('..');
+  const idle = tiles.nth(1).locator('..');
+  const idleBackground = await idle.evaluate((tile) => getComputedStyle(tile).backgroundColor);
+  await expectPinRoleContrast(pins);
+  if (!phone) {
+    const selectedBackground = await selected.evaluate(
+      (tile) => getComputedStyle(tile).backgroundColor,
+    );
+    await tiles.first().hover();
+    await selected.evaluate((tile) =>
+      Promise.all(tile.getAnimations().map((animation) => animation.finished)),
+    );
+    await expect(selected).toHaveCSS('background-color', selectedBackground);
+    await tiles.nth(1).hover();
+    await expect(idle).not.toHaveCSS('background-color', idleBackground);
+  }
+  await rail.screenshot({
+    animations: 'disabled',
+    path: info.outputPath('light-pin-tiles.png'),
+  });
+  await expectPinRoleContrast(pins);
+
+  const cardLayout = () =>
+    tiles.evaluateAll((nodes) =>
+      nodes.map((node) => {
+        const rect = node.getBoundingClientRect();
+        const title = node.querySelector('.pc-pin-title')!.getBoundingClientRect();
+        return {
+          top: Math.round(rect.top),
+          height: rect.height,
+          width: rect.width,
+          titleInset: Math.min(title.left - rect.left, rect.right - title.right),
+        };
+      }),
+    );
+  await expect.poll(async () => new Set((await cardLayout()).map((card) => card.top)).size).toBe(2);
+  const cards = await cardLayout();
+  expect(cards[0]!.top).toBe(cards[1]!.top);
+  expect(cards[2]!.top).toBeGreaterThan(cards[1]!.top);
+  expect(Math.min(...cards.map((card) => card.width))).toBeGreaterThanOrEqual(100);
+  expect(Math.min(...cards.map((card) => card.titleInset))).toBeGreaterThanOrEqual(7.5);
   expect(Math.max(...cards.map((card) => card.height))).toBeLessThan(150);
   expect(photoRequests).toBe(1);
   expect(await pins.evaluate((node) => node.scrollWidth)).toBe(
     await pins.evaluate((node) => node.clientWidth),
   );
-  await rail.screenshot({
-    animations: 'disabled',
-    path: info.outputPath('compact-photo-pins.png'),
-  });
+
+  if (phone) {
+    await page.setViewportSize({ width: 390, height: 720 });
+  } else {
+    await page.getByRole('separator', { name: 'Resize sidebar', exact: true }).dblclick();
+  }
+  await expect.poll(async () => new Set((await cardLayout()).map((card) => card.top)).size).toBe(1);
 });
 
 test('reopening a section reuses its photo and an edited photo refreshes', async ({
@@ -294,4 +385,63 @@ test('reopening a section reuses its photo and an edited photo refreshes', async
   await emit(page, 'workspace.changed');
   await expect(avatar).toHaveAttribute('src', edited!);
   expect(reads).toBe(2);
+});
+
+test('cold sidebar photo avatars arrive in bounded batches without per-profile RPCs', async ({
+  page,
+  context,
+}, info) => {
+  const fixture = await installFixture(context, { avatarThumbnails: true });
+  const template = fixture.state.bots[2]!;
+  while (fixture.state.bots.filter((bot) => bot.managed).length < 35) {
+    const index = fixture.state.bots.length;
+    const profile = `photo-${index}`;
+    fixture.state.bots.push({
+      ...template,
+      profile,
+      id: `identity-${index}`,
+      handle: profile,
+      name: `Photo Pebble ${index}`,
+      read_key: `bot:identity-${index}`,
+    });
+  }
+  for (const bot of fixture.state.bots) bot.appearance = { ...bot.appearance, kind: 'photo' };
+  const photo = await page.evaluate(() => {
+    const canvas = document.createElement('canvas');
+    canvas.width = canvas.height = 32;
+    const paint = canvas.getContext('2d')!;
+    paint.fillStyle = '#4a746c';
+    paint.fillRect(0, 0, 32, 32);
+    return canvas.toDataURL();
+  });
+  const requests: string[][] = [];
+  let individual = 0;
+  await page.route('https://hermes.fixture.invalid/**/rpc', async (route) => {
+    const { operation, params } = route.request().postDataJSON();
+    if (operation === 'bots.appearance.get') individual++;
+    if (operation !== 'bots.appearance.thumbnails') return route.fallback();
+    const profiles = (params.targets as { profile: string }[]).map((target) => target.profile);
+    requests.push(profiles);
+    return route.fulfill({
+      json: { result: { photos: Object.fromEntries(profiles.map((profile) => [profile, photo])) } },
+    });
+  });
+  for (let load = 0; load < 2; load++) {
+    requests.length = 0;
+    if (load === 0) await page.goto('/');
+    else await page.reload();
+    await expect(page.getByLabel('Message', { exact: true })).toBeEnabled();
+    if (info.project.use.isMobile)
+      await page.getByRole('button', { name: 'Toggle navigation', exact: true }).click();
+    const list = page.getByRole('navigation', { name: 'Pebbles', exact: true });
+    await expect(list.locator(':is(.pc-pin, .pebble-row) .agent-avatar img')).toHaveCount(35);
+    expect(individual).toBe(0);
+    expect(requests.every((batch) => batch.length > 0 && batch.length <= 8)).toBe(true);
+    expect(requests.length).toBeLessThanOrEqual(6);
+    expect(new Set(requests.flat()).size).toBe(35);
+  }
+  await page.screenshot({
+    path: info.outputPath('batched-photo-avatars.png'),
+    animations: 'disabled',
+  });
 });

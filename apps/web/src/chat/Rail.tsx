@@ -1,7 +1,8 @@
 import { Target } from 'lucide-react';
 import { Users } from 'lucide-react';
 import { CrewFaces } from '../ui/CrewFaces';
-import { useId } from 'react';
+import { useId, useRef } from 'react';
+import type { DragEvent } from 'react';
 import { PebbleTile } from '../ui/PebbleTile';
 import { Button } from '../components/ui/button';
 import { useState } from 'react';
@@ -177,7 +178,7 @@ export function Rail({
   onPin: (b: WorkspaceBot, pinned: boolean) => void;
   onVisibility: (b: WorkspaceBot, hidden: boolean) => void;
   onDelete: (b: WorkspaceBot) => void;
-  onOrder: (ids: string[]) => void;
+  onOrder: (ids: string[]) => Promise<void>;
   onLogout: () => void;
   owner: boolean;
   onClose?: (() => void) | undefined;
@@ -195,6 +196,16 @@ export function Rail({
   const tasksEnabled = workspace?.features?.tasks !== false;
   const [hidden, setHidden] = useState(false),
     [editor, setEditor] = useState<OrganizationEditor | null>(null);
+  const [pinPreview, setPinPreview] = useState<string[]>();
+  const pinDrag = useRef<
+    | {
+        id: string;
+        original: string[];
+        order: string[];
+        slots: { x: number; y: number }[];
+      }
+    | undefined
+  >(undefined);
   const reduced = useReducedMotion();
   const identity = (bot: ChatBot) => workspace?.bots.find((b) => b.profile === bot.profile);
   const pinned = (bot: ChatBot) => {
@@ -234,6 +245,53 @@ export function Rail({
     ) : null;
   };
   const pinIds = pins.map((b) => identity(b)!.id);
+  const displayedPins = pinPreview
+    ? pins.toSorted(
+        (a, b) => pinPreview.indexOf(identity(a)!.id) - pinPreview.indexOf(identity(b)!.id),
+      )
+    : pins;
+  function previewPinDrag(event: DragEvent<HTMLDivElement>) {
+    const drag = pinDrag.current;
+    if (!drag) return;
+    event.preventDefault();
+    event.dataTransfer.dropEffect = 'move';
+    const grid = event.currentTarget.getBoundingClientRect();
+    const x = event.clientX - grid.left,
+      y = event.clientY - grid.top;
+    let nearest = 0;
+    let distance = Infinity;
+    for (const [index, slot] of drag.slots.entries()) {
+      const next = Math.hypot(x - slot.x, y - slot.y);
+      if (next < distance) {
+        distance = next;
+        nearest = index;
+      }
+    }
+    if (drag.order.indexOf(drag.id) === nearest) return;
+    const order = drag.original.filter((id) => id !== drag.id);
+    order.splice(nearest, 0, drag.id);
+    drag.order = order;
+    setPinPreview(order);
+  }
+  function finishPinDrag() {
+    if (!pinDrag.current) return;
+    pinDrag.current = undefined;
+    setPinPreview(undefined);
+  }
+  function dropPinDrag(event: DragEvent<HTMLDivElement>) {
+    const drag = pinDrag.current;
+    if (!drag) return;
+    event.preventDefault();
+    event.stopPropagation();
+    pinDrag.current = undefined;
+    if (drag.order.indexOf(drag.id) === drag.original.indexOf(drag.id)) {
+      setPinPreview(undefined);
+      return;
+    }
+    void onOrder(drag.order).finally(() => {
+      setPinPreview((current) => (current === drag.order ? undefined : current));
+    });
+  }
   const accountMenu = (
     <Menu
       label="Your account"
@@ -285,51 +343,53 @@ export function Rail({
   };
   return (
     <>
-      <div className="pc-rail-header rail-toolbar">
-        <span className="pc-wordmark">Pebble Crew</span>
-        <IconButton label="Search Pebble Crew" icon={Search} onClick={onSearch} />
-        <Menu
-          label="New"
-          placement="toolbar"
-          disabled={!online}
-          items={[
-            { label: 'New pebble', action: onAdd },
-            { label: 'New group chat', action: () => setEditor({ kind: 'new-group-chat' }) },
-            { label: 'New section', action: () => setEditor({ kind: 'new-section' }) },
-            ...(tasksEnabled && client.supportsProjects
-              ? [
-                  { label: 'New task', action: onNewTask, disabled: !catalog },
-                  { label: 'New project board', action: onNewProject, disabled: !catalog },
-                ]
-              : []),
-          ]}
-        >
-          <Plus />
-        </Menu>
-        {onClose && !phone && (
-          <IconButton
-            className="pc-nav-close"
-            label="Close navigation"
-            icon={X}
-            onClick={onClose}
-          />
+      <div className="pc-rail-top">
+        <div className="pc-rail-header rail-toolbar">
+          <span className="pc-wordmark">Pebble Crew</span>
+          <IconButton label="Search Pebble Crew" icon={Search} onClick={onSearch} />
+          <Menu
+            label="New"
+            placement="toolbar"
+            disabled={!online}
+            items={[
+              { label: 'New pebble', action: onAdd },
+              { label: 'New group chat', action: () => setEditor({ kind: 'new-group-chat' }) },
+              { label: 'New section', action: () => setEditor({ kind: 'new-section' }) },
+              ...(tasksEnabled && client.supportsProjects
+                ? [
+                    { label: 'New task', action: onNewTask, disabled: !catalog },
+                    { label: 'New project board', action: onNewProject, disabled: !catalog },
+                  ]
+                : []),
+            ]}
+          >
+            <Plus />
+          </Menu>
+          {onClose && !phone && (
+            <IconButton
+              className="pc-nav-close"
+              label="Close navigation"
+              icon={X}
+              onClick={onClose}
+            />
+          )}
+        </div>
+        {tasksEnabled && client.supportsProjects && (
+          <ToggleGroup
+            type="single"
+            className="pc-area-switch w-auto"
+            variant="segmented"
+            aria-label="App area"
+            value={area}
+            onValueChange={(value) => {
+              if (value === 'chat' || value === 'tasks') onArea(value);
+            }}
+          >
+            <ToggleGroupItem value="chat">Chat</ToggleGroupItem>
+            <ToggleGroupItem value="tasks">Tasks</ToggleGroupItem>
+          </ToggleGroup>
         )}
       </div>
-      {tasksEnabled && client.supportsProjects && (
-        <ToggleGroup
-          type="single"
-          className="pc-area-switch w-auto"
-          variant="segmented"
-          aria-label="App area"
-          value={area}
-          onValueChange={(value) => {
-            if (value === 'chat' || value === 'tasks') onArea(value);
-          }}
-        >
-          <ToggleGroupItem value="chat">Chat</ToggleGroupItem>
-          <ToggleGroupItem value="tasks">Tasks</ToggleGroupItem>
-        </ToggleGroup>
-      )}
       <div className="pc-rail-scroll rail-scroll">
         {area === 'tasks' ? (
           <nav aria-label="Project boards" className="grid content-start gap-1">
@@ -360,8 +420,12 @@ export function Rail({
           <LayoutGroup id={railId}>
             <nav aria-label="Pebbles">
               {!!pins.length && (
-                <div className="pc-pins pinned-pebbles">
-                  {pins.map((b) =>
+                <div
+                  className="pc-pins pinned-pebbles"
+                  onDragOver={previewPinDrag}
+                  onDropCapture={dropPinDrag}
+                >
+                  {displayedPins.map((b) =>
                     controls(
                       b,
                       <motion.div
@@ -374,7 +438,24 @@ export function Rail({
                             JSON.stringify({ kind: 'pebble', id: identity(b)!.id }),
                           );
                           event.dataTransfer.effectAllowed = 'move';
+                          const grid = event.currentTarget.parentElement;
+                          if (!grid) return;
+                          const bounds = grid.getBoundingClientRect();
+                          const slots = Array.from(grid.querySelectorAll('.pc-pin'), (tile) => {
+                            const rect = tile.getBoundingClientRect();
+                            return {
+                              x: rect.left + rect.width / 2 - bounds.left,
+                              y: rect.top + rect.height / 2 - bounds.top,
+                            };
+                          });
+                          pinDrag.current = {
+                            id: identity(b)!.id,
+                            original: pinIds,
+                            order: pinIds,
+                            slots,
+                          };
                         }}
+                        onDragEnd={finishPinDrag}
                         onDragOver={(event) => {
                           if (event.dataTransfer.types.includes('application/x-pebble-crew-rail'))
                             event.preventDefault();
@@ -402,7 +483,7 @@ export function Rail({
                           const ids = pinIds.filter((id) => id !== targetId),
                             position = ids.indexOf(identity(b)!.id);
                           ids.splice(position < 0 ? ids.length : position, 0, targetId);
-                          onOrder(ids);
+                          void onOrder(ids);
                         }}
                         onKeyDown={(event) => {
                           if (event.altKey && ['ArrowUp', 'ArrowDown'].includes(event.key)) {
@@ -412,11 +493,14 @@ export function Rail({
                               next = index + (event.key === 'ArrowUp' ? -1 : 1);
                             if (next >= 0 && next < ids.length) {
                               [ids[index], ids[next]] = [ids[next]!, ids[index]!];
-                              onOrder(ids);
+                              void onOrder(ids);
                             }
                           }
                         }}
                         transition={{ duration: reduced ? 0 : 0.22, ease: [0.22, 1, 0.36, 1] }}
+                        data-dragging={
+                          (pinPreview && pinDrag.current?.id === identity(b)!.id) || undefined
+                        }
                         className={`pc-pin pinned-tile ${selected === b.profile ? 'is-selected' : ''}`}
                         key={identity(b)?.id ?? b.profile}
                       >
@@ -458,6 +542,7 @@ export function Rail({
                             preview:
                               b.preview || row.preview || row.role.description || '@' + row.handle,
                             pinned: pinned(b),
+                            activity: row.last_activity ?? 0,
                             unread: !!row.unread,
                           },
                         ]
@@ -481,6 +566,7 @@ export function Rail({
                   name: String(room.name ?? 'Group chat'),
                   preview: String(room.preview ?? ''),
                   unread: !!room.unread,
+                  activity: typeof room.updated_at === 'number' ? room.updated_at : 0,
                 }))}
                 groupFace={(id, readKey) => {
                   const room = rooms.find((r) => r.room_id === id && r.read_key === readKey);
