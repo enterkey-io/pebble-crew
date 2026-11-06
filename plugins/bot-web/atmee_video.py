@@ -16,7 +16,8 @@ BASE = 'https://api.atmanity.us'
 KEY = 'ATMEE_API_KEY'
 UUID = re.compile(r'[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}', re.IGNORECASE)
 KEY_FORMAT = re.compile(r'sk_(?:atmee|live)_[A-Za-z0-9_-]{8,240}')
-ERROR_CODES = {'ATMEE_KEY_REJECTED', 'ATMEE_KEY_SCOPE', 'ATMEE_UNAVAILABLE', 'ATMEE_AVATAR_UNAVAILABLE', 'ATMEE_CALL_LIMIT'}
+ERROR_CODES = {'ATMEE_KEY_REJECTED', 'ATMEE_KEY_SCOPE', 'ATMEE_UNAVAILABLE', 'ATMEE_AVATAR_UNAVAILABLE', 'ATMEE_CALL_LIMIT',
+               'ATMEE_BUILD_SCOPE', 'ATMEE_BUILD_CREDITS', 'ATMEE_BUILD_INPUT'}
 CALL_SECONDS = 300
 MAX_CAPTIONS = 240
 MAX_NOTE = 1000
@@ -37,11 +38,15 @@ class NoRedirect(HTTPRedirectHandler):
         return None
 
 
-def provider(path, key, payload=None):
+def provider(path, key, payload=None, *, idempotency=None):
+    headers = {'Accept': 'application/json', 'Content-Type': 'application/json', 'X-Api-Key': key}
+    if idempotency:
+        headers['Idempotency-Key'] = idempotency
     request = Request(BASE + path, data=None if payload is None else json.dumps(payload).encode(),
-                      headers={'Accept': 'application/json', 'Content-Type': 'application/json', 'X-Api-Key': key})
+                      headers=headers)
     try:
-        with build_opener(NoRedirect()).open(request, timeout=35 if path == '/v1/sessions' else 8) as response:
+        timeout = 110 if path == '/v1/generation/voices' else 35 if path == '/v1/sessions' else 12
+        with build_opener(NoRedirect()).open(request, timeout=timeout) as response:
             body = response.read(524289)
         if len(body) <= 524288:
             value = json.loads(body)
@@ -50,6 +55,10 @@ def provider(path, key, payload=None):
     except HTTPError as error:
         if error.code in {402, 409, 429} and path == '/v1/sessions':
             raise InvalidOperation('Check Atmee credits and active calls', 'ATMEE_CALL_LIMIT') from None
+        if error.code == 402 and path in {'/v1/avatars', '/v1/generation/voices'}:
+            raise InvalidOperation('Check credits and Atmee V2 access', 'ATMEE_BUILD_CREDITS') from None
+        if error.code in {400, 422} and path in {'/v1/uploads', '/v1/avatars', '/v1/generation/voices'}:
+            raise InvalidOperation('Atmee could not use these inputs', 'ATMEE_BUILD_INPUT') from None
         if error.code == 401:
             raise InvalidOperation('Atmee rejected this API key', 'ATMEE_KEY_REJECTED') from None
         if error.code == 403:
@@ -77,19 +86,29 @@ def save_key(value):
         raise InvalidOperation('Hermes could not confirm the key save', 'ATMEE_UNAVAILABLE')
 
 
-def key_access(key):
+def key_permissions(key):
     if not isinstance(key, str) or not KEY_FORMAT.fullmatch(key):
         raise InvalidOperation('Enter a valid Atmee key', 'ATMEE_KEY_REJECTED')
     data = provider('/v1/api_keys/current', key)
     if data.get('active') is not True:
         raise InvalidOperation('Atmee rejected this API key', 'ATMEE_KEY_REJECTED')
     scopes = data.get('scopes')
-    if not isinstance(scopes, list) or not {'sessions', 'avatars:read'}.issubset(scopes):
+    permissions = frozenset(scope for scope in scopes if isinstance(scope, str)) if isinstance(scopes, list) else frozenset()
+    if not {'sessions', 'avatars:read'}.issubset(permissions):
         raise InvalidOperation('Atmee needs session and character read access', 'ATMEE_KEY_SCOPE')
     avatar_id = data.get('avatarId')
     if avatar_id is not None and (not isinstance(avatar_id, str) or not UUID.fullmatch(avatar_id)):
         raise InvalidOperation('Atmee returned an invalid key receipt', 'ATMEE_UNAVAILABLE')
-    return avatar_id
+    return avatar_id, permissions
+
+
+def key_access(key):
+    return key_permissions(key)[0]
+
+
+def can_build(permissions):
+    bound, scopes = permissions
+    return bound is None and {'avatars:write', 'generation:write'}.issubset(scopes)
 
 
 def choice(data):
@@ -104,8 +123,8 @@ def choice(data):
     return {'id': ident, 'name': name, 'ready': data.get('readyToChat') is True}
 
 
-def catalog(key):
-    bound = key_access(key)
+def catalog(key, permissions=None):
+    bound, _ = permissions if permissions is not None else key_permissions(key)
     if bound:
         single = choice(provider('/v1/avatars/' + bound, key))
         return [single] if single and single['id'] == bound else []
@@ -151,12 +170,15 @@ class AtmeeVideo:
         self.writes = asyncio.Lock()
         self.call = None
         self.starting = False
+        from .atmee_build import AtmeeBuilds
+        self.builds = AtmeeBuilds(store, self.pebble)
 
     def recover(self):
         # A stopped bridge owns no live browser sessions. Retain captured context
         # for the Pebble's next real turn without admitting an automatic prompt.
         with self.store.db:
             self.store.db.execute('UPDATE atmee_call SET ended_at=? WHERE ended_at IS NULL', (time.time(),))
+        self.builds.recover()
 
     def pebble(self, bot_id):
         if not any(bot.get('id') == bot_id and bot.get('enrolled') and bot.get('available')
@@ -196,6 +218,8 @@ class AtmeeVideo:
         return '\n\n'.join(sections)
 
     async def invoke(self, operation, params):
+        if operation in {'atmee.build.start', 'atmee.build.status'}:
+            return await self.builds.invoke(operation, params)
         if operation in {'atmee.start', 'atmee.caption', 'atmee.delegate', 'atmee.end'}:
             return await self.live(operation, params)
         if operation == 'atmee.status':
@@ -221,13 +245,15 @@ class AtmeeVideo:
         if operation == 'atmee.avatars':
             if not key:
                 return {'configured': False, 'avatars': [], 'selected': None}
-            avatars = await asyncio.to_thread(catalog, key)
+            permissions = await asyncio.to_thread(key_permissions, key)
+            avatars = await asyncio.to_thread(catalog, key, permissions)
             self.pebble(bot_id)
             if read_key() != key:
                 raise InvalidOperation('The Atmee key changed. Reopen the editor.', 'STALE_REVISION')
             row = self.store.db.execute('SELECT avatar FROM atmee_selection WHERE bot=?', (bot_id,)).fetchone()
             selected = row[0] if row else None
-            return {'configured': True, 'avatars': avatars, 'selected': selected, 'note': self.note(bot_id, selected)}
+            return {'configured': True, 'avatars': avatars, 'selected': selected, 'note': self.note(bot_id, selected),
+                    'can_create': can_build(permissions)}
         if operation == 'atmee.context':
             avatar_id, note = params['avatar_id'], params['note']
             if not isinstance(note, str) or len(note) > MAX_NOTE:
@@ -414,6 +440,7 @@ class AtmeeVideo:
             pass
 
     async def shutdown(self):
+        await self.builds.shutdown()
         if self.call:
             await self.end(self.call, deliver=False)
 

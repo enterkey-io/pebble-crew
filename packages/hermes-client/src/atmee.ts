@@ -3,7 +3,36 @@ import { record } from './json';
 import type { RpcPort } from './session-client';
 
 export type AtmeeCharacter = { id: string; name: string; ready: boolean };
+export const ATMEE_VOICE_STYLES = ['warm', 'composed', 'bright', 'soft'] as const;
+export type AtmeeVoiceStyle = (typeof ATMEE_VOICE_STYLES)[number];
+const buildStates = ['preparing', 'building', 'ready', 'failed', 'uncertain'] as const;
+export type AtmeeBuild = {
+  id: string;
+  name: string;
+  state: (typeof buildStates)[number];
+  avatar: string | null;
+  error: string | null;
+};
 const uuid = /^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i;
+
+function readBuild(value: unknown): AtmeeBuild | null {
+  if (value === null) return null;
+  const data = record(value);
+  const state = buildStates.find((candidate) => candidate === data.state);
+  if (
+    typeof data.id !== 'string' ||
+    !uuid.test(data.id) ||
+    typeof data.name !== 'string' ||
+    !data.name ||
+    data.name.length > 200 ||
+    !state ||
+    (data.avatar !== null && (typeof data.avatar !== 'string' || !uuid.test(data.avatar))) ||
+    (data.error !== null && (typeof data.error !== 'string' || data.error.length > 512)) ||
+    ((state === 'ready' || state === 'building') && !data.avatar)
+  )
+    throw new ClientError('INVALID_RESPONSE');
+  return { id: data.id, name: data.name, state, avatar: data.avatar, error: data.error };
+}
 
 function configured(data: Record<string, unknown>) {
   if (typeof data.configured !== 'boolean') throw new ClientError('INVALID_RESPONSE');
@@ -37,6 +66,7 @@ export class AtmeeDomain {
       configured: configured(data),
       selected: data.selected,
       note: videoText(data.note, 2000),
+      canCreate: data.can_create === true,
       avatars: data.avatars.map((item): AtmeeCharacter => {
         const avatar = record(item);
         if (
@@ -70,6 +100,35 @@ export class AtmeeDomain {
     );
     if (receipt.note !== value) throw new ClientError('INVALID_RESPONSE');
     return receipt.note;
+  }
+  async buildStatus(botId: string) {
+    return readBuild(
+      record(await this.bridge.invoke('atmee.build.status', { bot_id: botId })).build,
+    );
+  }
+  async createCharacter(
+    botId: string,
+    requestId: string,
+    input: {
+      name: string;
+      persona: string;
+      style: AtmeeVoiceStyle;
+      photo: string;
+    },
+  ) {
+    const receipt = record(
+      await this.bridge.invoke('atmee.build.start', {
+        bot_id: botId,
+        request_id: requestId,
+        name: input.name.trim(),
+        persona: input.persona.trim(),
+        voice_style: input.style,
+        photo: input.photo,
+      }),
+    );
+    const build = readBuild(receipt.build);
+    if (!build) throw new ClientError('ATMEE_KEY_REJECTED');
+    return build;
   }
 }
 

@@ -1,10 +1,93 @@
 import { test, expect } from '@playwright/test';
 import { installFixture } from './fixtures';
-import { installAtmeeRoom } from '../atmee-room';
+import { atmeePortrait, installAtmeeRoom } from '../atmee-room';
 
 const character = 'bbcb7c08-35d3-44c2-86cd-28825ed7165e';
 const call = '9c53b2f5-5c43-4b51-b553-504fa870e0e2';
 test.use({ serviceWorkers: 'block' });
+
+test('create a private character from a portrait, voice style and reviewed Pebble profile', async ({
+  page,
+  context,
+}, info) => {
+  await installFixture(context, { atmee: true });
+  let selected: string | null = null;
+  let build: {
+    id: string;
+    name: string;
+    state: string;
+    avatar: string | null;
+    error: null;
+  } | null = null;
+  let submissions = 0;
+  let ready = false;
+  await page.route(/\/v1\/(rpc|avatar)$/, async (route) => {
+    const { operation, params } = route.request().postDataJSON();
+    let result;
+    if (operation === 'atmee.ready') result = { ready: false };
+    else if (operation === 'atmee.avatars') {
+      result = { configured: true, can_create: true, avatars: [], selected };
+    } else if (operation === 'atmee.build.status') {
+      if (build && ready) build = { ...build, state: 'ready', avatar: character };
+      result = { build };
+    } else if (operation === 'atmee.build.start') {
+      expect(new URL(route.request().url()).pathname).toBe('/v1/avatar');
+      expect(params).toMatchObject({
+        bot_id: 'identity-0',
+        name: 'Arlo · Studio',
+        persona: 'Arlo leads the team.',
+        voice_style: 'composed',
+      });
+      expect(params.photo).toMatch(/^data:image\/jpeg;base64,/);
+      submissions += 1;
+      build = {
+        id: params.request_id,
+        name: params.name,
+        state: 'preparing',
+        avatar: null,
+        error: null,
+      };
+      result = { build };
+    } else if (operation === 'atmee.select') {
+      expect(params.avatar_id).toBe(character);
+      selected = character;
+      result = { selected, note: '' };
+    } else return route.fallback();
+    return route.fulfill({ json: { result } });
+  });
+  await page.goto('/');
+  await expect(page.getByLabel('Message', { exact: true })).toBeEnabled();
+  const start = page.getByRole('button', { name: 'Start video call' });
+  await start.click();
+  await page.getByRole('button', { name: 'New character', exact: true }).click();
+  await expect(page.getByLabel('Character name')).toHaveValue('Arlo');
+  const description = page.getByLabel('Character description');
+  await expect(description).toHaveValue(/Team lead/);
+  await page.getByLabel('Portrait', { exact: true }).setInputFiles(await atmeePortrait(page));
+  await expect(page.getByRole('img', { name: 'Portrait preview' })).toBeVisible();
+  await page.getByRole('combobox', { name: 'Voice style' }).click();
+  await page.getByRole('option', { name: 'Calm & clear' }).click();
+  await page.getByLabel('Character name').fill('Arlo · Studio');
+  await description.fill('Arlo leads the team.');
+  await page
+    .getByRole('button', { name: 'Create character', exact: true })
+    .scrollIntoViewIfNeeded();
+  await page.screenshot({
+    animations: 'disabled',
+    path: info.outputPath('atmee-character-builder.png'),
+  });
+  await page.getByRole('button', { name: 'Create character', exact: true }).click();
+  await expect(page.getByText('Creating Arlo · Studio…', { exact: false })).toBeVisible();
+  await page.getByRole('button', { name: 'Close Edit Arlo' }).click();
+  ready = true;
+  await start.click();
+  await expect(page.getByText('Arlo · Studio is ready.')).toBeVisible();
+  await page.getByRole('button', { name: 'Use character' }).click();
+  await expect(page.getByRole('combobox', { name: 'Character', exact: true })).toContainText(
+    'Arlo · Studio',
+  );
+  expect(submissions).toBe(1);
+});
 
 test('Atmee setup, private camera preview and both sides of the call reach Hermes', async ({
   page,

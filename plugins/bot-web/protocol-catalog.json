@@ -543,6 +543,20 @@
       ],
       "effect": "write"
     },
+    "atmee.build.start": {
+      "preferred": "avatar",
+      "accepted": [
+        "avatar"
+      ],
+      "effect": "write"
+    },
+    "atmee.build.status": {
+      "preferred": "rpc",
+      "accepted": [
+        "rpc"
+      ],
+      "effect": "read"
+    },
     "atmee.ready": {
       "preferred": "rpc",
       "accepted": [

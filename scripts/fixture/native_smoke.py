@@ -624,14 +624,41 @@ def main():
                         return await original_spawn(*argv, **kwargs)
                     patch('bot_web.native.asyncio.create_subprocess_exec', diagnostic_spawn).start()
                     synthetic_calls = set()
-                    def synthetic_atmee(path, key, payload=None):
+                    built_avatar = '35b912c7-9dcc-464d-941c-b3bc78365030'
+                    voice_upload = 'upload:0433a8c7-5e87-4d75-839c-a79fecf5796e'
+                    portrait_upload = 'upload:e35008ba-42f8-468a-b503-5871f3da4050'
+                    built = {}
+                    def synthetic_atmee(path, key, payload=None, *, idempotency=None):
                         character = 'bbcb7c08-35d3-44c2-86cd-28825ed7165e'
-                        if key != 'sk_atmee_native-synthetic':
+                        builder = key == 'sk_atmee_native-builder'
+                        if not builder and key != 'sk_atmee_native-synthetic':
                             raise AssertionError('Only disposable fixture keys are accepted')
                         if path == '/v1/api_keys/current':
+                            if builder:
+                                return {'active': True, 'scopes': ['sessions', 'avatars:read', 'avatars:write', 'generation:write']}
                             return {'active': True, 'scopes': ['sessions', 'avatars:read'], 'avatarId': character}
                         if path == '/v1/avatars/' + character:
                             return {'id': character, 'name': 'Synthetic character', 'kind': 'conversational', 'readyToChat': True}
+                        if builder and path == '/v1/avatars?limit=100':
+                            return {'items': [{'id': character, 'name': 'Synthetic character', 'kind': 'conversational',
+                                               'readyToChat': True}, *built.values()]}
+                        if builder and path == '/v1/account':
+                            return {'v2Access': 'granted', 'limits': {'v2Resolutions': [{'width': 384, 'height': 672}]}}
+                        if builder and path == '/v1/generation/voices':
+                            assert uuid.UUID(idempotency) and payload['voiceDescription'].startswith('Warm')
+                            assert payload['avatarName'] == 'Aurora · Video test'
+                            return {'voices': [{'upload': voice_upload}]}
+                        if builder and path == '/v1/avatars' and payload:
+                            assert not built, 'Character creation was replayed'
+                            assert payload['engine'] == 'v2' and payload['visibility'] == 'private'
+                            assert payload['assets'] == {'image': {'url': portrait_upload}, 'voice': {'url': voice_upload}}
+                            assert payload['persona'] == {'whoPrompt': 'Approved Aurora character description.'}
+                            built[built_avatar] = {'id': built_avatar, 'name': payload['name'],
+                                                   'kind': 'conversational', 'readyToChat': True}
+                            return {'avatarId': built_avatar, 'kind': 'conversational', 'status': 'building',
+                                    'statusUrl': '/v1/avatars/' + built_avatar}
+                        if builder and path == '/v1/avatars/' + built_avatar:
+                            return built[built_avatar]
                         if path == '/v1/sessions':
                             assert payload['avatarId'] == character and 'visitorId' not in payload
                             assert 'remember, correct' in payload['appTools']['instructions']
@@ -643,6 +670,15 @@ def main():
                             return {'alreadyEnded': False}
                         raise AssertionError('Unexpected synthetic vendor operation')
                     patch('bot_web.atmee_video.provider', synthetic_atmee).start()
+                    def synthetic_portrait(key, photo):
+                        assert key == 'sk_atmee_native-builder' and photo.startswith('data:image/png;base64,')
+                        from PIL import Image
+                        import base64
+                        import io
+                        with Image.open(io.BytesIO(base64.b64decode(photo.split(',', 1)[1]))) as image:
+                            assert image.size == (96, 168), 'Portrait was cropped'
+                        return portrait_upload
+                    patch('bot_web.atmee_build.portrait_upload', synthetic_portrait).start()
 
                 from bot_web.trust import OwnerTrust
                 trust = OwnerTrust(json.loads(Path(args.owner_trust).read_text())) if args.owner_trust else None

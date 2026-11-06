@@ -1,3 +1,6 @@
+import asyncio
+import base64
+import io
 import json
 from pathlib import Path
 from tempfile import TemporaryDirectory
@@ -6,6 +9,7 @@ from unittest.mock import AsyncMock, Mock, patch
 
 from test_security import Native  # Loads the production plugin package under bot_web.
 from bot_web.atmee_video import AtmeeVideo, catalog
+from bot_web.atmee_build import portrait_upload
 from bot_web.live_voice import LiveVoice
 from bot_web.operations import InvalidOperation
 from bot_web.workspace import WorkspaceStore
@@ -13,6 +17,8 @@ from bot_web.workspace import WorkspaceStore
 CHARACTER = 'bbcb7c08-35d3-44c2-86cd-28825ed7165e'
 CALL = '9c53b2f5-5c43-4b51-b553-504fa870e0e2'
 KEY = 'sk_atmee_fixture-private'
+REQUEST = 'ec20a4d8-4d29-4ec1-97f5-22fa53b26615'
+UPLOAD = '454a83fb-d7f8-4f81-bd1d-78f9be68a2c5'
 
 
 class AtmeeVideoTests(unittest.IsolatedAsyncioTestCase):
@@ -146,3 +152,86 @@ class AtmeeVideoTests(unittest.IsolatedAsyncioTestCase):
         ]):
             with self.assertRaises(InvalidOperation):
                 catalog(KEY)
+
+    def portrait(self):
+        from PIL import Image
+        raster = io.BytesIO()
+        Image.new('RGB', (32, 64), 'red').save(raster, format='PNG')
+        return 'data:image/png;base64,' + base64.b64encode(raster.getvalue()).decode()
+
+    async def test_build_carries_reviewed_inputs_and_resumes_from_its_receipt(self):
+        scopes = ['sessions', 'avatars:read', 'avatars:write', 'generation:write']
+        create_params = {'bot_id': 'alpha-id', 'request_id': REQUEST, 'name': 'Aurora',
+                         'persona': 'Aurora is a chief of staff.', 'voice_style': 'composed', 'photo': self.portrait()}
+        calls = []
+        def vendor(path, key, payload=None, *, idempotency=None):
+            self.assertEqual(key, KEY)
+            calls.append(path)
+            if path == '/v1/api_keys/current':
+                return {'active': True, 'scopes': scopes}
+            if path == '/v1/account':
+                return {'v2Access': 'granted', 'limits': {'v2Resolutions': [{'width': 384, 'height': 672}]}}
+            if path == '/v1/generation/voices':
+                self.assertEqual(idempotency, REQUEST)
+                self.assertIn('Composed', payload['voiceDescription'])
+                self.assertNotIn('chief of staff', json.dumps(payload))
+                return {'voices': [{'upload': 'upload:' + UPLOAD}]}
+            if path == '/v1/avatars':
+                self.assertEqual(payload['persona'], {'whoPrompt': create_params['persona']})
+                self.assertEqual(payload['visibility'], 'private')
+                self.assertEqual(payload['engine'], 'v2')
+                self.assertEqual(payload['resolution'], {'width': 384, 'height': 672})
+                self.assertEqual(payload['assets']['voice']['url'], 'upload:' + UPLOAD)
+                return {'avatarId': CHARACTER, 'kind': 'conversational', 'status': 'building',
+                        'statusUrl': '/v1/avatars/' + CHARACTER}
+            if path == '/v1/avatars/' + CHARACTER:
+                return {'id': CHARACTER, 'readyToChat': True}
+            self.fail(path)
+
+        with (
+            patch('bot_web.atmee_video.read_key', return_value=KEY),
+            patch('bot_web.atmee_video.provider', side_effect=vendor),
+            patch('bot_web.atmee_build.portrait_upload', return_value='upload:' + CALL) as upload,
+        ):
+            first = await self.service.invoke('atmee.build.start', create_params)
+            self.assertEqual(first['build']['state'], 'preparing')
+            self.assertEqual(await self.service.invoke('atmee.build.start', create_params), first)
+            await asyncio.gather(*self.service.builds.tasks)
+            reopened = AtmeeVideo(self.store, self.ops, self.voice)
+            reopened.recover()
+            ready = await reopened.invoke('atmee.build.status', {'bot_id': 'alpha-id'})
+            self.assertEqual(ready['build']['avatar'], CHARACTER)
+            self.assertEqual(ready['build']['state'], 'ready')
+            self.assertEqual(await reopened.invoke('atmee.build.start', create_params), ready)
+            upload.assert_called_once()
+            self.assertEqual(calls.count('/v1/generation/voices'), 1)
+            self.assertEqual(calls.count('/v1/avatars'), 1)
+        self.ops.gateway.call.assert_not_awaited()
+
+    async def test_create_timeout_never_replays_the_vendor_create(self):
+        with self.store.db:
+            self.store.db.execute("INSERT INTO atmee_build VALUES(?,?,?,?,?,NULL,NULL,0)",
+                                  (REQUEST, 'alpha-id', 'unneeded', 'Aurora', 'creating'))
+        self.service.recover()
+        status = self.store.db.execute('SELECT state,error FROM atmee_build WHERE id=?', (REQUEST,)).fetchone()
+        self.assertEqual(status[0], 'uncertain')
+        self.assertIn('before starting another', status[1])
+
+    def test_presigned_upload_validates_its_destination_and_omits_api_key(self):
+        ticket = {'uploadId': UPLOAD, 'uploadHeaders': {'Content-Type': 'image/png'}}
+        with (
+            patch('bot_web.atmee_video.provider', return_value={**ticket, 'uploadUrl': 'https://127.0.0.1/image'}),
+            patch('bot_web.atmee_build.build_opener') as opener,
+        ):
+            with self.assertRaises(InvalidOperation):
+                portrait_upload(KEY, self.portrait())
+            opener.assert_not_called()
+        with (
+            patch('bot_web.atmee_video.provider', side_effect=[{**ticket,
+                'uploadUrl': 'https://atmee.s3.amazonaws.com/image?signature=fixture'}, {'status': 'uploaded'}]),
+            patch('bot_web.atmee_build.build_opener') as opener,
+        ):
+            self.assertEqual(portrait_upload(KEY, self.portrait()), 'upload:' + UPLOAD)
+            put = opener.return_value.open.call_args.args[0]
+            self.assertEqual(put.method, 'PUT')
+            self.assertEqual({key.lower(): value for key, value in put.header_items()}, {'content-type': 'image/png'})

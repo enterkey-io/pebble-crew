@@ -435,7 +435,7 @@ export function PebbleEditor({
               />
             )}
             {client.supportsAtmeeSetup && (
-              <AtmeeCharacterSettings key={bot.id} client={client} botId={bot.id} />
+              <AtmeeCharacterSettings key={bot.id} client={client} bot={bot} />
             )}
           </div>
         )}

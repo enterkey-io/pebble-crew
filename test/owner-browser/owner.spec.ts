@@ -1,5 +1,5 @@
 import { submitMessage } from '../composer';
-import { installAtmeeRoom } from '../atmee-room';
+import { atmeePortrait, installAtmeeRoom } from '../atmee-room';
 import { execFileSync } from 'node:child_process';
 import { openSidebarMenu } from '../sidebar-menu';
 import { test, expect } from '@playwright/test';
@@ -1200,4 +1200,49 @@ test('Aurora remembers a text fact in video and a video correction in text and t
   await speak('owner', 'nativevideo recall in the next call');
   expect(await ask()).toBe('Aurora remembers Juniper');
   await endCall();
+});
+
+test('owner creates and selects Aurora from Pebble Crew without a voice recording', async ({
+  page,
+  context,
+}) => {
+  await context.addCookies(ownerCookies);
+  const signals = observeOwner(page);
+  await page.goto('/');
+  await expect(page.getByLabel('Message', { exact: true })).toBeEnabled();
+  await page.getByRole('button', { name: 'Your account' }).click();
+  await page.getByRole('menuitem', { name: 'Settings', exact: true }).click();
+  await page.getByRole('tab', { name: 'Connections', exact: true }).click();
+  await page
+    .getByRole('region', { name: 'Atmee' })
+    .getByRole('button', { name: /^(Add API key|Replace key)$/ })
+    .click();
+  const key = page.getByRole('form', { name: 'Atmee API key' });
+  await key.getByLabel('API key').fill('sk_atmee_native-builder');
+  await key.getByRole('button', { name: 'Submit' }).click();
+  await expect(page.getByText('API key saved')).toBeVisible();
+  await expect(key).toBeHidden();
+  await page.getByRole('button', { name: 'Close Settings' }).click();
+  const openVideo = async () => {
+    await openSidebarMenu(page, 'Aurora');
+    await page.getByRole('menuitem', { name: 'Edit pebble', exact: true }).click();
+    await page.getByRole('tab', { name: 'Voice', exact: true }).click();
+  };
+  await openVideo();
+  await page.getByRole('button', { name: 'New character', exact: true }).click();
+  await expect(page.getByLabel('Character name')).toHaveValue('Aurora');
+  await page.getByLabel('Portrait', { exact: true }).setInputFiles(await atmeePortrait(page));
+  await page.getByLabel('Character name').fill('Aurora · Video test');
+  await page.getByLabel('Character description').fill('Approved Aurora character description.');
+  await page.getByRole('button', { name: 'Create character', exact: true }).click();
+  await expect(page.getByText('Aurora · Video test is ready.')).toBeVisible({ timeout: 30000 });
+  await page.getByRole('button', { name: 'Use character', exact: true }).click();
+  const selected = page.getByRole('combobox', { name: 'Character', exact: true });
+  await expect(selected).toContainText('Aurora · Video test');
+  await page.getByRole('button', { name: 'Close Edit Aurora' }).click();
+  await page.reload();
+  await expect(page.getByLabel('Message', { exact: true })).toBeEnabled();
+  await openVideo();
+  await expect(selected).toContainText('Aurora · Video test');
+  expectNoChatSends(signals);
 });

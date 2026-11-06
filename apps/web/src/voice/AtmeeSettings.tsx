@@ -1,7 +1,7 @@
 import { useEffect, useId, useState } from 'react';
 import { safeError } from '@hermes-client/core';
 import { AtmeeDomain } from '@hermes-client/protocol';
-import type { SessionClient } from '@hermes-client/protocol';
+import type { SessionClient, WorkspaceBot, AtmeeCharacter } from '@hermes-client/protocol';
 import { Alert, AlertDescription } from '../components/ui/alert';
 import { Button } from '../components/ui/button';
 import { Item, ItemActions, ItemContent, ItemDescription, ItemTitle } from '../components/ui/item';
@@ -17,6 +17,7 @@ import {
 } from '../components/ui/select';
 import { SecretCard } from '../components/ai-elements/secret-card';
 import { FormSection } from '../ui/primitives';
+import { AtmeeCharacterBuilder } from './AtmeeCharacterBuilder';
 
 export function AtmeeConnectionSettings({ client }: { client: SessionClient }) {
   const [configured, setConfigured] = useState<boolean>();
@@ -66,7 +67,7 @@ export function AtmeeConnectionSettings({ client }: { client: SessionClient }) {
         <SecretCard
           title="Atmee API key"
           label="API key"
-          description="Saved privately in Hermes. Use a key with access to sessions and characters."
+          description="Saved privately in Hermes. Use sessions and character read access. To create characters here, use an account-wide key with character and generation write access."
           onSkip={() => {
             setEditing(false);
             setError('');
@@ -89,11 +90,12 @@ export function AtmeeConnectionSettings({ client }: { client: SessionClient }) {
 
 export function AtmeeCharacterSettings({
   client,
-  botId,
+  bot,
 }: {
   client: SessionClient;
-  botId: string;
+  bot: WorkspaceBot;
 }) {
+  const botId = bot.id;
   const id = useId();
   const [characters, setCharacters] = useState<Awaited<ReturnType<AtmeeDomain['characters']>>>();
   const [note, setNote] = useState('');
@@ -118,6 +120,31 @@ export function AtmeeCharacterSettings({
       current = false;
     };
   }, [client, botId, revision]);
+  async function selectCharacter(avatar: AtmeeCharacter) {
+    setSaving(true);
+    setError('');
+    try {
+      const saved = await new AtmeeDomain(client).select(botId, avatar.id);
+      setCharacters(
+        (current) =>
+          current && {
+            ...current,
+            selected: avatar.id,
+            note: saved,
+            avatars: current.avatars.some((item) => item.id === avatar.id)
+              ? current.avatars.map((item) => (item.id === avatar.id ? avatar : item))
+              : [...current.avatars, avatar],
+          },
+      );
+      setNote(saved);
+      return true;
+    } catch (cause) {
+      setError(safeError(cause).message);
+      return false;
+    } finally {
+      setSaving(false);
+    }
+  }
   return (
     <FormSection title="Video" description="Your Atmee character supplies the face and voice.">
       {!characters && !error && <LoadingBar active label="Loading Atmee characters" />}
@@ -126,9 +153,10 @@ export function AtmeeCharacterSettings({
           Add an Atmee API key in Settings → Connections.
         </p>
       )}
-      {characters?.configured && !characters.avatars.length && (
+      {characters?.configured && !characters.canCreate && (
         <p className="text-sm text-muted-foreground">
-          Create a conversational character in Atmee Studio.
+          To create a character here, add an account-wide Atmee key with character and generation
+          write access.
         </p>
       )}
       {characters?.configured && characters.avatars.length > 0 && (
@@ -141,18 +169,9 @@ export function AtmeeCharacterSettings({
                 : ''
             }
             disabled={saving}
-            onValueChange={async (value) => {
-              setSaving(true);
-              setError('');
-              try {
-                const saved = await new AtmeeDomain(client).select(botId, value);
-                setCharacters((current) => current && { ...current, selected: value, note: saved });
-                setNote(saved);
-              } catch (cause) {
-                setError(safeError(cause).message);
-              } finally {
-                setSaving(false);
-              }
+            onValueChange={(value) => {
+              const avatar = characters.avatars.find((item) => item.id === value);
+              if (avatar) void selectCharacter(avatar);
             }}
           >
             <SelectTrigger id={id} className="w-full">
@@ -213,6 +232,15 @@ export function AtmeeCharacterSettings({
             </div>
           )}
         </div>
+      )}
+      {characters?.configured && characters.canCreate && (
+        <AtmeeCharacterBuilder
+          client={client}
+          bot={bot}
+          selected={characters.selected}
+          saving={saving}
+          onSelect={selectCharacter}
+        />
       )}
       {error && (
         <Alert>

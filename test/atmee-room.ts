@@ -1,5 +1,18 @@
 import type { Page } from '@playwright/test';
 
+export async function atmeePortrait(page: Page) {
+  const image = await page.evaluate(() => {
+    const canvas = document.createElement('canvas');
+    canvas.width = 96;
+    canvas.height = 168;
+    const context = canvas.getContext('2d')!;
+    context.fillStyle = '#c58f72';
+    context.fillRect(0, 0, canvas.width, canvas.height);
+    return canvas.toDataURL('image/png').split(',')[1]!;
+  });
+  return { name: 'portrait.png', mimeType: 'image/png', buffer: Buffer.from(image, 'base64') };
+}
+
 export async function installAtmeeRoom(page: Page, dimensions = { width: 512, height: 512 }) {
   await page.addInitScript(() => {
     const Media = globalThis.MediaStream;

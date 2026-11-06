@@ -287,3 +287,10 @@ and name the earlier ID when a rule is superseded.
 - Decision: Put optional Call notes below the selected character in the Video section. Use the shared Label, Textarea, and Button, with one explicit save. Place the Atmee sharing disclosure next to the field. Keep Video available in the Voice tab when audio providers are unavailable.
 - Why: Preferences apply to the selected character, and users should see what Atmee receives before saving.
 - Evidence: The [video browser journey](../test/chat-workspace/atmee.spec.ts) saves notes and confirms that the room sends them only to the character.
+
+### UI-atmee-character-creation Review the character before sending it
+
+- Date: 2026-11-06
+- Decision: Open a compact inline form in Voice → Video with a portrait, a voice style, and an editable name and description. Use shared fields and one explicit creation action. Explain the provider transfer and possible credit use beside that action.
+- Why: The owner can build a character from their existing Pebble without uploading a recording or handing over a full profile.
+- Evidence: The [browser journey](../test/chat-workspace/atmee.spec.ts) checks the prefill, reviewed payload, asynchronous status, and character selection.

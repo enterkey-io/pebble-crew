@@ -57,6 +57,10 @@ class WorkspaceStore:
             CREATE TABLE IF NOT EXISTS atmee_selection(bot TEXT PRIMARY KEY, avatar TEXT NOT NULL);
             CREATE TABLE IF NOT EXISTS atmee_context(
                 bot TEXT NOT NULL, avatar TEXT NOT NULL, note TEXT NOT NULL, PRIMARY KEY(bot,avatar));
+            CREATE TABLE IF NOT EXISTS atmee_build(
+                id TEXT PRIMARY KEY, bot TEXT NOT NULL, key_hash TEXT NOT NULL, name TEXT NOT NULL,
+                state TEXT NOT NULL, avatar TEXT, error TEXT, created REAL NOT NULL);
+            CREATE INDEX IF NOT EXISTS atmee_build_recent ON atmee_build(bot,key_hash,created);
             CREATE TABLE IF NOT EXISTS atmee_call(
                 id TEXT PRIMARY KEY, incarnation TEXT NOT NULL, conversation TEXT NOT NULL,
                 voice_id TEXT UNIQUE, ended_at REAL, delivered INTEGER NOT NULL DEFAULT 0);
@@ -232,7 +236,7 @@ def appearance(value):
     return dict(value)
 
 
-def normalize_photo(data, *, size=512):
+def normalize_photo(data, *, size=512, square=True):
     if not isinstance(data, str) or len(data) > 2_800_000 or not re.fullmatch(r'data:image/(png|jpeg|webp);base64,[A-Za-z0-9+/=]+', data):
         raise InvalidOperation('Choose a PNG, JPEG or WebP photo')
     from PIL import Image, ImageOps
@@ -247,7 +251,11 @@ def normalize_photo(data, *, size=512):
                 if source.format not in {'PNG', 'JPEG', 'WEBP'} or source.width * source.height > 16_000_000 or max(source.size) > 8192 or getattr(source, 'n_frames', 1) != 1:
                     raise ValueError()
                 mode = 'RGBA' if 'A' in source.getbands() or 'transparency' in source.info else 'RGB'
-                image = ImageOps.fit(ImageOps.exif_transpose(source).convert(mode), (size, size))
+                image = ImageOps.exif_transpose(source).convert(mode)
+                if square:
+                    image = ImageOps.fit(image, (size, size))
+                else:
+                    image.thumbnail((size, size))
                 # Fresh raster drops EXIF/GPS, filename and embedded metadata.
                 clean = Image.new(mode, image.size)
                 clean.paste(image)
