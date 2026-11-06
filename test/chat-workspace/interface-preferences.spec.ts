@@ -95,6 +95,7 @@ test('sidebar resizes from its edge, keeps row contents inside, supports keyboar
   context,
 }, info) => {
   test.skip(page.viewportSize()!.width < 768, 'Phones use the navigation drawer.');
+  await page.setViewportSize({ width: 1100, height: 850 });
   await installFixture(context);
   await page.goto('/');
   await expect(page.getByLabel('Message', { exact: true })).toBeEnabled();

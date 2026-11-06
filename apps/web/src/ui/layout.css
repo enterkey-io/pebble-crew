@@ -473,12 +473,6 @@
   color: var(--muted-foreground);
   background: var(--details);
 }
-@media (max-width: 1279px) and (min-width: 768px) {
-  .pc-rail {
-    width: 320px;
-    flex-basis: 320px;
-  }
-}
 @media (max-width: 767px), (any-pointer: coarse) {
   body:has(.pc-shell) {
     overflow: hidden;

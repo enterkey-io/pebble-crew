@@ -294,3 +294,17 @@ and name the earlier ID when a rule is superseded.
 - Decision: Open a compact inline form in Voice → Video with a portrait, a voice style, and an editable name and description. Use shared fields and one explicit creation action. Explain the provider transfer and possible credit use beside that action.
 - Why: The owner can build a character from their existing Pebble without uploading a recording or handing over a full profile.
 - Evidence: The [browser journey](../test/chat-workspace/atmee.spec.ts) checks the prefill, reviewed payload, asynchronous status, and character selection.
+
+### UI-owner-login-error Show sign-in errors in the form
+
+- Date: 2026-11-06
+- Decision: Put the shared destructive Alert beside the sign-in action and associate it with the password field. Use one message for an incorrect username or password and leave the form available for retry.
+- Why: A rejected sign-in needs to explain the failure while preserving the user's next attempt.
+- Evidence: The [sign-in journey](../test/chat-workspace/owner-login.spec.ts) checks the actual rejection shape, alert placement, and retry control on desktop and phone.
+
+### UI-sidebar-resize Let the panel own the sidebar width
+
+- Date: 2026-11-06
+- Decision: The resizable panel owns the sidebar width at every desktop breakpoint. Its content fills the panel. Keep a thin divider with a wider pointer target and keyboard resizing.
+- Why: A fixed-width child can hide the effect of a working resize handle.
+- Evidence: The [sidebar journey](../test/chat-workspace/interface-preferences.spec.ts) drags the visible rail at 1,100px and checks saved width and keyboard resizing.

@@ -99,6 +99,7 @@ export function WorkspacePanels({
       elementRef={page}
       orientation="horizontal"
       disabled={phone}
+      resizeTargetMinimumSize={{ fine: 16, coarse: 32 }}
       className={phone ? 'pc-phone-pages' : undefined}
       data-navigation-open={phone ? navigationOpen : undefined}
       data-native-sidebar-scroll={nativeSidebarScroll || undefined}
@@ -135,7 +136,7 @@ export function WorkspacePanels({
       <ResizableHandle
         aria-label="Resize sidebar"
         disabled={phone}
-        className="z-10 hidden bg-transparent transition-colors after:w-3 hover:bg-border focus-visible:bg-border md:flex"
+        className="z-10 hidden cursor-col-resize bg-sidebar-border transition-colors after:w-3 hover:bg-muted-foreground focus-visible:bg-muted-foreground md:flex"
         onDoubleClick={() => {
           panel.current?.resize(352);
           rememberWidth(352);

@@ -495,6 +495,10 @@ test('owner photo, account settings, tools layout and ordinary login persist', a
   await expect(page.getByRole('heading', { name: 'Sign in' })).toBeVisible();
   await expect(page).toHaveTitle('Sign in — Pebble Crew');
   await page.getByLabel('Username', { exact: true }).fill('owner');
+  await page.getByLabel('Password', { exact: true }).fill('synthetic-incorrect-password');
+  await page.getByRole('button', { name: 'Sign in', exact: true }).click();
+  await expect(page.getByRole('alert')).toHaveText('Incorrect username or password.');
+  await expect(page.getByLabel('Username', { exact: true })).toHaveValue('owner');
   await page.getByLabel('Password', { exact: true }).fill('synthetic-owner-password-456');
   await page.getByRole('button', { name: 'Sign in', exact: true }).click();
   await expect(page.getByLabel('Message', { exact: true })).toBeEnabled({ timeout: 30000 });
