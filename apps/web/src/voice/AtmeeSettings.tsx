@@ -32,7 +32,7 @@ function AtmeeKeyForm({
     <SecretCard
       title="Atmee API key"
       label="API key"
-      description="Use an Atmee key with avatar read access. To create video avatars, choose Every avatar and enable avatar and generation write access."
+      description="Use an Atmee key with avatar read access. For creation, choose Every avatar and enable avatar write access. Voice design also needs generation write access."
       onSkip={onClose}
       submissionError={(cause) => safeError(cause).message}
       onSubmit={async (value) => {
@@ -191,7 +191,7 @@ export function AtmeeCharacterSettings({
         <div className="grid justify-items-start gap-2">
           <p className="text-sm text-muted-foreground">
             This key can select video avatars. To create one, use an Atmee key with access to every
-            avatar and avatar and generation write permissions.
+            avatar and avatar write permission.
           </p>
           <Button type="button" variant="quiet" onClick={() => setEditingKey(true)}>
             Replace Atmee API key
@@ -279,6 +279,8 @@ export function AtmeeCharacterSettings({
           selected={characters.selected}
           saving={saving}
           onSelect={selectCharacter}
+          voices={characters.avatars.filter((avatar) => avatar.ready)}
+          canDesign={characters.canDesign}
         />
       )}
       {error && (

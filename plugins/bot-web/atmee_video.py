@@ -17,7 +17,7 @@ KEY = 'ATMEE_API_KEY'
 UUID = re.compile(r'[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}', re.IGNORECASE)
 KEY_FORMAT = re.compile(r'sk_(?:atmee|live)_[A-Za-z0-9_-]{8,240}')
 ERROR_CODES = {'ATMEE_KEY_REJECTED', 'ATMEE_KEY_SCOPE', 'ATMEE_KEY_SAVE_FAILED', 'ATMEE_UNAVAILABLE', 'ATMEE_AVATAR_UNAVAILABLE', 'ATMEE_CALL_LIMIT',
-               'ATMEE_BUILD_SCOPE', 'ATMEE_BUILD_CREDITS', 'ATMEE_BUILD_INPUT'}
+               'ATMEE_BUILD_SCOPE', 'ATMEE_BUILD_CREDITS', 'ATMEE_BUILD_INPUT', 'ATMEE_VOICE_UNAVAILABLE'}
 CALL_SECONDS = 300
 MAX_CAPTIONS = 240
 MAX_NOTE = 1000
@@ -110,9 +110,13 @@ def key_access(key):
     return key_permissions(key)[0]
 
 
-def can_build(permissions):
+def can_create(permissions):
     bound, scopes = permissions
-    return bound is None and {'avatars:write', 'generation:write'}.issubset(scopes)
+    return bound is None and 'avatars:write' in scopes
+
+
+def can_build(permissions):
+    return can_create(permissions) and 'generation:write' in permissions[1]
 
 
 def choice(data):
@@ -185,9 +189,10 @@ class AtmeeVideo:
         self.builds.recover()
 
     def pebble(self, bot_id):
-        if not any(bot.get('id') == bot_id and bot.get('enrolled') and bot.get('available')
-                   for bot in self.store.read()['bots'].values()):
-            raise InvalidOperation('This Pebble is no longer available')
+        for profile, bot in self.store.read()['bots'].items():
+            if bot.get('id') == bot_id and bot.get('enrolled') and bot.get('available'):
+                return profile, bot
+        raise InvalidOperation('This Pebble is no longer available')
 
     def note(self, bot_id, avatar_id):
         row = self.store.db.execute('SELECT note FROM atmee_context WHERE bot=? AND avatar=?',
@@ -222,7 +227,8 @@ class AtmeeVideo:
         return '\n\n'.join(sections)
 
     async def invoke(self, operation, params):
-        if operation in {'atmee.build.start', 'atmee.build.status'}:
+        if operation in {'atmee.build.start', 'atmee.build.status', 'atmee.build.profile',
+                         'atmee.voice.design', 'atmee.voice.status', 'atmee.voice.sample'}:
             return await self.builds.invoke(operation, params)
         if operation in {'atmee.start', 'atmee.caption', 'atmee.delegate', 'atmee.end'}:
             return await self.live(operation, params)
@@ -257,7 +263,7 @@ class AtmeeVideo:
             row = self.store.db.execute('SELECT avatar FROM atmee_selection WHERE bot=?', (bot_id,)).fetchone()
             selected = row[0] if row else None
             return {'configured': True, 'avatars': avatars, 'selected': selected, 'note': self.note(bot_id, selected),
-                    'can_create': can_build(permissions)}
+                    'can_create': can_create(permissions), 'can_design': can_build(permissions)}
         if operation == 'atmee.context':
             avatar_id, note = params['avatar_id'], params['note']
             if not isinstance(note, str) or len(note) > MAX_NOTE:

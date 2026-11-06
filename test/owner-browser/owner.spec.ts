@@ -4,7 +4,7 @@ import { execFileSync } from 'node:child_process';
 import { openSidebarMenu } from '../sidebar-menu';
 import { test, expect } from '@playwright/test';
 import type { BrowserContext, Page } from '@playwright/test';
-import { readFile } from 'node:fs/promises';
+import { readFile, writeFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { focusOrgCard } from '../chat-workspace/org-chart-driver';
 import { SHAPES } from '../../apps/web/src/avatar-lab/engine';
@@ -1234,6 +1234,7 @@ test('owner creates and selects Aurora from Pebble Crew without a voice recordin
   ).trim();
   const stored = await readFile(resolve(home, '.env'), 'utf8');
   expect(stored.includes('ATMEE_API_KEY=sk_atmee_native-builder')).toBe(true);
+  await writeFile(resolve(home, 'SOUL.md'), 'Synthetic Aurora prioritizes clear decisions.\n');
 
   await page.getByRole('button', { name: 'Close Settings' }).click();
   const openVideo = async () => {
@@ -1243,10 +1244,18 @@ test('owner creates and selects Aurora from Pebble Crew without a voice recordin
   };
   await openVideo();
   await page.getByRole('button', { name: 'New video avatar', exact: true }).click();
+  await page.getByRole('button', { name: /Review Hermes profile/ }).click();
   await expect(page.getByLabel('Avatar name')).toHaveValue('Aurora');
+  await expect(page.getByLabel('Avatar instructions')).toHaveValue(
+    /Synthetic Aurora prioritizes clear decisions/,
+  );
   await page.getByLabel('Portrait', { exact: true }).setInputFiles(await atmeePortrait(page));
   await page.getByLabel('Avatar name').fill('Aurora · Video test');
-  await page.getByLabel('Avatar description').fill('Approved Aurora character description.');
+  await page.getByLabel('Avatar instructions').fill('Approved Aurora character description.');
+  await page.getByRole('button', { name: 'Design a voice', exact: true }).click();
+  await page.getByLabel('Describe the voice').fill('Warm and conversational with a calm tone.');
+  await page.getByRole('button', { name: 'Generate voice samples' }).click();
+  await page.getByRole('radio', { name: 'Voice 1' }).click();
   await page.getByRole('button', { name: 'Create video avatar', exact: true }).click();
   await expect(page.getByText('Aurora · Video test is ready.')).toBeVisible({ timeout: 30000 });
   await page.getByRole('button', { name: 'Use video avatar', exact: true }).click();

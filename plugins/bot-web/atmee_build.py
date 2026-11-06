@@ -2,6 +2,9 @@
 import asyncio
 import base64
 import hashlib
+import json
+import os
+import stat
 import re
 import time
 from urllib.error import URLError
@@ -26,6 +29,7 @@ ERRORS = {
     'ATMEE_KEY_REJECTED': 'Atmee rejected this API key.',
     'STALE_REVISION': 'The Atmee key or Pebble changed. Reopen this editor.',
 }
+VOICE_WINDOW = 23 * 3600
 UNCERTAIN = 'Check your Atmee video avatars before starting another build. Atmee may have received this one.'
 
 
@@ -33,6 +37,79 @@ def clean_text(value, limit):
     if not isinstance(value, str) or not 0 < len(value.strip()) <= limit:
         raise InvalidOperation('Invalid character description or name')
     return value.strip()
+
+
+def prepare_profile(profile, bot):
+    from hermes_cli.profiles import get_profile_dir
+    home = get_profile_dir(profile)
+    if profile != 'default' and home.is_symlink():
+        raise InvalidOperation('The Hermes profile could not be verified')
+    soul = ''
+    try:
+        fd = os.open(home / 'SOUL.md', os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+        with os.fdopen(fd, 'rb') as source:
+            if stat.S_ISREG(os.fstat(source.fileno()).st_mode):
+                soul = source.read(16_000).decode('utf-8', errors='ignore').strip()
+    except OSError:
+        pass
+    name = (bot.get('name') or profile).strip()[:100]
+    role = bot.get('role') or {}
+    title = str(role.get('title') or bot.get('title') or '').strip()
+    summary = '\n'.join(dict.fromkeys(
+        text for value in (bot.get('description'), role.get('description'))
+        if isinstance(value, str) and (text := value.strip())))
+    instructions = '\n'.join(
+        value.strip() for field in ('responsibilities', 'boundaries', 'expectedOutputs')
+        if isinstance((value := role.get(field)), str) and value.strip()
+    )
+    persona = '\n\n'.join(text for text in (
+        f'You are {name}' + (f', {title}.' if title else '.'),
+        soul[:2300], summary, instructions,
+    ) if text)
+    return {'name': name, 'persona': persona[:3000].rstrip(), 'has_soul': bool(soul)}
+
+
+def voice_url(value):
+    parsed = urlsplit(value if isinstance(value, str) else '')
+    host = parsed.hostname or ''
+    if (parsed.scheme != 'https' or parsed.username or parsed.password or parsed.port is not None
+            or parsed.fragment or not any(host == item or host.endswith('.' + item) for item in STORAGE_HOSTS)):
+        raise ValueError('Invalid voice preview location')
+    return value
+
+
+def fetch_voice_sample(url):
+    try:
+        with build_opener(atmee.NoRedirect()).open(Request(voice_url(url)), timeout=15) as response:
+            limit = 12 * 1024 * 1024
+            mime = response.headers.get_content_type()
+            if mime not in {'audio/mpeg', 'audio/wav', 'audio/x-wav', 'audio/mp4', 'audio/aac',
+                            'audio/ogg', 'audio/flac', 'audio/webm', 'audio/x-m4a'}:
+                raise ValueError()
+            data = response.read(limit + 1)
+        if not 0 < len(data) <= limit:
+            raise ValueError()
+        return {'audio': base64.b64encode(data).decode('ascii'), 'mime': mime}
+    except (OSError, ValueError):
+        raise InvalidOperation('Could not load the Atmee voice sample', 'ATMEE_VOICE_UNAVAILABLE') from None
+
+
+def existing_voice(key, ident):
+    result = atmee.provider('/v1/avatars/' + ident + '/voice', key)
+    try:
+        return voice_url(result.get('url'))
+    except ValueError:
+        raise InvalidOperation('This Atmee avatar has no reusable voice sample', 'ATMEE_VOICE_UNAVAILABLE') from None
+
+
+def read_voice(value):
+    if isinstance(value, dict) and isinstance(value.get('id'), str) and atmee.UUID.fullmatch(value['id']):
+        if set(value) == {'kind', 'id'} and value['kind'] == 'existing':
+            return value
+        if (set(value) == {'kind', 'id', 'index'} and value['kind'] == 'designed'
+                and type(value['index']) is int and 0 <= value['index'] < 6):
+            return value
+    raise InvalidOperation('Choose an Atmee voice', 'ATMEE_VOICE_UNAVAILABLE')
 
 
 def portrait_upload(key, photo):
@@ -90,9 +167,23 @@ class AtmeeBuilds:
 
     def recover(self):
         with self.db:
+            unsubmitted = {row[0] for row in self.db.execute("SELECT id FROM atmee_build WHERE state='preparing'")}
+            if unsubmitted:
+                for ident, encoded in self.db.execute("SELECT id,options FROM atmee_voice_design WHERE state='ready'").fetchall():
+                    options = json.loads(encoded)
+                    changed = False
+                    for option in options:
+                        if option.get('build') in unsubmitted:
+                            option.pop('build')
+                            changed = True
+                    if changed:
+                        self.db.execute('UPDATE atmee_voice_design SET options=? WHERE id=?',
+                                        (json.dumps(options), ident))
             self.db.execute("UPDATE atmee_build SET state='failed',error=? WHERE state='preparing'",
                             ('Build interrupted. Check your Atmee usage before starting again.',))
             self.db.execute("UPDATE atmee_build SET state='uncertain',error=? WHERE state='creating'", (UNCERTAIN,))
+            self.db.execute("UPDATE atmee_voice_design SET state='failed',error=? WHERE state='pending'",
+                            ('Voice design was interrupted. Check Atmee usage before generating again.',))
 
     async def shutdown(self):
         for task in self.tasks:
@@ -111,8 +202,15 @@ class AtmeeBuilds:
                             (state, avatar, error, request_id))
 
     async def invoke(self, operation, params):
+        if operation == 'atmee.build.profile':
+            fields(params, ['bot_id'])
+            profile, bot = self.pebble(identifier(params['bot_id']))
+            return await asyncio.to_thread(prepare_profile, profile, bot)
+        if operation.startswith('atmee.voice.'):
+            return await self.voice_operation(operation, params)
+        build_fields = ['bot_id', 'request_id', 'name', 'persona', 'photo']
         fields(params, ['bot_id'] if operation == 'atmee.build.status' else
-               ['bot_id', 'request_id', 'name', 'persona', 'voice_style', 'photo'])
+               [*build_fields, 'voice' if 'voice' in params else 'voice_style'])
         bot = identifier(params['bot_id'])
         self.pebble(bot)
         key = atmee.read_key()
@@ -123,7 +221,7 @@ class AtmeeBuilds:
                                  'ORDER BY created DESC LIMIT 1', (bot, fingerprint)).fetchone()
         if operation == 'atmee.build.status':
             return {'build': await self.status(key, latest) if latest else None}
-        request_id, style = params['request_id'], params['voice_style']
+        request_id = params['request_id']
         if not isinstance(request_id, str) or not atmee.UUID.fullmatch(request_id):
             raise InvalidOperation('Invalid character request')
         seen = self.db.execute('SELECT id,name,state,avatar,error,bot,key_hash FROM atmee_build WHERE id=?',
@@ -136,8 +234,14 @@ class AtmeeBuilds:
             return {'build': self.receipt(latest)}
         if len(self.tasks) >= 2:
             raise InvalidOperation('Atmee builds are busy', 'CAPACITY')
-        if not isinstance(style, str) or style not in STYLES:
+        voice = read_voice(params['voice']) if 'voice' in params else params['voice_style']
+        if isinstance(voice, str) and voice not in STYLES:
             raise InvalidOperation('Invalid voice style')
+        if not isinstance(voice, (str, dict)):
+            raise InvalidOperation('Invalid voice')
+        designed = isinstance(voice, dict) and voice['kind'] == 'designed'
+        if designed:
+            self.design_option(voice, bot, fingerprint)
         name = clean_text(params['name'], 100)
         persona = clean_text(params['persona'], 3000)
         from .workspace import normalize_photo
@@ -145,10 +249,123 @@ class AtmeeBuilds:
         with self.db:
             self.db.execute('INSERT INTO atmee_build VALUES(?,?,?,?,?,NULL,NULL,?)',
                             (request_id, bot, fingerprint, name, 'preparing', time.time()))
-        task = asyncio.create_task(self.run(key, bot, request_id, name, persona, style, photo))
+            if designed:
+                self.reserve_design(voice, request_id)
+        task = asyncio.create_task(self.run(key, bot, request_id, name, persona, voice, photo))
         self.tasks.add(task)
         task.add_done_callback(self.tasks.discard)
         return {'build': self.receipt((request_id, name, 'preparing', None, None))}
+
+    def design_receipt(self, row):
+        if not row:
+            return {'design': None}
+        request_id, state, options, error = row
+        options = json.loads(options) if options else []
+        return {'design': {'id': request_id, 'state': state, 'count': len(options),
+                           'used': [index for index, option in enumerate(options) if option.get('build')],
+                           'error': error}}
+
+    def reserve_design(self, selection, request_id):
+        row = self.db.execute('SELECT options FROM atmee_voice_design WHERE id=?',
+                              (selection['id'],)).fetchone()
+        options = json.loads(row[0])
+        option = options[selection['index']]
+        if request_id is None:
+            option.pop('build', None)
+        else:
+            option['build'] = request_id
+        self.db.execute('UPDATE atmee_voice_design SET options=? WHERE id=?',
+                        (json.dumps(options), selection['id']))
+
+    def design_option(self, selection, bot, fingerprint, request_id=None):
+        row = self.db.execute("SELECT options FROM atmee_voice_design WHERE id=? AND bot=? AND key_hash=? "
+                              "AND state='ready' AND created>?", (selection['id'], bot, fingerprint,
+                                                                 time.time() - VOICE_WINDOW)).fetchone()
+        options = json.loads(row[0]) if row else []
+        if selection['index'] >= len(options):
+            raise InvalidOperation('This voice design expired. Generate new samples.', 'ATMEE_VOICE_UNAVAILABLE')
+        option = options[selection['index']]
+        if option.get('build') and option['build'] != request_id:
+            raise InvalidOperation('This generated voice is already used', 'ATMEE_VOICE_UNAVAILABLE')
+        return option
+
+    async def voice_operation(self, operation, params):
+        extras = {'atmee.voice.status': [], 'atmee.voice.design': ['request_id', 'description', 'name'],
+                  'atmee.voice.sample': ['voice']}
+        fields(params, ['bot_id', *extras[operation]])
+        bot = identifier(params['bot_id'])
+        self.pebble(bot)
+        key = atmee.read_key()
+        if not key:
+            raise InvalidOperation('Add an Atmee API key', 'ATMEE_KEY_REJECTED')
+        fingerprint = hashlib.sha256(key.encode()).hexdigest()
+        if operation == 'atmee.voice.sample':
+            voice = read_voice(params['voice'])
+            url = (self.design_option(voice, bot, fingerprint)['url'] if voice['kind'] == 'designed'
+                   else await asyncio.to_thread(existing_voice, key, voice['id']))
+            self.check_scope(bot, key)
+            return await asyncio.to_thread(fetch_voice_sample, url)
+        latest = self.db.execute('SELECT id,state,options,error FROM atmee_voice_design WHERE bot=? AND key_hash=? '
+                                 'AND created>? ORDER BY created DESC LIMIT 1',
+                                 (bot, fingerprint, time.time() - VOICE_WINDOW)).fetchone()
+        if operation == 'atmee.voice.status':
+            return self.design_receipt(latest)
+        request_id = params['request_id']
+        if not isinstance(request_id, str) or not atmee.UUID.fullmatch(request_id):
+            raise InvalidOperation('Invalid voice design request')
+        description = clean_text(params['description'], 1000)
+        if len(description) < 20:
+            raise InvalidOperation('Describe the voice in at least 20 characters', 'ATMEE_BUILD_INPUT')
+        name = clean_text(params['name'], 100)
+        prior = self.db.execute('SELECT id,state,options,error,bot,key_hash FROM atmee_voice_design WHERE id=?',
+                                (request_id,)).fetchone()
+        if prior:
+            if prior[4:] != (bot, fingerprint):
+                raise InvalidOperation('Invalid voice design request')
+            return self.design_receipt(prior[:4])
+        if latest and latest[1] == 'pending':
+            return self.design_receipt(latest)
+        if len(self.tasks) >= 2:
+            raise InvalidOperation('Atmee is busy', 'CAPACITY')
+        with self.db:
+            self.db.execute("DELETE FROM atmee_voice_design WHERE created<? AND state!='pending'",
+                            (time.time() - 2 * VOICE_WINDOW,))
+            self.db.execute("INSERT INTO atmee_voice_design VALUES(?,?,?,?,'pending',NULL,NULL)",
+                            (request_id, bot, fingerprint, time.time()))
+        task = asyncio.create_task(self.design(key, bot, request_id, description, name))
+        self.tasks.add(task)
+        task.add_done_callback(self.tasks.discard)
+        return self.design_receipt((request_id, 'pending', None, None))
+
+    async def design(self, key, bot, request_id, description, name):
+        options, error = [], None
+        try:
+            if not atmee.can_build(await asyncio.to_thread(atmee.key_permissions, key)):
+                raise InvalidOperation('Key cannot design a voice', 'ATMEE_BUILD_SCOPE')
+            self.check_scope(bot, key)
+            result = await asyncio.to_thread(atmee.provider, '/v1/generation/voices', key,
+                                             {'voiceDescription': description, 'avatarName': name, 'language': 'en'},
+                                             idempotency=request_id)
+            self.check_scope(bot, key)
+            rows = result.get('voices')
+            for item in rows[:6] if isinstance(rows, list) else []:
+                upload = item.get('upload') if isinstance(item, dict) else None
+                if not isinstance(upload, str) or not upload.startswith('upload:') or not atmee.UUID.fullmatch(upload[7:]):
+                    continue
+                try:
+                    options.append({'upload': upload, 'url': voice_url(item.get('url'))})
+                except ValueError:
+                    continue
+            if not options:
+                raise InvalidOperation('Atmee returned no playable samples', 'ATMEE_VOICE_UNAVAILABLE')
+        except InvalidOperation as failure:
+            error = ERRORS.get(failure.code, 'Atmee could not design a voice. Check Atmee usage before trying again.')
+        except (OSError, ValueError, TypeError):
+            error = 'Atmee could not design a voice. Check Atmee usage before trying again.'
+        with self.db:
+            self.db.execute('UPDATE atmee_voice_design SET state=?,options=?,error=? WHERE id=?',
+                            ('failed' if error else 'ready', json.dumps(options) if not error else None,
+                             error, request_id))
 
     async def status(self, key, row):
         request_id, name, state, avatar, error = row
@@ -166,11 +383,12 @@ class AtmeeBuilds:
             self.change(request_id, state, avatar=avatar, error=error)
         return self.receipt((request_id, name, state, avatar, error))
 
-    async def run(self, key, bot, request_id, name, persona, style, photo):
+    async def run(self, key, bot, request_id, name, persona, voice_choice, photo):
         creating = False
         try:
-            if not atmee.can_build(await asyncio.to_thread(atmee.key_permissions, key)):
-                raise InvalidOperation('Key cannot create characters', 'ATMEE_BUILD_SCOPE')
+            permissions = await asyncio.to_thread(atmee.key_permissions, key)
+            if not atmee.can_create(permissions) or (isinstance(voice_choice, str) and not atmee.can_build(permissions)):
+                raise InvalidOperation('Key cannot create video avatars', 'ATMEE_BUILD_SCOPE')
             account = await asyncio.to_thread(atmee.provider, '/v1/account', key)
             access = account.get('v2Access')
             plan = (account.get('plan') or {}).get('code')
@@ -184,7 +402,12 @@ class AtmeeBuilds:
             self.check_scope(bot, key)
             portrait = await asyncio.to_thread(portrait_upload, key, photo)
             self.check_scope(bot, key)
-            voice = await asyncio.to_thread(generated_voice, key, request_id, name, style)
+            if isinstance(voice_choice, str):
+                voice = await asyncio.to_thread(generated_voice, key, request_id, name, voice_choice)
+            elif voice_choice['kind'] == 'existing':
+                voice = await asyncio.to_thread(existing_voice, key, voice_choice['id'])
+            else:
+                voice = self.design_option(voice_choice, bot, hashlib.sha256(key.encode()).hexdigest(), request_id)['upload']
             self.check_scope(bot, key)
             manifest = {
                 'schemaVersion': 1, 'name': name, 'engine': 'v2', 'language': 'en',
@@ -214,6 +437,11 @@ class AtmeeBuilds:
         except Exception:
             self.change(request_id, 'uncertain' if creating else 'failed',
                         error=UNCERTAIN if creating else 'Could not prepare the video avatar.')
+
+        finally:
+            if not creating and isinstance(voice_choice, dict) and voice_choice['kind'] == 'designed':
+                with self.db:
+                    self.reserve_design(voice_choice, None)
 
     def check_scope(self, bot, key):
         self.pebble(bot)

@@ -61,6 +61,10 @@ class WorkspaceStore:
                 id TEXT PRIMARY KEY, bot TEXT NOT NULL, key_hash TEXT NOT NULL, name TEXT NOT NULL,
                 state TEXT NOT NULL, avatar TEXT, error TEXT, created REAL NOT NULL);
             CREATE INDEX IF NOT EXISTS atmee_build_recent ON atmee_build(bot,key_hash,created);
+            CREATE TABLE IF NOT EXISTS atmee_voice_design(
+                id TEXT PRIMARY KEY,bot TEXT NOT NULL,key_hash TEXT NOT NULL,created REAL NOT NULL,
+                state TEXT NOT NULL,options TEXT,error TEXT);
+            CREATE INDEX IF NOT EXISTS atmee_voice_design_recent ON atmee_voice_design(bot,key_hash,created);
             CREATE TABLE IF NOT EXISTS atmee_call(
                 id TEXT PRIMARY KEY, incarnation TEXT NOT NULL, conversation TEXT NOT NULL,
                 voice_id TEXT UNIQUE, ended_at REAL, delivered INTEGER NOT NULL DEFAULT 0);

@@ -3,8 +3,16 @@ import { record } from './json';
 import type { RpcPort } from './session-client';
 
 export type AtmeeCharacter = { id: string; name: string; ready: boolean };
-export const ATMEE_VOICE_STYLES = ['warm', 'composed', 'bright', 'soft'] as const;
-export type AtmeeVoiceStyle = (typeof ATMEE_VOICE_STYLES)[number];
+export type AtmeeVoice =
+  { kind: 'existing'; id: string } | { kind: 'designed'; id: string; index: number };
+const designStates = ['pending', 'ready', 'failed'] as const;
+export type AtmeeVoiceDesign = {
+  id: string;
+  state: (typeof designStates)[number];
+  count: number;
+  used: number[];
+  error: string | null;
+};
 const buildStates = ['preparing', 'building', 'ready', 'failed', 'uncertain'] as const;
 export type AtmeeBuild = {
   id: string;
@@ -14,6 +22,30 @@ export type AtmeeBuild = {
   error: string | null;
 };
 const uuid = /^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i;
+
+function readDesign(value: unknown): AtmeeVoiceDesign | null {
+  if (value === null) return null;
+  const data = record(value);
+  const state = designStates.find((candidate) => candidate === data.state);
+  if (
+    typeof data.id !== 'string' ||
+    !uuid.test(data.id) ||
+    !state ||
+    typeof data.count !== 'number' ||
+    !Number.isInteger(data.count) ||
+    data.count < 0 ||
+    data.count > 6 ||
+    (data.error !== null && typeof data.error !== 'string')
+  )
+    throw new ClientError('INVALID_RESPONSE');
+  const used = Array.isArray(data.used)
+    ? data.used.filter(
+        (index): index is number =>
+          typeof index === 'number' && Number.isInteger(index) && index >= 0 && index < 6,
+      )
+    : [];
+  return { id: data.id, state, count: data.count, used, error: data.error };
+}
 
 function readBuild(value: unknown): AtmeeBuild | null {
   if (value === null) return null;
@@ -67,6 +99,7 @@ export class AtmeeDomain {
       selected: data.selected,
       note: videoText(data.note, 2000),
       canCreate: data.can_create === true,
+      canDesign: data.can_design === true,
       avatars: data.avatars.map((item): AtmeeCharacter => {
         const avatar = record(item);
         if (
@@ -101,6 +134,45 @@ export class AtmeeDomain {
     if (receipt.note !== value) throw new ClientError('INVALID_RESPONSE');
     return receipt.note;
   }
+  async buildProfile(botId: string) {
+    const data = record(await this.bridge.invoke('atmee.build.profile', { bot_id: botId }));
+    const name = videoText(data.name, 100);
+    const persona = videoText(data.persona, 3000);
+    if (!name || !persona) throw new ClientError('INVALID_RESPONSE');
+    return { name, persona, hasSoul: data.has_soul === true };
+  }
+  async voiceStatus(botId: string) {
+    return readDesign(
+      record(await this.bridge.invoke('atmee.voice.status', { bot_id: botId })).design,
+    );
+  }
+  async designVoice(botId: string, requestId: string, name: string, description: string) {
+    const data = record(
+      await this.bridge.invoke('atmee.voice.design', {
+        bot_id: botId,
+        request_id: requestId,
+        name: name.trim(),
+        description: description.trim(),
+      }),
+    );
+    const design = readDesign(data.design);
+    if (!design) throw new ClientError('INVALID_RESPONSE');
+    return design;
+  }
+  async sampleVoice(botId: string, voice: AtmeeVoice) {
+    const data = record(await this.bridge.invoke('atmee.voice.sample', { bot_id: botId, voice }));
+    if (
+      typeof data.audio !== 'string' ||
+      !data.audio ||
+      data.audio.length > 16 * 1024 * 1024 ||
+      typeof data.mime !== 'string' ||
+      !/^audio\/[a-z0-9-]+$/.test(data.mime)
+    )
+      throw new ClientError('INVALID_RESPONSE');
+    return new Blob([Uint8Array.from(atob(data.audio), (byte) => byte.charCodeAt(0))], {
+      type: data.mime,
+    });
+  }
   async buildStatus(botId: string) {
     return readBuild(
       record(await this.bridge.invoke('atmee.build.status', { bot_id: botId })).build,
@@ -112,7 +184,7 @@ export class AtmeeDomain {
     input: {
       name: string;
       persona: string;
-      style: AtmeeVoiceStyle;
+      voice: AtmeeVoice;
       photo: string;
     },
   ) {
@@ -122,7 +194,7 @@ export class AtmeeDomain {
         request_id: requestId,
         name: input.name.trim(),
         persona: input.persona.trim(),
-        voice_style: input.style,
+        voice: input.voice,
         photo: input.photo,
       }),
     );

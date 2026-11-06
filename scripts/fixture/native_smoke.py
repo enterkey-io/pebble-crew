@@ -647,7 +647,7 @@ def main():
                         if builder and path == '/v1/generation/voices':
                             assert uuid.UUID(idempotency) and payload['voiceDescription'].startswith('Warm')
                             assert payload['avatarName'] == 'Aurora · Video test'
-                            return {'voices': [{'upload': voice_upload}]}
+                            return {'voices': [{'upload': voice_upload, 'url': 'https://assets.atmee.ai/fixture.mp3'}]}
                         if builder and path == '/v1/avatars' and payload:
                             assert not built, 'Character creation was replayed'
                             assert payload['engine'] == 'v2' and payload['visibility'] == 'private'

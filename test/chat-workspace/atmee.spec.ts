@@ -4,6 +4,21 @@ import { atmeePortrait, installAtmeeRoom } from '../atmee-room';
 
 const character = 'bbcb7c08-35d3-44c2-86cd-28825ed7165e';
 const call = '9c53b2f5-5c43-4b51-b553-504fa870e0e2';
+const voiceDesign = '21a1896b-011e-4dcf-a8db-9382f0875d70';
+const sampleWav = Buffer.alloc(8044, 0x80);
+sampleWav.write('RIFF', 0);
+sampleWav.writeUInt32LE(sampleWav.length - 8, 4);
+sampleWav.write('WAVEfmt ', 8);
+sampleWav.writeUInt32LE(16, 16);
+sampleWav.writeUInt16LE(1, 20);
+sampleWav.writeUInt16LE(1, 22);
+sampleWav.writeUInt32LE(8000, 24);
+sampleWav.writeUInt32LE(8000, 28);
+sampleWav.writeUInt16LE(1, 32);
+sampleWav.writeUInt16LE(8, 34);
+sampleWav.write('data', 36);
+sampleWav.writeUInt32LE(sampleWav.length - 44, 40);
+
 test.use({ serviceWorkers: 'block' });
 
 test('create a private character from a portrait, voice style and reviewed Pebble profile', async ({
@@ -20,13 +35,40 @@ test('create a private character from a portrait, voice style and reviewed Pebbl
     error: null;
   } | null = null;
   let submissions = 0;
+  let designed = false;
+  let sampled = 0;
   let ready = false;
   await page.route(/\/v1\/(rpc|avatar)$/, async (route) => {
     const { operation, params } = route.request().postDataJSON();
     let result;
     if (operation === 'atmee.ready') result = { ready: false };
     else if (operation === 'atmee.avatars') {
-      result = { configured: true, can_create: true, avatars: [], selected };
+      result = { configured: true, can_create: true, can_design: true, avatars: [], selected };
+    } else if (operation === 'atmee.build.profile') {
+      result = {
+        name: 'Arlo',
+        persona: 'Arlo is the Team lead. From SOUL.md: Be direct.',
+        has_soul: true,
+      };
+    } else if (operation === 'atmee.voice.status') {
+      result = {
+        design: designed ? { id: voiceDesign, state: 'ready', count: 2, error: null } : null,
+      };
+    } else if (operation === 'atmee.voice.design') {
+      expect(params).toMatchObject({
+        bot_id: 'identity-0',
+        description: 'Warm voice with a calm and clear pace.',
+      });
+      expect(params).not.toHaveProperty('persona');
+      designed = true;
+      result = { design: { id: voiceDesign, state: 'pending', count: 0, error: null } };
+    } else if (operation === 'atmee.voice.sample') {
+      expect(params.voice).toEqual({ kind: 'designed', id: voiceDesign, index: 1 });
+      sampled++;
+      result = {
+        audio: sampleWav.toString('base64'),
+        mime: 'audio/wav',
+      };
     } else if (operation === 'atmee.build.status') {
       if (build && ready) build = { ...build, state: 'ready', avatar: character };
       result = { build };
@@ -36,7 +78,7 @@ test('create a private character from a portrait, voice style and reviewed Pebbl
         bot_id: 'identity-0',
         name: 'Arlo · Studio',
         persona: 'Arlo leads the team.',
-        voice_style: 'composed',
+        voice: { kind: 'designed', id: voiceDesign, index: 1 },
       });
       expect(params.photo).toMatch(/^data:image\/jpeg;base64,/);
       submissions += 1;
@@ -60,13 +102,30 @@ test('create a private character from a portrait, voice style and reviewed Pebbl
   const start = page.getByRole('button', { name: 'Start video call' });
   await start.click();
   await page.getByRole('button', { name: 'New video avatar', exact: true }).click();
-  await expect(page.getByLabel('Avatar name')).toHaveValue('Arlo');
-  const description = page.getByLabel('Avatar description');
-  await expect(description).toHaveValue(/Team lead/);
+  await expect(page.getByRole('button', { name: 'Choose photo' })).toBeVisible();
+  await expect(page.getByLabel('Portrait', { exact: true })).toBeHidden();
   await page.getByLabel('Portrait', { exact: true }).setInputFiles(await atmeePortrait(page));
   await expect(page.getByRole('img', { name: 'Portrait preview' })).toBeVisible();
-  await page.getByRole('combobox', { name: 'Voice style' }).click();
-  await page.getByRole('option', { name: 'Calm & clear' }).click();
+  await page.getByLabel('Describe the voice').fill('Warm voice with a calm and clear pace.');
+  await page.getByRole('button', { name: 'Generate voice samples' }).click();
+  await expect(page.getByRole('radio', { name: 'Voice 1' })).toBeVisible();
+  await page.getByRole('button', { name: 'Preview Voice 2' }).click();
+  await expect(page.getByLabel('Sample for Voice 2')).toHaveAttribute('src', /^blob:/);
+  await expect
+    .poll(() =>
+      page
+        .getByLabel('Sample for Voice 2')
+        .evaluate((element) => (element as HTMLAudioElement).readyState),
+    )
+    .toBeGreaterThan(0);
+
+  expect(sampled).toBe(1);
+  await page.getByRole('radio', { name: 'Voice 2' }).click();
+  await expect(page.getByRole('button', { name: 'Create video avatar' })).toBeDisabled();
+  await page.getByRole('button', { name: /Review Hermes profile/ }).click();
+  await expect(page.getByLabel('Avatar name')).toHaveValue('Arlo');
+  const description = page.getByLabel('Avatar instructions');
+  await expect(description).toHaveValue(/SOUL.md: Be direct/);
   await page.getByLabel('Avatar name').fill('Arlo · Studio');
   await description.fill('Arlo leads the team.');
   await page

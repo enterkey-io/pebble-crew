@@ -1,10 +1,11 @@
 import { useEffect, useId, useRef, useState } from 'react';
 import { safeError } from '@hermes-client/core';
-import { ATMEE_VOICE_STYLES, AtmeeDomain } from '@hermes-client/protocol';
+import { AtmeeDomain } from '@hermes-client/protocol';
+import { ImagePlus } from 'lucide-react';
 import type {
   AtmeeBuild,
   AtmeeCharacter,
-  AtmeeVoiceStyle,
+  AtmeeVoice,
   SessionClient,
   WorkspaceBot,
 } from '@hermes-client/protocol';
@@ -14,21 +15,9 @@ import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
 import { Label } from '../components/ui/label';
 import { LoadingBar } from '../components/ui/loading-bar';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '../components/ui/select';
 import { Textarea } from '../components/ui/textarea';
-
-const styleLabels: Record<AtmeeVoiceStyle, string> = {
-  warm: 'Warm & conversational',
-  composed: 'Calm & clear',
-  bright: 'Bright & upbeat',
-  soft: 'Soft & reassuring',
-};
+import { Disclosure } from '../components/ui/disclosure';
+import { AtmeeVoicePicker } from './AtmeeVoicePicker';
 
 function pending(build: AtmeeBuild | null) {
   return build?.state === 'preparing' || build?.state === 'building';
@@ -40,27 +29,25 @@ export function AtmeeCharacterBuilder({
   selected,
   saving,
   onSelect,
+  voices,
+  canDesign,
 }: {
   client: SessionClient;
   bot: WorkspaceBot;
   selected: string | null;
   saving: boolean;
   onSelect: (avatar: AtmeeCharacter) => Promise<boolean>;
+  voices: AtmeeCharacter[];
+  canDesign: boolean;
 }) {
   const id = useId();
   const [open, setOpen] = useState(false);
-  const [name, setName] = useState(bot.name.slice(0, 100));
-  const [persona, setPersona] = useState(() => {
-    const role = bot.role.title.trim();
-    const details = [...new Set([bot.role.description, bot.description].map((item) => item.trim()))]
-      .filter(Boolean)
-      .join('\n\n');
-    return [role ? `${bot.name} is a ${role}.` : `You are ${bot.name}.`, details]
-      .filter(Boolean)
-      .join('\n\n')
-      .slice(0, 3000);
-  });
-  const [style, setStyle] = useState<AtmeeVoiceStyle>('warm');
+  const [name, setName] = useState('');
+  const [persona, setPersona] = useState('');
+  const [profile, setProfile] = useState<'loading' | 'soul' | 'role'>('loading');
+  const [reviewed, setReviewed] = useState(false);
+  const [voice, setVoice] = useState<AtmeeVoice | null>(null);
+  const photoInput = useRef<HTMLInputElement>(null);
   const [photo, setPhoto] = useState('');
   const [reading, setReading] = useState(false);
   const [submitting, setSubmitting] = useState(false);
@@ -93,6 +80,25 @@ export function AtmeeCharacterBuilder({
     };
   }, [client, botId, refresh]);
 
+  useEffect(() => {
+    if (!open) return;
+    let current = true;
+    void new AtmeeDomain(client).buildProfile(botId).then(
+      (data) => {
+        if (!current) return;
+        setName(data.name);
+        setPersona(data.persona);
+        setProfile(data.hasSoul ? 'soul' : 'role');
+      },
+      (cause) => {
+        if (current) setError(safeError(cause).message);
+      },
+    );
+    return () => {
+      current = false;
+    };
+  }, [open, client, botId]);
+
   async function choosePhoto(file: File | undefined) {
     const readingId = ++photoRead.current;
     setPhoto('');
@@ -110,7 +116,7 @@ export function AtmeeCharacterBuilder({
   }
 
   async function create() {
-    if (submitting || !photo || !name.trim() || !persona.trim()) return;
+    if (submitting || !photo || !name.trim() || !persona.trim() || !voice || !reviewed) return;
     setSubmitting(true);
     setError('');
     request.current ??= crypto.randomUUID();
@@ -118,7 +124,7 @@ export function AtmeeCharacterBuilder({
       const next = await new AtmeeDomain(client).createCharacter(botId, request.current, {
         name,
         persona,
-        style,
+        voice,
         photo,
       });
       setBuild(next);
@@ -183,6 +189,10 @@ export function AtmeeCharacterBuilder({
           className="justify-self-start"
           onClick={() => {
             setError('');
+            setProfile('loading');
+            setReviewed(false);
+            setVoice(null);
+            setPhoto('');
             setOpen(true);
           }}
         >
@@ -197,70 +207,84 @@ export function AtmeeCharacterBuilder({
             void create();
           }}
         >
-          <fieldset disabled={submitting} className="grid gap-3">
-            <legend className="mb-2 text-sm font-medium">New video avatar</legend>
-            <div className="flex items-end gap-3">
-              <div className="grid min-w-0 flex-1 gap-2">
-                <Label htmlFor={id + '-photo'}>Portrait</Label>
-                <Input
-                  id={id + '-photo'}
-                  type="file"
-                  accept="image/png,image/jpeg,image/webp"
-                  onChange={(event) => void choosePhoto(event.target.files?.[0])}
-                />
+          <fieldset disabled={submitting} className="grid gap-5">
+            <legend className="mb-3 text-sm font-medium">New video avatar</legend>
+            <div className="flex items-center gap-4">
+              <div className="grid aspect-[4/5] w-16 shrink-0 place-items-center overflow-hidden rounded-lg bg-muted">
+                {photo ? (
+                  <img src={photo} alt="Portrait preview" className="h-full w-full object-cover" />
+                ) : (
+                  <ImagePlus aria-hidden="true" className="size-5 text-muted-foreground" />
+                )}
               </div>
-              {photo && (
-                <img
-                  src={photo}
-                  alt="Portrait preview"
-                  className="max-h-14 w-10 shrink-0 rounded-md object-contain"
-                />
-              )}
-            </div>
-            <div className="grid gap-2">
-              <Label htmlFor={id + '-style'}>Voice style</Label>
-              <Select
-                value={style}
-                disabled={submitting}
-                onValueChange={(value) => {
-                  const next = ATMEE_VOICE_STYLES.find((item) => item === value);
-                  if (next) setStyle(next);
-                }}
-              >
-                <SelectTrigger id={id + '-style'} className="w-full">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent position="popper">
-                  {ATMEE_VOICE_STYLES.map((item) => (
-                    <SelectItem key={item} value={item}>
-                      {styleLabels[item]}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="grid gap-2">
-              <Label htmlFor={id + '-name'}>Avatar name</Label>
-              <Input
-                id={id + '-name'}
-                value={name}
-                maxLength={100}
-                onChange={(event) => setName(event.target.value)}
+              <div className="grid justify-items-start gap-1">
+                <span className="text-sm font-medium">Portrait</span>
+                <Button
+                  type="button"
+                  variant="secondary"
+                  onClick={() => photoInput.current?.click()}
+                >
+                  {photo ? 'Replace photo' : 'Choose photo'}
+                </Button>
+              </div>
+              <input
+                ref={photoInput}
+                aria-label="Portrait"
+                type="file"
+                hidden
+                accept="image/png,image/jpeg,image/webp"
+                onChange={(event) => void choosePhoto(event.target.files?.[0])}
               />
             </div>
-            <div className="grid gap-2">
-              <Label htmlFor={id + '-persona'}>Avatar description</Label>
-              <Textarea
-                id={id + '-persona'}
-                rows={4}
-                value={persona}
-                maxLength={3000}
-                onChange={(event) => setPersona(event.target.value)}
-              />
-              <p className="text-sm text-muted-foreground">
-                Atmee receives these fields. Voice generation may use credits.
-              </p>
-            </div>
+            <AtmeeVoicePicker
+              client={client}
+              botId={botId}
+              name={name}
+              voices={voices}
+              canDesign={canDesign}
+              value={voice}
+              onChange={setVoice}
+            />
+            {profile === 'loading' && !error ? (
+              <LoadingBar active label="Reading Hermes profile" />
+            ) : (
+              profile !== 'loading' && (
+                <Disclosure
+                  title="Review Hermes profile"
+                  description={
+                    profile === 'soul'
+                      ? 'Prepared from this Pebble’s SOUL and role.'
+                      : 'Prepared from this Pebble’s profile.'
+                  }
+                  onOpenChange={(open) => {
+                    if (open) setReviewed(true);
+                  }}
+                >
+                  <div className="grid gap-2">
+                    <Label htmlFor={id + '-name'}>Avatar name</Label>
+                    <Input
+                      id={id + '-name'}
+                      value={name}
+                      maxLength={100}
+                      onChange={(event) => setName(event.target.value)}
+                    />
+                  </div>
+                  <div className="grid gap-2">
+                    <Label htmlFor={id + '-persona'}>Avatar instructions</Label>
+                    <Textarea
+                      id={id + '-persona'}
+                      rows={5}
+                      value={persona}
+                      maxLength={3000}
+                      onChange={(event) => setPersona(event.target.value)}
+                    />
+                    <p className="text-sm text-muted-foreground">
+                      Atmee receives these instructions when you create the avatar.
+                    </p>
+                  </div>
+                </Disclosure>
+              )
+            )}
           </fieldset>
           <div className="flex flex-wrap items-center justify-end gap-2">
             <Button
@@ -273,7 +297,15 @@ export function AtmeeCharacterBuilder({
             </Button>
             <Button
               type="submit"
-              disabled={submitting || reading || !photo || !name.trim() || !persona.trim()}
+              disabled={
+                submitting ||
+                reading ||
+                !photo ||
+                !name.trim() ||
+                !persona.trim() ||
+                !voice ||
+                !reviewed
+              }
             >
               {submitting ? 'Starting…' : 'Create video avatar'}
             </Button>

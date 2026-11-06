@@ -314,3 +314,9 @@ and name the earlier ID when a rule is superseded.
 - Decision: Show all available ElevenLabs voices in the voice picker, with a retryable catalog error next to the field. Use the same private Atmee key card in Connections and a Pebble’s Video settings.
 - Why: A provider request can fail independently of a saved selection. Key errors need to be visible where the owner enters the key, and a confirmed save should immediately unlock the character controls.
 - Evidence: The ElevenLabs browser journey retries a catalog failure and selects a returned voice and plays its recorded sample without a call. Atmee browser and native owner journeys exercise a rejected key, a confirmed save, and character selection.
+
+### Atmee video avatar setup
+
+- Decision: Use a portrait picker, a voice choice with playable samples, and a separate review of the profile prepared from Hermes.
+- Why: Choosing a portrait should look like choosing media. The owner should hear and select a voice before creating an avatar, and see which profile text Atmee receives.
+- Evidence: The desktop and phone avatar journey selects the second sample and requires profile review. The native owner journey reads an isolated SOUL file, then creates and selects the avatar using the chosen sample.

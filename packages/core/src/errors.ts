@@ -39,6 +39,8 @@ export const atmeeErrors = {
   ATMEE_UNAVAILABLE: 'Atmee is unavailable. Try again shortly.',
   ATMEE_AVATAR_UNAVAILABLE: 'Select an available video avatar in this Pebble’s Voice settings.',
   ATMEE_CALL_LIMIT: 'Check your Atmee credits or end the other video call.',
+  ATMEE_VOICE_UNAVAILABLE:
+    'This Atmee voice sample is unavailable. Choose another voice or design a new one.',
   ATMEE_BUILD_SCOPE: 'Use an account-wide Atmee key with avatar and generation write access.',
   ATMEE_BUILD_CREDITS: 'Check your Atmee credits and V2 access.',
   ATMEE_BUILD_INPUT: 'Atmee could not use these inputs. Try another photo or voice style.',

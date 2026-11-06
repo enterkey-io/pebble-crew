@@ -221,6 +221,68 @@ class AtmeeVideoTests(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(calls.count('/v1/avatars'), 1)
         self.ops.gateway.call.assert_not_awaited()
 
+    async def test_voice_design_reuses_its_receipt_and_passes_the_selected_sample(self):
+        scopes = ['sessions', 'avatars:read', 'avatars:write', 'generation:write']
+        design = {'bot_id': 'alpha-id', 'request_id': REQUEST, 'name': 'Aurora',
+                  'description': 'Warm, articulate voice at a measured pace.'}
+        selection = {'kind': 'designed', 'id': REQUEST, 'index': 1}
+        generated = []
+        def vendor(path, key, payload=None, *, idempotency=None):
+            if path == '/v1/api_keys/current':
+                return {'active': True, 'scopes': scopes}
+            if path == '/v1/generation/voices':
+                generated.append(idempotency)
+                self.assertEqual(payload['voiceDescription'], design['description'])
+                return {'voices': [
+                    {'upload': 'upload:' + CALL, 'url': 'https://assets.atmee.ai/first.mp3'},
+                    {'upload': 'upload:' + UPLOAD, 'url': 'https://assets.atmee.ai/second.mp3'}]}
+            if path == '/v1/account':
+                return {'v2Access': 'granted'}
+            if path == '/v1/avatars':
+                self.assertEqual(payload['assets']['voice']['url'], 'upload:' + UPLOAD)
+                return {'avatarId': CHARACTER, 'kind': 'conversational', 'status': 'building'}
+            self.fail(path)
+        with (patch('bot_web.atmee_video.read_key', return_value=KEY),
+              patch('bot_web.atmee_video.provider', side_effect=vendor),
+              patch('bot_web.atmee_build.portrait_upload', return_value='upload:' + CALL),
+              patch('bot_web.atmee_build.fetch_voice_sample', return_value={'audio': 'audio'}) as sample):
+            pending = await self.service.invoke('atmee.voice.design', design)
+            self.assertEqual(pending['design']['state'], 'pending')
+            await asyncio.gather(*self.service.builds.tasks)
+            reopened = AtmeeVideo(self.store, self.ops, self.voice)
+            reopened.recover()
+            ready = await reopened.invoke('atmee.voice.status', {'bot_id': 'alpha-id'})
+            self.assertEqual(ready, await reopened.invoke('atmee.voice.design', design))
+            self.assertEqual(ready['design']['count'], 2)
+            self.assertNotIn('https', json.dumps(ready))
+            await reopened.invoke('atmee.voice.sample', {'bot_id': 'alpha-id', 'voice': selection})
+            sample.assert_called_once_with('https://assets.atmee.ai/second.mp3')
+            await reopened.invoke('atmee.build.start', {'bot_id': 'alpha-id', 'request_id': CALL,
+                'name': 'Aurora', 'persona': 'Approved', 'voice': selection, 'photo': self.portrait()})
+            await asyncio.gather(*reopened.builds.tasks)
+            self.assertEqual(generated, [REQUEST])
+
+    async def test_existing_avatar_voice_can_be_reused_without_generation_access(self):
+        def vendor(path, key, payload=None, **kwargs):
+            if path == '/v1/api_keys/current':
+                return {'active': True, 'scopes': ['sessions', 'avatars:read', 'avatars:write']}
+            if path == '/v1/account':
+                return {'v2Access': 'granted'}
+            if path == '/v1/avatars/' + CHARACTER + '/voice':
+                return {'url': 'https://assets.atmee.ai/existing.wav?token=fixture'}
+            if path == '/v1/avatars':
+                self.assertEqual(payload['assets']['voice']['url'], 'https://assets.atmee.ai/existing.wav?token=fixture')
+                return {'avatarId': CHARACTER, 'kind': 'conversational', 'status': 'building'}
+            self.fail(path)
+        with (patch('bot_web.atmee_video.read_key', return_value=KEY),
+              patch('bot_web.atmee_video.provider', side_effect=vendor),
+              patch('bot_web.atmee_build.portrait_upload', return_value='upload:' + CALL)):
+            await self.service.invoke('atmee.build.start', {'bot_id': 'alpha-id', 'request_id': REQUEST,
+                'name': 'Aurora', 'persona': 'Approved', 'photo': self.portrait(),
+                'voice': {'kind': 'existing', 'id': CHARACTER}})
+            await asyncio.gather(*self.service.builds.tasks)
+            self.assertEqual(self.store.db.execute('SELECT state FROM atmee_build').fetchone()[0], 'building')
+
     async def test_create_timeout_never_replays_the_vendor_create(self):
         with self.store.db:
             self.store.db.execute("INSERT INTO atmee_build VALUES(?,?,?,?,?,NULL,NULL,0)",
