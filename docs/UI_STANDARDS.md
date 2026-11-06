@@ -274,12 +274,12 @@ and name the earlier ID when a rule is superseded.
 - Why: Owner bubbles were using a separate plaintext renderer and showing the underscore markers.
 - Evidence: The [Markdown browser journey](../test/chat-workspace/markdown.spec.ts) checks rendered emphasis, bold, code, lists and tables.
 
-### UI-video-self-view Keep camera preview local
+### UI-video-self-view Share camera only while it is on
 
 - Date: 2026-11-06
-- Decision: Keep Video separate from audio provider selection. Fit the call frame to the avatar stream's dimensions and limit its height so chat and approvals stay accessible. Place the opt-in local camera preview inside the lower-right corner of the video.
-- Why: The user can see their camera while speaking and can resolve Hermes requests without ending the call.
-- Evidence: The [video browser journey](../test/chat-workspace/atmee.spec.ts) checks portrait and landscape framing, self-view placement, and verifies that only the microphone is published.
+- Decision: Fit the call frame to the avatar stream and keep chat and approvals reachable. Camera starts off. Turning it on shares video with Atmee and shows the mirrored preview inside the lower-right corner. Turning it off stops the local track and removes it from the room. When the browser blocks incoming sound, show Enable sound below the call controls.
+- Why: Camera sharing is explicit, and the user can restore sound in the call.
+- Evidence: The [video browser journey](../test/chat-workspace/atmee.spec.ts) verifies audio playback, portrait and landscape framing, opt-in publication, and camera teardown.
 
 ### UI-video-composer Open video calls from chat
 

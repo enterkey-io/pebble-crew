@@ -30,7 +30,14 @@ export function atmeeWav(seconds: number) {
   return sampleWav;
 }
 
-export async function installAtmeeRoom(page: Page, dimensions = { width: 512, height: 512 }) {
+export async function installAtmeeRoom(
+  page: Page,
+  dimensions = { width: 512, height: 512 },
+  media = { blockAudio: false, audioFromAgent: false },
+) {
+  const waveform = atmeeWav(3);
+  for (let frame = 44; frame < waveform.length; frame++)
+    waveform[frame] = Math.round(128 + 20 * Math.sin(((frame - 44) * 2 * Math.PI * 440) / 8000));
   await page.addInitScript(() => {
     const Media = globalThis.MediaStream;
     if (!Media)
@@ -39,11 +46,22 @@ export async function installAtmeeRoom(page: Page, dimensions = { width: 512, he
         writable: true,
         value: null,
       });
+    const stopped: string[] = [];
+    Reflect.set(window, '__mediaStopped', stopped);
     Object.defineProperty(navigator, 'mediaDevices', {
       configurable: true,
       value: {
-        getUserMedia: async () =>
-          Media ? new Media() : { getTracks: () => [], getAudioTracks: () => [] },
+        getUserMedia: async (constraints: MediaStreamConstraints) => {
+          const kind = constraints.video ? 'video' : 'audio';
+          const track = { kind, enabled: true, stop: () => stopped.push(kind) };
+          const stream = Media ? new Media() : {};
+          Object.defineProperties(stream, {
+            getTracks: { value: () => [track] },
+            getAudioTracks: { value: () => (kind === 'audio' ? [track] : []) },
+            getVideoTracks: { value: () => (kind === 'video' ? [track] : []) },
+          });
+          return stream;
+        },
       },
     });
   });
@@ -51,7 +69,7 @@ export async function installAtmeeRoom(page: Page, dimensions = { width: 512, he
     route.fulfill({
       contentType: 'text/javascript',
       body: `
-        export const Track = { Kind: { Audio: 'audio', Video: 'video' }, Source: { Microphone: 'microphone' } };
+        export const Track = { Kind: { Audio: 'audio', Video: 'video' }, Source: { Microphone: 'microphone', Camera: 'camera' } };
         export const RoomEvent = Object.fromEntries(['TrackSubscribed', 'TrackUnsubscribed', 'ParticipantConnected', 'ParticipantAttributesChanged', 'AudioPlaybackStatusChanged', 'Reconnecting', 'Reconnected', 'Disconnected'].map(name => [name, name]));
         export class Room {
           constructor() {
@@ -62,11 +80,17 @@ export async function installAtmeeRoom(page: Page, dimensions = { width: 512, he
             this.remoteParticipants = new Map([['agent', this.agent], ['renderer', this.renderer]]);
             this.localParticipant = {
               identity: 'owner',
-              publishTrack: (_, options) => { window.__mediaPublished.push(options.source); },
+              publishTrack: (track, options) => {
+                if (track?.kind !== (options.source === 'camera' ? 'video' : 'audio')) throw new Error('Wrong media track');
+                window.__mediaPublished.push(options.source);
+              },
+              unpublishTrack: async (track) => { window.__mediaUnpublished.push(track.kind); },
               sendText: async (body, options) => { window.__atmeeApp.push({ message: JSON.parse(body), options }); },
             };
             window.__mediaPublished = [];
+            window.__mediaUnpublished = [];
             window.__atmeeApp = [];
+            this.blockAudio = ${media.blockAudio};
           }
           on(event, handler) { this.handlers[event] = handler; }
           registerTextStreamHandler(topic, handler) { this.receiveCaption = handler; }
@@ -94,13 +118,41 @@ export async function installAtmeeRoom(page: Page, dimensions = { width: 512, he
                 window.__atmeeResizeVideo(dimensions.width, dimensions.height);
               },
             }, { dimensions }, this.renderer);
-            this.handlers.TrackSubscribed({ kind: 'audio', attach() {} }, null, this.renderer);
+            this.handlers.TrackSubscribed({
+              kind: 'audio',
+              attach: (node) => {
+                this.audioElement = node;
+                node.autoplay = !this.blockAudio;
+                const bytes = Uint8Array.from(atob('${waveform.toString('base64')}'), char => char.charCodeAt(0));
+                this.audioUrl = URL.createObjectURL(new Blob([bytes], {type:'audio/wav'}));
+                node.src = this.audioUrl;
+              },
+              detach: () => {
+                if (this.audioElement) {
+                  this.audioElement.pause();
+                  this.audioElement.removeAttribute('src');
+                  this.audioElement.load();
+                  this.audioElement = undefined;
+                }
+                if (this.audioUrl) URL.revokeObjectURL(this.audioUrl);
+              },
+            }, null, ${media.audioFromAgent} ? this.agent : this.renderer);
             window.__caption = (identity, text) => this.receiveCaption({
               withAbortSignal() { return this; },
               async *[Symbol.asyncIterator]() { yield text; }
             }, { identity });
           }
-          async startAudio() {}
+          async startAudio() {
+            if (this.blockAudio && !this.deniedInitialPlayback) {
+              this.deniedInitialPlayback = true;
+              this.canPlaybackAudio = false;
+              this.handlers.AudioPlaybackStatusChanged?.();
+              throw new DOMException('Playback requires a gesture', 'NotAllowedError');
+            }
+            if (this.audioElement) await this.audioElement.play();
+            this.canPlaybackAudio = true;
+            this.handlers.AudioPlaybackStatusChanged?.();
+          }
           async disconnect() {}
         }
       `,

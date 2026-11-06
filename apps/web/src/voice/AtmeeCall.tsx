@@ -1,8 +1,8 @@
-import { useEffect, useImperativeHandle, useRef, useState } from 'react';
+import { useCallback, useEffect, useImperativeHandle, useRef, useState } from 'react';
 import type { Ref } from 'react';
 import { createPortal } from 'react-dom';
 import { Camera, CameraOff, Captions, Mic, MicOff, PhoneOff } from 'lucide-react';
-import type { Room } from 'livekit-client';
+import type { RemoteTrack, Room } from 'livekit-client';
 import { AtmeeCallDomain, ConversationDomain } from '@hermes-client/protocol';
 import type { AtmeeCaption, BridgeEvent, SessionClient } from '@hermes-client/protocol';
 import { safeError } from '@hermes-client/core';
@@ -24,6 +24,7 @@ type ActiveCall = {
   id?: string;
   mic?: MediaStream;
   camera?: MediaStream;
+  remoteAudio?: RemoteTrack;
   captions: Set<Promise<void>>;
   lastOwner?: AtmeeCaption & { at: number };
   work?: Work;
@@ -64,6 +65,7 @@ export function AtmeeCall({
   const [phase, setPhase] = useState<CallPhase>('idle');
   const [error, setError] = useState('');
   const [audioBlocked, setAudioBlocked] = useState(false);
+  const [hasAudio, setHasAudio] = useState(false);
   const [camera, setCamera] = useState(false);
   const [cameraBusy, setCameraBusy] = useState(false);
   const [muted, setMuted] = useState(false);
@@ -78,8 +80,29 @@ export function AtmeeCall({
     if (width > 0 && height > 0) setVideoRatio(width / height);
   }
 
+  const attachAudio = useCallback((element: HTMLAudioElement | null) => {
+    const track = active.current?.remoteAudio;
+    if (track && audio.current) track.detach(audio.current);
+    audio.current = element;
+    if (element) track?.attach(element);
+  }, []);
+
+  async function resumeAudio(call: ActiveCall) {
+    const room = call.room;
+    if (!room) return;
+    try {
+      await room.startAudio();
+      if (active.current === call) setAudioBlocked(!room.canPlaybackAudio);
+    } catch {
+      if (active.current === call) setAudioBlocked(true);
+    }
+  }
+
   function stopCamera(call: ActiveCall) {
-    call.camera?.getTracks().forEach((track) => track.stop());
+    for (const track of call.camera?.getVideoTracks() ?? []) {
+      track.stop();
+      void call.room?.localParticipant.unpublishTrack(track).catch(() => undefined);
+    }
     delete call.camera;
     if (selfie.current) selfie.current.srcObject = null;
   }
@@ -92,6 +115,7 @@ export function AtmeeCall({
     clearTimeout(call.contextTimer);
     call.work?.reply('The call ended. Look for the result in chat.');
     stopCamera(call);
+    call.remoteAudio?.detach();
     call.mic?.getTracks().forEach((track) => track.stop());
     if (call.room) void call.room.disconnect().catch(() => undefined);
     if (call.id) {
@@ -114,6 +138,7 @@ export function AtmeeCall({
       setWorking(false);
       setCaption('');
       setAudioBlocked(false);
+      setHasAudio(false);
       setHasVideo(false);
       setVideoRatio(1);
     }
@@ -296,19 +321,20 @@ export function AtmeeCall({
       room.on(RoomEvent.ParticipantConnected, queueContext);
       room.on(RoomEvent.ParticipantAttributesChanged, queueContext);
       room.on(RoomEvent.TrackSubscribed, (track, publication, participant) => {
-        if (
-          active.current !== call ||
-          !participant.isAgent ||
-          !participant.attributes['lk.publish_on_behalf']
-        )
-          return;
+        if (active.current !== call || !participant.isAgent) return;
         if (track.kind === Track.Kind.Audio) {
+          if (call.remoteAudio !== track) {
+            call.remoteAudio?.detach();
+            call.remoteAudio = track;
+            if (audio.current) track.attach(audio.current);
+          }
+          setHasAudio(true);
           avatarArrived = true;
           queueContext();
+          return;
         }
-        const element = track.kind === Track.Kind.Video ? video.current : audio.current;
-        if (element) track.attach(element);
-        if (track.kind === Track.Kind.Video) {
+        if (track.kind === Track.Kind.Video && participant.attributes['lk.publish_on_behalf']) {
+          if (video.current) track.attach(video.current);
           if (publication.dimensions) {
             const { width, height } = publication.dimensions;
             fitVideo(width, height);
@@ -316,9 +342,16 @@ export function AtmeeCall({
           setHasVideo(true);
         }
       });
-      room.on(RoomEvent.TrackUnsubscribed, (track) => {
+      room.on(RoomEvent.TrackUnsubscribed, (track, _publication, participant) => {
         track.detach();
-        if (active.current === call && track.kind === Track.Kind.Video) setHasVideo(false);
+        if (active.current !== call) return;
+        if (track === call.remoteAudio) {
+          delete call.remoteAudio;
+          setHasAudio(false);
+        }
+        if (track.kind === Track.Kind.Video && participant.attributes['lk.publish_on_behalf']) {
+          setHasVideo(false);
+        }
       });
       room.on(RoomEvent.AudioPlaybackStatusChanged, () => {
         if (active.current === call) setAudioBlocked(!room.canPlaybackAudio);
@@ -332,7 +365,10 @@ export function AtmeeCall({
       room.on(RoomEvent.Reconnected, () => {
         reconnecting = false;
         queueContext();
-        if (active.current === call) setPhase('live');
+        if (active.current === call) {
+          setPhase('live');
+          void resumeAudio(call);
+        }
       });
       room.on(RoomEvent.Disconnected, () => {
         if (active.current === call) close();
@@ -393,7 +429,7 @@ export function AtmeeCall({
       });
       microphonePublished = true;
       queueContext();
-      void room.startAudio().catch(() => setAudioBlocked(true));
+      void resumeAudio(call);
       if (active.current === call) setPhase('live');
     } catch (cause) {
       if (active.current !== call) return;
@@ -408,7 +444,8 @@ export function AtmeeCall({
 
   async function toggleCamera() {
     const call = active.current;
-    if (!call || cameraBusy) return;
+    const room = call?.room;
+    if (!call || !room || cameraBusy) return;
     if (call.camera) {
       stopCamera(call);
       setCamera(false);
@@ -418,7 +455,7 @@ export function AtmeeCall({
     setError('');
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: 'user' },
+        video: { facingMode: 'user', width: { ideal: 640 }, height: { ideal: 480 } },
         audio: false,
       });
       if (active.current !== call) {
@@ -426,10 +463,25 @@ export function AtmeeCall({
         return;
       }
       call.camera = stream;
+      const track = stream.getVideoTracks()[0];
+      if (!track) throw new Error('Camera track missing');
+      const { Track } = await import('livekit-client');
+      if (active.current !== call) return;
+      await room.localParticipant.publishTrack(track, { source: Track.Source.Camera });
+      if (active.current !== call) {
+        void room.localParticipant.unpublishTrack(track).catch(() => undefined);
+        return;
+      }
       if (selfie.current) selfie.current.srcObject = stream;
       setCamera(true);
     } catch {
-      if (active.current === call) setError('Camera access is unavailable.');
+      if (active.current === call) {
+        const captured = Boolean(call.camera);
+        stopCamera(call);
+        setError(
+          captured ? 'Couldn’t share your camera with Atmee.' : 'Camera access is unavailable.',
+        );
+      }
     } finally {
       if (active.current === call) setCameraBusy(false);
     }
@@ -473,7 +525,7 @@ export function AtmeeCall({
                   fitVideo(videoWidth, videoHeight);
                 }}
               />
-              <audio ref={audio} autoPlay />
+              <audio ref={attachAudio} autoPlay onPlaying={() => setAudioBlocked(false)} />
               {!hasVideo && (
                 <div className="pointer-events-none absolute inset-x-4 top-1/2 grid justify-items-center gap-2 text-sm text-white">
                   {phase === 'reconnecting' ? 'Reconnecting…' : 'Waiting for video…'}
@@ -506,6 +558,7 @@ export function AtmeeCall({
               />
               <IconButton
                 label={camera ? 'Turn camera off' : 'Turn camera on'}
+                aria-description="Shares your camera with Atmee while on."
                 icon={camera ? CameraOff : Camera}
                 disabled={phase !== 'live' || cameraBusy}
                 onClick={() => void toggleCamera()}
@@ -527,11 +580,21 @@ export function AtmeeCall({
                 {name} is working
               </p>
             )}
-            {audioBlocked && (
-              <Button variant="secondary" onClick={() => void active.current?.room?.startAudio()}>
+            {audioBlocked ? (
+              <Button
+                variant="secondary"
+                className="justify-self-center"
+                onClick={() => {
+                  if (active.current) void resumeAudio(active.current);
+                }}
+              >
                 Enable sound
               </Button>
-            )}
+            ) : phase === 'live' && !hasAudio ? (
+              <p role="status" className="text-center text-xs text-muted-foreground">
+                Waiting for audio…
+              </p>
+            ) : null}
           </>
         )}
         {error && (

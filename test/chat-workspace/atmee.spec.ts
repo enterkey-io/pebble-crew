@@ -220,7 +220,11 @@ test('Atmee setup, private camera preview and both sides of the call reach Herme
   const briefing = 'Recent chat: We moved the check-in to Thursday.';
   const operations: string[] = [];
   const captured: unknown[] = [];
-  await installAtmeeRoom(page, { width: 384, height: 672 });
+  await installAtmeeRoom(
+    page,
+    { width: 384, height: 672 },
+    { blockAudio: true, audioFromAgent: true },
+  );
   await page.route('**/v1/rpc', async (route) => {
     const { operation, params } = route.request().postDataJSON();
     if (!operation.startsWith('atmee.')) return route.fallback();
@@ -328,6 +332,20 @@ test('Atmee setup, private camera preview and both sides of the call reach Herme
   });
   await start.click();
   const stage = page.getByRole('region', { name: 'Video call with Arlo' });
+  const sound = stage.getByRole('button', { name: 'Enable sound' });
+  await expect(sound).toBeVisible();
+  await sound.click();
+  await expect(sound).toBeHidden();
+  await expect
+    .poll(() =>
+      stage
+        .locator('audio')
+        .evaluate((audio) => (audio instanceof HTMLAudioElement ? audio.currentTime : 0)),
+    )
+    .toBeGreaterThan(0);
+  expect(await page.evaluate(() => Reflect.get(window, '__mediaPublished'))).toEqual([
+    'microphone',
+  ]);
   await stage.getByRole('button', { name: 'Turn camera on' }).click();
   const selfie = stage.locator('video[aria-label="Your camera preview"]');
   await expect(selfie).toBeVisible();
@@ -343,7 +361,7 @@ test('Atmee setup, private camera preview and both sides of the call reach Herme
     await page.evaluate(
       () => (window as unknown as { __mediaPublished: string[] }).__mediaPublished,
     ),
-  ).toEqual(['microphone']);
+  ).toEqual(['microphone', 'camera']);
   await expect
     .poll(() => page.evaluate(() => (window as unknown as { __atmeeApp: unknown[] }).__atmeeApp))
     .toEqual([
@@ -398,6 +416,14 @@ test('Atmee setup, private camera preview and both sides of the call reach Herme
     })
     .toBeLessThan(0.02);
   await page.screenshot({ animations: 'disabled', path: info.outputPath('atmee-landscape.png') });
+  await stage.getByRole('button', { name: 'Turn camera off' }).click();
+  await expect(selfie).toBeHidden();
+  await expect
+    .poll(() => page.evaluate(() => Reflect.get(window, '__mediaUnpublished')))
+    .toEqual(['video']);
+  await expect
+    .poll(() => page.evaluate(() => Reflect.get(window, '__mediaStopped')))
+    .toEqual(['video']);
   await stage.getByRole('button', { name: 'End video call' }).click();
   await expect(stage).toBeHidden();
   await expect
