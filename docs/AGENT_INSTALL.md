@@ -406,7 +406,7 @@ owner requests it.
 
 ## Native chat commands
 
-Typing `/` offers session-scoped Hermes completions for browser-supported commands. `/model <name>` executes Hermes's native command worker; it is never sent as a model prompt. Terminal-only, destructive lifecycle and unsupported command responses stay in Hermes. The removed Model editor tab only copied the primary model authorization; it was not a model picker.
+Typing `/` offers session-scoped Hermes completions for browser-supported commands. Bare `/model` opens a provider-first picker with the current model in its header. `/model <name>` executes Hermes's native command worker; it is never sent as a model prompt. Terminal-only, destructive lifecycle and unsupported command responses stay in Hermes. The removed Model editor tab only copied the primary model authorization; it was not a model picker.
 
 ## Connect the native Mac or phone app
 

@@ -1,3 +1,4 @@
+import { ModelPicker } from './chat/ModelPicker';
 import type { ApprovalChoice } from '@hermes-client/protocol';
 import { ProactiveSetup } from './proactive/ProactiveSetup';
 import { PlansArea, BoardOutcome } from './work/PlansArea';
@@ -142,6 +143,7 @@ function text(value: unknown): string {
 export function App({ owner }: { owner?: OwnerConnection }) {
   const ownerRef = useRef(owner);
   ownerRef.current = owner;
+  const [modelPicker, setModelPicker] = useState<string>();
   const [commandResult, setCommandResult] = useState<{
     sessionId: string;
     command: string;
@@ -438,6 +440,7 @@ export function App({ owner }: { owner?: OwnerConnection }) {
   }, []);
   useOverlayHistory(phone && nav, closeNav);
   useOverlayHistory(unavailableChat !== undefined, () => setUnavailableChat(undefined));
+  useOverlayHistory(modelPicker !== undefined, () => setModelPicker(undefined));
   useOverlayHistory(groupToDelete !== undefined, () => {
     if (deletingGroup) return false;
     setGroupToDelete(undefined);
@@ -1821,6 +1824,11 @@ export function App({ owner }: { owner?: OwnerConnection }) {
     if (target.kind === 'bot' && (commandOverride ?? draft).startsWith('/')) {
       if (uploads.files.length) {
         setError('Send files separately from commands.');
+        return;
+      }
+      if ((commandOverride ?? draft).trim().toLowerCase() === '/model') {
+        confirmSubmittedDraft();
+        setModelPicker(target.sessionId);
         return;
       }
       setBusy(true);
@@ -3315,6 +3323,19 @@ export function App({ owner }: { owner?: OwnerConnection }) {
               })
             }
           />
+          {modelPicker && selection?.kind === 'bot' && selection.sessionId === modelPicker && (
+            <ModelPicker
+              key={modelPicker}
+              client={client}
+              sessionId={modelPicker}
+              onClose={() => setModelPicker(undefined)}
+              onResult={(output) => {
+                setCommandResult({ sessionId: modelPicker, command: '/model', output });
+                followLatest.current = true;
+                setShowLatest(false);
+              }}
+            />
+          )}
           <AlertDialog
             open={unavailableChat !== undefined}
             onOpenChange={(open) => {

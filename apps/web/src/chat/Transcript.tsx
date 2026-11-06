@@ -22,7 +22,7 @@ import type { ReactNode } from 'react';
 import type { SessionClient } from '@hermes-client/protocol';
 import { motion, useReducedMotion } from 'motion/react';
 import type { MentionIndex } from './mentions';
-import { MessageBody, PlainMessageBody, CopyMessage } from '../MessageBody';
+import { MessageBody, CopyMessage } from '../MessageBody';
 import { messageDate } from '../conversation';
 import { CardPositions, projectTimeline } from './presentation';
 import type { TranscriptCard } from './presentation';
@@ -346,19 +346,17 @@ const TranscriptMessage = memo(function TranscriptMessage({
           )
         }
       >
-        {m.text.trim() &&
-          (m.role === 'user' ? (
-            <PlainMessageBody text={m.text} mentions={mentions} />
-          ) : (
-            <MessageBody
-              text={m.text}
-              mentions={mentions}
-              client={client}
-              sessionId={sessionId}
-              rowId={m.id}
-              conversationKey={conversationKey}
-            />
-          ))}
+        {m.text.trim() && (
+          <MessageBody
+            text={m.text}
+            owner={m.role === 'user'}
+            mentions={mentions}
+            client={m.role === 'user' ? undefined : client}
+            sessionId={sessionId}
+            rowId={m.id}
+            conversationKey={conversationKey}
+          />
+        )}
         {m.files?.map((file) =>
           client && sessionId && /\.(?:png|jpe?g|webp)$/i.test(file.name) ? (
             <GeneratedImage

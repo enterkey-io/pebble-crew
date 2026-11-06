@@ -389,7 +389,7 @@ def create_app(token, origins, hosts, gateway=None, trust=None, workspace=None, 
                 raise InvalidOperation('Owner authentication is required')
             if operation in {'voice.status', 'voice.preferences', 'voice.credential', 'voice.session', 'voice.submit', 'voice.end', 'voice.provider', 'voice.voices', 'voice.vox_import'}:
                 result = await voice.invoke(operation, params)
-            elif operation in {'chat.commands', 'chat.command'}:
+            elif operation in {'chat.commands', 'chat.command', 'chat.model.options', 'chat.model.select'}:
                 from .commands import invoke as command
                 result = await command(ops, operation, params)
             elif operation in {'secrets.pending', 'secrets.respond', 'questions.pending', 'questions.respond'}:

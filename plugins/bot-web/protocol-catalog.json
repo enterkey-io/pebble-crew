@@ -726,6 +726,20 @@
       ],
       "effect": "read"
     },
+    "chat.model.options": {
+      "preferred": "rpc",
+      "accepted": [
+        "rpc"
+      ],
+      "effect": "read"
+    },
+    "chat.model.select": {
+      "preferred": "rpc",
+      "accepted": [
+        "rpc"
+      ],
+      "effect": "write"
+    },
     "chat.command": {
       "preferred": "rpc",
       "accepted": [

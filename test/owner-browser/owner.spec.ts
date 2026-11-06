@@ -1031,3 +1031,20 @@ test('owner can delete a native group from its sidebar menu', async ({ page, con
   await expect(group).toHaveCount(0);
   expectNoChatSends(signals);
 });
+
+test('bare model command shows the current native model without prompting it', async ({
+  page,
+  context,
+}) => {
+  await context.addCookies(ownerCookies);
+  const signals = observeOwner(page);
+  await page.goto('/');
+  const composer = page.getByLabel('Message', { exact: true });
+  await expect(composer).toBeEnabled();
+  await composer.fill('/model');
+  await submitMessage(page);
+  const picker = page.getByRole('dialog', { name: 'Choose a model' });
+  await expect(picker).toBeVisible();
+  await expect(picker).toContainText('Current: fixture-model', { timeout: 20000 });
+  expectNoChatSends(signals);
+});

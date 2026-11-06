@@ -259,3 +259,17 @@ and name the earlier ID when a rule is superseded.
 - Decision: On touch, a stationary hold opens the shared options menu, including with slight finger movement. A moving drag cancels the menu. Delete group uses a confirmation and the native Hermes operation.
 - Why: A phone could start a drag during a stationary hold, leaving no way to reach actions.
 - Evidence: The [phone sidebar checks](../test/mobile/sidebar.spec.ts) cover pebbles, pins, groups, sections and a moving drag. The [owner browser check](../test/owner-browser/owner.spec.ts) exercises native group deletion and reload.
+
+### UI-chat-model-picker Open a provider-first model picker from chat
+
+- Date: 2026-11-06
+- Decision: Submitting bare `/model` opens a searchable provider list. Selecting a provider shows its models. The header keeps the current session model visible on both levels. An explicitly typed model still goes through Hermes.
+- Why: Users need to see the current model and browse choices without learning command syntax or scanning a combined list.
+- Evidence: The [slash-command browser journey](../test/chat-workspace/commands.spec.ts) checks both levels, the current model, the native confirmation, and the absence of a chat prompt.
+
+### UI-shared-chat-markdown Render Markdown in both sides of chat
+
+- Date: 2026-11-06
+- Decision: Use the same Markdown renderer for owner and Pebble bubbles. Keep owner paragraph line breaks and raw copy. Preserve literal code, escaped mentions and attachment permissions.
+- Why: Owner bubbles were using a separate plaintext renderer and showing the underscore markers.
+- Evidence: The [Markdown browser journey](../test/chat-workspace/markdown.spec.ts) checks rendered emphasis, bold, code, lists and tables.
