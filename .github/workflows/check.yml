@@ -28,7 +28,8 @@ jobs:
   check:
     name: check
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    # First PR run (cold Playwright cache): 3m07s. About 2.5x that.
+    timeout-minutes: 8
     steps:
       - name: Changes
         id: changes
