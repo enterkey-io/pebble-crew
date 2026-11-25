@@ -73,3 +73,5 @@ cancel RPC, replace a valid lease, reset a screen or disable a healthy chat.
 Initial-open snapshots record the recovery revision they cover; newer gaps need
 a fresh read. Keep ticket, health and resource flights bounded and independent.
 The source guard rejects wire-client imports outside the session owner.
+
+Before writing or changing tests, follow TESTING.md.
