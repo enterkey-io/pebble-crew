@@ -16,7 +16,6 @@ import {
 } from '../components/ui/select';
 import { Notice } from '../ui/primitives';
 import { ConnectionDetail } from './ConnectionDetail';
-import { AtmeeConnectionSettings } from '../voice/AtmeeSettings';
 import { connections, services } from './model';
 import type { Connection, Remote, Service } from './model';
 
@@ -213,9 +212,6 @@ export function ConnectionsPanel({
             </div>
           )}
         </>
-      )}
-      {view.kind === 'list' && client.supportsAtmeeSetup && (
-        <AtmeeConnectionSettings client={client} />
       )}
       {view.kind === 'detail' && (
         <div tabIndex={-1} data-view-focus>

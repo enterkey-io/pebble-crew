@@ -2,9 +2,11 @@ from pathlib import Path
 import tempfile
 import unittest
 import test_security  # noqa: F401  (puts bot_web on the path)
+import hermes_stub
 from bot_web.lifecycle_native import read_clock
 
 
+@unittest.skipUnless(hermes_stub.HERMES_STORAGE, hermes_stub.NEEDS_HERMES_STORAGE)
 class ReplyCursorTests(unittest.TestCase):
     """The unread mark and alert fallback follow only messages a Pebble sent the owner."""
 

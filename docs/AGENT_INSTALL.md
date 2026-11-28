@@ -31,11 +31,6 @@ dependencies through the supported native dependency flow, or check and install
 `bot-web/requirements.txt` in that same Hermes environment. Never replace the
 environment or copy credentials to a separate gateway installation.
 
-For Atmee video calls, install `bot-web/requirements-video.txt` in the Python 3.12+
-environment that runs the owner bridge. This is only needed on the bridge host.
-Verify that its interpreter can import `av` and `livekit.rtc` before enabling video.
-Video uses an existing Atmee avatar and ElevenLabs voice credentials.
-
 Inspect existing ports. Two distinct free loopback ports are needed: web and
 internal integration. An occupied port can belong to MCP; never stop it. Reuse
 saved ports and origins on updates. Keep old bridge settings and stores intact.
@@ -77,13 +72,13 @@ installation.
 
 ## 3. Obtain the immutable combined release
 
-Candidate: `v0.7.22-preview.60`. If these assets are not published, stop and report
+Candidate: `v0.7.22-preview.61`. If these assets are not published, stop and report
 that the candidate is unavailable. Do not substitute main or an API-only package.
 
-- [Manifest](https://github.com/enterkey-io/pebble-crew/releases/download/v0.7.22-preview.60/workspace-manifest.json)
-- [SHA256SUMS](https://github.com/enterkey-io/pebble-crew/releases/download/v0.7.22-preview.60/SHA256SUMS)
-- [Complete plugin](https://github.com/enterkey-io/pebble-crew/releases/download/v0.7.22-preview.60/workspace-plugin-preview.zip)
-- [Source](https://github.com/enterkey-io/pebble-crew/releases/download/v0.7.22-preview.60/workspace-source-preview.zip)
+- [Manifest](https://github.com/enterkey-io/pebble-crew/releases/download/v0.7.22-preview.61/workspace-manifest.json)
+- [SHA256SUMS](https://github.com/enterkey-io/pebble-crew/releases/download/v0.7.22-preview.61/SHA256SUMS)
+- [Complete plugin](https://github.com/enterkey-io/pebble-crew/releases/download/v0.7.22-preview.61/workspace-plugin-preview.zip)
+- [Source](https://github.com/enterkey-io/pebble-crew/releases/download/v0.7.22-preview.61/workspace-source-preview.zip)
 
 Verify size and SHA-256 against both manifest and checksum file. Reject absolute
 archive paths, traversal, symlinks and entries escaping private staging. The
@@ -220,7 +215,7 @@ with `hermes bot-web setup-link` (use `--renew-setup` only if it expired).
 remaining seconds). Its output contains the private file path, never the secret.
 
 Event parsing and legacy access controls are specified in
-[the wire protocol](https://github.com/enterkey-io/pebble-crew/blob/v0.7.22-preview.60/docs/WIRE_PROTOCOL.md).
+[the wire protocol](https://github.com/enterkey-io/pebble-crew/blob/v0.7.22-preview.61/docs/WIRE_PROTOCOL.md).
 Never use global revocation for diagnostic cleanup: use DELETE `/v1/connect`
 with the probe's own lease. Global revocation now requires `hermes bot-web revoke
 --all` or the operator-only HTTP body `{"all":true}`.
@@ -424,5 +419,5 @@ successfully connected to Hermes. The device then appears in Devices and can be
 revoked independently. No second login or approval is needed.
 
 The native credential stays in device Keychain; its hash stays on the owner's host.
-Use [the device contract](https://github.com/enterkey-io/pebble-crew/blob/v0.7.22-preview.60/docs/NATIVE_DEVICE_ENROLLMENT.md) for protocol and acceptance
+Use [the device contract](https://github.com/enterkey-io/pebble-crew/blob/v0.7.22-preview.61/docs/NATIVE_DEVICE_ENROLLMENT.md) for protocol and acceptance
 details. Never paste an invitation or permanent device credential into chat or logs.

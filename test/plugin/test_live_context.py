@@ -6,6 +6,7 @@ import unittest
 from unittest.mock import AsyncMock, patch
 
 from test_security import Native
+import hermes_stub
 from bot_web import grok_voice
 from bot_web.live_context import instructions, profile_context, recent_history
 from bot_web.live_voice import LiveVoice
@@ -33,7 +34,9 @@ class LiveContextTests(unittest.IsolatedAsyncioTestCase):
         (home / 'SOUL.md').write_text('Calm and kind. ' * 1000)
         (home / 'memories' / 'USER.md').write_text('Owner likes tea.')
         scope = SimpleNamespace(_config_profile_scope=lambda profile: nullcontext())
-        with patch.dict('sys.modules', {'hermes_cli.web_server_profiles': scope}), \
+        hermes = hermes_stub.missing_hermes(hermes_constants={'get_hermes_home': None},
+                                            **{'agent.prompt_builder': {'load_soul_md': None}})
+        with patch.dict('sys.modules', {'hermes_cli.web_server_profiles': scope, **hermes}), \
                 patch('hermes_constants.get_hermes_home', return_value=home), \
                 patch('agent.prompt_builder.load_soul_md', side_effect=RuntimeError):
             context = profile_context('aurora')

@@ -10,6 +10,7 @@ from types import SimpleNamespace
 from unittest.mock import patch
 from zoneinfo import ZoneInfo
 import test_security
+import hermes_stub
 from bot_web import routines_native
 from bot_web.conversation_presentation import ROUTINE_WAKE, owner_input, project_message
 from bot_web.runtime import local_time
@@ -23,7 +24,8 @@ class RoutineWakeTests(unittest.TestCase):
         self.assertEqual(routines_native.WAKE.strip(), ROUTINE_WAKE)
 
     def test_wake_script_prints_the_runbook_without_running_a_model(self):
-        with tempfile.TemporaryDirectory() as home, patch('hermes_constants.get_hermes_home', lambda: Path(home)):
+        with tempfile.TemporaryDirectory() as home, patch.dict(sys.modules, hermes_stub.missing_hermes(hermes_constants={'get_hermes_home': None})), \
+                patch('hermes_constants.get_hermes_home', lambda: Path(home)):
             runbook = 'Nudge Elliott about tonight’s 10-minute session.\n\n[pebble-proactive:w:calendar:]'
             relative = routines_native.wake_script(runbook)
             self.assertEqual(routines_native.wake_script(runbook), relative)
@@ -52,7 +54,7 @@ class RoutineWakeTests(unittest.TestCase):
                'deliver': 'bot-chat', 'enabled': True}
         modules = {'tools.cronjob_tools': SimpleNamespace(cronjob=cronjob),
                    'cron.jobs': SimpleNamespace(get_job=lambda ident: job, list_jobs=lambda **_: [job])}
-        with tempfile.TemporaryDirectory() as home, patch.dict(sys.modules, modules), \
+        with tempfile.TemporaryDirectory() as home, patch.dict(sys.modules, {**modules, **hermes_stub.missing_hermes(hermes_constants={'get_hermes_home': None})}), \
                 patch('bot_web.proactive_native.NativeProactive', Native), \
                 patch('hermes_constants.get_hermes_home', lambda: Path(home)):
             routines_native.manage('sarah', {'action': 'create', 'name': 'Nudge', 'prompt': 'Nudge him', 'schedule': '0 21 * * *'})
