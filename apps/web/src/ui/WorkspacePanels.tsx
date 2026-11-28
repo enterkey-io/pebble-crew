@@ -29,6 +29,7 @@ export function WorkspacePanels({
   onCloseNavigation,
   onOpenNavigation,
   edgeNavigation = false,
+  documentExpanded = false,
   children,
 }: {
   navigation: ReactNode;
@@ -37,6 +38,7 @@ export function WorkspacePanels({
   onCloseNavigation?: (restoreFocus?: boolean) => void;
   onOpenNavigation?: () => void;
   edgeNavigation?: boolean;
+  documentExpanded?: boolean;
   children: ReactNode;
 }) {
   const [initialWidth] = useState(savedWidth);
@@ -99,6 +101,7 @@ export function WorkspacePanels({
       elementRef={page}
       orientation="horizontal"
       disabled={phone}
+      resizeTargetMinimumSize={{ fine: 16, coarse: 32 }}
       className={phone ? 'pc-phone-pages' : undefined}
       data-navigation-open={phone ? navigationOpen : undefined}
       data-native-sidebar-scroll={nativeSidebarScroll || undefined}
@@ -126,16 +129,16 @@ export function WorkspacePanels({
           role={phone ? 'region' : 'complementary'}
           tabIndex={phone ? -1 : undefined}
           aria-label={phone ? 'navigation' : 'Pebbles and crews'}
-          aria-hidden={phone ? !navigationOpen : undefined}
-          inert={phone && !navigationOpen}
+          aria-hidden={documentExpanded || (phone ? !navigationOpen : undefined)}
+          inert={documentExpanded || (phone && !navigationOpen)}
         >
           {navigation}
         </aside>
       </ResizablePanel>
       <ResizableHandle
         aria-label="Resize sidebar"
-        disabled={phone}
-        className="z-10 hidden bg-transparent transition-colors after:w-3 hover:bg-border focus-visible:bg-border md:flex"
+        disabled={phone || documentExpanded}
+        className="z-10 hidden cursor-col-resize bg-sidebar-border transition-colors after:w-3 hover:bg-muted-foreground focus-visible:bg-muted-foreground md:flex"
         onDoubleClick={() => {
           panel.current?.resize(352);
           rememberWidth(352);

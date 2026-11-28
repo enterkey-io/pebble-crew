@@ -192,7 +192,21 @@ for (const theme of ['dark', 'light'])
       .locator('.pc-rail-footer')
       .getByRole('button', { name: 'Your account', exact: true });
     await fullyExposed(account);
-    await fullyExposed(navigation.getByText('Hermes connected', { exact: true }));
+    // The connection badge sits on the owner's avatar like a pebble's status dot.
+    const status = account.getByRole('img', { name: 'Hermes connected', exact: true });
+    await expect(status).toBeVisible();
+    const [badge, avatar] = [
+      (await status.boundingBox())!,
+      (await account.locator('.personal-avatar').boundingBox())!,
+    ];
+    expect(badge.x + badge.width / 2).toBeGreaterThan(avatar.x + avatar.width / 2);
+    expect(badge.y + badge.height / 2).toBeGreaterThan(avatar.y + avatar.height / 2);
+    expect(badge.x + badge.width).toBeLessThan(avatar.x + avatar.width + badge.width);
+    await page.screenshot({
+      animations: 'disabled',
+      path: info.outputPath('account-connection-badge.png'),
+    });
+    await header.getByText('Pebble Crew', { exact: true }).tap();
     const pin = navigation.locator('.pc-pins').getByText('Team lead', { exact: true });
     const row = navigation
       .getByRole('button', { name: /^Sage Researcher/ })

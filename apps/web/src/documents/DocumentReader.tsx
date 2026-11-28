@@ -9,8 +9,9 @@ import {
 } from 'react';
 import type { SharedDocument } from '@hermes-client/protocol';
 import { decodeDocument, DOCUMENT_LIMIT, documentFormat } from '@hermes-client/protocol';
-import { Download, X } from 'lucide-react';
+import { Download, Maximize2, Minimize2, X } from 'lucide-react';
 import { MessageBody } from '../MessageBody';
+import { DiagramPreview } from './DiagramPreview';
 import { IconButton } from '../components/ui/icon-button';
 import { Button } from '../components/ui/button';
 import { LoadingBar } from '../components/ui/loading-bar';
@@ -34,6 +35,8 @@ type ReaderState =
 
 export function useDocumentReader(conversation: string) {
   const [entry, setEntry] = useState<{ conversation: string; state: ReaderState }>();
+  const [expanded, setExpanded] = useState(false);
+  const toggleExpanded = useCallback(() => setExpanded((value) => !value), []);
   const request = useRef<AbortController | undefined>(undefined);
   const trigger = useRef<HTMLElement | null>(null);
   const generation = useRef(0);
@@ -42,12 +45,14 @@ export function useDocumentReader(conversation: string) {
     generation.current++;
     request.current?.abort();
     setEntry(undefined);
+    setExpanded(false);
     return () => request.current?.abort();
   }, [conversation]);
   const close = useCallback(() => {
     generation.current++;
     request.current?.abort();
     setEntry(undefined);
+    setExpanded(false);
     const element = trigger.current;
     requestAnimationFrame(() => {
       (element?.isConnected ? element : document.querySelector<HTMLElement>('.chat-title'))?.focus({
@@ -92,17 +97,25 @@ export function useDocumentReader(conversation: string) {
     },
     [conversation],
   );
-  return { state, open, show, close };
+  return { state, open, show, close, expanded, toggleExpanded };
+}
+
+function renderDiagram(source: string) {
+  return <DiagramPreview source={source} />;
 }
 
 export function DocumentReader({
   state,
   onClose,
   onRetry,
+  expanded,
+  onToggleExpanded,
 }: {
   state: ReaderState;
   onClose: () => void;
   onRetry: (source: DocumentSource) => void;
+  expanded: boolean;
+  onToggleExpanded: (() => void) | undefined;
 }) {
   const name = state.kind === 'ready' ? state.document.name : state.name;
   const heading = useRef<HTMLHeadingElement>(null);
@@ -121,12 +134,13 @@ export function DocumentReader({
         !document.querySelector('[role="dialog"][data-state="open"]')
       ) {
         event.preventDefault();
-        onClose();
+        if (expanded && onToggleExpanded) onToggleExpanded();
+        else onClose();
       }
     };
     document.addEventListener('keydown', escape);
     return () => document.removeEventListener('keydown', escape);
-  }, [onClose]);
+  }, [expanded, onClose, onToggleExpanded]);
   return (
     <section className="pc-document-reader" aria-label="Document viewer">
       <header className="flex shrink-0 items-center gap-2 px-5 py-3">
@@ -152,6 +166,13 @@ export function DocumentReader({
             }}
           />
         )}
+        {onToggleExpanded && (
+          <IconButton
+            label={expanded ? 'Return to sidebar' : 'Expand document'}
+            icon={expanded ? Minimize2 : Maximize2}
+            onClick={onToggleExpanded}
+          />
+        )}
         <IconButton label="Close document" icon={X} onClick={onClose} />
       </header>
       <LoadingBar active={state.kind === 'loading'} label="Loading document" />
@@ -162,7 +183,8 @@ export function DocumentReader({
         {state.kind === 'error' ? (
           <Alert variant="destructive">
             <AlertDescription>
-              This file couldn’t be opened. Preview supports UTF-8 Markdown and text up to 256 KB.
+              This file couldn’t be opened. Preview supports UTF-8 Markdown, text and Mermaid up to
+              256 KB.
             </AlertDescription>
             <Button variant="secondary" onClick={() => onRetry(state.source)}>
               Try again
@@ -170,7 +192,9 @@ export function DocumentReader({
           </Alert>
         ) : state.kind === 'ready' ? (
           state.document.format === 'markdown' ? (
-            <MessageBody text={state.document.text} />
+            <MessageBody text={state.document.text} renderDiagram={renderDiagram} />
+          ) : state.document.format === 'mermaid' ? (
+            <DiagramPreview source={state.document.text} />
           ) : (
             <pre className="whitespace-pre-wrap wrap-break-word font-mono text-sm leading-7">
               {state.document.text}

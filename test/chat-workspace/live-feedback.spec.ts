@@ -63,17 +63,17 @@ test('native activity describes the work and a reply keeps its bubble and footer
   const activity = page.locator('.pc-activity');
   await expect(activity).toHaveText('Thinking');
   for (const [name, label] of [
-    ['read_file', 'Reading files'],
-    ['write_file', 'Updating files'],
+    ['read_file', 'Reading project files'],
+    ['write_file', 'Updating project files'],
     ['web_search', 'Searching the web'],
     ['terminal', 'Running a command'],
-    ['message_agent', 'Coordinating agents'],
+    ['message_agent', 'Coordinating with another pebble'],
   ]) {
     await emit(page, 'tool.start', { name });
     await expect(activity).toHaveText(label!);
   }
   await emit(page, 'status.update', { kind: 'compacting', text: 'Compressing context' });
-  await expect(activity).toHaveText('Compressing context');
+  await expect(activity).toHaveText('Summarizing earlier messages');
   const reply = 'Your research is ready.';
   await emit(page, 'message.delta', { text: reply });
   await expect(activity).toHaveCount(0);

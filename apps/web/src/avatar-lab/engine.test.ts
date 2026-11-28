@@ -1,7 +1,27 @@
 import { describe, expect, it } from 'vitest';
-import { blendPose, nextPoseDelay, samplePose, seedFromId, STATES, easeGaze } from './engine';
+import {
+  blendPose,
+  nextPoseDelay,
+  samplePose,
+  sampleWelcomePose,
+  seedFromId,
+  STATES,
+  easeGaze,
+} from './engine';
 
 describe('portable avatar motion', () => {
+  it('the loading greeting looks both ways, blinks and gently hops without changing resting avatars', () => {
+    const poses = Array.from({ length: 330 }, (_, i) => sampleWelcomePose(i * 10, 123));
+    expect(Math.min(...poses.map((p) => p.gazeX))).toBeLessThan(-5);
+    expect(Math.max(...poses.map((p) => p.gazeX))).toBeGreaterThan(5);
+    expect(Math.min(...poses.map((p) => p.leftOpen))).toBeLessThan(0.1);
+    expect(Math.min(...poses.map((p) => p.y))).toBeLessThan(-4.9);
+    for (const pose of poses)
+      for (const value of Object.values(pose).flat()) expect(Number.isFinite(value)).toBe(true);
+    expect(sampleWelcomePose(0, 123, true)).toEqual(sampleWelcomePose(999999, 123, true));
+    expect(sampleWelcomePose(Infinity, 123)).toEqual(sampleWelcomePose(0, 123));
+    expect(samplePose('ready', 0, 123, true).leftOpen).toBe(1);
+  });
   it('replays the same pose regardless of intervening frame samples', () => {
     const seed = seedFromId('stable-bot-id');
     const expected = samplePose('working', 4200, seed);

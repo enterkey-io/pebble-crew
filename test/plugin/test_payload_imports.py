@@ -52,6 +52,18 @@ class PayloadImportTests(unittest.TestCase):
             path.write_text('raise RuntimeError("never execute inspected code")\nPRE_VOICE_FILES = ' + repr(PRE_VOICE_FILES) + "\nFILES = PRE_VOICE_FILES + ('live_voice.py',)\n")
             self.assertEqual(source_inventory(Path(directory)), PRE_VOICE_FILES + ('live_voice.py',))
 
+    def test_runtime_copies_from_the_previous_release_stay_readable(self):
+        # New modules go at the end: an installed copy's inventory must be a prefix
+        # of the current one, or activation refuses every Pebble runtime.
+        # Release 0.7.22-preview.50's shipped inventory, verbatim.
+        previous = ('live_voice.py', 'commands.py', 'voice_credentials.py', 'reporting.py', 'documents.py', 'work_store.py', 'work_native.py', 'work.py', 'work_delivery.py', 'request_delivery.py', 'room_reactions.py', 'stream_position.py', 'skills/manage-work/SKILL.md', 'exchanges.py', 'connection.py', 'codex_binding.py', 'creation.py', 'request_review.py', 'attachment_presentation.py', 'plans.py', 'coordination.py', 'proactive.py', 'proactive_native.py', 'conversation_presentation.py', 'conversation_history.py', 'agent_management.py', 'routines_native.py', 'groups.py', 'eleven_voice.py', 'atmee_video.py', 'atmee_build.py', 'spoken_turns.py', 'atmee_media.py', 'requirements-video.txt', 'progress.py', 'grok_voice.py', 'live_context.py')
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / 'payload.py'
+            path.write_text('PRE_VOICE_FILES = ' + repr(PRE_VOICE_FILES) + '\nFILES = PRE_VOICE_FILES + ' + repr(previous) + '\n')
+            self.assertEqual(source_inventory(Path(directory)), PRE_VOICE_FILES + previous)
+        from bot_web.payload import FILES
+        self.assertEqual(FILES[:len(PRE_VOICE_FILES + previous)], PRE_VOICE_FILES + previous)
+
     def test_reporting_dependency_cannot_be_omitted_from_a_working_source_tree(self):
         with tempfile.TemporaryDirectory() as directory:
             source = Path(directory) / 'plugin'

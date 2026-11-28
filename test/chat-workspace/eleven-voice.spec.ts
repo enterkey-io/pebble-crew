@@ -1,10 +1,10 @@
 import { test, expect } from '@playwright/test';
 import type { WebSocketRoute } from '@playwright/test';
-import { emit, installFixture } from './fixtures';
+import { installFixture } from './fixtures';
 
 test.use({ serviceWorkers: 'block' });
 
-test('ElevenLabs preview, Hermes delegation, and call history use the selected Vox voice', async ({
+test('ElevenLabs transcribes the microphone and plays the matching Hermes reply', async ({
   page,
   context,
 }, info) => {
@@ -14,15 +14,59 @@ test('ElevenLabs preview, Hermes delegation, and call history use the selected V
     confirmed = false,
     completed = false,
     submissions = 0,
-    ends = 0;
-  const providerMessages: { type: string; item?: unknown; response?: unknown }[] = [];
+    ends = 0,
+    catalogs = 0,
+    speechRequests = 0,
+    committed = 0,
+    replyReady = false,
+    olderPages = 0;
+  const callId = 'a'.repeat(32);
+  let utteranceId = '';
   const sockets: WebSocketRoute[] = [];
   const pcm = Buffer.alloc(24000 * 2);
   for (let i = 0; i < 24000; i++)
     pcm.writeInt16LE(Math.sin((i * 2 * Math.PI * 440) / 24000) * 2500, i * 2);
-  await installFixture(context, { voice: true, messages });
+  const wav = Buffer.alloc(44);
+  wav.write('RIFF', 0);
+  wav.writeUInt32LE(pcm.length + 36, 4);
+  wav.write('WAVEfmt ', 8);
+  wav.writeUInt32LE(16, 16);
+  wav.writeUInt16LE(1, 20);
+  wav.writeUInt16LE(1, 22);
+  wav.writeUInt32LE(24000, 24);
+  wav.writeUInt32LE(48000, 28);
+  wav.writeUInt16LE(2, 32);
+  wav.writeUInt16LE(16, 34);
+  wav.write('data', 36);
+  wav.writeUInt32LE(pcm.length, 40);
+  // A long conversation: older pages keep going, as in a real chat.
+  await installFixture(context, {
+    voice: true,
+    messages,
+    historyPage: (params) => {
+      const page = typeof params.before === 'string' ? Number(params.before.slice(5)) : 0;
+      return {
+        messages: page ? [] : messages,
+        history_page: page < 40 ? { older: `older${page + 1}` } : {},
+      };
+    },
+  });
   await page.addInitScript(() => {
     const tracks: MediaStreamTrack[] = [];
+    let starts = 0;
+    let stops = 0;
+    const start = AudioBufferSourceNode.prototype.start;
+    const stop = AudioBufferSourceNode.prototype.stop;
+    AudioBufferSourceNode.prototype.start = function (when, offset, duration) {
+      starts++;
+      if (duration === undefined) return start.call(this, when, offset);
+      return start.call(this, when, offset, duration);
+    };
+    AudioBufferSourceNode.prototype.stop = function (when) {
+      stops++;
+      return stop.call(this, when);
+    };
+    Reflect.set(window, '__elevenPlayback', () => ({ starts, stops }));
     Reflect.set(window, '__elevenMic', () =>
       tracks.map((track) => ({
         state: track.readyState,
@@ -35,7 +79,12 @@ test('ElevenLabs preview, Hermes delegation, and call history use the selected V
           const context = new AudioContext();
           const oscillator = context.createOscillator();
           const output = context.createMediaStreamDestination();
-          oscillator.connect(output);
+          const gain = context.createGain();
+          gain.gain.value = 0;
+          Reflect.set(window, '__elevenSpeak', (level: number) => {
+            gain.gain.value = level;
+          });
+          oscillator.connect(gain).connect(output);
           oscillator.start();
           const track = output.stream.getAudioTracks()[0];
           if (track) {
@@ -51,37 +100,24 @@ test('ElevenLabs preview, Hermes delegation, and call history use the selected V
       },
     });
   });
-  await page.routeWebSocket('wss://api.elevenlabs.io/v1/convai/realtime', (route) => {
-    sockets.push(route);
-    route.onMessage((raw) => {
-      const data = JSON.parse(String(raw));
-      providerMessages.push(data);
-      if (data.type === 'response.create' && data.response?.instructions) {
-        route.send(JSON.stringify({ type: 'response.created' }));
-        route.send(
-          JSON.stringify({
-            type: 'response.output_audio.delta',
-            item_id: 'preview',
-            delta: pcm.toString('base64'),
-          }),
-        );
-        route.send(JSON.stringify({ type: 'response.done' }));
-      }
-    });
-    route.send(JSON.stringify({ type: 'session.created' }));
-  });
+  await page.routeWebSocket(
+    /wss:\/\/api\.elevenlabs\.io\/v1\/speech-to-text\/realtime\?/,
+    (route) => {
+      sockets.push(route);
+      route.onMessage((raw) => {
+        const data = JSON.parse(String(raw));
+        expect(data.message_type).toBe('input_audio_chunk');
+        if (data.commit === true) committed++;
+      });
+      route.send(JSON.stringify({ message_type: 'session_started' }));
+    },
+  );
   await page.route('**/v1/rpc', async (route) => {
     const { operation, params } = route.request().postDataJSON();
     const reply = (result: unknown) => route.fulfill({ json: { result } });
     if (operation === 'secrets.pending') return reply({ requests: [] });
+    if (operation === 'chat.history' && params.before) olderPages++;
     if (operation === 'voice.provider') provider = params.provider;
-    if (operation === 'voice.vox_import') {
-      expect(params.presets).toEqual([
-        { handle: 'arlo', voice_id: 'vox_arlo', label: 'Vox · Arlo' },
-      ]);
-      voice = 'vox_arlo';
-      return reply({ imported: 1 });
-    }
     if (operation === 'voice.preferences') {
       expect(params.provider).toBe('elevenlabs');
       confirmed = true;
@@ -97,38 +133,62 @@ test('ElevenLabs preview, Hermes delegation, and call history use the selected V
         configured: true,
         voice: eleven ? voice : 'marin',
         voices: eleven ? [voice, 'brian'] : ['marin', 'cedar'],
-        voice_labels:
-          eleven && voice === 'vox_arlo'
-            ? { vox_arlo: 'Vox · Arlo', brian: 'Brian' }
-            : { brian: 'Brian' },
+        voice_labels: { brian: 'Brian' },
         setup_complete: eleven && completed,
         key_confirmed: eleven && confirmed,
       });
     }
-    if (operation === 'voice.voices') return reply({ voices: { another_voice: 'Another voice' } });
-    if (operation === 'voice.session') {
-      expect(params.provider).toBe('elevenlabs');
-      expect(params).not.toHaveProperty('sdp');
-      return reply({
-        provider,
-        session: { id: params.preview ? 'preview' : 'call' },
-        client_secret: 'synthetic_test_ticket',
-      });
+    if (operation === 'voice.voices') {
+      catalogs++;
+      if (catalogs === 1)
+        return route.fulfill({ status: 400, json: { code: 'ELEVEN_ACCESS_DENIED' } });
+      return reply({ voices: { soft_voice: 'Soft Voice', bright_voice: 'Bright Voice' } });
     }
+    if (operation === 'voice.sample') {
+      expect(params.voice).toBe('soft_voice');
+      return reply({ audio: Buffer.concat([wav, pcm]).toString('base64') });
+    }
+    if (operation === 'voice.start')
+      return reply({ call_id: callId, token: 'synthetic_test_ticket' });
     if (operation === 'voice.submit') {
       submissions++;
-      expect(params.text).toBe('Check the report.');
-      expect(params.context).toContain('Check the report.');
-      messages.push({ row_id: 400, role: 'user', text: params.text, timestamp: 1700000001 });
-      return reply({ user_row_id: 400 });
+      expect(params.text).toBe('About the numbers. Check the report.');
+      expect(params).not.toHaveProperty('context');
+      expect(params.call_id).toBe(callId);
+      utteranceId = params.utterance_id;
+      messages.push({ row_id: 400, role: 'system', text: '', timestamp: 1700000001 });
+      return reply({ state: 'pending', user_row_id: 400 });
     }
+    if (operation === 'voice.turn')
+      return reply(
+        replyReady
+          ? {
+              state: 'ready',
+              user_row_id: 400,
+              assistant_row_id: 401,
+              assistant_text: 'The report is ready.',
+            }
+          : { state: 'pending', user_row_id: 400 },
+      );
     if (operation === 'voice.end') {
       ends++;
-      expect(params.call_id).toBe('call');
-      expect(params.transcript).toContain('Check the report.');
+      expect(params.call_id).toBe(callId);
+      expect(params).not.toHaveProperty('transcript');
+      expect(params.follow_up).toBe(true);
       return reply({ call: { id: 'a'.repeat(64), ended_at: Date.now() / 1000 } });
     }
     await route.fallback();
+  });
+  await page.route('**/v1/voice/speech', async (route) => {
+    speechRequests++;
+    expect(route.request().postDataJSON()).toEqual({
+      operation: 'voice.speech',
+      params: { session_id: 'session-arlo', call_id: callId, utterance_id: utteranceId },
+    });
+    await route.fulfill({
+      contentType: 'application/octet-stream',
+      body: Buffer.concat([pcm, pcm, pcm, pcm]),
+    });
   });
   await page.goto('/');
   await expect(page.getByLabel('Message', { exact: true })).toBeEnabled();
@@ -136,84 +196,77 @@ test('ElevenLabs preview, Hermes delegation, and call history use the selected V
   await page.getByText('ElevenLabs', { exact: true }).click();
   await expect(page.getByRole('form', { name: 'ElevenLabs API key' })).toBeVisible();
   await page.getByRole('button', { name: 'Use saved key' }).click();
-  await page.locator('[aria-label="Voice settings"] input[type="file"]').setInputFiles({
-    name: 'vox.json',
-    mimeType: 'application/json',
-    buffer: Buffer.from(
-      JSON.stringify([{ handle: 'arlo', voice_id: 'vox_arlo', label: 'Vox · Arlo' }]),
-    ),
-  });
-  await expect(page.getByRole('combobox', { name: 'Voice' })).toContainText('Vox · Arlo');
+  await expect(page.getByRole('alert')).toContainText('Voices read access');
+  await page.getByRole('button', { name: 'Retry', exact: true }).click();
+  const picker = page.getByRole('combobox', { name: 'Voice' });
+  await expect(page.getByRole('alert')).toHaveCount(0);
+  await picker.click();
+  await expect(page.getByRole('option', { name: 'Bright Voice' })).toBeVisible();
+  await page.getByRole('option', { name: 'Soft Voice' }).click();
+  await expect(picker).toContainText('Soft Voice');
+  await expect(page.getByRole('button', { name: 'Import Vox voices' })).toHaveCount(0);
   await page.screenshot({
     path: info.outputPath('eleven-voice-settings.png'),
     animations: 'disabled',
   });
   await page.getByRole('button', { name: 'Preview', exact: true }).click();
-  await expect
-    .poll(() => providerMessages.find((message) => message.type === 'response.create')?.response)
-    .toEqual({
-      instructions:
-        'Read this sample once, exactly as written: Hi, this is the Vox · Arlo voice on Pebble Crew. How do I sound?',
-    });
   await expect(page.getByRole('button', { name: 'Stop preview', exact: true })).toBeEnabled();
   expect(await page.evaluate(() => Reflect.get(window, '__elevenMic')())).toEqual([]);
+  expect(sockets).toHaveLength(0);
   await page.getByRole('button', { name: 'Stop preview', exact: true }).click();
+  const previewStarts = await page.evaluate(() => Reflect.get(window, '__elevenPlayback')().starts);
   await page.getByRole('button', { name: 'Start call', exact: true }).click();
   await expect(page.getByRole('button', { name: 'Mute microphone' })).toBeVisible();
   const enableAudio = page.getByRole('button', { name: 'Enable audio', exact: true });
   if (await enableAudio.isVisible()) await enableAudio.click();
-  await expect
-    .poll(() => providerMessages.some((message) => message.type === 'input_audio_buffer.append'))
-    .toBe(true);
   const send = (event: Record<string, unknown>) => sockets.at(-1)?.send(JSON.stringify(event));
   send({
-    type: 'conversation.item.input_audio_transcription.completed',
-    transcript: 'Check the report.',
+    message_type: 'response.function_call_arguments.done',
+    arguments: '{"request":"provider text"}',
   });
-  const functionCall = {
-    call_id: 'owned-tool',
-    name: 'ask_pebble',
-    arguments: '{"request":"Check the report."}',
-  };
-  send({ ...functionCall, type: 'response.function_call_arguments.done' });
-  send({ type: 'response.output_item.done', item: { type: 'function_call', ...functionCall } });
+  // Words ElevenLabs finalizes on its own are kept for the owner's next turn.
+  send({ message_type: 'committed_transcript', text: 'About the numbers.' });
+  await page.waitForTimeout(200);
+  expect(submissions).toBe(0);
+  await page.evaluate(() => Reflect.get(window, '__elevenSpeak')(0.3));
+  await page.waitForTimeout(300);
+  await page.evaluate(() => Reflect.get(window, '__elevenSpeak')(0));
+  await expect.poll(() => committed).toBe(1);
+  send({ message_type: 'committed_transcript', text: 'Check the report.' });
   await expect.poll(() => submissions).toBe(1);
-  messages.push({
-    row_id: 401,
-    role: 'assistant',
-    text: 'The report is ready.',
-    timestamp: 1700000002,
-  });
-  await emit(page, 'message.complete', {
-    persisted_turn: { user_row_id: 400, final_assistant_row_id: 401 },
-  });
+  // The bridge hides call rows from chat, as it does for a real call.
+  messages.push({ row_id: 401, role: 'system', text: '', timestamp: 1700000002 });
+  const pagesBeforeReply = olderPages;
+  replyReady = true;
+  await expect.poll(() => speechRequests).toBe(1);
+  // Call rows are hidden from chat; the reply must play without paging back
+  // through history to find them.
+  expect(olderPages).toBe(pagesBeforeReply);
   await expect
-    .poll(() =>
-      providerMessages
-        .filter((message) => message.type === 'conversation.item.create')
-        .map((message) => message.item),
-    )
-    .toEqual([
-      { type: 'function_call_output', call_id: 'owned-tool', output: 'The report is ready.' },
-    ]);
-  send({ type: 'response.created' });
-  send({
-    type: 'response.output_audio.delta',
-    item_id: 'live-reply',
-    delta: pcm.toString('base64'),
+    .poll(() => page.evaluate(() => Reflect.get(window, '__elevenPlayback')().starts))
+    .toBeGreaterThan(previewStarts);
+  const beforeInterruption = await page.evaluate(
+    () => Reflect.get(window, '__elevenPlayback')().stops,
+  );
+  await page.evaluate(() => Reflect.get(window, '__elevenSpeak')(0.3));
+  await expect
+    .poll(() => page.evaluate(() => Reflect.get(window, '__elevenPlayback')().stops))
+    .toBeGreaterThan(beforeInterruption);
+  await page.evaluate(() => Reflect.get(window, '__elevenSpeak')(0));
+  await page.getByRole('button', { name: 'Show voice transcript' }).click();
+  await expect(page.getByRole('region', { name: 'Voice transcript' })).toContainText(
+    'The report is ready.',
+  );
+  const surface = page.locator('[data-slot="voice-call-surface"]');
+  const stop = page.getByRole('button', { name: 'Stop voice call' });
+  await expect(stop).toBeInViewport({ ratio: 1 });
+  const frame = (await surface.boundingBox())!;
+  const button = (await stop.boundingBox())!;
+  expect(button.x + button.width).toBeLessThan(frame.x + frame.width - 8);
+  await page.screenshot({
+    path: info.outputPath('hermes-voice-active.png'),
+    animations: 'disabled',
   });
-  await expect
-    .poll(() =>
-      page
-        .locator('[data-slot="voice-call-bar"] [data-slot="audio-activity"] span')
-        .first()
-        .evaluate((node) => node.getBoundingClientRect().height),
-    )
-    .toBeGreaterThan(6);
-  send({ type: 'input_audio_buffer.speech_started' });
-  await expect
-    .poll(() => providerMessages.some((message) => message.type === 'conversation.item.truncate'))
-    .toBe(true);
   await page.getByRole('button', { name: 'Mute microphone' }).click();
   expect(await page.evaluate(() => Reflect.get(window, '__elevenMic')())).toEqual([
     { state: 'live', enabled: false },

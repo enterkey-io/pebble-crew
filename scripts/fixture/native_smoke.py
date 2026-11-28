@@ -6,6 +6,7 @@ This proves native execution, not quality or reliability of a production model.
 
 import argparse
 import asyncio
+import base64
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import importlib.util
 import json
@@ -47,6 +48,10 @@ class Model(BaseHTTPRequestHandler):
     emitted_reaction = False
     reaction_describe_requested = False
     reaction_schema_received = False
+    progress_described = False
+    progress_schema_received = False
+    progress_emitted = False
+    progress_guided = False
     reaction_discovery_guided = False
     saw_attachment = False
     approval_target = ""
@@ -70,6 +75,22 @@ class Model(BaseHTTPRequestHandler):
             pass
 
     def do_GET(self):
+        if self.path in ('/voice-one.wav?signature=first', '/voice-two.wav?signature=second'):
+            import io
+            import math
+            import struct
+            import wave
+            frequency = 330 if 'one' in self.path else 440
+            stream = io.BytesIO()
+            with wave.open(stream, 'wb') as sample:
+                sample.setparams((1, 2, 8000, 0, 'NONE', 'not compressed'))
+                sample.writeframes(b''.join(struct.pack('<h', int(1200 * math.sin(i * math.tau * frequency / 8000)))
+                                            for i in range(24000)))
+            self.send_response(200)
+            self.send_header('Content-Type', 'audio/wav')
+            self.end_headers()
+            self.wfile.write(stream.getvalue())
+            return
         self.send_response(200)
         self.send_header("Content-Type", "application/json")
         self.end_headers()
@@ -110,7 +131,7 @@ class Model(BaseHTTPRequestHandler):
             for index, height in enumerate([56, 94, 138, 172]):
                 drawing.rounded_rectangle((32 + index * 68, 210 - height, 72 + index * 68, 210), radius=6, fill='#a8b99a')
             image.save(output / 'chart one.png')
-            (output / 'plan.md').write_text('# Project plan\n\n**Native document proof**\n\n- Preserve existing personalities\n- Verify before release\n\n```python\nprint(42)\n```\n')
+            (output / 'plan.md').write_text('# Project plan\n\n**Native document proof**\n\n- Preserve existing personalities\n- Verify before release\n\n```python\nprint(42)\n```\n\n```mermaid\nflowchart LR\n  Draft --> Review\n```\n')
             (output / 'figures.csv').write_bytes(b'column,value\n' * 110000)
             (output / 'sample-video.mp4').write_bytes((Path(__file__).resolve().parents[2] / 'test/fixtures/sample-video.mp4').read_bytes())
             text = 'Here are the results.\n\n![Project chart](<' + str(output / 'chart one.png') + '>)\n\n[Download figures](<' + str(output / 'figures.csv') + '>)'
@@ -130,6 +151,22 @@ class Model(BaseHTTPRequestHandler):
             for result in Model.tool_results
         ):
             Model.reaction_schema_received = True
+        if any('pebble_progress' in str(result) and 'parameters' in str(result) for result in Model.tool_results):
+            Model.progress_schema_received = True
+        wants_progress = 'nativeprogress' in str(latest_user.get('content'))
+        if wants_progress:
+            Model.progress_guided = Model.progress_guided or any('tool_describe(names=["pebble_progress"])' in str(m.get('content')) for m in data.get('messages', []))
+            if Model.progress_emitted:
+                def published(value):
+                    if isinstance(value, str):
+                        try: return published(json.loads(value))
+                        except (ValueError, TypeError): return False
+                    if isinstance(value, dict): return value.get('published') is True or any(published(v) for v in value.values())
+                    if isinstance(value, list): return any(published(v) for v in value)
+                    return False
+                assert any(published(result) for result in Model.tool_results), 'Native progress tool did not publish in its bound session'
+                time.sleep(0.8)
+                text = 'Native progress reply'
         if any('PEBBLE_FIXTURE_FILE_INPUT' in str(m.get('content')) for m in data.get('messages', []) if m.get('role') == 'tool'):
             Model.saw_attachment = True
         import re
@@ -148,6 +185,11 @@ class Model(BaseHTTPRequestHandler):
             and not Model.reaction_describe_requested and 'tool_describe' in tool_names
             and 'pebble_react' in json.dumps(data))
         reaction = (wants_reaction and can_call('pebble_react') and ('pebble_react' in tool_names or Model.reaction_schema_received))
+        if 'The Atmee video call ended.' in str(latest_user.get('content')):
+            body = str(latest_user.get('content'))
+            text = ('Native video context received' if all(marker in body for marker in
+                    ('Owner video context sentinel', 'Avatar video context sentinel'))
+                    else 'Native video context missing')
         if 'nativefeedback' in str(latest_user.get('content')):
             # The reply only acknowledges feedback actually present in the model input.
             text = 'Native feedback received' if any('[The user reacted ❤️' in str(m.get('content')) for m in data.get('messages', [])) else 'Native feedback missing'
@@ -178,6 +220,11 @@ class Model(BaseHTTPRequestHandler):
                                   if messages[index].get('role') == 'user'), -1)
         current_results = [message.get('content') for message in messages[latest_user_index + 1:]
                            if message.get('role') == 'tool']
+        body = str(latest_user.get('content'))
+        video_actions = re.findall(r'\bnativevideo (remember|correct|recall)\b', body)
+        video_action = video_actions[-1] if video_actions and 'The Atmee video call ended.' not in body else None
+        previous_fact = 'Aurora video continuity fixture: meeting location is Cedar.'
+        current_fact = 'Aurora video continuity fixture: meeting location is Juniper.'
         document_results = json.dumps(current_results)
         def document_receipt(value):
             if isinstance(value, str):
@@ -190,7 +237,56 @@ class Model(BaseHTTPRequestHandler):
                         or any(document_receipt(child) for child in value.values()))
             return isinstance(value, list) and any(document_receipt(child) for child in value)
         shared_document = document_receipt(current_results)
-        if document_turn and not shared_document:
+        if video_action in {'remember', 'correct'}:
+            updating = video_action == 'correct'
+            if updating:
+                assert 'Live video call' in json.dumps(messages) or 'This is a live call' in json.dumps(messages), 'Native voice context was not injected'
+            if not current_results:
+                assert can_call('memory'), 'Hermes memory tool is unavailable'
+                arguments = ({'action': 'replace', 'old_text': previous_fact, 'content': current_fact}
+                             if updating else {'action': 'add', 'content': previous_fact})
+                message = {'role': 'assistant', 'content': None, 'tool_calls': [{
+                    'id': 'fixture-memory', 'type': 'function', 'function': {
+                        'name': 'memory', 'arguments': json.dumps({'target': 'memory', **arguments}),
+                    },
+                }]}
+                finish = 'tool_calls'
+            else:
+                receipt = json.loads(current_results[-1])
+                assert receipt.get('success') is True and receipt.get('target') == 'memory', current_results
+                text = 'Aurora saved Juniper' if updating else 'Aurora saved Cedar'
+                message = {'role': 'assistant', 'content': text}
+        elif video_action == 'recall':
+            # Hermes freezes its system memory snapshot when a session starts.
+            # A later acknowledgement of a confirmed write is fresher.
+            observations = (str(m.get('content')) for m in reversed(messages)
+                            if m.get('role') in {'system', 'assistant'})
+            location = 'unavailable'
+            for value in observations:
+                if value == 'Aurora saved Juniper' or current_fact in value:
+                    location = 'Juniper'
+                    break
+                if value == 'Aurora saved Cedar' or previous_fact in value:
+                    location = 'Cedar'
+                    break
+            text = f'Aurora remembers {location}'
+            message = {'role': 'assistant', 'content': text}
+        elif 'nativevideo identify camera' in body:
+            content = latest_user.get('content')
+            if isinstance(content, list):
+                image = next((part['image_url']['url'] for part in content if part.get('type') == 'image_url'), '')
+                assert image.startswith('data:image/jpeg;base64,'), 'Native model did not receive the camera frame'
+                camera = base64.b64decode(image.split(',', 1)[1])
+            else:
+                reference = re.search(r'vision_analyze tool using image_url: ([^\]\n]+/pebble-camera-[^\]\n]+\.jpg)\]', content or '')
+                assert reference, 'Hermes did not offer its native vision tool the camera frame'
+                camera_path = Path(reference[1])
+                assert camera_path.resolve().is_relative_to(Path(os.environ['HERMES_HOME']).resolve())
+                camera = camera_path.read_bytes()
+            assert camera.startswith(b'\xff\xd8') and len(camera) > 500, 'Native frame is not the browser JPEG'
+            text = 'Aurora received the camera frame'
+            message = {'role': 'assistant', 'content': text}
+        elif document_turn and not shared_document:
             if 'pebble_open_document' not in tool_names and 'parameters' not in document_results:
                 assert 'tool_describe(names=[\"pebble_open_document\"])' in json.dumps(data).replace('\\\"', '\"'), 'Document discovery guidance missing'
                 name, arguments = 'tool_describe', {'names': ['pebble_open_document']}
@@ -203,6 +299,16 @@ class Model(BaseHTTPRequestHandler):
             assert shared_document, document_results
             text = 'Here is the [Project plan](<' + str(output / 'plan.md') + '>).'
             message = {'role': 'assistant', 'content': text}
+        elif wants_progress and not Model.progress_emitted:
+            if 'pebble_progress' not in tool_names and not Model.progress_schema_received:
+                assert 'tool_describe' in tool_names and Model.progress_guided, 'Enabled progress tool needs deferred-discovery guidance'
+                Model.progress_described = True
+                name, arguments = 'tool_describe', {'names':['pebble_progress']}
+            else:
+                Model.progress_emitted = True
+                name, arguments = 'pebble_progress', {'text':'Checking the website project'}
+            message = {'role':'assistant','content':"I'll check the website project." if name=='tool_describe' else None,'tool_calls':[{'id':'fixture-public-progress','type':'function','function':{'name':name,'arguments':json.dumps(arguments)}}]}
+            finish = 'tool_calls'
         elif discover_reaction:
             Model.reaction_describe_requested = True
             message = {'role': 'assistant', 'content': None, 'tool_calls': [{'id': 'fixture-reaction-describe',
@@ -248,6 +354,8 @@ class Model(BaseHTTPRequestHandler):
             delta = {"role": "assistant", "content": text}
             if finish == 'tool_calls':
                 delta = {"role": "assistant", "tool_calls": [{"index": 0, **message["tool_calls"][0]}]}
+                if message.get('content'):
+                    delta['content'] = message['content']
             for delta, reason in [(delta, None), ({}, finish)]:
                 chunk = {**output, "object": "chat.completion.chunk", "choices": [{"index": 0,
                     "delta": delta, "finish_reason": reason}]}
@@ -266,7 +374,7 @@ def seed(home, port):
               "agent:\n  max_turns: 3\n  bot_mode_protocol: true\n"
               "approvals:\n  mode: manual\n"
               "toolsets:\n  - terminal\n")
-    (home / "config.yaml").write_text(config)
+    (home / "config.yaml").write_text(config + '  - memory\n')
     (home / ".env").write_text("# No user credentials\n")
     for name in ("alpha", "beta"):
         path = create_profile(name, no_alias=True, no_skills=True)
@@ -579,6 +687,148 @@ def main():
                             kwargs['stderr'] = sys.stderr
                         return await original_spawn(*argv, **kwargs)
                     patch('bot_web.native.asyncio.create_subprocess_exec', diagnostic_spawn).start()
+                    synthetic_calls = set()
+                    built_avatar = '35b912c7-9dcc-464d-941c-b3bc78365030'
+                    recorded_avatar = 'e0f0db58-7530-43ae-8da5-fb52ad0fd8f7'
+                    voice_upload = 'upload:0433a8c7-5e87-4d75-839c-a79fecf5796e'
+                    second_voice_upload = 'upload:b486933b-28e0-4ea8-866a-53de89805c13'
+                    uploads = {}
+                    storage = 'https://fpgwbdmvvurxnanvxjld.supabase.co'
+                    built = {}
+                    def synthetic_atmee(path, key, payload=None, *, idempotency=None):
+                        character = 'bbcb7c08-35d3-44c2-86cd-28825ed7165e'
+                        builder = key == 'sk_atmee_native-builder'
+                        if not builder and key != 'sk_atmee_native-synthetic':
+                            raise AssertionError('Only disposable fixture keys are accepted')
+                        if path == '/v1/api_keys/current':
+                            if builder:
+                                return {'active': True, 'scopes': ['sessions', 'avatars:read', 'avatars:write', 'generation:write']}
+                            return {'active': True, 'scopes': ['sessions', 'avatars:read'], 'avatarId': character}
+                        if path == '/v1/avatars/' + character:
+                            return {'id': character, 'name': 'Synthetic character', 'kind': 'conversational', 'readyToChat': True}
+                        if builder and path == '/v1/avatars?limit=100':
+                            return {'items': [{'id': character, 'name': 'Synthetic character', 'kind': 'conversational',
+                                               'readyToChat': True}, *built.values()]}
+                        if builder and path == '/v1/account':
+                            return {'v2Access': 'granted', 'limits': {'v2Resolutions': [{'width': 384, 'height': 672}]}}
+                        if builder and path == '/v1/generation/voices':
+                            assert uuid.UUID(idempotency) and payload['voiceDescription'].startswith('Warm')
+                            assert payload['avatarName'] == 'Aurora · Video test'
+                            assert 220 <= len(payload['sampleText']) <= 600
+                            return {'voices': [
+                                {'upload': voice_upload, 'url': 'https://voice-assets.example.net/voice-one.wav?signature=first'},
+                                {'upload': second_voice_upload, 'url': 'https://voice-assets.example.net/voice-two.wav?signature=second'},
+                            ]}
+                        if builder and path == '/v1/uploads':
+                            kind = payload['kind']
+                            mime = {'portrait': 'image/png', 'voice': 'audio/wav'}[kind]
+                            assert payload['contentType'] == mime
+                            ident = str(uuid.uuid4())
+                            target = storage + '/storage/v1/object/upload/sign/assets/' + ident + '?token=fixture'
+                            uploads[ident] = {'kind': kind, 'mime': mime, 'status': 'pending', 'target': target}
+                            return {'uploadId': ident, 'uploadUrl': target, 'uploadHeaders': {'Content-Type': mime}}
+                        if builder and path.startswith('/v1/uploads/'):
+                            return {'status': uploads[path.split('/')[-1]]['status']}
+                        if builder and path == '/v1/avatars' and payload:
+                            ident = {'Aurora · Video test': built_avatar, 'Aurora · Recording test': recorded_avatar}[payload['name']]
+                            assert ident not in built, 'Character creation was replayed'
+                            assert payload['engine'] == 'v2' and payload['visibility'] == 'private'
+                            image = uploads[payload['assets']['image']['url'].removeprefix('upload:')]
+                            assert image['kind'] == 'portrait' and image['status'] == 'uploaded'
+                            voice = payload['assets']['voice']['url']
+                            if ident == built_avatar:
+                                assert voice == voice_upload
+                            else:
+                                recording = uploads[voice.removeprefix('upload:')]
+                                assert recording['kind'] == 'voice' and recording['status'] == 'uploaded'
+                            assert payload['persona'] == {'whoPrompt': 'Approved Aurora character description.'}
+                            built[ident] = {'id': ident, 'name': payload['name'],
+                                            'kind': 'conversational', 'readyToChat': True}
+                            return {'avatarId': ident, 'kind': 'conversational', 'status': 'building',
+                                    'statusUrl': '/v1/avatars/' + ident}
+                        if builder and path.startswith('/v1/avatars/') and path.split('/')[-1] in built:
+                            return built[path.split('/')[-1]]
+                        if path == '/v1/avatar_sessions':
+                            assert payload == {'avatarId': character}
+                            call = str(uuid.uuid4())
+                            synthetic_calls.add(call)
+                            return {'sessionId': call, 'livekitUrl': 'wss://atmanity.livekit.cloud',
+                                    'agentToken': 'native-fixture-token-123456', 'maxDurationSeconds': 3600,
+                                    'avatarParticipantIdentity': 'atmee-avatar-agent'}
+                        if path.startswith('/v1/avatar_sessions/') and path.endswith('/end') and path.split('/')[3] in synthetic_calls:
+                            return {'alreadyEnded': False}
+                        raise AssertionError('Unexpected synthetic vendor operation')
+                    patch('bot_web.atmee_video.provider', synthetic_atmee).start()
+                    import io
+                    class SyntheticRenderer:
+                        def __init__(self, _av, _rtc, _avatar):
+                            self.closed = asyncio.Event()
+                            self.claimed = False
+                            self.speech = None
+                            self.generation = 0
+
+                        async def connect(self, url, token):
+                            assert url == 'wss://atmanity.livekit.cloud'
+                            assert token == 'native-fixture-token-123456'
+
+                        async def media(self):
+                            self.claimed = True
+                            source = Path(__file__).resolve().parents[2] / 'test/fixtures/atmee-relay.json'
+                            with io.BytesIO(base64.b64decode(json.loads(source.read_text())['base64'])) as recording:
+                                while fragment := recording.read(3000):
+                                    yield fragment
+                                    await asyncio.sleep(0.1)
+                            await self.closed.wait()
+
+                        async def say(self, upstream, generation):
+                            with upstream:
+                                assert self.generation == generation and upstream.read1(1)
+
+                        async def interrupt(self):
+                            self.generation += 1
+
+                        async def close(self):
+                            self.closed.set()
+
+                    patch('bot_web.atmee_media.dependencies', lambda: (None, None)).start()
+                    patch('bot_web.atmee_media.Relay', SyntheticRenderer).start()
+                    from bot_web.live_voice import LiveVoice
+                    native_voice = LiveVoice.invoke
+                    async def synthetic_voice(self, operation, params, *, speech_rate=24000):
+                        if operation == 'voice.start':
+                            return {'call_id': self.spoken.begin(params['session_id'], 'fixture_voice'),
+                                    'token': 'native-synthetic-scribe-token'}
+                        if operation == 'voice.speech' and speech_rate == 16000:
+                            voice, text = await self.spoken.speech(params['session_id'], params)
+                            assert voice == 'fixture_voice' and text.startswith('Aurora ')
+                            return io.BytesIO(bytes(6400))
+                        return await native_voice(self, operation, params, speech_rate=speech_rate)
+                    patch.object(LiveVoice, 'invoke', synthetic_voice).start()
+                    from http.client import HTTPConnection
+                    def synthetic_voice_cdn(host, *, timeout):
+                        assert host == 'voice-assets.example.net'
+                        return HTTPConnection('127.0.0.1', model.server_port, timeout=timeout)
+                    patch('bot_web.atmee_build.PreviewConnection', synthetic_voice_cdn).start()
+                    from contextlib import nullcontext
+                    from types import SimpleNamespace
+                    def synthetic_upload(request, *, timeout):
+                        from PIL import Image
+                        import io
+                        import wave
+                        ticket = next(item for item in uploads.values() if item['target'] == request.full_url)
+                        assert request.get_method() == 'PUT'
+                        assert dict(request.header_items()) == {'Content-type': ticket['mime']}
+                        assert ticket['status'] == 'pending'
+                        if ticket['kind'] == 'portrait':
+                            with Image.open(io.BytesIO(request.data)) as image:
+                                assert image.size == (96, 168), 'Portrait was cropped'
+                        else:
+                            with wave.open(io.BytesIO(request.data), 'rb') as audio:
+                                assert audio.getnframes() == 12 * audio.getframerate()
+                        ticket['status'] = 'uploaded'
+                        return nullcontext()
+                    patch('bot_web.atmee_build.build_opener', return_value=SimpleNamespace(open=synthetic_upload)).start()
+
                 from bot_web.trust import OwnerTrust
                 trust = OwnerTrust(json.loads(Path(args.owner_trust).read_text())) if args.owner_trust else None
                 hosts = {args.public_host or f"127.0.0.1:{args.port}"}
@@ -587,12 +837,18 @@ def main():
                     bridge_module.HEARTBEAT_SECONDS = 0.2
                     bridge_module.LEASE_SECONDS = 1
                 if trust:
-                    from bot_web.native import NativeGateway
+                    from bot_web.native import NativeError, NativeGateway
                     from bot_web.operations import BotOperations
                     from bot_web.workspace import WorkspaceService, WorkspaceStore, workspace_path
                     gateway = NativeGateway()
                     workspace = WorkspaceService(BotOperations(gateway), WorkspaceStore(workspace_path()))
                     app = create_app("f" * 43, {args.origin}, hosts, gateway=gateway, trust=trust, workspace=workspace)
+                    if args.diagnostics:
+                        original_native_error = app.exception_handlers[NativeError]
+                        async def report_fixture_error(request, error):
+                            print('Synthetic Hermes error:', str(error), file=sys.stderr, flush=True)
+                            return await original_native_error(request, error)
+                        app.add_exception_handler(NativeError, report_fixture_error)
                     if args.short_leases:
                         # Test-only control; the bridge boundary still requires operator auth.
                         @app.post('/fixture/prepare-runtime')

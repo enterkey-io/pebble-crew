@@ -62,11 +62,40 @@ def read_clock(home):
             return None
         root = canonical['id']
         tip = db.get_compression_tip(root) or root
-        return {'conversation_id': root, 'cursor_type': 'row', 'cursor': max(
-            db.latest_message_row_id(tip, role='user') or 0,
-            db.latest_message_row_id(tip, role='assistant') or 0)}
     finally:
         db.close()
+    return {'conversation_id': root, 'cursor_type': 'row', 'cursor': latest_reply_row(path, tip)}
+
+
+def latest_reply_row(path, session_id):
+    """Row of the newest message a Pebble sent the owner: its final visible text of a turn.
+    Tool steps, narration beside tool calls, model-only rows, silence markers and the owner's
+    or background prompts never count, so the unread mark and alerts mean a real message."""
+    import sqlite3
+    try:
+        from gateway.response_filters import is_intentional_silence_response as silent
+    except Exception:
+        def silent(text):
+            return text.strip() == 'NO_REPLY'
+    connection = sqlite3.connect(Path(path).resolve().as_uri() + '?mode=ro', uri=True)
+    try:
+        columns = {row[1] for row in connection.execute('PRAGMA table_info(messages)')}
+        visible = ''
+        if 'display_metadata' in columns:
+            visible = (" AND COALESCE(json_extract(CASE WHEN json_valid(display_metadata) THEN display_metadata END,"
+                       " '$.model_only'), 0) = 0")
+        rows = connection.execute(
+            "SELECT id, content FROM messages WHERE session_id = ? AND role = 'assistant' AND active = 1"
+            " AND content IS NOT NULL AND TRIM(content) != ''"
+            " AND COALESCE(TRIM(tool_calls), '') IN ('', '[]', 'null')" + visible +
+            " ORDER BY id DESC LIMIT 25", (session_id,))
+        for row_id, content in rows:
+            text = str(content).strip()
+            if not silent(text) and text != '[PEBBLE_NO_REPLY]':
+                return int(row_id)
+        return 0
+    finally:
+        connection.close()
 
 
 def register():

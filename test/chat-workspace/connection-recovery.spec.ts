@@ -117,6 +117,9 @@ test('reconnecting keeps composer controls, typography, focus and the editable d
       (window as unknown as { __expireConnection: () => void }).__expireConnection(),
     );
     await expect.poll(() => reconnecting).toBe(true);
+    const status = page.locator('.connection-status');
+    await expect(status).toHaveAttribute('aria-label', 'Reconnecting…');
+    await expect(status).toHaveCSS('background-color', 'rgb(164, 163, 173)');
     await expect(attachment).toHaveCount(1);
     expect(await attachmentNode.evaluate((node) => node.isConnected)).toBe(true);
     expect(await actionNode.evaluate((node) => node.isConnected)).toBe(true);
@@ -185,7 +188,10 @@ test('unsaved connection tools and key survive a new transport lease', async ({
     (window as unknown as { __expireConnection: () => void }).__expireConnection(),
   );
   await expect.poll(() => leases).toBeGreaterThan(initial);
-  await expect(page.locator('.connection-status')).toContainText('Hermes connected');
+  await expect(page.locator('.connection-status')).toHaveAttribute(
+    'aria-label',
+    'Hermes connected',
+  );
   await expect(changedTool).toBeChecked();
   await expect(page.getByRole('textbox', { name: 'API key', exact: true })).toHaveValue(
     'synthetic-unsaved-key',
@@ -223,4 +229,42 @@ test('a changed remote tool policy requires an explicit keep or discard decision
     page.getByText('Tool access saved. Applies when this pebble restarts.'),
   ).toBeVisible();
   expect(fixture.policies.get('Archive')).toEqual(['search_documents', 'document_action_15']);
+});
+
+test('an unconfirmed send removes the local chat bubble and restores the draft', async ({
+  page,
+  context,
+}) => {
+  await installFixture(context);
+  let release!: () => void;
+  const held = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  let sends = 0;
+  await page.route('**/v1/rpc', async (route) => {
+    if (route.request().postDataJSON().operation !== 'chat.send') return route.fallback();
+    sends++;
+    await held;
+    await route.fulfill({ status: 500, json: { code: 'REQUEST_FAILED' } });
+  });
+  try {
+    await page.goto('/');
+    const field = page.getByRole('textbox', { name: 'Message', exact: true });
+    const draft = 'The message Hermes did not accept';
+    await expect(field).toBeEnabled();
+    await field.fill(draft);
+    await submitMessage(page);
+    await expect.poll(() => sends).toBe(1);
+    const bubble = page.getByRole('log').getByText(draft, { exact: true });
+    await expect(bubble).toBeVisible();
+    await expect(field).toHaveValue('');
+    release();
+    await expect(field).toHaveValue(draft);
+    await expect(page.locator('.banner')).toContainText('Your message may not have been sent.');
+    await expect(bubble).toHaveCount(0);
+    await expect(page.locator('.pc-activity-lane')).not.toContainText('Thinking');
+    expect(sends).toBe(1);
+  } finally {
+    release();
+  }
 });

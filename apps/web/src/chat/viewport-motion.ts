@@ -2,21 +2,48 @@
 export class TranscriptFollow {
   private frame = 0;
   private previous = 0;
-  private written = 0;
+  private written: number | undefined;
   private suspended = false;
   private pausedTop = 0;
   private resumeFrame = 0;
-  constructor(readonly node: HTMLElement) {}
+  private readerUntil = 0;
+  private contentHeight: number;
+  private viewportHeight: number;
+  private observedViewport: number;
+
+  constructor(readonly node: HTMLElement) {
+    this.contentHeight = node.scrollHeight;
+    this.viewportHeight = node.clientHeight;
+    this.observedViewport = node.clientHeight;
+  }
 
   get active() {
     return this.frame !== 0;
   }
   get ownsScroll() {
-    return (
-      this.suspended ||
-      ((this.active || this.resumeFrame !== 0) && Math.abs(this.node.scrollTop - this.written) < 1)
-    );
+    const { scrollHeight, clientHeight, scrollTop } = this.node;
+    const layoutChanged =
+      scrollHeight !== this.contentHeight || clientHeight !== this.viewportHeight;
+    this.contentHeight = scrollHeight;
+    this.viewportHeight = clientHeight;
+    const now = performance.now();
+    const reader = now < this.readerUntil;
+    // A resize can move the actual offset before its scroll event arrives.
+    // Keep the current reading mode unless an input gesture accompanied it.
+    if (this.suspended || (!reader && (layoutChanged || this.active))) {
+      this.written = scrollTop;
+      return true;
+    }
+    if (this.written !== undefined && Math.abs(scrollTop - this.written) < 1) return true;
+    if (reader) this.readerUntil = now + 750;
+    return false;
   }
+
+  readerInput() {
+    this.interrupt();
+    this.readerUntil = performance.now() + 750;
+  }
+
   cancel() {
     cancelAnimationFrame(this.frame);
     this.frame = 0;
@@ -51,6 +78,7 @@ export class TranscriptFollow {
   }
   interrupt() {
     this.cancel();
+    this.written = undefined;
     cancelAnimationFrame(this.resumeFrame);
     this.resumeFrame = 0;
     this.suspended = false;
@@ -68,6 +96,26 @@ export class TranscriptFollow {
         this.node.getBoundingClientRect().bottom
       : this.node.scrollHeight;
     this.written = this.node.scrollTop;
+    this.contentHeight = this.node.scrollHeight;
+    this.viewportHeight = this.node.clientHeight;
+    this.readerUntil = 0;
+  }
+  /** The pane or its content changed size while following the latest message. When
+   *  the pane gets shorter (the composer growing, a keyboard opening), the
+   *  conversation moves up by the same amount in the same frame. A taller pane
+   *  already keeps its end in place. New content glides. */
+  resized() {
+    const viewport = this.node.clientHeight;
+    const shrunk = this.observedViewport - viewport;
+    this.observedViewport = viewport;
+    if (this.suspended) return;
+    if (shrunk > 0) {
+      this.node.scrollTop += shrunk;
+      this.written = this.node.scrollTop;
+      this.contentHeight = this.node.scrollHeight;
+      this.viewportHeight = viewport;
+    }
+    this.follow();
   }
   follow() {
     if (this.suspended) return;

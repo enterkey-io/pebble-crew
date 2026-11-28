@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import type { ReactNode } from 'react';
 import { useReducedMotion } from 'motion/react';
 import { Minus, Plus, Scan, X, Play, Pause, Volume2, VolumeX, Download } from 'lucide-react';
 import { TransformComponent, TransformWrapper } from 'react-zoom-pan-pinch';
@@ -19,6 +20,12 @@ export default function ImageViewerContent({
   kind = 'image',
   initialTime = 0,
   onDownload,
+  onSave,
+  onSwipe,
+  caption,
+  strip,
+  placeholder,
+  photoKey,
 }: {
   src: string;
   alt: string;
@@ -27,10 +34,23 @@ export default function ImageViewerContent({
   kind?: 'image' | 'video';
   initialTime?: number;
   onDownload?: () => void;
+  /** Save an image to the device (share sheet on iPhone). */
+  onSave?: () => void;
+  /** Move to the previous (-1) or next (1) item when not zoomed in. */
+  onSwipe?: (direction: 1 | -1) => void;
+  caption?: string | undefined;
+  strip?: ReactNode;
+  /** Shown instead of the image while it loads or when it failed. */
+  placeholder?: ReactNode;
+  /** Identifies the photo. A sharper copy of the same photo keeps the zoom. */
+  photoKey?: string;
 }) {
+  const swipe = useRef<{ x: number; y: number; time: number; moved: boolean } | null>(null);
+  const zoomed = () => (controls.current?.instance.state.scale ?? 1) > 1.01;
   const controls = useRef<ReactZoomPanPinchRef>(null);
   const surface = useRef<HTMLDivElement>(null);
   const dragged = useRef(false);
+  const backdropTouch = useRef<{ x: number; y: number } | null>(null);
   const player = useRef<HTMLVideoElement>(null);
   const [playing, setPlaying] = useState(false);
   const [muted, setMuted] = useState(false);
@@ -46,6 +66,12 @@ export default function ImageViewerContent({
       setFailed(false);
     }
   }, [open]);
+  // A gallery swaps the photo in place; start each one unzoomed.
+  const shownPhoto = photoKey ?? src;
+  const centered = useRef<string | undefined>(undefined);
+  useEffect(() => {
+    void controls.current?.centerView(1, 0);
+  }, [shownPhoto]);
   const reduced = useReducedMotion();
   const duration = reduced ? 0 : 180;
   function zoomBy(step: number) {
@@ -98,6 +124,19 @@ export default function ImageViewerContent({
           ?.focus({ preventScroll: true });
       }}
       onKeyDownCapture={(event) => {
+        if (
+          onSwipe &&
+          !event.ctrlKey &&
+          !event.metaKey &&
+          !event.altKey &&
+          (event.key === 'ArrowLeft' || event.key === 'ArrowRight') &&
+          !zoomed()
+        ) {
+          event.preventDefault();
+          event.stopPropagation();
+          onSwipe(event.key === 'ArrowRight' ? 1 : -1);
+          return;
+        }
         if (!(event.ctrlKey || event.metaKey) || event.altKey) return;
         const action = ['+', '='].includes(event.key)
           ? () => zoomBy(0.35)
@@ -140,6 +179,65 @@ export default function ImageViewerContent({
             role: 'group',
             'aria-label': video ? 'Video canvas' : 'Image canvas',
             onPointerDownCapture: () => (dragged.current = false),
+            onTouchStartCapture: (event) => {
+              const point = event.touches[0];
+              swipe.current =
+                event.touches.length === 1 && point
+                  ? { x: point.clientX, y: point.clientY, time: Date.now(), moved: false }
+                  : null;
+              backdropTouch.current =
+                event.target === event.currentTarget && event.touches.length === 1 && point
+                  ? { x: point.clientX, y: point.clientY }
+                  : null;
+            },
+            onTouchMoveCapture: (event) => {
+              const start = backdropTouch.current;
+              const point = event.touches[0];
+              const gesture = swipe.current;
+              if (
+                gesture &&
+                point &&
+                Math.hypot(point.clientX - gesture.x, point.clientY - gesture.y) > 10
+              ) {
+                gesture.moved = true;
+              }
+              if (event.touches.length !== 1) swipe.current = null;
+              if (
+                start &&
+                (event.touches.length !== 1 ||
+                  !point ||
+                  Math.hypot(point.clientX - start.x, point.clientY - start.y) > 8)
+              )
+                backdropTouch.current = null;
+            },
+            onTouchCancel: () => {
+              backdropTouch.current = null;
+              swipe.current = null;
+            },
+            onTouchEnd: (event) => {
+              const tap = backdropTouch.current;
+              backdropTouch.current = null;
+              const gesture = swipe.current;
+              swipe.current = null;
+              const point = event.changedTouches[0];
+              if (onSwipe && gesture && point && event.touches.length === 0 && !zoomed()) {
+                const dx = point.clientX - gesture.x,
+                  dy = point.clientY - gesture.y;
+                if (
+                  Math.abs(dx) > 50 &&
+                  Math.abs(dx) > Math.abs(dy) * 1.5 &&
+                  Date.now() - gesture.time < 800
+                ) {
+                  event.preventDefault();
+                  onSwipe(dx < 0 ? 1 : -1);
+                  return;
+                }
+              }
+              if (tap && event.touches.length === 0) {
+                event.preventDefault();
+                onOpenChange(false);
+              }
+            },
             onClick: (event) => {
               if (event.target === event.currentTarget && !dragged.current) onOpenChange(false);
             },
@@ -173,13 +271,25 @@ export default function ImageViewerContent({
               onEnded={() => setPlaying(false)}
               onError={() => setFailed(true)}
             />
+          ) : placeholder || !src ? (
+            <div className="flex h-[50vh] w-[min(80vw,32rem)] items-center justify-center">
+              {placeholder}
+            </div>
           ) : (
             <img
               src={src}
               alt={alt}
               draggable={false}
-              className="max-h-[calc(var(--app-viewport-height,100dvh)-8rem)] max-w-[calc(100vw-2rem)] select-none"
-              onLoad={() => void controls.current?.centerView(1, 0)}
+              // The zoom library turns off pointer events and the touch callout for
+              // images inside it. Restore both so a long press opens the system
+              // image menu (Save to Photos, Share, Copy) like any web page photo.
+              style={{ WebkitTouchCallout: 'default', pointerEvents: 'auto' }}
+              className={`${strip || caption ? 'max-h-[calc(var(--app-viewport-height,100dvh)-14rem)]' : 'max-h-[calc(var(--app-viewport-height,100dvh)-8rem)]'} max-w-[calc(100vw-2rem)] rounded-2xl`}
+              onLoad={() => {
+                if (centered.current === shownPhoto) return;
+                centered.current = shownPhoto;
+                void controls.current?.centerView(1, 0);
+              }}
             />
           )}
         </TransformComponent>
@@ -237,13 +347,13 @@ export default function ImageViewerContent({
             size="icon-lg"
             onClick={() => zoomBy(0.35)}
           />
-          {onDownload && (
+          {(onSave ?? onDownload) && (
             <IconButton
               className={controlClassName}
-              label="Download video"
+              label={video ? 'Save video' : 'Save photo'}
               icon={Download}
               size="icon-lg"
-              onClick={onDownload}
+              onClick={onSave ?? onDownload}
             />
           )}
         </div>
@@ -270,6 +380,19 @@ export default function ImageViewerContent({
               }}
             />
           )}
+        </div>
+      )}
+      {(caption || strip) && (
+        <div className="pointer-events-none absolute inset-x-0 bottom-[max(4.5rem,calc(env(safe-area-inset-bottom)+3.5rem))] flex flex-col items-center gap-3 px-4">
+          {caption && (
+            <p
+              aria-hidden="true"
+              className="gallery-caption max-w-full truncate text-center text-base text-white/85"
+            >
+              {caption}
+            </p>
+          )}
+          {strip && <div className="pointer-events-auto max-w-full">{strip}</div>}
         </div>
       )}
       <IconButton

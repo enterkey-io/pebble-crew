@@ -49,6 +49,59 @@ async function loaded(page: Page) {
   await page.evaluate(() => document.fonts.ready);
 }
 
+test('scrolling up loads older conversation through an activity-only page without moving the reader', async ({
+  page,
+  context,
+}, info) => {
+  const fixture = await historyFixture(context);
+  for (const row of fixture.rows.slice(240, 300)) {
+    row.role = 'tool';
+    row.text = '';
+  }
+  let release: (() => void) | undefined;
+  const pending = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  let reads = 0;
+  await context.route('**/v1/rpc', async (route) => {
+    const { operation, params } = route.request().postDataJSON();
+    if (operation === 'chat.history' && params.before) {
+      reads++;
+      await pending;
+    }
+    await route.fallback();
+  });
+  try {
+    await loaded(page);
+    expect(reads).toBe(0);
+    const pane = page.locator('.pc-transcript');
+    if (info.project.use.isMobile) {
+      await pane.dispatchEvent('touchstart');
+      await pane.evaluate((node) => {
+        node.scrollTop = 0;
+      });
+    } else {
+      await pane.hover();
+      await page.mouse.wheel(0, -20000);
+    }
+    await expect.poll(() => reads).toBe(1);
+    const anchor = page.locator('[data-message-id="301"]');
+    const y = (await anchor.boundingBox())!.y;
+    release?.();
+    await expect(page.getByText(/History row 240\./)).toBeAttached();
+    await expect.poll(() => reads).toBe(2);
+    await expect(page.getByText(/History row 180\./)).toHaveCount(0);
+    await expect.poll(async () => Math.abs((await anchor.boundingBox())!.y - y)).toBeLessThan(3);
+    await expect(page.getByLabel('Message', { exact: true })).toBeEnabled();
+    await page.screenshot({
+      path: info.outputPath('scroll-loaded-history.png'),
+      animations: 'disabled',
+    });
+  } finally {
+    release?.();
+  }
+});
+
 test('startup transfers one recent page and defers unopened details', async ({
   page,
   context,

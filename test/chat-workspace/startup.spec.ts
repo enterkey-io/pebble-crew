@@ -3,7 +3,7 @@ import { installFixture } from './fixtures';
 
 test.use({ serviceWorkers: 'block' });
 
-test('reload restores the selected pebble behind the progress bar and rejects a replaced identity', async ({
+test('reload restores the selected pebble behind the startup indicator and rejects a replaced identity', async ({
   page,
   context,
 }) => {
@@ -14,6 +14,10 @@ test('reload restores the selected pebble behind the progress bar and rejects a 
     await page.getByRole('button', { name: 'Toggle navigation', exact: true }).click();
   await page.getByRole('button', { name: /^Mica .*Bot Chat$/ }).click();
   await expect(page.locator('.pc-chat-identity')).toContainText('Mica');
+  await expect(page.getByLabel('Message', { exact: true })).toHaveAttribute(
+    'placeholder',
+    'Message Mica',
+  );
   let release!: () => void;
   const held = new Promise<void>((resolve) => {
     release = resolve;
@@ -54,7 +58,7 @@ test('reload restores a selected room and waits for its history', async ({ page,
 });
 
 for (const theme of ['light', 'dark'] as const) {
-  test(`startup shows one unbadged animated pebble above the progress line in ${theme}`, async ({
+  test(`startup waits for the Main Pebble then fades in its welcoming animation in ${theme}`, async ({
     page,
     context,
   }, info) => {
@@ -100,22 +104,28 @@ for (const theme of ['light', 'dark'] as const) {
     try {
       await page.goto('/');
       const progress = page.getByRole('progressbar', { name: 'Opening Pebble Crew' });
-      const track = progress.locator('..');
+      const track = progress;
       const avatar = page.locator('.startup-pebble .agent-avatar');
       const body = avatar.locator('[data-avatar-part="body"]');
       await expect(progress).toBeVisible();
       await expect(page.getByRole('heading')).toHaveCount(0);
-      await expect(avatar).toHaveClass(/avatar-pebble/);
-      await expect(body.locator(':scope > path')).toHaveAttribute('fill', '#aca8ed');
-      await expect(avatar.locator('[aria-label="Main Pebble"]')).toHaveCount(0);
+      await expect(avatar).toHaveCount(0);
+      await expect(page.locator('.startup-progress svg')).toHaveCount(0);
+      await expect(page.locator('.startup-progress .loading-track')).toHaveCount(0);
       const first = await track.boundingBox();
-      if (!first) throw new Error('Missing startup progress line');
+      if (!first) throw new Error('Missing startup indicator');
       releaseAuth();
       await requested;
-      await expect(avatar).toHaveClass(/avatar-pebble/);
+      await expect(avatar).toHaveCount(0);
       await expect(page.getByRole('button', { name: 'Sign out', exact: true })).toHaveCount(0);
       releaseConnect();
       await expect(avatar).toHaveClass(/avatar-cairn/);
+      await expect(avatar.locator('svg')).toHaveAttribute('data-mood', 'welcoming');
+      await expect(page.locator('.startup-pebble')).toHaveCSS('opacity', '1');
+      await expect(page.locator('.startup-pebble')).toHaveCSS(
+        'animation-name',
+        'startup-pebble-enter',
+      );
       await expect(body.locator(':scope > path')).toHaveAttribute('fill', '#8dcec6');
       await expect(avatar.locator('[aria-label="Main Pebble"]')).toHaveCount(0);
       await expect(page.getByRole('progressbar')).toHaveCount(1);
@@ -123,11 +133,12 @@ for (const theme of ['light', 'dark'] as const) {
       await expect(page.getByRole('button', { name: 'Sign out', exact: true })).toHaveCount(0);
       expect(photosRequested).toBe(0);
       const [line, face] = await Promise.all([track.boundingBox(), avatar.boundingBox()]);
-      if (!line || !face) throw new Error('Missing startup avatar or progress line');
+      if (!line || !face) throw new Error('Missing startup avatar or indicator');
       expect(Math.abs(line.x - first.x)).toBeLessThan(1);
       expect(Math.abs(line.y - first.y)).toBeLessThan(1);
       expect(line.width).toBe(first.width);
-      expect(face.y + face.height).toBeLessThan(line.y);
+      expect(face.y).toBeGreaterThanOrEqual(line.y);
+      expect(face.y + face.height).toBeLessThanOrEqual(line.y + line.height);
       expect(Math.abs(face.x + face.width / 2 - line.x - line.width / 2)).toBeLessThan(1);
       const pose = await body.getAttribute('transform');
       await expect.poll(() => body.getAttribute('transform')).not.toBe(pose);
@@ -151,6 +162,10 @@ for (const theme of ['light', 'dark'] as const) {
       expect(transient).toEqual([]);
       await expect(progress).toHaveCount(0);
       await expect(avatar).toHaveCount(0);
+      await expect(page.locator('.agent-avatar.avatar-shape svg').first()).toHaveAttribute(
+        'data-mood',
+        'resting',
+      );
       await page.screenshot({ path: info.outputPath('startup-restored.png') });
       if (page.viewportSize()!.width < 768)
         await page.getByRole('button', { name: 'Toggle navigation', exact: true }).click();

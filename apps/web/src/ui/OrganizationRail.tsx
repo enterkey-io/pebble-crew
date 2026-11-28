@@ -18,7 +18,7 @@ import {
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { safeError } from '@hermes-client/core';
 import { NavigationItem } from './NavigationItem';
-import { UnreadDot } from './UnreadDot';
+import { StatusDot } from './StatusDot';
 import { ContextActions } from './primitives';
 import type { MenuItem } from './primitives';
 import { DiscardChanges } from './DiscardChanges';
@@ -49,6 +49,7 @@ type RailPebble = {
   pinned: boolean;
   activity: number;
   unread?: boolean;
+  attention?: boolean;
 };
 export type RailGroup = {
   id: string;
@@ -148,11 +149,13 @@ export function OrganizationRail({
 }) {
   const reduced = useReducedMotion(),
     [dragging, setDragging] = useState<RailDrag>(),
+    [sectionInsertion, setSectionInsertion] = useState<{ beforeId: string | undefined }>(),
     [over, setOver] = useState('');
   const pinned = pebbles.filter((p) => p.pinned).map((p) => p.id);
   const move = { duration: reduced ? 0 : 0.22, ease: [0.22, 1, 0.36, 1] as const };
   const endDrag = () => {
     setDragging(undefined);
+    setSectionInsertion(undefined);
     setOver('');
   };
   const startDrag = (event: DragEvent, item: RailDrag) => {
@@ -160,6 +163,8 @@ export function OrganizationRail({
     event.stopPropagation();
     event.dataTransfer.setData(dragFormat, JSON.stringify(item));
     event.dataTransfer.effectAllowed = 'move';
+    setOver('');
+    setSectionInsertion(undefined);
     setDragging(item);
   };
   function targetEvents(sectionId: string, row?: RailItem) {
@@ -172,11 +177,22 @@ export function OrganizationRail({
         event.stopPropagation();
         event.dataTransfer.dropEffect = 'move';
         const box = event.currentTarget.getBoundingClientRect();
+        if (dragging?.kind === 'section') {
+          const index = org.sections.findIndex((s) => s.id === sectionId);
+          const beforeId =
+            event.clientY > box.top + box.height / 2 ? org.sections[index + 1]?.id : sectionId;
+          const next = moveSection(org, dragging.id, beforeId);
+          const changed = next.sections.some((s, i) => s.id !== org.sections[i]?.id);
+          const position = next.sections.findIndex((s) => s.id === dragging.id);
+          setSectionInsertion(changed ? { beforeId: next.sections[position + 1]?.id } : undefined);
+          return;
+        }
         setOver(
           `${key}:${row ? (event.clientY > box.top + box.height / 2 ? 'after' : 'before') : 'inside'}`,
         );
       },
       onDragLeave: (event: DragEvent) => {
+        if (dragging?.kind === 'section') return;
         if (
           !(event.relatedTarget instanceof Node) ||
           !event.currentTarget.contains(event.relatedTarget)
@@ -197,10 +213,8 @@ export function OrganizationRail({
         endDrag();
         if (!item) return;
         if (item.kind === 'section') {
-          const index = org.sections.findIndex((s) => s.id === sectionId);
-          onChange((current) =>
-            moveSection(current, item.id, after ? org.sections[index + 1]?.id : sectionId),
-          );
+          if (sectionInsertion)
+            onChange((current) => moveSection(current, item.id, sectionInsertion.beforeId));
           return;
         }
         const section = org.sections.find((s) => s.id === sectionId);
@@ -217,12 +231,59 @@ export function OrganizationRail({
           );
         } else onChange((current) => placeItem(current, item.id, sectionId, before));
       },
-      'data-drop-target': over.startsWith(`${key}:`) || undefined,
-      'data-drop-edge': over.startsWith(`${key}:`) ? over.slice(key.length + 1) : undefined,
+      'data-drop-target': (dragging?.kind !== 'section' && over.startsWith(`${key}:`)) || undefined,
+      'data-drop-edge':
+        dragging?.kind !== 'section' && over.startsWith(`${key}:`)
+          ? over.slice(key.length + 1)
+          : undefined,
     };
+  }
+  function insertionGap(beforeId?: string) {
+    const active =
+      dragging?.kind === 'section' && sectionInsertion?.beforeId === beforeId && !!sectionInsertion;
+    return (
+      <motion.div
+        aria-hidden="true"
+        className="pc-section-insertion"
+        data-section-insertion={active || undefined}
+        data-before-section={active ? (beforeId ?? 'end') : undefined}
+        initial={false}
+        animate={{ height: active ? 40 : 0 }}
+        transition={move}
+        onDragOver={(event) => {
+          if (active) {
+            event.preventDefault();
+            event.stopPropagation();
+            event.dataTransfer.dropEffect = 'move';
+          }
+        }}
+        onDrop={(event) => {
+          if (!active) return;
+          event.preventDefault();
+          event.stopPropagation();
+          const item = readRailDrag(
+            event.dataTransfer.getData(dragFormat),
+            org,
+            pebbles.map((p) => p.id),
+          );
+          if (item?.kind === 'section')
+            onChange((current) => moveSection(current, item.id, beforeId));
+          endDrag();
+        }}
+      />
+    );
   }
   const pebbleActivity = new Map(pebbles.map((pebble) => [pebble.id, pebble.activity]));
   const groupActivity = new Map(groups.map((group) => [group.readKey, group.activity]));
+  function unreadKey(item: RailItem) {
+    if (item.kind === 'pebble') {
+      const pebble = pebbles.find((p) => p.id === item.id);
+      return pebble?.unread && (!pebble.pinned || item.shortcut) ? `pebble:${item.id}` : undefined;
+    }
+    return groups.some((g) => g.readKey === item.readKey && g.unread)
+      ? `group:${item.readKey}`
+      : undefined;
+  }
   function activity(item: RailItem) {
     return (
       (item.kind === 'pebble' ? pebbleActivity.get(item.id) : groupActivity.get(item.readKey)) ?? 0
@@ -252,6 +313,11 @@ export function OrganizationRail({
         transition={move}
         className={`pc-row ${item.kind === 'pebble' ? 'pebble-row' : 'group-row'} ${activeId === item.id ? 'is-selected' : ''}`}
         data-placement-id={item.placementId}
+        data-unread-target
+        data-unread-chat={unreadKey(item)}
+        data-attention-chat={
+          item.kind === 'pebble' && pebble?.attention ? `pebble:${item.id}` : undefined
+        }
         data-dragging={
           (dragging?.kind === 'placement' && dragging.id === item.placementId) || undefined
         }
@@ -290,7 +356,6 @@ export function OrganizationRail({
             aria-label={`${group?.name ?? 'Group chat'} Open chat`}
           />
         ) : null}
-        {(pebble?.unread || group?.unread) && <UnreadDot />}
       </motion.div>
     );
     if (item.kind === 'pebble')
@@ -338,11 +403,34 @@ export function OrganizationRail({
     );
   }
   return (
-    <>
-      {org.sections.map((section) =>
-        isSystemSection(section.id) ? (
+    <div
+      className="pc-section-stack"
+      onDragLeave={(event) => {
+        const bounds = event.currentTarget.getBoundingClientRect();
+        if (
+          event.clientX < bounds.left ||
+          event.clientX > bounds.right ||
+          event.clientY < bounds.top ||
+          event.clientY > bounds.bottom
+        )
+          setSectionInsertion(undefined);
+      }}
+    >
+      {org.sections.map((section) => {
+        const collapsedAttention = section.collapsed
+          ? section.items.flatMap((item) =>
+              item.kind === 'pebble' &&
+              pebbles.some((p) => p.id === item.id && p.attention && (!p.pinned || item.shortcut))
+                ? [`pebble:${item.id}`]
+                : [],
+            )
+          : [];
+        const collapsedUnread = section.collapsed
+          ? [...new Set(section.items.flatMap((item) => unreadKey(item) ?? []))]
+          : [];
+        return isSystemSection(section.id) ? (
           <motion.div
-            layout
+            layout="position"
             transition={move}
             key={section.id}
             className="pc-unsectioned"
@@ -353,75 +441,94 @@ export function OrganizationRail({
             {orderedRows(section)}
           </motion.div>
         ) : (
-          <motion.section
-            layout
-            transition={move}
-            key={section.id}
-            className="pc-list"
-            aria-label={section.name}
-            {...targetEvents(section.id)}
-          >
-            <ContextActions
-              label={`Actions for ${section.name} section`}
-              items={[
-                {
-                  label: 'Rename section',
-                  action: () => onEditOrganization({ kind: 'edit-section', id: section.id }),
-                },
-              ]}
+          <Fragment key={section.id}>
+            {insertionGap(section.id)}
+            <motion.section
+              layout="position"
+              transition={move}
+              key={section.id}
+              className="pc-list"
+              aria-label={section.name}
+              data-section-dragging={
+                (dragging?.kind === 'section' && dragging.id === section.id) || undefined
+              }
+              {...targetEvents(section.id)}
             >
-              <div
-                className="pc-section-header"
-                draggable
-                onDragStart={(event) => startDrag(event, { kind: 'section', id: section.id })}
-                onDragEnd={endDrag}
-                onKeyDown={(event) => {
-                  if (event.altKey && ['ArrowUp', 'ArrowDown'].includes(event.key)) {
-                    event.preventDefault();
-                    onChange((current) =>
-                      nudgeSection(current, section.id, event.key === 'ArrowUp' ? -1 : 1),
-                    );
-                  }
-                }}
+              <ContextActions
+                label={`Actions for ${section.name} section`}
+                items={[
+                  {
+                    label: 'Rename section',
+                    action: () => onEditOrganization({ kind: 'edit-section', id: section.id }),
+                  },
+                ]}
               >
-                <Button
-                  variant="quiet"
-                  className="pc-section-toggle justify-start"
-                  aria-expanded={!section.collapsed}
-                  onClick={() =>
-                    onChange((current) => ({
-                      sections: current.sections.map((s) =>
-                        s.id === section.id ? { ...s, collapsed: !s.collapsed } : s,
-                      ),
-                    }))
-                  }
+                <div
+                  className="pc-section-header"
+                  data-unread-target
+                  draggable
+                  onDragStart={(event) => startDrag(event, { kind: 'section', id: section.id })}
+                  onDragEnd={endDrag}
+                  onKeyDown={(event) => {
+                    if (event.altKey && ['ArrowUp', 'ArrowDown'].includes(event.key)) {
+                      event.preventDefault();
+                      onChange((current) =>
+                        nudgeSection(current, section.id, event.key === 'ArrowUp' ? -1 : 1),
+                      );
+                    }
+                  }}
                 >
-                  <ChevronDown
-                    className="size-4 pointer-coarse:size-5"
-                    data-collapsed={section.collapsed}
-                  />
-                  <span>{section.name}</span>
-                </Button>
-              </div>
-            </ContextActions>
-            <AnimatePresence initial={false}>
-              {!section.collapsed && (
-                <motion.div
-                  initial={{ height: 0 }}
-                  animate={{ height: 'auto' }}
-                  exit={{ height: 0 }}
-                  transition={move}
-                  style={{ overflow: 'hidden' }}
-                  className="pc-section-items"
-                >
-                  {orderedRows(section)}
-                </motion.div>
-              )}
-            </AnimatePresence>
-          </motion.section>
-        ),
-      )}
-    </>
+                  <Button
+                    variant="quiet"
+                    className="pc-section-toggle justify-start"
+                    aria-expanded={!section.collapsed}
+                    onClick={() =>
+                      onChange((current) => ({
+                        sections: current.sections.map((s) =>
+                          s.id === section.id ? { ...s, collapsed: !s.collapsed } : s,
+                        ),
+                      }))
+                    }
+                  >
+                    <ChevronDown
+                      className="size-4 pointer-coarse:size-5"
+                      data-collapsed={section.collapsed}
+                    />
+                    <span>{section.name}</span>
+                    {!!(collapsedUnread.length || collapsedAttention.length) && (
+                      <span className="pc-section-unread">
+                        <StatusDot kind={collapsedAttention.length ? 'attention' : 'unread'} />
+                        {collapsedAttention.map((key) => (
+                          <span key={key} data-attention-chat={key} className="sr-only" />
+                        ))}
+                        {collapsedUnread.map((key) => (
+                          <span key={key} data-unread-chat={key} className="sr-only" />
+                        ))}
+                      </span>
+                    )}
+                  </Button>
+                </div>
+              </ContextActions>
+              <AnimatePresence initial={false}>
+                {!section.collapsed && (
+                  <motion.div
+                    initial={{ height: 0 }}
+                    animate={{ height: 'auto' }}
+                    exit={{ height: 0 }}
+                    transition={move}
+                    style={{ overflow: 'hidden' }}
+                    className="pc-section-items"
+                  >
+                    {orderedRows(section)}
+                  </motion.div>
+                )}
+              </AnimatePresence>
+            </motion.section>
+          </Fragment>
+        );
+      })}
+      {insertionGap()}
+    </div>
   );
 }
 

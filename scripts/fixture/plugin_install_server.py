@@ -76,7 +76,7 @@ def main():
     from hermes_cli.profiles import create_profile
     config = ("auth:\n  adopt_external_logins: false\nmodel:\n  default: fixture-model\n  provider: custom:fixture\nproviders:\n"
         f"  fixture:\n    base_url: http://127.0.0.1:{model.server_port}/v1\n    api_key: fixture-only\n"
-        "agent:\n  max_turns: 3\n  bot_mode_protocol: true\napprovals:\n  mode: manual\ntoolsets:\n  - terminal\n")
+        "agent:\n  max_turns: 3\n  bot_mode_protocol: true\napprovals:\n  mode: manual\ntoolsets:\n  - terminal\nplatform_toolsets:\n  cli: [terminal]\ntools:\n  tool_search:\n    listing: 'off'\n")
     (home / 'config.yaml').write_text(config)
     (home / '.env').write_text('# Synthetic fixture only\n')
     (home / 'SOUL.md').write_text('You are the existing synthetic Aurora personality.\n')
@@ -459,7 +459,9 @@ def main():
         checks['profile_credentials_config_and_identity_preserved'] = all(
             hashlib.sha256(path.read_bytes()).hexdigest() == digest for path, digest in protected_files.items())
         checks['primary_soul_preserved'] = hashlib.sha256((home / 'SOUL.md').read_bytes()).hexdigest() == soul_digest
-        checks['no_replayed_model_sends_after_recovery'] = Model.turns == 1
+        # One ordinary reply and the explicit progress turn: describe, call, reply.
+        checks['no_replayed_model_sends_after_recovery'] = (
+            Model.turns == 4 and Model.progress_described and Model.progress_schema_received and Model.progress_emitted)
         (directory / 'installation-results.json').write_text(json.dumps({'checks': checks,
             'package_sha256': record['sha256'], 'initial_release': json.loads((state / 'install.json').read_text())['active_release'],
             'synthetic_model_turns': Model.turns}, indent=2))

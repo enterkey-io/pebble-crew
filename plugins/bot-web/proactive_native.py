@@ -137,4 +137,6 @@ class NativeProactive:
     def create(self, spec):
         from cron.jobs import create_job
         with self.scoped():
-            return create_job(prompt=spec['prompt'], schedule=spec['schedule'], name=spec['name'], deliver='bot-chat')
+            from .routines_native import wake_script
+            return create_job(prompt=spec['prompt'], schedule=spec['schedule'], name=spec['name'], deliver='bot-chat',
+                              no_agent=True, script=wake_script(spec['prompt']))

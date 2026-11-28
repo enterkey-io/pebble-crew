@@ -14,8 +14,8 @@ class DocumentTests(unittest.TestCase):
         self.output = self.home / 'cache/generated'
         self.output.mkdir(parents=True)
 
-    def test_markdown_and_text_keep_content_without_exposing_paths(self):
-        for name, kind in [('plan.md', 'markdown'), ('PLAN.MARKDOWN', 'markdown'), ('notes.txt', 'text')]:
+    def test_supported_documents_keep_content_without_exposing_paths(self):
+        for name, kind in [('plan.md', 'markdown'), ('PLAN.MARKDOWN', 'markdown'), ('notes.txt', 'text'), ('flow.MMD', 'mermaid'), ('flow.mermaid', 'mermaid')]:
             path = self.output / name
             path.write_text('# Title\n\nUnicode: é\n')
             self.assertEqual(read_document(self.home, str(path)), {'name':name, 'format':kind, 'text':path.read_text()})

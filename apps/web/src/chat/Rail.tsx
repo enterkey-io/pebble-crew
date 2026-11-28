@@ -30,14 +30,17 @@ import { IconButton } from '../components/ui/icon-button';
 import { OrganizationRail, OrganizationDialog, pebblePlacementItems } from '../ui/OrganizationRail';
 import type { RailGroup } from '../ui/OrganizationRail';
 import { NavigationItem } from '../ui/NavigationItem';
+import { SidebarSignalJump, useSidebarSignals } from '../ui/sidebar-unread';
 import { Item, ItemMedia, ItemContent, ItemTitle, ItemDescription } from '../components/ui/item';
 import { readRailDrag } from '../ui/organization';
 import type { Organization, OrganizationEditor } from '../ui/organization';
 import type { WorkspaceSnapshot as WorkspaceState, WorkspaceBot } from '@hermes-client/protocol';
 import type { SessionClient } from '@hermes-client/protocol';
 import type { Activity } from '../avatar-lab/engine';
+import type { PebblePresence } from '../ui/avatar-status';
 import type { Row } from '../conversation';
 import { PersonalAvatar } from '../OwnerPhoto';
+import { previewText } from './preview-text';
 export type ChatBot = {
   profile: string;
   name: string;
@@ -51,18 +54,16 @@ export function PebbleAvatar({
   bot,
   workspace,
   client,
-  state,
+  presence,
   large,
-  unread = false,
   mainBadge = true,
   animated = true,
 }: {
   bot: ChatBot;
   workspace?: WorkspaceState | undefined;
   client: SessionClient;
-  state?: Activity | undefined;
+  presence?: PebblePresence | undefined;
   large?: boolean | undefined;
-  unread?: boolean;
   mainBadge?: boolean;
   animated?: boolean;
 }) {
@@ -75,8 +76,8 @@ export function PebbleAvatar({
       client={client}
       look={identity.appearance}
       orchestrator={mainBadge && workspace?.orchestrator === bot.profile}
-      unread={unread && !!identity.unread}
-      state={state ?? 'ready'}
+      unread={presence?.unread ?? false}
+      state={presence?.state ?? 'ready'}
       large={large ?? false}
       revision={workspace?.revision}
     />
@@ -89,11 +90,13 @@ export function CrewAvatar({
   workspace,
   client,
   active = true,
+  state,
 }: {
   room: Row;
   workspace?: WorkspaceState | undefined;
   client: SessionClient;
   active?: boolean;
+  state?: Activity | undefined;
 }) {
   const members = Array.isArray(room.members) ? room.members : [];
   const profiles = members
@@ -110,6 +113,8 @@ export function CrewAvatar({
           <AgentAvatar
             id={bot.id}
             look={bot.appearance}
+            state={animated ? (state ?? 'ready') : 'ready'}
+            unread={animated && room.unread === true}
             client={client}
             profile={profile}
             revision={workspace?.revision}
@@ -124,6 +129,7 @@ export function CrewAvatar({
 }
 
 export function Rail({
+  appTitle,
   phone = false,
   active = true,
   bots,
@@ -131,7 +137,7 @@ export function Rail({
   workspace,
   client,
   selected,
-  states,
+  presence,
   online,
   pinOrder,
   onOpen,
@@ -160,6 +166,7 @@ export function Rail({
   onNewProject,
   onNewTask,
 }: {
+  appTitle: string;
   phone?: boolean;
   active?: boolean;
   bots: ChatBot[];
@@ -167,7 +174,7 @@ export function Rail({
   workspace?: WorkspaceState | undefined;
   client: SessionClient;
   selected?: string | undefined;
-  states: Record<string, Activity>;
+  presence: Record<string, PebblePresence>;
   online: boolean;
   pinOrder: string[];
   onOpen: (b: ChatBot) => void;
@@ -197,6 +204,10 @@ export function Rail({
   onNewTask: () => void;
 }) {
   const tasksEnabled = workspace?.features?.tasks !== false;
+  const scroll = useRef<HTMLDivElement>(null);
+  const header = useRef<HTMLDivElement>(null);
+  const footer = useRef<HTMLElement>(null);
+  const signals = useSidebarSignals({ scroll, header, footer, enabled: active && area === 'chat' });
   const [hidden, setHidden] = useState(false),
     [editor, setEditor] = useState<OrganizationEditor | null>(null);
   const [pinPreview, setPinPreview] = useState<string[]>();
@@ -240,9 +251,8 @@ export function Rail({
         bot={bot}
         workspace={workspace}
         client={client}
-        state={states[bot.profile]}
+        presence={presence[bot.profile]}
         large={large}
-        unread={large}
         animated={animated && active}
       />
     ) : null;
@@ -310,14 +320,16 @@ export function Rail({
         { label: owner ? 'Sign out' : 'Disconnect', icon: LogOut, action: onLogout },
       ]}
     >
-      <PersonalAvatar />
+      <span className="account-avatar">
+        <PersonalAvatar />
+        <span
+          className="connection-status"
+          data-online={online}
+          role="img"
+          aria-label={online ? 'Hermes connected' : 'Reconnecting…'}
+        />
+      </span>
     </Menu>
-  );
-  const connectionStatus = (
-    <span className="connection-status" data-online={online}>
-      <i aria-hidden="true" />
-      <span>{online ? 'Hermes connected' : 'Reconnecting…'}</span>
-    </span>
   );
   const controls = (bot: ChatBot, children: ReactNode, placementId?: string) => {
     const b = identity(bot);
@@ -346,9 +358,11 @@ export function Rail({
   };
   return (
     <>
-      <div className="pc-rail-top">
+      <div className="pc-rail-top" ref={header}>
         <div className="pc-rail-header rail-toolbar">
-          <span className="pc-wordmark">Pebble Crew</span>
+          <span className="pc-wordmark" title={appTitle}>
+            {appTitle}
+          </span>
           <IconButton label="Search Pebble Crew" icon={Search} onClick={onSearch} />
           <Menu
             label="New"
@@ -392,8 +406,21 @@ export function Rail({
             <ToggleGroupItem value="tasks">Tasks</ToggleGroupItem>
           </ToggleGroup>
         )}
+        {signals.attention.above ? (
+          <SidebarSignalJump
+            kind="attention"
+            direction="above"
+            onClick={() => signals.jump('attention', 'above')}
+          />
+        ) : signals.unread.above ? (
+          <SidebarSignalJump
+            kind="unread"
+            direction="above"
+            onClick={() => signals.jump('unread', 'above')}
+          />
+        ) : null}
       </div>
-      <div className="pc-rail-scroll rail-scroll">
+      <div className="pc-rail-scroll rail-scroll" ref={scroll}>
         {area === 'tasks' ? (
           <nav aria-label="Project boards" className="grid content-start gap-1">
             {catalog?.capabilities.plans && (
@@ -434,6 +461,10 @@ export function Rail({
                       <motion.div
                         layout="position"
                         layoutId={`pebble-${identity(b)!.id}`}
+                        data-unread-target
+                        data-unread-chat={
+                          identity(b)?.unread ? `pebble:${identity(b)!.id}` : undefined
+                        }
                         draggable
                         onDragStartCapture={(event) => {
                           if (event.currentTarget.hasAttribute('data-stationary-press')) return;
@@ -505,6 +536,11 @@ export function Rail({
                         data-dragging={
                           (pinPreview && pinDrag.current?.id === identity(b)!.id) || undefined
                         }
+                        data-attention-chat={
+                          presence[b.profile]?.state === 'attention'
+                            ? `pebble:${identity(b)?.id}`
+                            : undefined
+                        }
                         className={`pc-pin pinned-tile ${selected === b.profile ? 'is-selected' : ''}`}
                         key={identity(b)?.id ?? b.profile}
                       >
@@ -543,11 +579,13 @@ export function Rail({
                             id: row.id,
                             name: b.name,
                             title: row.role.title,
-                            preview:
+                            preview: previewText(
                               b.preview || row.preview || row.role.description || '@' + row.handle,
+                            ),
                             pinned: pinned(b),
                             activity: row.last_activity ?? 0,
                             unread: !!row.unread,
+                            attention: presence[b.profile]?.state === 'attention',
                           },
                         ]
                       : [];
@@ -571,7 +609,7 @@ export function Rail({
                   id: String(room.room_id),
                   readKey: String(room.read_key),
                   name: String(room.name ?? 'Group chat'),
-                  preview: String(room.preview ?? ''),
+                  preview: previewText(String(room.preview ?? '')),
                   unread: !!room.unread,
                   activity: typeof room.updated_at === 'number' ? room.updated_at : 0,
                 }))}
@@ -629,9 +667,21 @@ export function Rail({
           </LayoutGroup>
         )}
       </div>
-      <footer className="pc-rail-footer">
+      <footer className="pc-rail-footer" ref={footer}>
+        {signals.attention.below ? (
+          <SidebarSignalJump
+            kind="attention"
+            direction="below"
+            onClick={() => signals.jump('attention', 'below')}
+          />
+        ) : signals.unread.below ? (
+          <SidebarSignalJump
+            kind="unread"
+            direction="below"
+            onClick={() => signals.jump('unread', 'below')}
+          />
+        ) : null}
         {accountMenu}
-        {connectionStatus}
       </footer>
       <OrganizationDialog
         editor={editor}

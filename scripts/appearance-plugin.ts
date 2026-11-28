@@ -1,8 +1,11 @@
 import type { Plugin } from 'vite';
-import { initializeAppearance } from '../apps/web/src/ui/appearance-bootstrap';
+import {
+  initializeAppearance,
+  initializeChatBubbles,
+} from '../apps/web/src/ui/appearance-bootstrap';
 
 export function appearancePlugin(): Plugin {
-  const source = `(${initializeAppearance.toString()})();`;
+  const source = `(${initializeAppearance.toString()})();\n(${initializeChatBubbles.toString()})();`;
   return {
     name: 'appearance-startup',
     transformIndexHtml: {

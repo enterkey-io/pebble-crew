@@ -1,0 +1,3 @@
+# Optional. Install only in the owner bridge Hermes Python environment.
+livekit==1.2.1
+av==19.0.2

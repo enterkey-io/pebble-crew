@@ -1,5 +1,13 @@
-import { BODY_PATHS, blendPose, nextPoseDelay, samplePose, seedFromId, easeGaze } from './engine';
-import type { Activity, Pose, Shape } from './engine';
+import {
+  BODY_PATHS,
+  blendPose,
+  nextPoseDelay,
+  samplePose,
+  sampleWelcomePose,
+  seedFromId,
+  easeGaze,
+} from './engine';
+import type { Activity, AvatarMood, Pose, Shape } from './engine';
 import { projectEyes, pointerGaze } from './projection';
 
 const NS = 'http://www.w3.org/2000/svg';
@@ -30,7 +38,7 @@ export class AvatarView {
     focusable: 'false',
   });
   private readonly body = element('g', { 'data-avatar-part': 'body' });
-  private readonly silhouette = element('path');
+  private readonly silhouette = element('path', { class: 'avatar-silhouette' });
   private readonly face = element('g', { fill: '#222329', 'data-avatar-part': 'face' });
   private readonly clippingShape = element('path');
   private readonly left = element('rect', {
@@ -55,8 +63,9 @@ export class AvatarView {
   private readonly dots = [38, 50, 62].map((cx) =>
     element('circle', { cx: String(cx), cy: '101', r: '2' }),
   );
-  private readonly attention = element('g');
+  private readonly attention = element('g', { class: 'avatar-decoration' });
   private readonly done = element('path', {
+    class: 'avatar-decoration',
     d: 'M73 13 L77 17 L85 8',
     fill: 'none',
     stroke: '#e7eddd',
@@ -88,6 +97,7 @@ export class AvatarView {
     state: Activity,
     orchestrator = false,
     readonly large = false,
+    readonly mood: AvatarMood = 'resting',
   ) {
     this.seed = seedFromId(id);
     this.state = state;
@@ -202,7 +212,10 @@ export class AvatarView {
   }
   render(clock: number, reduced: boolean, crowded = false) {
     if (this.state === 'done' && clock - this.changedAt >= 900) this.setState('ready', clock);
-    const target = samplePose(this.state, clock - this.changedAt, this.seed, reduced);
+    const target =
+      this.mood === 'welcoming'
+        ? sampleWelcomePose(clock - this.changedAt, this.seed, reduced)
+        : samplePose(this.state, clock - this.changedAt, this.seed, reduced);
     const progress = (clock - this.changedAt) / 280;
     const pose =
       !reduced && this.transitionPose && progress < 1
@@ -221,6 +234,7 @@ export class AvatarView {
     this.lastPose = pose;
     this.svg.dataset.state = this.state;
     this.svg.dataset.motion = reduced ? 'static' : 'animated';
+    this.svg.dataset.mood = this.mood;
     const fps = this.pointer ? 60 : crowded ? 15 : this.large ? 30 : 24;
     this.nextAt = reduced
       ? Infinity

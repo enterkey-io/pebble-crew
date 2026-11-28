@@ -60,6 +60,47 @@ def register():
         except Exception:
             return server._err(rid, 5071, 'Attachment state not confirmed')
     server.method('bot_web.attachments')(attachment)
+
+    def camera_turn(rid, params):
+        # Stage and admit in one native RPC. A refused submit must not leave a
+        # frame for the next chat message or another caller to consume.
+        import io
+        from PIL import Image
+        try:
+            if set(params) != {'session_id', 'text', 'surface', 'queued', 'voice_context', 'camera_frame', 'camera_marker'}:
+                raise ValueError()
+            frame, marker = params['camera_frame'], params['camera_marker']
+            if (not isinstance(marker, str) or not re.fullmatch(r'[a-f0-9]{32}', marker)
+                    or not isinstance(frame, str) or not 0 < len(frame) <= 44000):
+                raise ValueError()
+            data = base64.b64decode(frame, validate=True)
+            with Image.open(io.BytesIO(data)) as image:
+                if image.format != 'JPEG' or not (0 < image.width <= 512 and 0 < image.height <= 512):
+                    raise ValueError()
+                image.verify()
+            session, error = server._sess_building(params, rid)
+            if error:
+                return error
+            if session.get('running') or session.get('attached_images'):
+                # Retain the spoken turn when a native writer already owns the image slot.
+                return server._methods['prompt.submit'](rid, {
+                    **{key: value for key, value in params.items() if key not in {'camera_frame', 'camera_marker', 'voice_context'}},
+                    'voice_context': 'Live video call. No current camera frame is available for this turn.',
+                })
+            path = server._queue_attached_image(session, data, '.jpg', prefix='pebble-camera-' + marker)
+            admitted = False
+            try:
+                result = server._methods['prompt.submit'](rid, {key: value for key, value in params.items() if key not in {'camera_frame', 'camera_marker'}})
+                admitted = (result.get('result') or {}).get('status') == 'streaming'
+                return result
+            finally:
+                if not admitted:
+                    session['attached_images'] = [item for item in session.get('attached_images', []) if Path(item) != Path(path)]
+                    Path(path).unlink(missing_ok=True)
+        except Exception:
+            return server._err(rid, 5071, 'Camera frame could not be attached')
+    server.method('bot_web.spoken.camera_turn')(camera_turn)
+
     _register_generated()
     _register_catalog()
 
@@ -198,7 +239,9 @@ def selected_message(db, canonical_id, row_id):
         rows = db.get_messages_around(sid, row_id, window=0).get('window', [])
         found = next((row for row in rows if row.get('id') == row_id), None)
         if found:
-            if (found.get('role') != 'assistant' or found.get('display_kind') == 'hidden'
+            from conversation_presentation import routine_result
+            if ((found.get('role') != 'assistant' and routine_result(found) is None)
+                    or found.get('display_kind') == 'hidden'
                     or found.get('_compressed_summary')
                     or not (found.get('active') == 1 or found.get('compacted') == 1)):
                 raise ValueError('Only visible assistant files can be read')
@@ -312,8 +355,10 @@ def _register_catalog():
                     _, segment, offset = cursor
                 rows = db.get_messages(lineage[segment], include_compacted=True, limit=25, offset=offset, latest=True)
                 files, seen = [], set()
+                from conversation_presentation import routine_result
                 for row in reversed(rows):
-                    if row.get('role') != 'assistant' or row.get('display_kind') == 'hidden' or row.get('_compressed_summary'): continue
+                    if ((row.get('role') != 'assistant' and routine_result(row) is None)
+                            or row.get('display_kind') == 'hidden' or row.get('_compressed_summary')): continue
                     for reference in references(visible_text(row, home)):
                         try:
                             relative = output_path(home, reference)

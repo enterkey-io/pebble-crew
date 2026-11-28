@@ -87,7 +87,10 @@ for (const flow of ['existing', 'new'] as const) {
       window.dispatchEvent(new Event('focus'));
     });
     await expect.poll(() => leases).toBeGreaterThan(initial);
-    await expect(page.locator('.connection-status')).toContainText('Hermes connected');
+    await expect(page.locator('.connection-status')).toHaveAttribute(
+      'aria-label',
+      'Hermes connected',
+    );
     await expect(dialog).toBeVisible();
     await expect(dialog.getByLabel('Name', { exact: true })).toHaveValue('Unsaved Hazel');
     await expect(dialog.getByLabel('Description', { exact: true })).toHaveValue(

@@ -10,6 +10,46 @@ function connectedResponse() {
 }
 
 describe('direct Bot Mode bridge', () => {
+  it('keeps a flowing video open beyond two minutes and thirty MiB until the caller stops it', async () => {
+    vi.useFakeTimers();
+    const media = new TransformStream<Uint8Array, Uint8Array>();
+    const writer = media.writable.getWriter();
+    let stopped = false;
+    const fetcher = vi.fn<typeof fetch>(async (input, options) => {
+      if (String(input).endsWith('/v1/connect')) return connectedResponse();
+      if (!String(input).endsWith('/v1/atmee/media')) throw new Error('Unexpected media path');
+      options?.signal?.addEventListener('abort', () => {
+        stopped = true;
+        void writer.abort(new DOMException('Call ended', 'AbortError')).catch(() => undefined);
+      });
+      return new Response(media.readable, { headers: { 'content-type': 'video/mp4' } });
+    });
+    const client = new BotBridgeClient(endpoint, token, fetcher);
+    const controller = new AbortController();
+    const stream = client.videoMedia('session', 'call', controller.signal);
+    try {
+      await client.connect();
+      for (let chunk = 0; chunk < 35; chunk++) {
+        await vi.advanceTimersByTimeAsync(5000);
+        const part = stream.next();
+        const writing = writer.write(new Uint8Array(1024 * 1024));
+        expect((await part).value?.byteLength).toBe(1024 * 1024);
+        await writing;
+        expect(stopped).toBe(false);
+      }
+      const pending = stream.next();
+      const rejected = expect(pending).rejects.toMatchObject({ name: 'AbortError' });
+      controller.abort();
+      await rejected;
+      expect(stopped).toBe(true);
+    } finally {
+      controller.abort();
+      await stream.return(undefined);
+      client.disconnect();
+      vi.useRealTimers();
+    }
+  });
+
   it('negotiates reporting writes without breaking older bridge request schemas', async () => {
     for (const reporting of [undefined, 1]) {
       const fetcher = vi
@@ -165,6 +205,8 @@ describe('direct Bot Mode bridge', () => {
   it('uses only allowlisted error codes and discards untrusted private diagnostics', async () => {
     for (const [code, expected] of [
       ['STALE_REVISION', 'STALE_REVISION'],
+      ['ATMEE_KEY_SCOPE', 'ATMEE_KEY_SCOPE'],
+      ['ATMEE_KEY_SAVE_FAILED', 'ATMEE_KEY_SAVE_FAILED'],
       ['PRIVATE_PROVIDER_ERROR', 'RPC_FAILED'],
     ]) {
       const client = new BotBridgeClient(

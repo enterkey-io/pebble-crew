@@ -1,6 +1,5 @@
-import { useRef } from 'react';
-import type { RefObject } from 'react';
-import { Mic, Play, Square, Upload } from 'lucide-react';
+import type { ReactNode, RefObject } from 'react';
+import { Mic, Play, Square } from 'lucide-react';
 import { AudioActivity } from '../components/ai-elements/audio-activity';
 import type { AudioActivityHandle } from '../components/ai-elements/audio-activity';
 import { Card, CardContent } from '../components/ui/card';
@@ -11,7 +10,7 @@ import { ToggleGroup, ToggleGroupItem } from '../components/ui/toggle-group';
 import { SecretCard } from '../components/ai-elements/secret-card';
 import { VoiceOptions } from './VoiceOptions';
 import type { VoiceChoices } from './VoiceOptions';
-import { isVoiceProvider } from './decode';
+import { isVoiceProvider, providerNames } from './decode';
 import type { VoiceProvider, VoiceSettings } from './decode';
 
 export function VoicePanel({
@@ -36,7 +35,7 @@ export function VoicePanel({
   onStart,
   onSave,
   onProvider,
-  onImportVox,
+  voiceCatalog,
 }: {
   panel: RefObject<HTMLDivElement | null>;
   settings: VoiceSettings | undefined;
@@ -59,11 +58,10 @@ export function VoicePanel({
   onStart: () => void;
   onSave: () => void;
   onProvider: (provider: VoiceProvider) => void;
-  onImportVox: (file: File) => void;
+  voiceCatalog: ReactNode;
 }) {
-  const importFile = useRef<HTMLInputElement>(null);
   const provider = settings?.supported ? settings.provider : 'openai';
-  const providerName = provider === 'elevenlabs' ? 'ElevenLabs' : 'OpenAI';
+  const providerName = providerNames[provider];
   return (
     <Card
       ref={panel}
@@ -92,6 +90,7 @@ export function VoicePanel({
             >
               <ToggleGroupItem value="openai">OpenAI</ToggleGroupItem>
               <ToggleGroupItem value="elevenlabs">ElevenLabs</ToggleGroupItem>
+              <ToggleGroupItem value="grok">Grok</ToggleGroupItem>
             </ToggleGroup>
           </div>
         )}
@@ -142,6 +141,7 @@ export function VoicePanel({
               disabled={busy || previewState !== 'idle'}
               onChange={onChange}
             />
+            {voiceCatalog}
             <div className="flex items-center justify-end gap-3">
               <div className="min-w-0 max-w-20 flex-1">
                 {previewState === 'starting' ? (
@@ -178,32 +178,9 @@ export function VoicePanel({
             )}
             <p className="text-xs leading-relaxed text-muted-foreground">
               {provider === 'elevenlabs'
-                ? 'ElevenLabs processes call audio and may read replies from Hermes aloud.'
-                : 'Calls and previews use your OpenAI account. Call audio and recent chat context go to OpenAI.'}
+                ? 'ElevenLabs transcribes your voice and reads your Pebble’s replies aloud.'
+                : `${providerName} talks with you live, knowing your Pebble’s personality and your recent chat. Real work goes to your Pebble.`}
             </p>
-          </>
-        )}
-        {settings?.supported && provider === 'elevenlabs' && (
-          <>
-            <input
-              ref={importFile}
-              type="file"
-              accept=".json,application/json"
-              hidden
-              onChange={(event) => {
-                const file = event.currentTarget.files?.[0];
-                event.currentTarget.value = '';
-                if (file) onImportVox(file);
-              }}
-            />
-            <Button
-              className="justify-self-start"
-              variant="quiet"
-              disabled={busy || previewState !== 'idle'}
-              onClick={() => importFile.current?.click()}
-            >
-              <Upload /> Import Vox voices
-            </Button>
           </>
         )}
         {error && (

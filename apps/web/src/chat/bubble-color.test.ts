@@ -4,7 +4,10 @@ import { COLORS } from '../avatar-lab/engine';
 describe('owner message colors', () => {
   it('matches the selected Pebble and uses dark text on its muted color', () => {
     for (const color of COLORS.filter((item) => item.id !== 'white'))
-      expect(ownerBubbleStyle(color.id)).toEqual({ backgroundColor: color.hex, color: '#101112' });
+      expect(ownerBubbleStyle(color.id)).toEqual({
+        backgroundColor: `var(--owner-bubble-background, ${color.hex})`,
+        color: 'var(--owner-bubble-foreground, #101112)',
+      });
   });
   it('calls the existing white identity Snow and keeps neutral bubbles', () => {
     expect(COLORS.find((item) => item.id === 'white')?.label).toBe('Snow');

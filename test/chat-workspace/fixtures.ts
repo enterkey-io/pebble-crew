@@ -74,18 +74,26 @@ export const history = Array.from({ length: 28 }, (_, i) => ({
         ? '## Research update\n\nThe draft is ready. Here are the next steps:\n\n- Review the sources\n- Pick the priorities\n- Share your notes\n\n```js\nconst ready = true;\n```'
         : 'Here is the latest update on the project. The source material is organized and ready to review. We can work through the remaining decisions together.',
 }));
+type FixtureInterfaceSettings = {
+  revision: number;
+  app_title: string;
+  appearance: 'system' | 'light' | 'dark' | null;
+  chat_bubbles: 'pebble' | 'neutral' | null;
+};
 export async function installFixture(
   context: BrowserContext,
   options: {
     reactions?: boolean;
     attachments?: boolean;
     voice?: boolean;
+    atmee?: boolean;
     avatarThumbnails?: boolean;
     exchanges?: boolean;
     exchangeEvents?: boolean;
     projects?: boolean;
     workspaceSettings?: boolean;
     organization?: OrganizationState;
+    interfaceSettings?: FixtureInterfaceSettings;
     messages?: (Record<string, unknown> & { row_id: number })[];
     open?: (profile: string) => unknown | Promise<unknown>;
     roomMembers?: Record<string, unknown>[];
@@ -139,6 +147,12 @@ export async function installFixture(
     ],
   };
   let prefs = { revision: 0, pin_order: ['identity-0', 'identity-1'] };
+  const interfaceSettings = options.interfaceSettings ?? {
+    revision: 0,
+    app_title: 'Pebble Crew',
+    appearance: null,
+    chat_bubbles: null,
+  };
   let requests: Record<string, unknown>[] = [];
   let loseCreationReply = false;
   let routines = [
@@ -273,6 +287,7 @@ export async function installFixture(
             exchanges: options.exchanges === true,
             exchange_events: options.exchangeEvents === true,
             live_voice: options.voice === true,
+            atmee_setup: options.atmee === true,
             secrets: options.voice === true,
             questions: options.voice === true,
             workspace: true,
@@ -344,6 +359,7 @@ export async function installFixture(
           },
         ],
         preferences: prefs,
+        interface_settings: interfaceSettings,
         organization: { schema: 3, ...organization },
       };
     }
@@ -619,6 +635,18 @@ export async function installFixture(
       state.bots.find((b) => b.id === params.id)!.hidden = params.hidden;
     if (operation === 'presentation.order')
       prefs = { revision: prefs.revision + 1, pin_order: params.ids };
+    if (operation === 'presentation.settings') result = interfaceSettings;
+    if (operation === 'presentation.settings.update') {
+      if (params.expected_revision !== interfaceSettings.revision) {
+        await route.fulfill({ status: 400, json: { code: 'STALE_REVISION' } });
+        return;
+      }
+      if (params.app_title !== undefined) interfaceSettings.app_title = params.app_title.trim();
+      if (params.appearance !== undefined) interfaceSettings.appearance = params.appearance;
+      if (params.chat_bubbles !== undefined) interfaceSettings.chat_bubbles = params.chat_bubbles;
+      interfaceSettings.revision++;
+      result = interfaceSettings;
+    }
     if (operation === 'room.send') {
       const messages = groupMessages.get(params.room_id) ?? [];
       const event = {
@@ -734,6 +762,12 @@ export async function installFixture(
   return {
     loseNextCreationReply() {
       loseCreationReply = true;
+    },
+    setPhoto(profile: string, data: string) {
+      photos.set(profile, data);
+    },
+    setRequests(value: Record<string, unknown>[]) {
+      requests = value;
     },
     setApprovals(value: Record<string, unknown>[]) {
       approvals = value;

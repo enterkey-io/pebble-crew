@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { WorkspaceDomain } from '@hermes-client/protocol';
+import { InterfaceSettingsDomain, WorkspaceDomain } from '@hermes-client/protocol';
 import type { SessionClient, WorkspaceSnapshot } from '@hermes-client/protocol';
 import { ClientError, safeError } from '@hermes-client/core';
 import { Switch } from './components/ui/switch';
@@ -16,19 +16,30 @@ import {
 } from './components/ui/select';
 import { Item, ItemContent, ItemTitle, ItemDescription, ItemActions } from './components/ui/item';
 import { useAppearance } from './ui/AppearanceProvider';
+import { SidebarTitleSetting } from './SidebarTitleSetting';
+import { MessageAlertsSetting } from './notifications/MessageAlertsSetting';
+import type { AppearanceMode, ChatBubbleMode, InterfaceSettings } from '@hermes-client/protocol';
 
 export function GeneralSettings({
   client,
   state,
   onChange,
   onProactive,
+  interfaceSettings,
+  onInterfaceSettings,
+  onDirtyChange,
 }: {
   client: SessionClient;
   state: WorkspaceSnapshot;
   onChange: (state: WorkspaceSnapshot) => void;
   onProactive?: (() => void) | undefined;
+  interfaceSettings: InterfaceSettings;
+  onInterfaceSettings: (settings: InterfaceSettings) => void;
+  onDirtyChange: (dirty: boolean) => void;
 }) {
-  const { mode, setMode } = useAppearance();
+  const { mode, setMode, chatBubbles, setChatBubbles } = useAppearance();
+  const [savingAppearance, setSavingAppearance] = useState(false);
+  const [appearanceIssue, setAppearanceIssue] = useState('');
   const supported = client.supportsWorkspaceSettings;
   const [saving, setSaving] = useState(false);
   const flight = useRef(false);
@@ -39,6 +50,8 @@ export function GeneralSettings({
     flight.current = false;
     setSaving(false);
     setIssue(undefined);
+    setSavingAppearance(false);
+    setAppearanceIssue('');
     return () => {
       generation.current++;
     };
@@ -46,6 +59,49 @@ export function GeneralSettings({
   useEffect(() => {
     if (issue && state.features?.tasks === issue.target) setIssue(undefined);
   }, [issue, state.features?.tasks]);
+  async function changeAppearance(
+    choice:
+      | { appearance: AppearanceMode; chatBubbles?: never }
+      | { appearance?: never; chatBubbles: ChatBubbleMode },
+  ) {
+    if (savingAppearance) return;
+    if (choice.appearance && interfaceSettings.appearance === undefined) {
+      setMode(choice.appearance);
+      return;
+    }
+    if (choice.chatBubbles && interfaceSettings.chatBubbles === undefined) {
+      setChatBubbles(choice.chatBubbles);
+      return;
+    }
+    const key = choice.appearance ? 'appearance' : 'chatBubbles';
+    const wanted = choice[key];
+    const domain = new InterfaceSettingsDomain(client);
+    const token = generation.current;
+    const active = () => generation.current === token;
+    setSavingAppearance(true);
+    setAppearanceIssue('');
+    try {
+      let latest: InterfaceSettings;
+      try {
+        latest = await domain.update(choice, interfaceSettings.revision);
+      } catch {
+        latest = await domain.read();
+        if (!active()) return;
+        onInterfaceSettings(latest);
+        // Merge a change to another setting, but don't overwrite a choice
+        // made on another device while this one was out of date.
+        if (latest[key] !== wanted && latest[key] === interfaceSettings[key])
+          latest = await domain.update(choice, latest.revision);
+      }
+      if (!active()) return;
+      onInterfaceSettings(latest);
+      if (latest[key] !== wanted) setAppearanceIssue('Settings changed elsewhere. Try again.');
+    } catch {
+      if (active()) setAppearanceIssue('Couldn’t confirm this change. Try again.');
+    } finally {
+      if (active()) setSavingAppearance(false);
+    }
+  }
   async function changeTasks(enabled: boolean) {
     if (flight.current) return;
     flight.current = true;
@@ -97,6 +153,12 @@ export function GeneralSettings({
   }
   return (
     <section aria-label="General settings">
+      <SidebarTitleSetting
+        client={client}
+        settings={interfaceSettings}
+        onChange={onInterfaceSettings}
+        onDirtyChange={onDirtyChange}
+      />
       <Item className="flex-nowrap px-0">
         <ItemContent>
           <ItemTitle>
@@ -107,8 +169,10 @@ export function GeneralSettings({
         <ItemActions>
           <Select
             value={mode}
+            disabled={savingAppearance}
             onValueChange={(value) => {
-              if (value === 'light' || value === 'dark' || value === 'system') setMode(value);
+              if (value === 'light' || value === 'dark' || value === 'system')
+                void changeAppearance({ appearance: value });
             }}
           >
             <SelectTrigger id="appearance-mode" className="w-32">
@@ -131,6 +195,32 @@ export function GeneralSettings({
           </Select>
         </ItemActions>
       </Item>
+      <Item className="flex-nowrap px-0">
+        <ItemContent>
+          <ItemTitle>
+            <Label htmlFor="chat-bubble-mode">Chat bubbles</Label>
+          </ItemTitle>
+        </ItemContent>
+        <ItemActions>
+          <Select
+            value={chatBubbles}
+            disabled={savingAppearance}
+            onValueChange={(value) => {
+              if (value === 'pebble' || value === 'neutral')
+                void changeAppearance({ chatBubbles: value });
+            }}
+          >
+            <SelectTrigger id="chat-bubble-mode" className="w-36">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="pebble">Pebble color</SelectItem>
+              <SelectItem value="neutral">Neutral</SelectItem>
+            </SelectContent>
+          </Select>
+        </ItemActions>
+      </Item>
+      {appearanceIssue && <Notice error>{appearanceIssue}</Notice>}
       {supported && state.features && (
         <Item className="flex-nowrap px-0">
           <ItemContent>
@@ -151,6 +241,7 @@ export function GeneralSettings({
         </Item>
       )}
       {issue && <Notice error>{issue.message}</Notice>}
+      <MessageAlertsSetting client={client} />
       {onProactive && (
         <Item className="flex-nowrap px-0">
           <ItemContent>

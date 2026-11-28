@@ -4,6 +4,7 @@ import hashlib
 import json
 import re
 import time
+import unicodedata
 from .operations import InvalidOperation, fields, identifier
 
 
@@ -74,6 +75,60 @@ def preferences(store):
     return json.loads(row[0]) if row else {'revision': 0, 'pin_order': []}
 
 
+INTERFACE_DEFAULTS = {'revision': 0, 'app_title': 'Pebble Crew',
+                      'appearance': None, 'chat_bubbles': None}
+
+
+def _interface_row(store):
+    return store.db.execute("SELECT value FROM presentation WHERE key='interface-settings'").fetchone()
+
+
+def interface_settings(store):
+    row = _interface_row(store)
+    return {**INTERFACE_DEFAULTS, **json.loads(row[0])} if row else INTERFACE_DEFAULTS.copy()
+
+
+def settings_invoke(service, operation, params):
+    if operation == 'presentation.settings':
+        fields(params, [])
+        return interface_settings(service.store)
+    if (not isinstance(params, dict) or
+            not set(params) <= {'app_title', 'appearance', 'chat_bubbles', 'expected_revision'} or
+            type(params.get('expected_revision')) is not int or params['expected_revision'] < 0):
+        raise InvalidOperation('Invalid interface settings')
+    revision = params['expected_revision']
+    patch = {key: value for key, value in params.items() if key != 'expected_revision'}
+    if not patch:
+        raise InvalidOperation('Choose an interface setting to save')
+    if 'app_title' in patch:
+        title = patch['app_title']
+        if (not isinstance(title, str) or not title.strip() or
+                any(unicodedata.category(c) in {'Cc', 'Cf', 'Cs'} for c in title) or
+                len(title.encode("utf-16-le")) > 128):
+            raise InvalidOperation('Enter an app title of 1–64 characters')
+        patch['app_title'] = title.strip()
+    if 'appearance' in patch and patch['appearance'] not in ('light', 'dark', 'system'):
+        raise InvalidOperation('Choose light, dark or system appearance')
+    if 'chat_bubbles' in patch and patch['chat_bubbles'] not in ('pebble', 'neutral'):
+        raise InvalidOperation('Choose pebble color or neutral chat bubbles')
+    with service.store.db:
+        old = _interface_row(service.store)
+        current = {**INTERFACE_DEFAULTS, **json.loads(old[0])} if old else INTERFACE_DEFAULTS
+        if all(current[key] == value for key, value in patch.items()):
+            return current
+        if current['revision'] != revision:
+            raise InvalidOperation('Interface settings changed; review before saving', 'STALE_REVISION')
+        value = {**current, **patch, 'revision': revision + 1}
+        if old:
+            changed = service.store.db.execute("UPDATE presentation SET value=? WHERE key='interface-settings' AND value=?", (json.dumps(value), old[0])).rowcount
+        else:
+            changed = service.store.db.execute("INSERT OR IGNORE INTO presentation VALUES('interface-settings',?)", (json.dumps(value),)).rowcount
+        if changed != 1:
+            raise InvalidOperation('Interface settings changed; review before saving', 'STALE_REVISION')
+    service._snapshot = None
+    return value
+
+
 async def snapshot(service, fresh=False):
     cached = getattr(service, '_snapshot', None)
     if not fresh and cached and time.monotonic() - cached[0] < 1:
@@ -98,7 +153,8 @@ async def snapshot(service, fresh=False):
                 service.store.db.execute('INSERT OR IGNORE INTO read_cursors VALUES(?,?)', (key, room['cursor']))
     result = {'workspace': state, 'bots': [service.ops.summary(r) for r in profiles
         if isinstance(r.get('ui_meta', {}).get('hermes-bots'), dict) and not r['ui_meta']['hermes-bots'].get('hidden')],
-        'rooms': rooms.get('rooms', []), 'rooms_complete': rooms.get('limited') is not True, 'preferences': preferences(service.store)}
+        'rooms': rooms.get('rooms', []), 'rooms_complete': rooms.get('limited') is not True, 'preferences': preferences(service.store),
+        'interface_settings': interface_settings(service.store)}
     from .organization import read as organization, reconcile
     current = service.store.read()
     result['organization'] = reconcile(organization(service.store, current), current, result['rooms'])

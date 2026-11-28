@@ -12,11 +12,14 @@ import time
 from urllib.parse import urlsplit
 
 from fastapi import FastAPI, Request, WebSocket
+from starlette.background import BackgroundTask
 from fastapi.responses import JSONResponse, Response, StreamingResponse, RedirectResponse
 
 from .native import NativeError, NativeGateway
 from .operations import BotOperations, InvalidOperation
 from .live_voice import VOICE_ERROR_CODES
+from .web_push import PUSH_ERROR_CODES
+from .atmee_video import AtmeeVideo, ERROR_CODES as ATMEE_ERROR_CODES
 from .compatibility import check_native_adapter
 from .pairing import BrowserPairing
 from .version import VERSION
@@ -57,6 +60,8 @@ def create_app(token, origins, hosts, gateway=None, trust=None, workspace=None, 
     from .live_voice import LiveVoice, supported as live_voice_supported
     from .attachments import GeneratedMedia
     media = GeneratedMedia(ops)
+    from .photo_sizes import PhotoCache
+    upload_photos = PhotoCache(32 * 1024 * 1024)
     if workspace is None and gateway is None:
         from .workspace import WorkspaceService, WorkspaceStore, workspace_path
         from .setup import installed_primary
@@ -75,11 +80,18 @@ def create_app(token, origins, hosts, gateway=None, trust=None, workspace=None, 
     computer = Computer(native, ops, clients, origins, hosts, enabled=os.environ.get("HERMES_BOT_WEB_EXPERIMENTAL_COMPUTER") == "1")
     pairing = BrowserPairing()
     owner_trust = trust
+    atmee = AtmeeVideo(workspace.store, ops, voice) if workspace and owner_trust else None
+    alerts = None
+    if workspace and owner_trust:
+        from .web_push import WebPush
+        alerts = WebPush(workspace.store, ops, native, owner_trust.value['origin'])
 
     @asynccontextmanager
     async def lifespan(app):
         check_native_adapter()
         await native.start()
+        if atmee:
+            atmee.recover()
         if workspace:
             from .reporting import recover
             recover(workspace.store)
@@ -172,9 +184,14 @@ def create_app(token, origins, hosts, gateway=None, trust=None, workspace=None, 
         exchange_updates = asyncio.create_task(watch_exchange_updates())
         exchanges = asyncio.create_task(watch_exchanges())
         watcher = asyncio.create_task(watch_roster())
+        alert_watch = asyncio.create_task(alerts.watch()) if alerts else None
         try:
             yield
         finally:
+            if alert_watch:
+                alert_watch.cancel()
+                with suppress(asyncio.CancelledError):
+                    await alert_watch
             exchange_updates.cancel()
             with suppress(asyncio.CancelledError):
                 await exchange_updates
@@ -184,6 +201,9 @@ def create_app(token, origins, hosts, gateway=None, trust=None, workspace=None, 
             watcher.cancel()
             with suppress(asyncio.CancelledError):
                 await watcher
+            if atmee:
+                await atmee.shutdown()
+            await voice.spoken.close()
             await native.stop()
             if workspace:
                 workspace.store.db.close()
@@ -284,11 +304,38 @@ def create_app(token, origins, hosts, gateway=None, trust=None, workspace=None, 
 
     @app.exception_handler(InvalidOperation)
     async def invalid(request, error):
-        return JSONResponse({"error": "Operation unavailable or invalid. Refresh and check the connection.", "code": error.code if error.code in VOICE_ERROR_CODES | {"CONVERSATION_CHANGED", "BOT_CHAT_MISSING", "LEASE_GONE", "STREAM_ACTIVE", "NATIVE_UNAVAILABLE", "CAPACITY", "UPDATE_REQUIRED", "UNSUPPORTED_COMMAND", "STALE_REVISION", "HANDLE_TAKEN", "INVALID_REPORTING", "MODEL_UNAVAILABLE", "REQUIRES_SETUP", "INVALID_PHOTO", "INVALID_PARAMETERS", "INVALID_ATTACHMENT", "ATTACHMENT_QUOTA"} else "INVALID_PARAMETERS"}, 409 if error.code == "STALE_REVISION" else 400)
+        if str(getattr(request.state, 'operation', '')).startswith(('atmee.', 'voice.', 'push.')):
+            record_failure(request, error)
+        return JSONResponse({"error": "Operation unavailable or invalid. Refresh and check the connection.", "code": error.code if error.code in VOICE_ERROR_CODES | ATMEE_ERROR_CODES | PUSH_ERROR_CODES | {"CONVERSATION_CHANGED", "BOT_CHAT_MISSING", "LEASE_GONE", "STREAM_ACTIVE", "NATIVE_UNAVAILABLE", "CAPACITY", "UPDATE_REQUIRED", "UNSUPPORTED_COMMAND", "STALE_REVISION", "HANDLE_TAKEN", "INVALID_REPORTING", "MODEL_UNAVAILABLE", "REQUIRES_SETUP", "INVALID_PHOTO", "INVALID_PARAMETERS", "INVALID_ATTACHMENT", "ATTACHMENT_QUOTA"} else "INVALID_PARAMETERS"}, 409 if error.code == "STALE_REVISION" else 400)
+
+    def record_failure(request, error):
+        # Owner-local diagnostics: the operation name and Hermes's error text only,
+        # never request parameters. Bounded so it cannot grow without limit.
+        try:
+            from hermes_constants import get_hermes_home
+            path = Path(get_hermes_home()) / 'logs' / 'pebble-bridge-errors.log'
+            path.parent.mkdir(parents=True, exist_ok=True)
+            if path.exists() and path.stat().st_size > 1_000_000:
+                path.replace(path.with_suffix('.log.1'))
+            operation = getattr(request.state, 'operation', None)
+            line = json.dumps({'time': time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime()), 'path': request.url.path,
+                               'operation': operation if isinstance(operation, str) else None,
+                               'error': type(error).__name__, 'reason': getattr(error, 'reason', None), 'code': getattr(error, 'code', None),
+                               'message': str(error)[:300]})
+            with open(path, 'a', encoding='utf-8') as stream:
+                stream.write(line + '\n')
+        except Exception:
+            pass
 
     @app.exception_handler(NativeError)
     async def native_error(request, error):
+        record_failure(request, error)
         return JSONResponse({"error": "Hermes could not confirm the operation. Refresh before retrying."}, 502)
+
+    @app.exception_handler(Exception)
+    async def unexpected_error(request, error):
+        record_failure(request, error)
+        return JSONResponse({"error": "Hermes could not complete the operation."}, 500)
 
     @app.post("/v1/connect")
     async def connect(request: Request):
@@ -316,7 +363,7 @@ def create_app(token, origins, hosts, gateway=None, trust=None, workspace=None, 
                                "expires": request.scope.get("bot.ticket_expires"), "ended": None}
         build = getattr(native, "build", None) or {}
         return {"connection": connection, "protocol": "hermes-bot-web.v1", "bridge_version": VERSION,
-                "capabilities": {"connection_recovery": 1, "exchanges": bool(workspace), "exchange_events": bool(workspace), "existing_agents": True, "owner_login": owner_trust is not None, "workspace": bool(workspace), "workspace_settings": bool(workspace), "avatar_thumbnails": bool(workspace), "reporting": 1 if workspace else None, "projects": bool(workspace and getattr(native, 'work_supported', False)), "attachments": bool(files), "generated_media": True, "reactions": True, "room_reactions": bool(workspace), "room_disband": bool(workspace and owner_trust and getattr(native, "room_disband_supported", False)), "live_voice": live_voice_supported(), "secrets": bool(getattr(native, "build", None) and native.build.get("server_requests")), "questions": bool(getattr(native, "build", None)), "computer": computer.supported},
+                "capabilities": {"connection_recovery": 1, "exchanges": bool(workspace), "exchange_events": bool(workspace), "existing_agents": True, "owner_login": owner_trust is not None, "workspace": bool(workspace), "workspace_settings": bool(workspace), "avatar_thumbnails": bool(workspace), "reporting": 1 if workspace else None, "projects": bool(workspace and getattr(native, 'work_supported', False)), "attachments": bool(files), "generated_media": True, "reactions": True, "room_reactions": bool(workspace), "room_disband": bool(workspace and owner_trust and getattr(native, "room_disband_supported", False)), "atmee_setup": bool(atmee and (request.scope["bot.principal"] == "operator" or request.scope.get("bot.ticket_expires"))), "live_voice": live_voice_supported(), "secrets": bool(getattr(native, "build", None) and native.build.get("server_requests")), "questions": bool(getattr(native, "build", None)), "computer": computer.supported},
                 "hermes_version": build.get("version"), "hermes_revision": build.get("revision")}
 
     @app.post("/v1/renew")
@@ -339,6 +386,8 @@ def create_app(token, origins, hosts, gateway=None, trust=None, workspace=None, 
 
     @app.post("/v1/files/upload")
     @app.post("/v1/files/read")
+    @app.post("/v1/voice/speech")
+    @app.post("/v1/atmee/media")
     @app.post("/v1/avatar")
     @app.post("/v1/rpc")
     async def rpc(request: Request):
@@ -360,6 +409,7 @@ def create_app(token, origins, hosts, gateway=None, trust=None, workspace=None, 
             operation, params = data["operation"], data["params"]
             if not isinstance(operation, str) or not isinstance(params, dict):
                 raise InvalidOperation("Invalid operation")
+            request.state.operation = operation
             definition = PROTOCOL_CATALOG['operations'].get(operation)
             if not definition or not any(PROTOCOL_CATALOG['routes'][name]['path'] == request.url.path
                                          for name in definition['accepted']):
@@ -384,11 +434,43 @@ def create_app(token, origins, hosts, gateway=None, trust=None, workspace=None, 
                             runtime = await native.call('bot_web.runtime.verify', {'profile': profile})
                     if not isinstance(runtime, dict) or runtime.get('verified') is not True:
                         raise InvalidOperation('The Hermes plugin update is incomplete. Finish runtime synchronization and restart the stopped services before chatting.', 'UPDATE_REQUIRED')
-            if operation == 'room.disband' and (not owner_trust or (
+            if operation in {'room.disband', 'presentation.settings.update'} and (not owner_trust or (
                     client['principal'] != 'operator' and request.scope.get('bot.ticket_expires') is None)):
                 raise InvalidOperation('Owner authentication is required')
-            if operation in {'voice.status', 'voice.preferences', 'voice.credential', 'voice.session', 'voice.submit', 'voice.end', 'voice.provider', 'voice.voices', 'voice.vox_import'}:
+            if operation in {'atmee.status', 'atmee.key', 'atmee.avatars', 'atmee.select', 'atmee.context', 'atmee.ready',
+                             'atmee.build.start', 'atmee.build.status', 'atmee.build.profile', 'atmee.build.recording',
+                             'atmee.voice.design', 'atmee.voice.status', 'atmee.voice.sample',
+                             'atmee.start', 'atmee.utterance', 'atmee.turn', 'atmee.speak', 'atmee.interrupt', 'atmee.media', 'atmee.end'}:
+                if not atmee or (client['principal'] != 'operator' and request.scope.get('bot.ticket_expires') is None):
+                    raise InvalidOperation('Owner authentication is required')
+                if 'session_id' in params and params['session_id'] not in client['sessions']:
+                    raise InvalidOperation('Session belongs to another connection')
+                result = await atmee.invoke(operation, params)
+                if operation == 'atmee.media':
+                    return StreamingResponse(result, media_type='video/mp4', headers={'X-Accel-Buffering': 'no'})
+            elif operation in {'voice.status', 'voice.preferences', 'voice.credential', 'voice.session',
+                               'voice.start', 'voice.submit', 'voice.turn', 'voice.speech', 'voice.end',
+                               'voice.provider', 'voice.voices', 'voice.sample'}:
+                if operation in {'voice.start', 'voice.submit', 'voice.turn', 'voice.speech', 'voice.end'} and (
+                    client['principal'] != 'operator' and request.scope.get('bot.ticket_expires') is None
+                ):
+                    raise InvalidOperation('Owner authentication is required')
                 result = await voice.invoke(operation, params)
+                if operation == 'voice.speech':
+                    upstream = result
+                    def audio():
+                        try:
+                            remaining = 8 * 1024 * 1024
+                            while remaining:
+                                chunk = upstream.read1(min(8192, remaining))
+                                if not chunk:
+                                    break
+                                remaining -= len(chunk)
+                                yield chunk
+                        finally:
+                            upstream.close()
+                    return StreamingResponse(audio(), media_type='application/octet-stream',
+                                             background=BackgroundTask(upstream.close))
             elif operation in {'chat.commands', 'chat.command', 'chat.model.options', 'chat.model.select'}:
                 from .commands import invoke as command
                 result = await command(ops, operation, params)
@@ -412,10 +494,23 @@ def create_app(token, origins, hosts, gateway=None, trust=None, workspace=None, 
                 if operation == 'files.upload':
                     result = await files.upload(ops, client['principal'], params)
                 elif operation == 'files.read':
-                    row, blob = await files.invoke(ops, client['principal'], operation, params)
                     from urllib.parse import quote
                     from .attachments import image_type
-                    mime = image_type(blob) if row['kind'] == 'image' else 'application/octet-stream'
+                    from .photo_sizes import variant, resize
+                    params = dict(params)
+                    size = variant(params)
+                    cache_key = (client['principal'], params.get('session_id'), params.get('id'), size)
+                    row, blob = await files.invoke(ops, client['principal'], operation, params)
+                    if size and row['kind'] == 'image' and (hit := upload_photos.get(cache_key)):
+                        blob, mime = hit
+                    else:
+                        mime = await asyncio.to_thread(image_type, blob) if row['kind'] == 'image' else 'application/octet-stream'
+                        if size and mime.startswith('image/'):
+                            try:
+                                blob, mime = await asyncio.to_thread(resize, blob, mime, size)
+                            except Exception:
+                                pass
+                            upload_photos.put(cache_key, (blob, mime))
                     return Response(blob, media_type=mime, headers={'Content-Disposition': "attachment; filename*=UTF-8''" + quote(row['name'], safe='')})
                 elif operation in {'files.list', 'files.remove', 'files.reconcile', 'files.discard'}:
                     result = await files.invoke(ops, client['principal'], operation, params)
@@ -426,9 +521,16 @@ def create_app(token, origins, hosts, gateway=None, trust=None, workspace=None, 
                     raise InvalidOperation('Owner-local search unavailable')
                 from .search import query, context
                 result = await (query if operation == 'search.query' else context)(workspace, files, client['principal'], params)
+            elif operation in {'push.config', 'push.subscribe', 'push.unsubscribe', 'push.presence'}:
+                if not alerts or (client['principal'] != 'operator' and request.scope.get('bot.ticket_expires') is None):
+                    raise InvalidOperation('Owner authentication is required')
+                result = await alerts.invoke(operation, params, request.headers.get('x-bot-connection', ''))
             elif operation == 'bot.open':
                 result = await ops.invoke(operation, params, bind=client['sessions'].add)
             elif operation == 'chat.send':
+                if alerts:
+                    # The owner's own message is not a new message to alert about.
+                    alerts.owner_sent(params.get('session_id'))
                 if files and 'attachments' in params:
                     result = await files.submit(ops, client['principal'], params)
                 else:
@@ -460,7 +562,8 @@ def create_app(token, origins, hosts, gateway=None, trust=None, workspace=None, 
                 result = await (workspace.invoke(operation, params) if workspace and workspace.handles(operation) else ops.invoke(operation, params))
             if files and operation in {'bot.open', 'chat.snapshot', 'chat.history'} and isinstance(result, dict) and isinstance(result.get('messages'), list):
                 sid = result.get('session_id') if operation == 'bot.open' else params.get('session_id')
-                result = {**result, 'messages': await files.present(ops, client['principal'], sid, result['messages'])}
+                messages = voice.spoken.hide_spoken_rows(sid, voice.spoken.present_camera_inputs(sid, result['messages']))
+                result = {**result, 'messages': await files.present(ops, client['principal'], sid, messages)}
                 page = result.get('history_page') or {}
                 bounds = page.pop('timeline_bounds', None)
                 if bounds is not None or 'before' not in params:

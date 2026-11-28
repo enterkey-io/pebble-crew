@@ -51,7 +51,11 @@ export function photoDimensions(bytes: Uint8Array): { width: number; height: num
 }
 
 /** Local preview only. Re-encoding a small raster never retains source EXIF or file name. */
-export async function photoCanvas(file: File, size: number): Promise<HTMLCanvasElement> {
+export async function photoCanvas(
+  file: File,
+  size: number,
+  square = true,
+): Promise<HTMLCanvasElement> {
   if (file.size > MAX_PHOTO_BYTES) throw new Error('Choose a photo smaller than 5 MB.');
   photoDimensions(new Uint8Array(await file.arrayBuffer()));
   const bitmap = await createImageBitmap(file, { imageOrientation: 'from-image' });
@@ -62,9 +66,16 @@ export async function photoCanvas(file: File, size: number): Promise<HTMLCanvasE
     )
       throw new Error('Choose a smaller photo.');
     const canvas = document.createElement('canvas');
-    canvas.width = canvas.height = size;
     const context = canvas.getContext('2d');
     if (!context) throw new Error('Photo preview is unavailable in this browser.');
+    if (!square) {
+      const scale = Math.min(1, size / Math.max(bitmap.width, bitmap.height));
+      canvas.width = Math.max(1, Math.round(bitmap.width * scale));
+      canvas.height = Math.max(1, Math.round(bitmap.height * scale));
+      context.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+      return canvas;
+    }
+    canvas.width = canvas.height = size;
     const side = Math.min(bitmap.width, bitmap.height);
     context.drawImage(
       bitmap,

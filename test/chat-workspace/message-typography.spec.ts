@@ -46,3 +46,88 @@ for (const theme of ['dark', 'light'])
     await expect(live.first()).toBeVisible();
     for (const node of await live.all()) await expect(node).toHaveCSS('font-size', expected);
   });
+
+test('draft uses compact type without changing the sent message', async ({
+  page,
+  context,
+}, info) => {
+  await installFixture(context, {
+    messages: [
+      { row_id: 101, role: 'assistant', text: 'The first draft is ready.', timestamp: 1700100000 },
+    ],
+  });
+  await page.goto('/');
+  const field = page.getByRole('textbox', { name: 'Message', exact: true });
+  const frame = page.locator('[data-slot="prompt-input"]');
+  await expect(field).toBeEnabled();
+  const empty = (await frame.boundingBox())!;
+  const sample = 'Keep the same type.';
+  await field.fill(sample);
+  const send = page.getByRole('button', { name: 'Send message', exact: true });
+  await expect(send).toBeEnabled();
+  const type = (locator: typeof field) =>
+    locator.evaluate((node) => {
+      const { fontSize, lineHeight, fontFamily, fontWeight } = getComputedStyle(node);
+      return { fontSize, lineHeight, fontFamily, fontWeight };
+    });
+  const draftType = await type(field);
+  const single = (await frame.boundingBox())!;
+  const input = (await field.boundingBox())!;
+  const action = (await send.boundingBox())!;
+  const firstLineCenter = await field.evaluate((node) => {
+    const style = getComputedStyle(node);
+    return (
+      node.getBoundingClientRect().top +
+      parseFloat(style.paddingTop) +
+      parseFloat(style.lineHeight) / 2
+    );
+  });
+  await page.screenshot({ path: info.outputPath('composer-typing.png'), animations: 'disabled' });
+
+  await field.fill(sample + '\nA second line.');
+  await expect.poll(async () => (await frame.boundingBox())!.height).toBeGreaterThan(single.height);
+  await field.fill(sample);
+  await send.click();
+  const sent = page.locator('[data-message-role="user"] .message-body p', { hasText: sample });
+  await expect(sent).toBeVisible();
+  await page.screenshot({ path: info.outputPath('composer-sent.png'), animations: 'disabled' });
+  const touch = await page.evaluate(() => matchMedia('(pointer: coarse)').matches);
+
+  const sentType = await type(sent);
+  const narrow = page.viewportSize()!.width < 768;
+  expect(sentType).toEqual({
+    ...draftType,
+    fontSize: narrow ? '16px' : '14px',
+    lineHeight: narrow ? '26px' : '22.75px',
+  });
+  expect(draftType.fontSize).toBe(sentType.fontSize);
+  expect(draftType.lineHeight).toBe(narrow ? '24px' : '21px');
+  if (touch) {
+    expect(parseFloat(draftType.fontSize)).toBeGreaterThanOrEqual(16);
+    expect(Math.min(action.width, action.height)).toBeGreaterThanOrEqual(44);
+  }
+  // Buttons sit 6px inside the field so they never touch its edge.
+  expect(single.height).toBeLessThanOrEqual(touch ? 56 : 48);
+  expect(single.height).toBe(empty.height);
+  expect(Math.abs(firstLineCenter - (action.y + action.height / 2))).toBeLessThanOrEqual(1);
+  expect(Math.abs(input.y + input.height / 2 - (action.y + action.height / 2))).toBeLessThanOrEqual(
+    1,
+  );
+});
+
+test('wide touch view keeps the original transcript type', async ({ page, context }) => {
+  test.skip(
+    !(await page.evaluate(() => matchMedia('(any-pointer: coarse)').matches)),
+    'Touch viewport',
+  );
+  await page.setViewportSize({ width: 900, height: 650 });
+  await installFixture(context);
+  await page.goto('/');
+  const field = page.getByRole('textbox', { name: 'Message', exact: true });
+  await expect(field).toBeEnabled();
+  await expect(page.locator('[data-slot="bubble-content"]').first()).toHaveCSS('font-size', '14px');
+  await expect(field).toHaveCSS('font-size', '14px');
+  await page.setViewportSize({ width: 900, height: 430 });
+  await expect(field).toHaveCSS('font-size', '16px');
+  await expect(page.locator('[data-slot="bubble-content"]').first()).toHaveCSS('font-size', '14px');
+});

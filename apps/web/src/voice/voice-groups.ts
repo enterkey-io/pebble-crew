@@ -1,5 +1,16 @@
-// Presentation metadata: https://developers.openai.com/api/docs/guides/live-conversations#voice-options
+// OpenAI: https://developers.openai.com/api/docs/guides/live-conversations#voice-options
+// Grok: xAI publishes no gender; grouped by each published sample's measured pitch.
 const female = new Set([
+  'ara',
+  'aurora',
+  'carina',
+  'celeste',
+  'eve',
+  'helix',
+  'iris',
+  'liora',
+  'luna',
+  'ursa',
   'quartz',
   'willow',
   'gleam',
@@ -13,6 +24,24 @@ const female = new Set([
   'noeul',
 ]);
 const male = new Set([
+  'altair',
+  'atlas',
+  'castor',
+  'cosmo',
+  'helios',
+  'kepler',
+  'leo',
+  'lumen',
+  'lux',
+  'naksh',
+  'orion',
+  'perseus',
+  'rex',
+  'rigel',
+  'sal',
+  'sirius',
+  'zagan',
+  'zenith',
   'ripple',
   'vesper',
   'stone',

@@ -29,6 +29,28 @@ class OwnerTrustTests(unittest.IsolatedAsyncioTestCase):
             'iat': now, 'exp': now+300, 'sid': 'a'*64, 'jti': str(uuid.uuid4()), **changes}
         return jwt.encode(claims, self.key, algorithm='EdDSA', headers={'kid': 'owner-key', 'typ': 'JWT'})
 
+    async def test_shared_title_write_requires_authenticated_owner(self):
+        import tempfile
+        from pathlib import Path
+        from bot_web.workspace import WorkspaceStore, WorkspaceService
+        from bot_web.operations import BotOperations
+        with tempfile.TemporaryDirectory() as directory:
+            store = WorkspaceStore(Path(directory)/'workspace.sqlite')
+            settings = WorkspaceService(BotOperations(Native()), store)
+            try:
+                for trust in (None, self.trust):
+                    app = create_app(TOKEN, {ORIGIN}, {HOST}, Native(), trust=trust, workspace=settings)
+                    async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url='https://'+HOST) as browser:
+                        headers = {'Origin': ORIGIN, 'Authorization': 'Bearer '+(self.ticket() if trust else TOKEN)}
+                        connected = await browser.post('/v1/connect', headers=headers)
+                        self.assertEqual(connected.status_code, 200)
+                        headers['X-Bot-Connection'] = connected.json()['connection']
+                        response = await browser.post('/v1/rpc', headers=headers, json={'operation':'presentation.settings.update', 'params':{'app_title':'My Team','chat_bubbles':'neutral','expected_revision':0}})
+                        self.assertEqual(response.status_code, 200 if trust else 400, response.text)
+                self.assertEqual(await settings.invoke('presentation.settings', {}), {'revision':1,'app_title':'My Team','appearance':None,'chat_bubbles':'neutral'})
+            finally:
+                store.db.close()
+
     async def test_persistent_enrollment_accepts_new_ticket_after_restart(self):
         headers = {'Origin': ORIGIN, 'Authorization': 'Bearer '+self.ticket()}
         first = await self.http.post('/v1/connect', headers=headers)

@@ -74,6 +74,8 @@ class NativeGateway:
         env = {key: value for key, value in os.environ.items() if not key.startswith("HERMES_BOT_WEB_")}
         # Normal session.resume owns interactive approval setup. Do not use watch/lazy resume.
         env["HERMES_SINGLE_QUERY_SESSION"] = ""
+        # This client's lifecycle feed is independent of terminal display preferences.
+        env["HERMES_TUI_TOOL_PROGRESS"] = "all"
         self.process = await asyncio.create_subprocess_exec(
             sys.executable, str(Path(__file__).with_name("native_entry.py")),
             stdin=asyncio.subprocess.PIPE, stdout=asyncio.subprocess.PIPE,

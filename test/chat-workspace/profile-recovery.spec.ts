@@ -28,7 +28,10 @@ test('unsaved profile tool choices survive transport replacement', async ({ page
     (window as unknown as { __expireConnection: () => void }).__expireConnection(),
   );
   await expect.poll(() => leases).toBeGreaterThan(before);
-  await expect(page.locator('.connection-status')).toContainText('Hermes connected');
+  await expect(page.locator('.connection-status')).toHaveAttribute(
+    'aria-label',
+    'Hermes connected',
+  );
   await expect(browser).toBeChecked();
   await expect(
     page.getByRole('button', { name: 'Save tools & skills', exact: true }),

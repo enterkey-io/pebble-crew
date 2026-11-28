@@ -5,8 +5,17 @@ import { expectPinRoleContrast } from './pinned-layout';
 
 test.use({ serviceWorkers: 'block' });
 test('appearance is applied before the application module starts', async ({ page, context }) => {
-  await installFixture(context);
-  await context.addInitScript(() => localStorage.setItem('pebble-crew.appearance', 'light'));
+  const interfaceSettings = {
+    revision: 0,
+    app_title: 'Pebble Crew',
+    appearance: null,
+    chat_bubbles: null,
+  };
+  await installFixture(context, { interfaceSettings });
+  await context.addInitScript(() => {
+    localStorage.setItem('pebble-crew.appearance', 'light');
+    localStorage.setItem('pebble-crew.chat-bubbles', 'neutral');
+  });
   let release!: () => void;
   const held = new Promise<void>((resolve) => {
     release = resolve;
@@ -18,6 +27,7 @@ test('appearance is applied before the application module starts', async ({ page
   const navigation = page.goto('/');
   try {
     await expect(page.locator('html')).toHaveAttribute('data-theme', 'light');
+    await expect(page.locator('html')).toHaveAttribute('data-chat-bubbles', 'neutral');
     await expect(page.getByLabel('Message', { exact: true })).toHaveCount(0);
   } finally {
     release();
@@ -25,6 +35,107 @@ test('appearance is applied before the application module starts', async ({ page
   await navigation;
   await expect(page.getByLabel('Message', { exact: true })).toBeEnabled();
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'light');
+  await expect
+    .poll(() => interfaceSettings)
+    .toMatchObject({
+      appearance: 'light',
+      chat_bubbles: 'neutral',
+    });
+});
+
+test('chat bubble colors persist, follow the neutral theme and update a separate browser profile', async ({
+  page,
+  context,
+  browser,
+}, info) => {
+  const interfaceSettings = {
+    revision: 0,
+    app_title: 'Pebble Crew',
+    appearance: null,
+    chat_bubbles: null,
+  };
+  const messages = [
+    { row_id: 1, role: 'user', text: 'Please review the project plan.', timestamp: 1700000000 },
+    { row_id: 2, role: 'assistant', text: 'I’ll review it now.', timestamp: 1700000001 },
+  ];
+  const fixture = await installFixture(context, {
+    interfaceSettings,
+    messages,
+  });
+  fixture.state.bots[0]!.appearance.color = 'clay';
+  await page.emulateMedia({ colorScheme: 'dark' });
+  await page.goto('/');
+  const bubble = page.locator('[data-message-role="user"] [data-slot="bubble-content"]');
+  await expect(page.getByLabel('Message', { exact: true })).toBeEnabled();
+  await expect(bubble).toHaveCSS('background-color', 'rgb(238, 170, 141)');
+  await openGeneral(page);
+  const choice = page.getByRole('combobox', { name: 'Chat bubbles', exact: true });
+  await expect(choice).toContainText('Pebble color');
+  await choice.click();
+  await page.getByRole('option', { name: 'Neutral', exact: true }).click();
+  await expect(choice).toContainText('Neutral');
+  await expect(page.locator('[data-slot="select-content"]')).toHaveCount(0);
+  await page.screenshot({
+    animations: 'disabled',
+    path: info.outputPath('bubble-settings-dark.png'),
+  });
+  await page.getByRole('button', { name: 'Close Settings', exact: true }).click();
+  await expect(bubble).toHaveCSS('background-color', 'rgb(32, 32, 35)');
+  await expect(bubble).toHaveCSS('color', 'rgb(238, 238, 239)');
+  await page.screenshot({ animations: 'disabled', path: info.outputPath('neutral-chat-dark.png') });
+  await page.reload();
+  await expect(bubble).toHaveCSS('background-color', 'rgb(32, 32, 35)');
+  await page.emulateMedia({ colorScheme: 'light' });
+  await expect(bubble).toHaveCSS('background-color', 'rgb(240, 238, 234)');
+  await openGeneral(page);
+  await expect(choice).toContainText('Neutral');
+  await page.getByRole('combobox', { name: 'Appearance', exact: true }).click();
+  await page.getByRole('option', { name: 'Light', exact: true }).click();
+  await expect(page.locator('[data-slot="select-content"]')).toHaveCount(0);
+  await page.screenshot({
+    animations: 'disabled',
+    path: info.outputPath('bubble-settings-light.png'),
+  });
+  await page.getByRole('button', { name: 'Close Settings', exact: true }).click();
+  await expect(bubble).toHaveCSS('background-color', 'rgb(240, 238, 234)');
+  await expect(bubble).toHaveCSS('color', 'rgb(36, 35, 33)');
+  await page.screenshot({
+    animations: 'disabled',
+    path: info.outputPath('neutral-chat-light.png'),
+  });
+
+  const otherContext = await browser.newContext({
+    baseURL: info.project.use.baseURL!,
+    viewport: page.viewportSize(),
+    isMobile: info.project.use.isMobile ?? false,
+    hasTouch: info.project.use.hasTouch ?? false,
+    colorScheme: 'dark',
+    serviceWorkers: 'block',
+  });
+  const otherFixture = await installFixture(otherContext, { interfaceSettings, messages });
+  otherFixture.state.bots[0]!.appearance.color = 'clay';
+  const other = await otherContext.newPage();
+  try {
+    await other.addInitScript(() => {
+      localStorage.setItem('pebble-crew.appearance', 'dark');
+      localStorage.setItem('pebble-crew.chat-bubbles', 'pebble');
+    });
+    await other.goto('/');
+    const otherBubble = other.locator('[data-message-role="user"] [data-slot="bubble-content"]');
+    await expect(otherBubble).toHaveCSS('background-color', 'rgb(240, 238, 234)');
+    await expect(other.locator('html')).toHaveAttribute('data-theme', 'light');
+    await expect(other.getByLabel('Message', { exact: true })).toBeEnabled();
+    await openGeneral(page);
+    await choice.click();
+    await page.getByRole('option', { name: 'Pebble color', exact: true }).click();
+    await expect(otherBubble).toHaveCSS('background-color', 'rgb(238, 170, 141)');
+    await expect(otherBubble).toHaveCSS('color', 'rgb(16, 17, 18)');
+  } finally {
+    await otherContext.close();
+  }
+  await page.getByRole('button', { name: 'Close Settings', exact: true }).click();
+  await page.reload();
+  await expect(bubble).toHaveCSS('background-color', 'rgb(238, 170, 141)');
 });
 
 async function openGeneral(page: import('@playwright/test').Page) {
@@ -95,6 +206,7 @@ test('sidebar resizes from its edge, keeps row contents inside, supports keyboar
   context,
 }, info) => {
   test.skip(page.viewportSize()!.width < 768, 'Phones use the navigation drawer.');
+  await page.setViewportSize({ width: 1100, height: 850 });
   await installFixture(context);
   await page.goto('/');
   await expect(page.getByLabel('Message', { exact: true })).toBeEnabled();
@@ -397,7 +509,9 @@ test('reopening a section reuses its photo and an edited photo refreshes', async
   await expect(page.getByLabel('Message', { exact: true })).toBeEnabled();
   if (page.viewportSize()!.width < 768)
     await page.getByRole('button', { name: 'Toggle navigation', exact: true }).click();
-  const section = page.getByRole('button', { name: 'Design', exact: true });
+  const section = page
+    .getByRole('region', { name: 'Design', exact: true })
+    .getByRole('button', { name: /^Design(?: |$)/ });
   const sage = page.getByRole('button', { name: /^Sage .*Bot Chat$/ });
   const ember = page.getByRole('button', { name: /^Ember .*Bot Chat$/ });
   const avatar = sage.locator('.agent-avatar > img');

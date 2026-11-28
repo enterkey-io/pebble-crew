@@ -14,14 +14,15 @@ import {
   CodeBlockActions,
   CodeBlockCopyButton,
 } from './components/ui/code-block';
-import { memo, useEffect, useMemo, useState } from 'react';
+import { createContext, memo, useContext, useEffect, useMemo, useState } from 'react';
 import Markdown, { defaultUrlTransform } from 'react-markdown';
 import type { PluggableList } from 'unified';
 import { remarkMentions } from './chat/mention-markdown';
 import { noMentions } from './chat/mentions';
 import type { MentionIndex } from './chat/mentions';
 import { MessageMention } from './chat/MessageMention';
-import type { Components } from 'react-markdown';
+import type { ReactNode } from 'react';
+import type { Components, ExtraProps } from 'react-markdown';
 import type { SessionClient } from '@hermes-client/protocol';
 import remarkGfm from 'remark-gfm';
 import { Copy, Check } from 'lucide-react';
@@ -32,6 +33,7 @@ import {
   GeneratedFile,
   GeneratedImage,
   localReference,
+  PhotoStack,
   MessageMediaContext,
 } from './chat/generated-media';
 import type { MessageMedia } from './chat/generated-media';
@@ -53,9 +55,55 @@ function CodeBlock({ value, language }: { value: string; language: string }) {
   );
 }
 
+function renderCode(node: ExtraProps['node'], renderDiagram?: (source: string) => ReactNode) {
+  const code = node?.children.find((child) => child.type === 'element' && child.tagName === 'code');
+  const classes = code?.type === 'element' ? code.properties.className : [];
+  const language = Array.isArray(classes)
+    ? classes.find((value) => typeof value === 'string' && value.startsWith('language-'))
+    : undefined;
+  const value =
+    code?.type === 'element'
+      ? code.children.flatMap((child) => (child.type === 'text' ? [child.value] : [])).join('')
+      : '';
+  const name = typeof language === 'string' ? language.slice(9) : '';
+  return renderDiagram && /^(mermaid|pele)$/i.test(name) ? (
+    renderDiagram(value)
+  ) : (
+    <CodeBlock language={name} value={value} />
+  );
+}
+
+const OwnerMessageContext = createContext(false);
+const MentionsContext = createContext<MentionIndex>(noMentions);
+const DiagramContext = createContext<((source: string) => ReactNode) | undefined>(undefined);
+
+/** Two or more local photos alone in one paragraph (one per line) form a stack. */
+function photoStack(node: ExtraProps['node']) {
+  const photos: { source: string; title: string }[] = [];
+  for (const child of node?.children ?? []) {
+    if (child.type === 'text' && !child.value.trim()) continue;
+    if (child.type === 'element' && child.tagName === 'br') continue;
+    if (child.type !== 'element' || child.tagName !== 'img') return;
+    const source = child.properties['src'];
+    if (typeof source !== 'string' || !localReference(source)) return;
+    const alt = child.properties['alt'];
+    photos.push({ source, title: typeof alt === 'string' ? alt : '' });
+  }
+  return photos.length >= 2 ? photos : undefined;
+}
+
 const components: Components = {
   em: ({ children }) => <em className="italic">{children}</em>,
-  p: ({ children }) => <Typography className="text-[length:inherit]">{children}</Typography>,
+  // Stable across renders so images inside paragraphs are never remounted.
+  p: function Paragraph({ node, children }) {
+    const owner = useContext(OwnerMessageContext);
+    const photos = owner ? undefined : photoStack(node);
+    return photos ? (
+      <PhotoStack photos={photos} />
+    ) : (
+      <Typography className="text-[length:inherit]">{children}</Typography>
+    );
+  },
   h1: ({ children }) => <Typography as="h1">{children}</Typography>,
   h2: ({ children }) => <Typography as="h2">{children}</Typography>,
   h3: ({ children }) => <Typography as="h3">{children}</Typography>,
@@ -98,22 +146,6 @@ const components: Components = {
   tr: ({ children }) => <TableRow>{children}</TableRow>,
   th: ({ children, style }) => <TableHead style={style}>{children}</TableHead>,
   td: ({ children, style }) => <TableCell style={style}>{children}</TableCell>,
-  pre: ({ node }) => {
-    const code = node?.children.find(
-      (child) => child.type === 'element' && child.tagName === 'code',
-    );
-    const classes = code?.type === 'element' ? code.properties.className : [];
-    const language = Array.isArray(classes)
-      ? classes.find((value) => typeof value === 'string' && value.startsWith('language-'))
-      : undefined;
-    const value =
-      code?.type === 'element'
-        ? code.children.flatMap((child) => (child.type === 'text' ? [child.value] : [])).join('')
-        : '';
-    return (
-      <CodeBlock language={typeof language === 'string' ? language.slice(9) : ''} value={value} />
-    );
-  },
   img: ({ src, alt }) =>
     src && localReference(src) ? (
       <GeneratedImage source={src} alt={alt ?? ''} />
@@ -142,6 +174,21 @@ const components: Components = {
     ),
 };
 
+/** Stable renderer types: changing mentions or the diagram renderer must not
+ *  remount code blocks or mention chips in every message. */
+const renderers: Components = {
+  ...components,
+  pre: function Pre({ node }) {
+    return renderCode(node, useContext(DiagramContext));
+  },
+  span: function Span({ node, children }) {
+    const mentions = useContext(MentionsContext);
+    const token = node?.properties['data-mention-token'];
+    const bot = typeof token === 'string' ? mentions.get(token) : undefined;
+    return bot ? <MessageMention bot={bot}>{children}</MessageMention> : <span>{children}</span>;
+  },
+};
+
 function transformUrl(url: string, key: string) {
   return key === 'src' || key === 'href'
     ? localReference(url)
@@ -159,8 +206,10 @@ export const MessageBody = memo(function MessageBody({
   conversationKey,
   mentions = noMentions,
   owner = false,
+  renderDiagram,
 }: {
   text: string;
+  renderDiagram?: (source: string) => ReactNode;
   owner?: boolean;
   mentions?: MentionIndex | undefined;
   client?: SessionClient | undefined;
@@ -184,36 +233,27 @@ export const MessageBody = memo(function MessageBody({
     () => [remarkGfm, [remarkMentions, mentions, owner], ...(!owner ? [remarkMedia] : [])],
     [mentions, owner],
   );
-  const renderers = useMemo<Components>(
-    () => ({
-      ...components,
-      span: ({ node, children }) => {
-        const token = node?.properties['data-mention-token'];
-        const bot = typeof token === 'string' ? mentions.get(token) : undefined;
-        return bot ? (
-          <MessageMention bot={bot}>{children}</MessageMention>
-        ) : (
-          <span>{children}</span>
-        );
-      },
-    }),
-    [mentions],
-  );
   return (
-    <MessageMediaContext.Provider value={media}>
-      <div
-        className={`message-body min-w-0 space-y-4 wrap-break-word [&_li>ul]:mt-2 [&_li>ol]:mt-2 ${owner ? '[&_p]:whitespace-pre-wrap' : ''}`}
-      >
-        <Markdown
-          skipHtml
-          remarkPlugins={plugins}
-          components={renderers}
-          urlTransform={transformUrl}
-        >
-          {text}
-        </Markdown>
-      </div>
-    </MessageMediaContext.Provider>
+    <OwnerMessageContext.Provider value={owner}>
+      <MentionsContext.Provider value={mentions}>
+        <DiagramContext.Provider value={renderDiagram}>
+          <MessageMediaContext.Provider value={media}>
+            <div
+              className={`message-body min-w-0 space-y-4 wrap-break-word [&_li>ul]:mt-2 [&_li>ol]:mt-2 ${owner ? '[&_p]:whitespace-pre-wrap' : ''}`}
+            >
+              <Markdown
+                skipHtml
+                remarkPlugins={plugins}
+                components={renderers}
+                urlTransform={transformUrl}
+              >
+                {text}
+              </Markdown>
+            </div>
+          </MessageMediaContext.Provider>
+        </DiagramContext.Provider>
+      </MentionsContext.Provider>
+    </OwnerMessageContext.Provider>
   );
 });
 

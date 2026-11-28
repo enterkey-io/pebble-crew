@@ -24,7 +24,7 @@
   --primary: #ececeb;
   --primary-foreground: #1b1b1d;
   --unread: #3b82f6;
-  --attention: var(--unread);
+  --attention: #d7ab4c;
   --secondary: #27272b;
   --secondary-foreground: #c7c6cd;
   --muted: #202023;
@@ -84,6 +84,11 @@
   --app-bottom-inset: 0px;
 }
 
+:root[data-chat-bubbles='neutral'] {
+  --owner-bubble-background: var(--muted);
+  --owner-bubble-foreground: var(--foreground);
+}
+
 :root[data-theme='light'] {
   color-scheme: light;
   --background: #faf9f6;
@@ -112,6 +117,7 @@
   --composer: #fffefd;
   --composer-border: #e8e5df;
   --success: #326c4a;
+  --attention: #9b6b11;
   --scrollbar-thumb: #c5bfb4;
   --scrollbar-thumb-hover: #a9a294;
 }

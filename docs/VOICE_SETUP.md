@@ -1,5 +1,12 @@
 # Voice setup in chat
 
+## Hermes voice calls
+
+Select ElevenLabs in the Pebble's Voice settings and choose a voice. ElevenLabs
+transcribes the microphone and reads replies aloud. The Pebble's existing Hermes
+chat handles the turn, including memory, tools, and approvals. OpenAI is available
+for voice previews. Live OpenAI read-aloud requires a separate verification.
+
 ## 0.7.8-preview.15 implementation
 
 The owner approves a saved voice key once for this Hermes installation. The

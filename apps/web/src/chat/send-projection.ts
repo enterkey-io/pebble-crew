@@ -1,4 +1,5 @@
 import type { ChatMessage } from '../conversation';
+import { conversationMessageKey } from '@hermes-client/protocol';
 import type { LiveCorrection } from '@hermes-client/protocol';
 
 type LocalMessage = ChatMessage & { id: string; renderKey: string };
@@ -7,10 +8,14 @@ type Pending = {
   message: LocalMessage;
   before: Set<string>;
   nativeId?: string;
+  messageUid?: string;
   acknowledged?: boolean;
   completed?: boolean;
   deferred?: boolean;
 };
+const keys = (rows: readonly ChatMessage[]) =>
+  new Set(rows.map(conversationMessageKey).filter((key) => key !== undefined));
+
 type Cut = { message: LocalMessage; offset: number; after: Reply };
 
 /** Correlates only native receipts; repeated message text is never an identity. */
@@ -35,9 +40,7 @@ export class SendProjection {
       if (pending.deferred) {
         pending.deferred = false;
         pending.completed = false;
-        pending.before = new Set(
-          this.latest.flatMap((message) => (message.id ? [message.id] : [])),
-        );
+        pending.before = keys(this.latest);
       }
   }
   completeReply(nativeId: unknown) {
@@ -52,28 +55,35 @@ export class SendProjection {
     this.latest = existing.filter((row) => !row.id || !this.pending.has(row.id));
     this.pending.set(message.id, {
       message,
-      before: new Set(existing.flatMap((m) => (m.id ? [m.id] : []))),
+      before: keys(existing),
     });
     if (duringReply !== undefined)
       this.cuts.push({ message, offset: duringReply.length, after: this.newReply() });
     return this.project(this.latest);
   }
-  cancelUnsent(submissionId: string) {
+  discardPreview(submissionId: string) {
     this.pending.delete(submissionId);
     this.cuts = this.cuts.filter((cut) => cut.message.id !== submissionId);
     this.tail.delete(submissionId);
     return this.project(this.latest);
   }
-  acknowledge(nativeId: unknown, submissionId: string, deferred = false) {
+  acknowledge(nativeId: unknown, submissionId: string, deferred = false, messageUid?: string) {
     const pending = this.pending.get(submissionId);
     if (pending) pending.acknowledged = true;
     if (pending && (typeof nativeId === 'number' || typeof nativeId === 'string')) {
       const id = String(nativeId);
       pending.nativeId = id;
-      this.aliases.set(id, {
-        renderKey: pending.message.renderKey,
-        timestamp: pending.message.timestamp,
+      if (messageUid) pending.messageUid = messageUid;
+      const key = conversationMessageKey({
+        ...pending.message,
+        id,
+        ...(messageUid ? { messageUid } : {}),
       });
+      if (key)
+        this.aliases.set(key, {
+          renderKey: pending.message.renderKey,
+          timestamp: pending.message.timestamp,
+        });
     }
     if (deferred) {
       if (pending) pending.deferred = true;
@@ -90,57 +100,92 @@ export class SendProjection {
     }
     this.latest = incoming;
     let rows = incoming;
+    const addressed = new Set(
+      [...this.pending.values()].flatMap(({ nativeId, messageUid }) =>
+        nativeId ? [nativeId, ...(messageUid ? [`native-uid:${messageUid}`] : [])] : [],
+      ),
+    );
     for (const [id, pending] of this.pending) {
-      const found = pending.nativeId && incoming.some((m) => m.id === pending.nativeId);
+      const found =
+        pending.nativeId &&
+        incoming.find(
+          (row) =>
+            row.id === pending.nativeId ||
+            (pending.messageUid && row.messageUid === pending.messageUid),
+        );
       if (complete) pending.completed = true;
-      if (
-        found ||
-        (pending.completed && pending.acknowledged && !pending.nativeId && !pending.deferred)
-      )
+      if (found) {
+        const key = conversationMessageKey(found);
+        if (key)
+          this.aliases.set(key, {
+            renderKey: pending.message.renderKey,
+            timestamp: pending.message.timestamp,
+          });
         this.pending.delete(id);
-      else {
+      } else if (
+        pending.completed &&
+        pending.acknowledged &&
+        !pending.nativeId &&
+        !pending.deferred
+      ) {
+        this.pending.delete(id);
+      } else {
         // A native history event may beat its acknowledgement. Defer newly seen
         // user rows until that receipt rather than displaying a duplicate or
         // guessing that identical text came from this browser.
-        const addressed = new Set(
-          [...this.pending.values()].flatMap((entry) => (entry.nativeId ? [entry.nativeId] : [])),
-        );
-        rows = rows.filter(
-          (m) =>
+        rows = rows.filter((m) => {
+          const key = conversationMessageKey(m);
+          return (
             m.role !== 'user' ||
-            (m.id && (pending.before.has(m.id) || addressed.has(m.id) || this.pending.has(m.id))),
-        );
-        const index = rows.findIndex((m) => m.id && !pending.before.has(m.id));
+            (key && (pending.before.has(key) || addressed.has(key))) ||
+            (m.id && (addressed.has(m.id) || this.pending.has(m.id)))
+          );
+        });
+        const index = rows.findIndex((m) => {
+          const key = conversationMessageKey(m);
+          return key && !pending.before.has(key);
+        });
         rows = [...rows];
         rows.splice(index < 0 ? rows.length : index, 0, pending.message);
       }
     }
     for (const id of this.tail)
-      if (
-        !this.pending.has(id) &&
-        !incoming.some(
-          (row) =>
-            (row.renderKey ??
-              (row.id ? this.aliases.get(row.id)?.renderKey : undefined) ??
-              row.id) === id,
-        )
-      )
+      if (!this.pending.has(id) && !incoming.some((row) => this.displayIdentity(row) === id))
         this.tail.delete(id);
-    return rows.map((m) => {
-      const alias = m.id ? this.aliases.get(m.id) : undefined;
-      return alias
-        ? { ...m, renderKey: alias.renderKey, timestamp: alias.timestamp ?? m.timestamp }
-        : m;
-    });
+    return rows.map((row) => this.decorate(row));
+  }
+
+  private alias(row: ChatMessage) {
+    const key = conversationMessageKey(row);
+    const physical = row.id ? this.aliases.get(row.id) : undefined;
+    const stable = key ? this.aliases.get(key) : undefined;
+    if (physical && key && !stable) this.aliases.set(key, physical);
+    return stable ?? physical;
+  }
+
+  private displayIdentity(row: ChatMessage) {
+    return this.alias(row)?.renderKey ?? row.renderKey ?? conversationMessageKey(row);
+  }
+
+  private decorate(row: ChatMessage): ChatMessage {
+    const alias = this.alias(row);
+    if (alias)
+      return { ...row, renderKey: alias.renderKey, timestamp: alias.timestamp ?? row.timestamp };
+    return row.messageUid
+      ? { ...row, renderKey: row.renderKey ?? conversationMessageKey(row) }
+      : row;
   }
 
   prepend(earlier: ChatMessage[], displayed: ChatMessage[]) {
-    const known = new Set(displayed.flatMap((row) => (row.id ? [row.id] : [])));
-    const prefix = earlier.filter((row) => !row.id || !known.has(row.id));
-    for (const pending of this.pending.values())
-      for (const row of prefix) if (row.id) pending.before.add(row.id);
+    const known = keys(displayed);
+    const prefix = earlier.filter((row) => {
+      const key = conversationMessageKey(row);
+      return !key || !known.has(key);
+    });
+    const added = keys(prefix);
+    for (const pending of this.pending.values()) for (const key of added) pending.before.add(key);
     this.latest = [...prefix, ...this.latest];
-    return [...prefix, ...displayed];
+    return [...prefix.map((row) => this.decorate(row)), ...displayed];
   }
 
   restore({
@@ -164,13 +209,13 @@ export class SendProjection {
     this.tail = new Set([...this.tail].filter((id) => this.pending.get(id)?.deferred));
     const waiting = deferred.map((prompt, index): LocalMessage => {
       const id = prompt.rowId ?? `native-waiting-${this.reply.renderKey}-${index}`;
-      return {
-        ...history.messages.find((row) => row.id === prompt.rowId),
+      const row = {
+        ...history.messages.find((message) => message.id === prompt.rowId),
         id,
-        renderKey: this.aliases.get(id)?.renderKey ?? id,
-        role: 'user',
+        role: 'user' as const,
         text: prompt.text,
       };
+      return { ...row, renderKey: this.displayIdentity(row) ?? id };
     });
     const nativeMessages = [
       ...history.messages.map((row) => waiting.find((prompt) => prompt.id === row.id) ?? row),
@@ -212,17 +257,20 @@ export class SendProjection {
       if (pending.acknowledged && !pending.nativeId) this.pending.delete(id);
     const previous = this.cuts;
     this.replying = running;
-    this.cuts = corrections.map((correction, index) => ({
-      offset: correction.offset ?? assistant.length,
-      message: {
+    this.cuts = corrections.map((correction, index) => {
+      const id = correction.rowId ?? `live-correction-${this.reply.renderKey}-${index}`;
+      const row = {
         ...history.messages.find((message) => message.id === correction.rowId),
-        role: 'user',
-        id: correction.rowId ?? `live-correction-${this.reply.renderKey}-${index}`,
-        renderKey: correction.rowId ?? `live-correction-${this.reply.renderKey}-${index}`,
+        role: 'user' as const,
+        id,
         text: correction.text,
-      },
-      after: previous[index]?.after ?? this.newReply(),
-    }));
+      };
+      return {
+        offset: correction.offset ?? assistant.length,
+        message: { ...row, renderKey: this.displayIdentity(row) ?? id },
+        after: previous[index]?.after ?? this.newReply(),
+      };
+    });
     const covered = new Set(
       corrections.flatMap((correction) => (correction.rowId ? [correction.rowId] : [])),
     );

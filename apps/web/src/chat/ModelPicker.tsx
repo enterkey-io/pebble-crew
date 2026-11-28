@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Check, ChevronLeft, ChevronRight } from 'lucide-react';
 import type { SessionClient } from '@hermes-client/protocol';
 import { ClientError } from '@hermes-client/core';
@@ -10,6 +10,7 @@ import {
   DialogContent,
   DialogDescription,
   DialogHeader,
+  DialogFooter,
   DialogTitle,
 } from '../components/ui/dialog';
 import {
@@ -61,6 +62,17 @@ export function ModelPicker({
   const [retry, setRetry] = useState(0);
   const [pending, setPending] = useState(false);
   const [confirmation, setConfirmation] = useState<{ model: string; message: string }>();
+  const surface = useRef<HTMLDivElement>(null);
+  const search = useRef<HTMLInputElement>(null);
+  const cancel = useRef<HTMLButtonElement>(null);
+  useEffect(() => {
+    const target = confirmation
+      ? cancel.current
+      : data && matchMedia('(pointer: fine)').matches
+        ? search.current
+        : surface.current;
+    target?.focus({ preventScroll: true });
+  }, [data, provider, confirmation]);
   useEffect(() => {
     let current = true;
     setError('');
@@ -120,29 +132,33 @@ export function ModelPicker({
         if (!open && !pending) onClose();
       }}
     >
-      <DialogContent size="content" className="gap-3 p-4 sm:p-5">
-        <DialogHeader>
+      <DialogContent
+        ref={surface}
+        size="content"
+        className="gap-0 p-0"
+        onOpenAutoFocus={(event) => {
+          event.preventDefault();
+          surface.current?.focus({ preventScroll: true });
+        }}
+      >
+        <DialogHeader className="px-5 pt-5 pb-2 pr-14 text-left">
           <DialogTitle>{provider ? provider.name : 'Choose a model'}</DialogTitle>
-          <DialogDescription>
+          <DialogDescription className="min-w-0 break-words text-sm [overflow-wrap:anywhere]">
             {data?.model
               ? `Current: ${data.model}${currentProvider ? ` · ${currentProvider}` : ''}`
               : 'Models for this conversation'}
           </DialogDescription>
         </DialogHeader>
-        {provider && !confirmation && (
-          <Button
-            type="button"
-            variant="quiet"
-            className="self-start"
-            onClick={() => setProvider(undefined)}
-            disabled={pending}
-          >
-            <ChevronLeft aria-hidden="true" /> Providers
-          </Button>
+        <div className="px-5">
+          <LoadingBar active={pending} label="Updating model" />
+        </div>
+        {!data && !error && (
+          <div className="px-5 pb-5">
+            <LoadingBar active label="Loading models" />
+          </div>
         )}
-        {!data && !error && <LoadingBar active label="Loading models" />}
         {error && (
-          <Alert>
+          <Alert className="mx-5 mb-4 w-auto">
             <AlertDescription>
               {error}
               {!data && (
@@ -154,25 +170,55 @@ export function ModelPicker({
           </Alert>
         )}
         {confirmation ? (
-          <div className="grid gap-3">
-            <p>{confirmation.message || 'Hermes requires confirmation for this model.'}</p>
-            <div className="flex justify-end gap-2">
-              <Button variant="quiet" disabled={pending} onClick={() => setConfirmation(undefined)}>
+          <>
+            <Alert className="mx-5 mb-4 w-auto">
+              <AlertDescription>
+                {confirmation.message || 'Hermes requires confirmation for this model.'}
+              </AlertDescription>
+            </Alert>
+            <DialogFooter className="px-5 pb-5">
+              <Button
+                ref={cancel}
+                variant="quiet"
+                disabled={pending}
+                onClick={() => setConfirmation(undefined)}
+              >
                 Cancel
               </Button>
               <Button disabled={pending} onClick={() => void choose(confirmation.model, true)}>
                 Switch model
               </Button>
-            </div>
-          </div>
+            </DialogFooter>
+          </>
         ) : (
           data && (
             <Command
               key={provider?.id ?? 'providers'}
               aria-label={provider ? 'Models' : 'Providers'}
+              className="min-h-0 rounded-none bg-transparent **:data-[slot=command-input-wrapper]:shrink-0"
             >
-              <CommandInput placeholder={provider ? 'Search models' : 'Search providers'} />
-              <CommandList className="max-h-[min(45dvh,360px)]">
+              <CommandInput
+                ref={search}
+                variant="search"
+                placeholder={provider ? 'Search models' : 'Search providers'}
+              />
+              <div className="flex h-10 shrink-0 items-center px-3">
+                {provider ? (
+                  <Button
+                    type="button"
+                    variant="quiet"
+                    size="sm"
+                    className="h-8 px-2 text-muted-foreground"
+                    onClick={() => setProvider(undefined)}
+                    disabled={pending}
+                  >
+                    <ChevronLeft aria-hidden="true" /> Providers
+                  </Button>
+                ) : (
+                  <span className="px-2 text-xs text-muted-foreground">Providers</span>
+                )}
+              </div>
+              <CommandList className="min-h-0 max-h-[min(45dvh,360px)] scroll-py-2 px-2 pb-2">
                 <CommandEmpty>
                   {provider ? 'No models found' : 'No configured providers found'}
                 </CommandEmpty>
@@ -182,9 +228,12 @@ export function ModelPicker({
                         key={model}
                         value={model}
                         disabled={pending}
+                        className="min-h-11 gap-3 rounded-lg px-3 py-3 text-sm pointer-coarse:min-h-12 pointer-coarse:text-base"
                         onSelect={() => void choose(model)}
                       >
-                        <span className="min-w-0 flex-1 truncate">{model}</span>
+                        <span className="min-w-0 flex-1 whitespace-normal [overflow-wrap:anywhere]">
+                          {model}
+                        </span>
                         {provider.id === data.provider && model === data.model && (
                           <Check aria-label="Current model" />
                         )}
@@ -194,9 +243,16 @@ export function ModelPicker({
                       <CommandItem
                         key={item.id}
                         value={item.name + ' ' + item.id}
+                        className="min-h-12 gap-3 rounded-lg px-3 py-3 text-sm pointer-coarse:text-base"
                         onSelect={() => setProvider(item)}
                       >
                         <span className="min-w-0 flex-1 truncate">{item.name}</span>
+                        <span
+                          aria-hidden="true"
+                          className="text-xs tabular-nums text-muted-foreground"
+                        >
+                          {item.models.length}
+                        </span>
                         <ChevronRight aria-hidden="true" />
                       </CommandItem>
                     ))}

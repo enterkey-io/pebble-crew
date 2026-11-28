@@ -7,7 +7,7 @@ export function PromptInputField({ className, ...props }: ComponentProps<typeof 
   return (
     <Textarea
       className={cn(
-        'min-h-9 max-h-40 min-w-0 flex-1 resize-none rounded-none border-0 bg-transparent px-0 py-[7px] text-[length:var(--text-composer)] leading-[22px] shadow-none focus-visible:ring-0 dark:bg-transparent',
+        'min-h-9 max-h-40 min-w-0 flex-1 resize-none rounded-none border-0 bg-transparent px-0 py-[max(4px,calc((2.25rem-1lh)/2))] text-[length:var(--text-chat)] leading-relaxed shadow-none focus-visible:ring-0 md:text-[length:var(--text-chat)] dark:bg-transparent',
         className,
       )}
       {...props}

@@ -56,7 +56,6 @@ export function VoiceSettingsEditor({
       client={client}
       sessionId={session}
       running={false}
-      onAccepted={() => undefined}
       mode="settings"
       settingsRequest={request}
       requestResolved={requestResolved}

@@ -15,6 +15,9 @@ type Agent = {
   canonical: boolean;
   hidden: boolean;
 };
+function searchKey(value: string) {
+  return value.normalize('NFD').replace(/\p{M}/gu, '').toLowerCase();
+}
 export function AgentPicker({
   client,
   state,
@@ -79,7 +82,7 @@ export function AgentPicker({
     };
   }, [client, recovery]);
   const visible = agents.filter((agent) =>
-    `${agent.name} ${agent.profile}`.toLocaleLowerCase().includes(query.trim().toLocaleLowerCase()),
+    searchKey(`${agent.name} ${agent.profile}`).includes(searchKey(query.trim())),
   );
   return (
     <section className="agent-picker" aria-label="Existing Hermes agents">

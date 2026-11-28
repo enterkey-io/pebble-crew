@@ -229,7 +229,8 @@ class AttachmentStore:
             with self.db:
                 self.db.execute("UPDATE sends SET state='accepted' WHERE id=?", (request_id,))
                 self.db.executemany("UPDATE files SET state='sent' WHERE id=?", [(row['id'],) for row in files])
-            return {'state': 'accepted', 'submitted': True, **({'user_row_id': receipt['user_row_id']} if isinstance(receipt.get('user_row_id'), (int, str)) else {})}
+            return {'state': 'accepted', 'submitted': True,
+                    **{key: receipt[key] for key in ('user_row_id', 'user_message_uid') if key in receipt}}
 
 
 MAX_BYTES = MAX_FILE
@@ -265,7 +266,11 @@ def media_type(data):
 class GeneratedMedia:
     def __init__(self, ops):
         self.ops = ops
-        self.lock = asyncio.Lock()
+        from .photo_sizes import PhotoCache
+        self.cache = PhotoCache()
+        # Two photos load at once; the same photo is only fetched from Hermes once.
+        self.slots = asyncio.Semaphore(2)
+        self.locks = {}
 
     async def list(self, params):
         fields(params, ['session_id', 'cursor'])
@@ -283,6 +288,9 @@ class GeneratedMedia:
         return result
 
     async def read(self, params):
+        from .photo_sizes import variant, resize
+        params = dict(params)
+        size = variant(params)
         fields(params, ['session_id', 'row_id', 'reference'])
         sid = identifier(params['session_id'])
         if (sid not in self.ops.sessions or type(params['row_id']) is not int
@@ -290,34 +298,68 @@ class GeneratedMedia:
                 or not re.fullmatch(r'[0-9a-f]{64}', str(params['reference']))):
             raise InvalidOperation('Choose a saved assistant file')
         profile = self.ops.sessions[sid]
-        async with self.lock:
-            stamp = await self.ops.stamp(profile)
-            if stamp != self.ops.session_incarnations.get(sid):
-                raise InvalidOperation('Conversation changed')
-            bot = await self.ops.bot(profile)
-            canonical = (bot.get('canonical_session') or {}).get('id')
-            if not canonical:
-                raise InvalidOperation('Conversation unavailable')
-            target = {'session_id': sid, 'profile': profile, 'incarnation': stamp,
-                      'canonical': canonical, 'row_id': params['row_id'], 'reference': params['reference']}
-            data, revision, size, name = bytearray(), '', None, ''
-            while size is None or len(data) < size:
-                chunk = await self.ops.gateway.call('bot_web.media', {**target, 'offset': len(data), 'revision': revision})
-                if (type(chunk.get('size')) is not int or not 0 < chunk['size'] <= MAX_BYTES
-                        or not isinstance(chunk.get('name'), str) or not 0 < len(chunk['name']) <= 180
-                        or re.search(r'[\x00-\x1f/\\]', chunk['name'])
-                        or not re.fullmatch(r'[0-9a-f]{64}', str(chunk.get('revision', '')))
-                        or not isinstance(chunk.get('data'), str) or len(chunk['data']) > (CHUNK_BYTES + 2) // 3 * 4):
-                    raise InvalidOperation('Invalid shared file response')
-                part = base64.b64decode(chunk['data'], validate=True)
-                if not revision:
-                    revision, size, name = chunk['revision'], chunk['size'], chunk['name']
-                if (revision != chunk['revision'] or size != chunk['size'] or name != chunk['name']
-                        or len(part) != min(CHUNK_BYTES, size - len(data))):
-                    raise InvalidOperation('Shared file changed')
-                data.extend(part)
-            if (await self.ops.stamp(profile) != stamp
-                    or ((await self.ops.bot(profile)).get('canonical_session') or {}).get('id') != canonical):
-                raise InvalidOperation('Conversation changed')
-            blob = bytes(data)
-            return blob, name, await asyncio.to_thread(media_type, blob)
+        stamp = await self.ops.stamp(profile)
+        if stamp != self.ops.session_incarnations.get(sid):
+            raise InvalidOperation('Conversation changed')
+        canonical = ((await self.ops.bot(profile)).get('canonical_session') or {}).get('id')
+        if not canonical:
+            raise InvalidOperation('Conversation unavailable')
+        key = (profile, stamp, canonical, params['row_id'], params['reference'])
+        entry = self.locks.setdefault(key, [asyncio.Lock(), 0])
+        entry[1] += 1
+        try:
+            async with entry[0]:
+                if size and (hit := self.cache.get((*key, size))):
+                    return hit
+                original = self.cache.get(key)
+                if not original:
+                    async with self.slots:
+                        original = await self.fetch(sid, profile, params)
+                    if original[2].startswith('image/'):
+                        self.cache.put(key, original)
+                if not size:
+                    return original
+                blob, name, mime = original
+                try:
+                    small, small_mime = await asyncio.to_thread(resize, blob, mime, size)
+                except Exception:
+                    small, small_mime = blob, mime
+                self.cache.put((*key, size), (small, name, small_mime))
+                return small, name, small_mime
+        finally:
+            entry[1] -= 1
+            if not entry[1]:
+                self.locks.pop(key, None)
+
+    async def fetch(self, sid, profile, params):
+        """The original file from Hermes, read in chunks and checked against the conversation."""
+        stamp = await self.ops.stamp(profile)
+        if stamp != self.ops.session_incarnations.get(sid):
+            raise InvalidOperation('Conversation changed')
+        bot = await self.ops.bot(profile)
+        canonical = (bot.get('canonical_session') or {}).get('id')
+        if not canonical:
+            raise InvalidOperation('Conversation unavailable')
+        target = {'session_id': sid, 'profile': profile, 'incarnation': stamp,
+                  'canonical': canonical, 'row_id': params['row_id'], 'reference': params['reference']}
+        data, revision, size, name = bytearray(), '', None, ''
+        while size is None or len(data) < size:
+            chunk = await self.ops.gateway.call('bot_web.media', {**target, 'offset': len(data), 'revision': revision})
+            if (type(chunk.get('size')) is not int or not 0 < chunk['size'] <= MAX_BYTES
+                    or not isinstance(chunk.get('name'), str) or not 0 < len(chunk['name']) <= 180
+                    or re.search(r'[\x00-\x1f/\\]', chunk['name'])
+                    or not re.fullmatch(r'[0-9a-f]{64}', str(chunk.get('revision', '')))
+                    or not isinstance(chunk.get('data'), str) or len(chunk['data']) > (CHUNK_BYTES + 2) // 3 * 4):
+                raise InvalidOperation('Invalid shared file response')
+            part = base64.b64decode(chunk['data'], validate=True)
+            if not revision:
+                revision, size, name = chunk['revision'], chunk['size'], chunk['name']
+            if (revision != chunk['revision'] or size != chunk['size'] or name != chunk['name']
+                    or len(part) != min(CHUNK_BYTES, size - len(data))):
+                raise InvalidOperation('Shared file changed')
+            data.extend(part)
+        if (await self.ops.stamp(profile) != stamp
+                or ((await self.ops.bot(profile)).get('canonical_session') or {}).get('id') != canonical):
+            raise InvalidOperation('Conversation changed')
+        blob = bytes(data)
+        return blob, name, await asyncio.to_thread(media_type, blob)

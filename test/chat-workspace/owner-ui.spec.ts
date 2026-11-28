@@ -41,17 +41,30 @@ test('empty system sections disappear; system names and item kinds stay fixed', 
   await expect(page.getByRole('menuitemcheckbox', { name: 'Crews', exact: true })).toHaveCount(0);
 });
 
-test('menus open beside their work, connection stays visible, search has neutral inset spacing', async ({
+test('menus open beside their work, connection shows on the owner avatar, search has neutral inset spacing', async ({
   page,
   context,
 }) => {
   await installFixture(context);
   await ready(page);
-  await expect(page.locator('.connection-status')).toHaveText('Hermes connected');
-  await expect(page.locator('.connection-status i')).toHaveCSS(
-    'background-color',
-    'rgb(149, 186, 165)',
-  );
+  const accountButton = page
+    .locator('.pc-rail-footer')
+    .getByRole('button', { name: 'Your account', exact: true });
+  const status = accountButton.getByRole('img', { name: 'Hermes connected', exact: true });
+  await expect(status).toBeVisible();
+  await expect(status).toHaveCSS('background-color', 'rgb(149, 186, 165)');
+  const [badge, avatar] = [
+    (await status.boundingBox())!,
+    (await accountButton.locator('.personal-avatar').boundingBox())!,
+  ];
+  expect(badge.x + badge.width / 2).toBeGreaterThan(avatar.x + avatar.width / 2);
+  expect(badge.y + badge.height / 2).toBeGreaterThan(avatar.y + avatar.height / 2);
+  // Nothing else sits on the right side of the sidebar footer.
+  await expect(page.locator('.pc-rail-footer > *')).toHaveCount(1);
+  await page.locator('.pc-rail-footer').screenshot({
+    animations: 'disabled',
+    path: test.info().outputPath('account-connection-badge.png'),
+  });
   const trigger = page.getByRole('button', { name: 'Add attachment', exact: true });
   const triggerBox = (await trigger.boundingBox())!;
   await trigger.click();

@@ -151,7 +151,7 @@ class ProfilePhotoRouteTests(unittest.IsolatedAsyncioTestCase):
                 self.assertEqual(response.status_code, 200, response.text)
                 self.assertEqual(self.native.assets[profile], saved)
                 self.assertEqual(self.store.read()['bots'][profile]['appearance']['kind'], kind)
-        self.assertFalse(any(method == 'prompt.submit' for method, _ in self.native.calls))
+        self.assertFalse(any(method in {'prompt.submit', 'bot_web.conversation.submit'} for method, _ in self.native.calls))
 
     async def test_rpc_stays_bounded_and_malformed_photos_never_replace_assets(self):
         params = await self.params('default', photo=self.photo)

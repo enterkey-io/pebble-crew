@@ -6,13 +6,21 @@ import time
 import uuid
 
 MAX_DOCUMENT_BYTES = 256 * 1024
+DOCUMENT_FORMATS = {
+    '.md': 'markdown',
+    '.markdown': 'markdown',
+    '.txt': 'text',
+    '.mmd': 'mermaid',
+    '.mermaid': 'mermaid',
+}
 
 
 def read_document(home, reference):
     from .attachments_native import output_path, read_output
     relative = output_path(home, reference)
-    if relative.suffix.lower() not in {'.md', '.markdown', '.txt'}:
-        raise ValueError('Markdown or text required')
+    format_name = DOCUMENT_FORMATS.get(relative.suffix.lower())
+    if not format_name:
+        raise ValueError('Markdown, text or Mermaid required')
     result = read_output(home, relative, 0, '', 'document-share-v1')
     if result['size'] > MAX_DOCUMENT_BYTES:
         raise ValueError('Document too large')
@@ -23,7 +31,7 @@ def read_document(home, reference):
     if any(ord(char) < 32 and char not in '\n\r\t' for char in text):
         raise ValueError('Text required')
     return {'name': relative.name[:180], 'text': text,
-            'format': 'text' if relative.suffix.lower() == '.txt' else 'markdown'}
+            'format': format_name}
 
 
 def register_runtime(ctx):
@@ -70,17 +78,17 @@ def register_runtime(ctx):
                 server._emit('document.open', ui_sid, {**document, 'request_id': request_id,
                              'expires_at': int(time.time() * 1000) + 60_000})
             return json.dumps({'requested': True, 'request_id': request_id,
-                               'message': 'Shared in the current chat. The owner may close the reader. Include a Markdown file link in your reply so they can reopen it.'})
+                               'message': 'Shared in the current chat. The owner may close the reader. Include a file link in your reply so they can reopen it.'})
         except Exception:
-            return json.dumps({'error': 'Document not shared. Use this Pebble’s open direct Bot Chat and a UTF-8 .md, .markdown or .txt file up to 256 KB in its generated output directory. No private paths or remote URLs.'})
+            return json.dumps({'error': 'Document not shared. Use this Pebble’s open direct Bot Chat and a UTF-8 .md, .markdown, .txt, .mmd or .mermaid file up to 256 KB in its generated output directory. No private paths or remote URLs.'})
         finally:
             if store:
                 store.db.close()
-    description = 'Share and open a Markdown or text document in the owner’s current Pebble Crew chat. Save it to your generated output directory first. This explicitly shares that file with the owner; never share private files or credentials. Does not start a model or change a persona.'
+    description = 'Share and open a Markdown, text or Mermaid file in the owner’s current Pebble Crew chat. Save it to your generated output directory first. This explicitly shares that file with the owner; never share private files or credentials. Does not start a model or change a persona.'
     ctx.register_tool(name='pebble_open_document', toolset='workspace', description=description,
         schema={'name': 'pebble_open_document', 'description': description,
                 'parameters': {'type': 'object', 'additionalProperties': False, 'required': ['path'],
-                               'properties': {'path': {'type': 'string', 'description': 'Absolute path to the intended generated .md, .markdown or .txt output (UTF-8, up to 256 KB).'}}}}, handler=show)
+                               'properties': {'path': {'type': 'string', 'description': 'Absolute path to the intended generated .md, .markdown, .txt, .mmd or .mermaid output (UTF-8, up to 256 KB).'}}}}, handler=show)
 
 
 def runtime_guidance(platform):
@@ -90,4 +98,4 @@ def runtime_guidance(platform):
     definitions = get_tool_definitions(enabled_toolsets=server._load_enabled_toolsets(platform), disabled_toolsets=disabled, quiet_mode=True, skip_tool_search_assembly=True)
     if not any(t.get('function', {}).get('name') == 'pebble_open_document' for t in definitions):
         return ''
-    return ('To show the owner a plan or document in the reader, save a UTF-8 .md, .markdown or .txt output in your generated output directory, then call pebble_open_document(path=absolute_path). If deferred, first tool_describe(names=["pebble_open_document"]), then tool_call using the advertised schema. This explicitly shares the file into this direct Bot Chat only. Include a normal Markdown file link in your reply for reopening. Never share secrets, arbitrary local paths or remote URLs. A successful request does not mean the owner has read it.')
+    return ('To show the owner a plan or document in the reader, save a UTF-8 .md, .markdown, .txt, .mmd or .mermaid output in your generated output directory, then call pebble_open_document(path=absolute_path). If deferred, first tool_describe(names=["pebble_open_document"]), then tool_call using the advertised schema. This explicitly shares the file into this direct Bot Chat only. Include a Markdown link to the file in your reply for reopening. Never share secrets, arbitrary local paths or remote URLs. A successful request does not mean the owner has read it.')

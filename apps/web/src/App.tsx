@@ -9,6 +9,7 @@ import { useManagementRequests } from './chat/useManagementRequests';
 import type { TranscriptCard } from './chat/presentation';
 import type { SessionClient } from '@hermes-client/protocol';
 import { usePageTitle } from './ui/page-title';
+import { useSharedAppearance } from './ui/useSharedAppearance';
 import { DiscardChanges } from './ui/DiscardChanges';
 import { ConversationInput, ComposerDraft } from './chat/ConversationInput';
 import { reconcileNativeApprovals, type NativeApprovalReview } from './chat/native-approvals';
@@ -33,11 +34,14 @@ import {
   decodeVoiceCall,
   approvalKey,
   StreamHandoff,
+  defaultInterfaceSettings,
+  decodeInterfaceSettings,
 } from '@hermes-client/protocol';
 import type {
   BridgeEvent,
   ConversationApproval,
   ConversationHistory,
+  InterfaceSettings,
   VoiceCallRecord,
 } from '@hermes-client/protocol';
 import { FirstRun } from './FirstRun';
@@ -67,6 +71,8 @@ import { Drawer } from './chat/Drawer';
 import { RequestReview } from './chat/RequestReview';
 import { DetailsDock } from './ui/DetailsDock';
 import { VoiceCallEntry } from './voice/VoiceCallEntry';
+import { Dictation, builtInRecognition } from './voice/Dictation';
+import type { DictationHandle } from './voice/Dictation';
 import { VoiceChat } from './voice/VoiceChat';
 import type { VoiceChatHandle } from './voice/VoiceChat';
 import type { VoiceSettingsRequest } from './voice/decode';
@@ -95,9 +101,10 @@ import type { SetStateAction } from 'react';
 import { SearchOverlay } from './chat/SearchOverlay';
 import { SendProjection } from './chat/send-projection';
 import { TranscriptFollow } from './chat/viewport-motion';
-import { toolActivity } from './chat/activity';
+import { WorkProgress } from './chat/activity';
 import { conversationLocation, rememberConversation } from './chat/conversation-location';
 import { ConversationDrafts } from './chat/drafts';
+import { ConversationMemory } from './chat/conversation-memory';
 import { reactionReceipt, RoomReactionProjection } from './chat/reactions';
 import { useOverlayHistory } from './ui/overlay-history';
 import type { OwnerConnection } from './OwnerShell';
@@ -124,6 +131,9 @@ import { decodeDocumentRequest } from '@hermes-client/protocol';
 import { decodeWorkspaceSnapshot } from '@hermes-client/protocol';
 import type { WorkspaceSnapshot as WorkspaceState, WorkspaceBot } from '@hermes-client/protocol';
 import type { Activity } from './avatar-lab/engine';
+import { avatarStatus } from './ui/avatar-status';
+import type { PebblePresence } from './ui/avatar-status';
+import { consumeChatLink, useMessageAlerts } from './notifications/use-message-alerts';
 
 type Row = Record<string, unknown>;
 type Selection = { kind: 'bot'; bot: Bot; sessionId: string } | { kind: 'room'; room: Row };
@@ -150,11 +160,34 @@ export function App({ owner }: { owner?: OwnerConnection }) {
     output: string;
   }>();
   const voicePanel = useRef<VoiceChatHandle>(null);
+  const dictation = useRef<DictationHandle>(null);
+  const sendLatest = useRef<() => void>(() => undefined);
+  const [dictating, setDictating] = useState(false);
+  // Dictation uses Apple's built-in speech recognition (Safari on Mac and iOS).
+  const [dictationAvailable] = useState(() => !!builtInRecognition());
+  /** The dictated words currently shown at the end of the message box. */
+  const dictated = useRef('');
+  useEffect(() => {
+    // Cmd+D (Mac) or Ctrl+D turns dictation on and off.
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key.toLowerCase() !== 'd' || event.shiftKey || event.altKey) return;
+      if (!(event.metaKey || event.ctrlKey) || (event.metaKey && event.ctrlKey)) return;
+      if (!dictation.current) return;
+      event.preventDefault();
+      dictation.current.toggle();
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, []);
   const [voiceActive, setVoiceActive] = useState(false);
+  // A call is spoken: its turns stream to the call, not into the chat.
+  const callLive = useRef(false);
+  callLive.current = voiceActive;
   const [voiceBarTarget, setVoiceBarTarget] = useState<HTMLDivElement | null>(null);
   const [agentSettingsTab, setAgentSettingsTab] = useState<'identity' | 'voice'>('identity');
   const [voiceSettingsRequest, setVoiceSettingsRequest] = useState<VoiceSettingsRequest>();
   const [workspace, setWorkspace] = useState<WorkspaceState>();
+  const [interfaceSettings, setInterfaceSettings] = useState(defaultInterfaceSettings);
   const [settings, setSettings] = useState(false);
   const [proactiveOpen, setProactiveOpen] = useState(false);
   const [orgOpen, setOrgOpen] = useState(false);
@@ -182,11 +215,28 @@ export function App({ owner }: { owner?: OwnerConnection }) {
   const [connectionAvailable, setConnectionAvailable] = useState(false);
   const [chatBound, setChatBound] = useState(false);
   const autoOpened = useRef(false);
-  const restoreProfile = useRef('');
+  const restoreProfile = useRef<string>(consumeChatLink(location, history));
   const restoreRoom = useRef('');
   const welcomeProfile = useRef('');
   const disposed = useRef(false);
   const [client, setClient] = useState<SessionClient>();
+  const acceptInterfaceSettings = useCallback((value: InterfaceSettings) => {
+    setInterfaceSettings((previous) => (previous.revision > value.revision ? previous : value));
+  }, []);
+  useSharedAppearance(
+    connectionAvailable ? client : undefined,
+    interfaceSettings,
+    acceptInterfaceSettings,
+  );
+  // A tapped alert's chat, held until the roster that contains it has loaded.
+  // iOS resumes a suspended app with its connection dropped, so the chat waits for it.
+  const alertChat = useRef('');
+  const [, setAlertTap] = useState(0);
+  useMessageAlerts(connectionAvailable ? client : undefined, (profile) => {
+    alertChat.current = profile;
+    if (!bots.some((candidate) => candidate.profile === profile)) restoreProfile.current = profile;
+    setAlertTap((value) => value + 1);
+  });
   const current = useRef<SessionClient | undefined>(undefined);
   const selected = useRef<Selection | undefined>(undefined);
   const selectionConnection = useRef<SessionClient | undefined>(undefined);
@@ -214,6 +264,10 @@ export function App({ owner }: { owner?: OwnerConnection }) {
   const olderFlight = useRef(false);
   const prependAnchor = useRef(false);
   const sendProjection = useRef(new SendProjection());
+  const workProgress = useRef(new WorkProgress());
+  const conversationMemory = useRef(new ConversationMemory());
+  const restoreCachedScroll = useRef(false);
+  const earlierIntent = useRef(false);
   const runEpoch = useRef(0);
   const [routines, setRoutines] = useState<Row[]>([]);
   const [routinesVersion, setRoutinesVersion] = useState(0);
@@ -428,6 +482,40 @@ export function App({ owner }: { owner?: OwnerConnection }) {
     sessionId: selection?.kind === 'bot' ? selection.sessionId : undefined,
     version: cardsVersion,
   });
+  const avatarStates = { ...agentStates };
+  const availableProfiles = new Set(
+    workspace?.bots
+      .filter((b) => b.managed && !b.hidden && !b.deleted && b.available !== false)
+      .map((b) => b.profile),
+  );
+  for (const request of management.requests) {
+    if (request.state !== 'pending') continue;
+    const profile =
+      request.actor && availableProfiles.has(request.actor)
+        ? request.actor
+        : workspace?.orchestrator;
+    if (profile) avatarStates[profile] = 'attention';
+  }
+  for (const [scope, entries] of approvalHistory.current) {
+    if (!entries.some((entry) => entry.state === 'pending' || entry.state === 'uncertain'))
+      continue;
+    const profile = sessionProfiles.current.get(scope);
+    if (profile) avatarStates[profile] = 'attention';
+  }
+  if (
+    selection?.kind === 'bot' &&
+    [...questionCards, ...secretCards].some((card) => card.needsInput)
+  )
+    avatarStates[selection.bot.profile] = 'attention';
+  const avatarPresence: Record<string, PebblePresence> = {};
+  for (const bot of workspace?.bots ?? []) {
+    const state = avatarStates[bot.profile];
+    const activeChat =
+      selection?.kind === 'bot' &&
+      selection.bot.profile === bot.profile &&
+      avatarStatus({ state }) === 'active';
+    avatarPresence[bot.profile] = { state, unread: Boolean(bot.unread) && !activeChat };
+  }
   const [removedDraft, setRemovedDraft] = useState('');
   const rosterLoader = useRef(new RosterLoader());
   const workspaceRef = useRef(workspace);
@@ -562,6 +650,28 @@ export function App({ owner }: { owner?: OwnerConnection }) {
     target.kind === 'bot'
       ? `bot:${target.bot.id ?? target.bot.profile}`
       : `room:${text(target.room.room_id)}`;
+  function rememberConversationView() {
+    const target = selected.current;
+    if (target?.kind !== 'bot' || !current.current) return;
+    conversationMemory.current.bind(workspace?.id ?? '');
+    conversationMemory.current.remember(draftKey(target), {
+      profile: target.bot.profile,
+      sessionId: target.sessionId,
+      messages: retainedMessages.current,
+      stream: liveText.get(),
+      running,
+      activity,
+      older: historyPage?.sessionId === target.sessionId ? historyPage.older : undefined,
+      projection: sendProjection.current,
+      handoff: streamHandoff.current,
+      progress: workProgress.current,
+      binding: { connection: current.current, epoch: selectionEpoch.current },
+      calls: voiceCalls?.key === draftKey(target) ? voiceCalls.entries : [],
+      read: displayedRead.current,
+      blocked,
+      attachmentUncertain,
+    });
+  }
   const [inspectedConversation, setInspectedConversation] = useState('');
   const inspectorKey = selection ? draftKey(selection) : '';
   useEffect(() => {
@@ -648,6 +758,8 @@ export function App({ owner }: { owner?: OwnerConnection }) {
     setChatBound(false);
     organizationQueue.current = [];
     setWorkspace(undefined);
+    setInterfaceSettings(defaultInterfaceSettings);
+    workProgress.current.reply();
     setAgentStates({});
     sessionProfiles.current.clear();
     setSettings(false);
@@ -657,6 +769,7 @@ export function App({ owner }: { owner?: OwnerConnection }) {
     selectionConnection.current = undefined;
     setClient(undefined);
     approvalHistory.current.clear();
+    conversationMemory.current.clear();
     setSelection(undefined);
     setBots([]);
     setRooms([]);
@@ -754,6 +867,14 @@ export function App({ owner }: { owner?: OwnerConnection }) {
     const key = selection ? draftKey(selection) : '';
     const opening = key !== transcriptContext.current;
     transcriptContext.current = key;
+    if (restoreCachedScroll.current) {
+      restoreCachedScroll.current = false;
+      transcriptFollow.current.cancel();
+      const saved = scrollPositions.current.get(key);
+      if (saved && !saved.follow) pane.scrollTop = saved.top;
+      else transcriptFollow.current.snap();
+      return;
+    }
     if (followLatest.current && !scrollAnimating.current) {
       if (!opening) {
         transcriptFollow.current.follow();
@@ -775,7 +896,7 @@ export function App({ owner }: { owner?: OwnerConnection }) {
     if (!pane) return;
     const observer = new ResizeObserver(() => {
       if (followLatest.current && !pickingAgents && !scrollAnimating.current)
-        transcriptFollow.current?.follow();
+        transcriptFollow.current?.resized();
     });
     observer.observe(pane);
     const content = pane.querySelector('.pc-messages');
@@ -783,18 +904,14 @@ export function App({ owner }: { owner?: OwnerConnection }) {
     return () => observer.disconnect();
   }, [client, selection, pickingAgents, settings, starting]);
   useEffect(() => {
-    const pause = () => transcriptFollow.current?.pause();
-    const resume = () => {
-      if (document.visibilityState === 'visible')
-        transcriptFollow.current?.resume(followLatest.current);
-    };
-    const visibility = () => (document.visibilityState === 'hidden' ? pause() : resume());
-    window.addEventListener('blur', pause);
-    window.addEventListener('focus', resume);
+    // Only a hidden page pauses following. A visible window without focus (the
+    // owner working in another app beside it) still brings new replies into view.
+    const visibility = () =>
+      document.visibilityState === 'hidden'
+        ? transcriptFollow.current?.pause()
+        : transcriptFollow.current?.resume(followLatest.current);
     document.addEventListener('visibilitychange', visibility);
     return () => {
-      window.removeEventListener('blur', pause);
-      window.removeEventListener('focus', resume);
       document.removeEventListener('visibilitychange', visibility);
       transcriptFollow.current?.dispose();
     };
@@ -942,6 +1059,7 @@ export function App({ owner }: { owner?: OwnerConnection }) {
       () => {
         scrollAnimating.current = false;
         followLatest.current = true;
+        transcriptFollow.current?.snap();
         setShowLatest(false);
         acknowledgeRead();
         if (matchMedia('(pointer: fine)').matches) composer.current?.focus({ preventScroll: true });
@@ -964,10 +1082,11 @@ export function App({ owner }: { owner?: OwnerConnection }) {
     )
       return;
     olderFlight.current = true;
+    earlierIntent.current = false;
     setOlderLoading(true);
     setOlderError('');
     try {
-      const page = await new ConversationDomain(connection).older(
+      const page = await new ConversationDomain(connection).olderConversation(
         target.sessionId,
         historyPage.older,
       );
@@ -1094,7 +1213,10 @@ export function App({ owner }: { owner?: OwnerConnection }) {
       await loadRoster(connection, true);
       return;
     }
-    if (event.type === 'tool.complete' || event.type === 'message.complete')
+    if (
+      (event.type === 'tool.complete' && event.payload?.name !== 'pebble_progress') ||
+      event.type === 'message.complete'
+    )
       void loadRoster(connection).catch((error) => {
         if (current.current === connection) fail(error);
       });
@@ -1159,12 +1281,17 @@ export function App({ owner }: { owner?: OwnerConnection }) {
         old.map((m) => (m.id === result.id ? { ...m, reactions: result.reactions } : m)),
       );
     }
+    if (callLive.current && /^(message\.(start|delta)|tool\.|status\.)/.test(event.type)) return;
+    if (callLive.current && event.type === 'message.complete') {
+      await refreshHistory(connection, target, true);
+      return;
+    }
     if (event.type === 'message.start') {
       runEpoch.current++;
       sendProjection.current.beginReply();
       setRunning(true);
       setStream('');
-      setActivity('Thinking');
+      setActivity(workProgress.current.begin());
     }
     if (event.type === 'message.delta') {
       const delta = handoff.text;
@@ -1175,15 +1302,20 @@ export function App({ owner }: { owner?: OwnerConnection }) {
       const persisted = payload.persisted_turn;
       if (persisted && typeof persisted === 'object' && 'final_assistant_row_id' in persisted)
         sendProjection.current.completeReply(persisted.final_assistant_row_id);
-      setActivity(payload.status === 'error' ? 'Turn failed' : 'Finishing');
+      workProgress.current.reply();
+      setActivity(payload.status === 'error' ? 'Turn failed' : '');
       if (payload.status === 'error')
         setError('Hermes reported a failed turn. Refresh to inspect its history.');
       await refreshHistory(connection, target, true);
     }
-    if (event.type === 'tool.start') setActivity(toolActivity(text(payload.name)));
-    if (event.type === 'tool.complete') setActivity('Thinking');
+    if (event.type === 'tool.start')
+      setActivity(
+        workProgress.current.toolStarted(text(payload.tool_id), text(payload.name), payload.args),
+      );
+    if (event.type === 'tool.complete')
+      setActivity(workProgress.current.toolCompleted(text(payload.tool_id), text(payload.name)));
     if (event.type === 'status.update')
-      setActivity(text(payload.text).trim().slice(0, 140) || 'Working');
+      setActivity(workProgress.current.status(text(payload.kind), text(payload.text)));
     if (event.type === 'approval.request') {
       await refreshApprovals(connection, target);
     }
@@ -1255,6 +1387,11 @@ export function App({ owner }: { owner?: OwnerConnection }) {
               : loadedRooms,
           );
           const prefs = object(data.preferences);
+          const appearance =
+            data.interface_settings === undefined
+              ? defaultInterfaceSettings
+              : decodeInterfaceSettings(data.interface_settings);
+          acceptInterfaceSettings(appearance);
           setPinOrder(Array.isArray(prefs.pin_order) ? prefs.pin_order.map(String) : []);
           preferencesRevision.current = Number(prefs.revision) || 0;
           const target = selected.current;
@@ -1464,6 +1601,13 @@ export function App({ owner }: { owner?: OwnerConnection }) {
     owned.start();
   }
 
+  useEffect(() => {
+    if (!alertChat.current || !client || !connectionAvailable) return;
+    const bot = bots.find((candidate) => candidate.profile === alertChat.current);
+    if (!bot) return;
+    alertChat.current = '';
+    void open(bot);
+  });
   async function open(
     bot: Bot,
     { restore = false }: { restore?: boolean } = {},
@@ -1474,24 +1618,72 @@ export function App({ owner }: { owner?: OwnerConnection }) {
       return 'unavailable';
     }
     rememberScroll();
+    if (!restore) rememberConversationView();
+    restoreCachedScroll.current = false;
+    conversationMemory.current.bind(workspace?.id ?? '');
+    const warm = !restore
+      ? conversationMemory.current.take(`bot:${bot.id ?? bot.profile}`, bot.profile)
+      : undefined;
     const generation = ++selectGeneration.current;
-    setOpeningBot(restore ? undefined : bot);
+    setOpeningBot(restore || warm ? undefined : bot);
     setError('');
-    setBusy(true);
+    setBusy(!warm);
     if (!restore) {
       setOrgOpen(false);
       setNav(false);
       setPickingAgents(false);
     }
+    earlierIntent.current = false;
+    if (warm) {
+      const target: Selection = { kind: 'bot', bot, sessionId: warm.sessionId };
+      selected.current = target;
+      selectionConnection.current = client;
+      selectionEpoch.current = warm.binding.epoch;
+      setSelection(target);
+      setDraft(drafts.current.get(draftKey(target)) ?? '');
+      sendProjection.current = warm.projection;
+      streamHandoff.current = warm.handoff;
+      workProgress.current = warm.progress;
+      displayedRead.current = warm.read;
+      setMessages(warm.messages);
+      retainedMessages.current = warm.messages;
+      setStream(warm.stream);
+      setRunning(warm.running);
+      setActivity(warm.activity);
+      setHistoryPage(
+        warm.older === undefined ? undefined : { sessionId: warm.sessionId, older: warm.older },
+      );
+      setVoiceCalls({ key: draftKey(target), entries: warm.calls });
+      setApprovals(approvalHistory.current.get(warm.sessionId) ?? []);
+      setRoutines([]);
+      setBlocked(warm.blocked);
+      setAttachmentUncertain(warm.attachmentUncertain);
+      setChatBound(false);
+      const saved = scrollPositions.current.get(draftKey(target));
+      followLatest.current = saved?.follow ?? true;
+      setShowLatest(!followLatest.current);
+      restoreCachedScroll.current = true;
+      focusOnReady.current = matchMedia('(pointer: fine)').matches;
+    }
     try {
       const openRevision = session.current?.recoveryVersion ?? -1;
       openingChat.current = { generation, events: [] };
       const previous = selected.current;
-      const retaining = restore && previous?.kind === 'bot' && previous.bot.profile === bot.profile;
-      const data = await new ConversationDomain(client).open(
-        bot.profile,
-        retaining ? retainedMessages.current : [],
-      );
+      const retaining =
+        !!warm || (restore && previous?.kind === 'bot' && previous.bot.profile === bot.profile);
+      const domain = new ConversationDomain(client);
+      const retained = retaining ? retainedMessages.current : [];
+      const reuseBinding =
+        warm &&
+        client.supportsConnectionRecovery &&
+        warm.binding.connection === client &&
+        warm.binding.epoch === session.current?.bindingEpoch;
+      const data = await (reuseBinding
+        ? domain.snapshot(warm.sessionId, retained).catch((error) => {
+            if (safeError(error).code !== 'CONVERSATION_CHANGED') throw error;
+            return domain.open(bot.profile, retained);
+          })
+        : domain.open(bot.profile, retained));
       if (generation !== selectGeneration.current || current.current !== client)
         return 'superseded';
       setHistoryPage((old) =>
@@ -1499,7 +1691,7 @@ export function App({ owner }: { owner?: OwnerConnection }) {
           ? {
               sessionId: data.sessionId,
               older:
-                retaining && old?.sessionId === previous.sessionId
+                retaining && previous?.kind === 'bot' && old?.sessionId === previous.sessionId
                   ? old.older
                   : data.history.page.older,
             }
@@ -1508,7 +1700,7 @@ export function App({ owner }: { owner?: OwnerConnection }) {
       setOlderError('');
       const target: Selection = { kind: 'bot', bot, sessionId: data.sessionId };
       if (!restore || !selected.current) setDraft(drafts.current.get(draftKey(target)) ?? '');
-      if (!restore) {
+      if (!restore && !warm) {
         displayedRead.current = undefined;
         sendProjection.current = new SendProjection();
         setApprovals([]);
@@ -1529,7 +1721,7 @@ export function App({ owner }: { owner?: OwnerConnection }) {
       setSelection(target);
       const id = workspace?.bots.find((entry) => entry.profile === bot.profile)?.id;
       if (workspace && id) rememberConversation(workspace.id, { kind: 'bot', id });
-      setBlocked(false);
+      if (!warm) setBlocked(false);
       setChatBound(true);
       observedHistory(target, data.history, !retaining);
       const restored = sendProjection.current.restore(data);
@@ -1541,7 +1733,7 @@ export function App({ owner }: { owner?: OwnerConnection }) {
         openingChat.current?.generation === generation ? openingChat.current.events : [];
       openingChat.current = undefined;
       for (const event of buffered) await receive(client, event);
-      setActivity(data.running === true ? 'Working' : 'Ready');
+      setActivity(workProgress.current.bind(target.sessionId, data.running === true));
       const saved = scrollPositions.current.get(draftKey(target));
       if (saved && !saved.follow) {
         followLatest.current = false;
@@ -1564,7 +1756,7 @@ export function App({ owner }: { owner?: OwnerConnection }) {
         setError(
           'An earlier file send has not been confirmed. Check its outcome before sending again.',
         );
-      }
+      } else setBlocked(false);
       if (data.history.page) {
         // The native binding is installed before its snapshot. Buffered events
         // have native stream positions, so a second history transfer is redundant.
@@ -1591,6 +1783,7 @@ export function App({ owner }: { owner?: OwnerConnection }) {
       return current.current === client && selected.current === target ? 'opened' : 'superseded';
     } catch (error) {
       if (generation === selectGeneration.current && current.current === client) {
+        if (warm) setChatBound(false);
         const failure = safeError(error);
         if (!restore && failure.code === 'BOT_CHAT_MISSING') {
           setUnavailableChat(bot.name);
@@ -1620,7 +1813,7 @@ export function App({ owner }: { owner?: OwnerConnection }) {
     } finally {
       if (openingChat.current?.generation === generation) openingChat.current = undefined;
       if (generation === selectGeneration.current) {
-        focusOnReady.current = matchMedia('(pointer: fine)').matches;
+        focusOnReady.current = !warm && matchMedia('(pointer: fine)').matches;
         setBusy(false);
         setOpeningBot(undefined);
       }
@@ -1652,6 +1845,7 @@ export function App({ owner }: { owner?: OwnerConnection }) {
 
   function openRoom(room: Row, { restore = false }: { restore?: boolean } = {}) {
     rememberScroll();
+    if (!restore) rememberConversationView();
     if (!restore) {
       setOrgOpen(false);
       setPickingAgents(false);
@@ -1826,7 +2020,7 @@ export function App({ owner }: { owner?: OwnerConnection }) {
         setError('Send files separately from commands.');
         return;
       }
-      if ((commandOverride ?? draft).trim().toLowerCase() === '/model') {
+      if (/^\/models?$/i.test((commandOverride ?? draft).trim())) {
         confirmSubmittedDraft();
         setModelPicker(target.sessionId);
         return;
@@ -1853,6 +2047,8 @@ export function App({ owner }: { owner?: OwnerConnection }) {
       return;
     }
     const flight = Symbol('send');
+    const startedAt = runEpoch.current;
+    const projection = sendProjection.current;
     sendFlight.current = flight;
     setBusy(true);
     setError('');
@@ -1877,7 +2073,7 @@ export function App({ owner }: { owner?: OwnerConnection }) {
         : {}),
     };
     setMessages(
-      sendProjection.current.begin(
+      projection.begin(
         pendingMessage,
         messages,
         running && target.kind === 'bot' ? liveText.get() : undefined,
@@ -1886,7 +2082,7 @@ export function App({ owner }: { owner?: OwnerConnection }) {
     setDraft('');
     if (target.kind === 'bot') {
       setRunning(true);
-      setActivity('Working');
+      setActivity(workProgress.current.begin());
     }
     try {
       if (selection.kind === 'bot') {
@@ -1898,22 +2094,23 @@ export function App({ owner }: { owner?: OwnerConnection }) {
             ? { attachments: { ids: [firstFile, ...restFiles], requestId: crypto.randomUUID() } }
             : {}),
         });
+        if (!result.accepted) throw new Error('Send outcome uncertain');
         if (owns())
           setMessages(
-            sendProjection.current.acknowledge(
+            projection.acknowledge(
               result.userRowId,
               pendingId,
               result.disposition === 'queued',
+              result.userMessageUid,
             ),
           );
-        if (!result.accepted) throw new Error('Send outcome uncertain');
       } else {
         const receipt = await new ConversationDomain(client).sendRoom({
           roomId: text(selection.room.room_id),
           eventId: roomEventId,
           text: message,
         });
-        if (owns()) setMessages(sendProjection.current.acknowledge(receipt, pendingId));
+        if (owns()) setMessages(projection.acknowledge(receipt, pendingId));
       }
       confirmSubmittedDraft();
       if (owns()) {
@@ -1922,11 +2119,16 @@ export function App({ owner }: { owner?: OwnerConnection }) {
       }
     } catch (cause) {
       const unsent = safeError(cause).delivery === 'not-dispatched';
+      const reconciled = projection.discardPreview(pendingId);
+      if (current.current === connection && sendProjection.current === projection)
+        setMessages(reconciled);
       if (owns()) {
-        if (unsent) {
-          setMessages(sendProjection.current.cancelUnsent(pendingId));
-          setRunning(running);
-        } else setBlocked(true);
+        if (!unsent) setBlocked(true);
+        if (target.kind === 'bot' && !running && runEpoch.current === startedAt) {
+          setRunning(false);
+          workProgress.current.reply();
+          setActivity('');
+        }
         if (edit === draftEdits.current) {
           setDraft(message);
           drafts.current.set(draftKey(target), message);
@@ -1987,6 +2189,13 @@ export function App({ owner }: { owner?: OwnerConnection }) {
     );
     approvalHistory.current.set(scope, rows);
     setApprovals(rows);
+    if (!rows.some((entry) => entry.state === 'pending' || entry.state === 'uncertain')) {
+      const profile = sessionProfiles.current.get(scope);
+      if (profile)
+        setAgentStates((previous) =>
+          previous[profile] === 'attention' ? { ...previous, [profile]: 'ready' } : previous,
+        );
+    }
   }
   async function approve(approval: NativeApprovalReview, choice: ApprovalChoice) {
     if (!client || !selection || blocked || approval.state !== 'pending') return;
@@ -2151,6 +2360,7 @@ export function App({ owner }: { owner?: OwnerConnection }) {
   const detailsContent = client && (details || inspectedConversation === inspectorKey) && (
     <Inspector
       active={details && !documentReader.state}
+      presence={selection?.kind === 'bot' ? avatarPresence[selection.bot.profile] : undefined}
       bot={selection?.kind === 'bot' ? selection.bot : undefined}
       room={selection?.kind === 'room' ? selection.room : undefined}
       workspace={workspace}
@@ -2250,6 +2460,7 @@ export function App({ owner }: { owner?: OwnerConnection }) {
 
   const rail = (
     <Rail
+      appTitle={interfaceSettings.appTitle}
       phone={phone}
       active={!phone || nav}
       area={area}
@@ -2327,7 +2538,7 @@ export function App({ owner }: { owner?: OwnerConnection }) {
             ? text(selection.room.room_id)
             : undefined
       }
-      states={agentStates}
+      presence={avatarPresence}
       online={connectionAvailable}
       pinOrder={pinOrder}
       onOpen={openFromNavigation}
@@ -2387,6 +2598,8 @@ export function App({ owner }: { owner?: OwnerConnection }) {
   const settingsContent = workspace ? (
     <Suspense fallback={<LoadingBar active label="Loading Settings" />}>
       <WorkspaceSettings
+        interfaceSettings={interfaceSettings}
+        onInterfaceSettings={acceptInterfaceSettings}
         onProactive={
           work.catalog?.capabilities.proactive ? () => setProactiveOpen(true) : undefined
         }
@@ -2476,6 +2689,28 @@ export function App({ owner }: { owner?: OwnerConnection }) {
   const awaitingInput = attentionItems.length > 0 && !inputMinimized;
   const actionBlocked =
     blocked || !connectionAvailable || (selection?.kind === 'bot' && !chatBound) || awaitingInput;
+  /** Replaces the dictated words at the end of the box, keeping anything typed before them. */
+  function showDictated(words: string) {
+    const current = inputDraft.current.get();
+    const typed =
+      dictated.current && current.endsWith(dictated.current)
+        ? current.slice(0, current.length - dictated.current.length)
+        : current;
+    const spacer = typed && words && !/\s$/.test(typed) ? ' ' : '';
+    const shown = words ? spacer + words : '';
+    dictated.current = shown;
+    setDraft(typed + shown);
+    if (selected.current) drafts.current.set(draftKey(selected.current), typed + shown);
+  }
+  // Video calls are turned off; the composer offers dictation instead.
+  const dictationBlocked = switching || actionBlocked || voiceActive;
+  sendLatest.current = () => void send();
+  const dockOpen =
+    !orgOpen &&
+    area === 'chat' &&
+    !!(documentReader.state || details) &&
+    (!settings || settingsTab === 'agents');
+  const documentPage = dockOpen && !!documentReader.state && !phone && documentReader.expanded;
   return (
     <ConnectionRecovery.Provider value={recovery}>
       <DocumentActions.Provider value={openDocument}>
@@ -2494,6 +2729,7 @@ export function App({ owner }: { owner?: OwnerConnection }) {
             navigation={rail}
             phone={phone}
             navigationOpen={nav}
+            documentExpanded={documentPage}
             onCloseNavigation={closeNav}
             onOpenNavigation={() => setNav(true)}
             edgeNavigation={
@@ -2516,12 +2752,14 @@ export function App({ owner }: { owner?: OwnerConnection }) {
               reader={showLatest ? 'manual' : 'follow'}
               className="pc-main conversation overflow-clip"
               aria-label="Conversation"
+              aria-hidden={documentPage || undefined}
               inert={
-                !!(details || documentReader.state) &&
-                area === 'chat' &&
-                phone &&
-                !settings &&
-                !orgOpen
+                documentPage ||
+                (!!(details || documentReader.state) &&
+                  area === 'chat' &&
+                  phone &&
+                  !settings &&
+                  !orgOpen)
               }
             >
               {orgOpen && workspace && (
@@ -2654,7 +2892,7 @@ export function App({ owner }: { owner?: OwnerConnection }) {
                               bot={headerBot}
                               workspace={workspace}
                               client={client}
-                              state={agentStates[headerBot.profile]}
+                              presence={avatarPresence[headerBot.profile]}
                             />
                           ) : selection?.kind === 'room' ? (
                             <CrewAvatar
@@ -2761,32 +2999,42 @@ export function App({ owner }: { owner?: OwnerConnection }) {
                       className={`pc-transcript transcript ${pickingAgents ? 'choosing-agents' : ''}`}
                       role={pickingAgents ? undefined : 'log'}
                       aria-live={pickingAgents ? undefined : 'off'}
-                      onWheel={() => {
+                      onWheel={(event) => {
+                        if (event.deltaY < 0) earlierIntent.current = true;
                         detailsAnchor.current = undefined;
-                        transcriptFollow.current?.interrupt();
+                        transcriptFollow.current?.readerInput();
+                      }}
+                      onPointerDown={(event) => {
+                        if (event.pointerType === 'mouse' && event.target === event.currentTarget)
+                          transcriptFollow.current?.readerInput();
                       }}
                       onTouchStart={() => {
                         detailsAnchor.current = undefined;
+                        earlierIntent.current = true;
                       }}
-                      onTouchMove={() => transcriptFollow.current?.interrupt()}
+                      onTouchMove={() => transcriptFollow.current?.readerInput()}
                       onKeyDown={(event) => {
+                        if (['ArrowUp', 'PageUp', 'Home'].includes(event.key))
+                          earlierIntent.current = true;
                         if (
                           ['ArrowUp', 'ArrowDown', 'PageUp', 'PageDown', 'Home', 'End'].includes(
                             event.key,
                           )
                         )
-                          transcriptFollow.current?.interrupt();
+                          transcriptFollow.current?.readerInput();
                       }}
                       onScroll={(event) => {
                         if (pickingAgents || orgOpen) return;
                         const pane = event.currentTarget;
                         if (transcriptFollow.current?.ownsScroll || scrollAnimating.current) return;
-                        transcriptFollow.current?.cancel();
+                        transcriptFollow.current?.interrupt();
                         followLatest.current =
                           pane.scrollHeight - pane.scrollTop - pane.clientHeight < 96;
                         setShowLatest(!followLatest.current);
                         rememberScroll();
                         acknowledgeRead();
+                        if (earlierIntent.current && !followLatest.current && pane.scrollTop < 120)
+                          void loadOlderHistory();
                       }}
                     >
                       {selection?.kind === 'bot' &&
@@ -2815,6 +3063,11 @@ export function App({ owner }: { owner?: OwnerConnection }) {
                           </div>
                         )}
                       <LiveTranscript
+                        hasEarlier={
+                          !!historyPage?.older &&
+                          selection?.kind === 'bot' &&
+                          historyPage.sessionId === selection.sessionId
+                        }
                         mentions={mentions}
                         text={liveText}
                         projection={sendProjection.current}
@@ -2872,7 +3125,7 @@ export function App({ owner }: { owner?: OwnerConnection }) {
                                     bot={selection.bot}
                                     workspace={workspace}
                                     client={client}
-                                    state={agentStates[selection.bot.profile]}
+                                    presence={avatarPresence[selection.bot.profile]}
                                   />
                                 }
                                 onOpenSettings={(request) =>
@@ -2888,13 +3141,6 @@ export function App({ owner }: { owner?: OwnerConnection }) {
                                   if (selected.current === selection)
                                     observeCalls(selection, [call]);
                                 }}
-                                onAccepted={(message) =>
-                                  setMessages((previous) =>
-                                    previous.some((item) => item.id === message.id)
-                                      ? previous
-                                      : [...previous, message],
-                                  )
-                                }
                               />
                             ) : undefined}
                           </>
@@ -3109,6 +3355,28 @@ export function App({ owner }: { owner?: OwnerConnection }) {
                             onSend={(command) => void send(command)}
                             onStop={() => void stop()}
                             onVoice={() => voicePanel.current?.open()}
+                            keepBeforeAction={dictating}
+                            beforeAction={
+                              selection?.kind === 'bot' &&
+                              dictationAvailable && (
+                                <Dictation
+                                  key={selection.sessionId}
+                                  ref={dictation}
+                                  disabled={dictationBlocked}
+                                  onActiveChange={(active) => {
+                                    dictated.current = '';
+                                    setDictating(active);
+                                  }}
+                                  onWords={(words) => showDictated(words)}
+                                  onText={(spoken) => {
+                                    showDictated(spoken);
+                                    dictated.current = '';
+                                    sendLatest.current();
+                                  }}
+                                  onError={setError}
+                                />
+                              )
+                            }
                           >
                             {capabilities.attachments && selection?.kind === 'bot' && (
                               <>
@@ -3127,6 +3395,7 @@ export function App({ owner }: { owner?: OwnerConnection }) {
                                 <Menu
                                   label="Add attachment"
                                   placement="composer"
+                                  className="flex h-9 shrink-0 items-center self-end pointer-coarse:h-11"
                                   disabled={busy || actionBlocked || uploads.files.length >= 5}
                                   items={[
                                     {
@@ -3165,13 +3434,9 @@ export function App({ owner }: { owner?: OwnerConnection }) {
               </div>
             </Chat>
             <DetailsDock
-              open={
-                !orgOpen &&
-                area === 'chat' &&
-                !!(documentReader.state || details) &&
-                (!settings || settingsTab === 'agents')
-              }
+              open={dockOpen}
               document={!!documentReader.state}
+              expanded={documentPage}
               onFrame={restoreDetailsAnchor}
             >
               <div
@@ -3187,6 +3452,8 @@ export function App({ owner }: { owner?: OwnerConnection }) {
                   state={documentReader.state}
                   onClose={documentReader.close}
                   onRetry={documentReader.open}
+                  expanded={documentPage}
+                  onToggleExpanded={phone ? undefined : documentReader.toggleExpanded}
                 />
               )}
             </DetailsDock>

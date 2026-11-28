@@ -277,7 +277,7 @@ declare global {
   }
 }
 
-test('real browser WebRTC preview and call preserve native receipt ownership and stop the microphone', async ({
+test('OpenAI preview plays without the microphone and a GPT-Live call hands work to the Pebble', async ({
   page,
   context,
   browserName,
@@ -288,10 +288,12 @@ test('real browser WebRTC preview and call preserve native receipt ownership and
   );
   let setupComplete = false,
     keyConfirmed = false;
-  let holdStatus = false,
-    statusPending = false,
-    releaseStatus = () => {};
   const followups: string[] = [];
+  const liveCall = 'd'.repeat(32);
+  const liveRequests: string[] = [];
+  const sessionModes: boolean[] = [];
+  let liveStarts = 0,
+    liveReplyReady = false;
   const callRecords: { id: string; ended_at: number }[] = [];
   const messages = [{ row_id: 1, role: 'assistant', text: 'Ready.', timestamp: 1700000000 }];
   await installFixture(context, {
@@ -426,11 +428,6 @@ test('real browser WebRTC preview and call preserve native receipt ownership and
       keyConfirmed = true;
       if (params.complete) setupComplete = true;
     }
-    if (operation === 'voice.status' && holdStatus)
-      await new Promise<void>((resolve) => {
-        statusPending = true;
-        releaseStatus = resolve;
-      });
     if (['voice.status', 'voice.preferences'].includes(operation))
       return route.fulfill({
         json: {
@@ -445,6 +442,7 @@ test('real browser WebRTC preview and call preserve native receipt ownership and
         },
       });
     if (operation === 'voice.session') {
+      sessionModes.push(params.preview);
       const sdp = await peerPage.evaluate(
         ({ sdp, preview }) => window.__voiceTest.answer(sdp, preview),
         { sdp: params.sdp, preview: params.preview },
@@ -474,12 +472,28 @@ test('real browser WebRTC preview and call preserve native receipt ownership and
       );
       return route.fulfill({ json: { result: { submitted: !!params.transcript, call } } });
     }
-    if (operation === 'voice.submit') {
-      expect(params.text).toBe('Check the report.');
-      expect(params.context).toContain('Check the report.');
-      messages.push({ row_id: 400, role: 'user', text: params.text, timestamp: 1700000001 });
-      return route.fulfill({ json: { result: { user_row_id: 400 } } });
+    if (operation === 'voice.start') {
+      liveStarts++;
+      return route.fulfill({ json: { result: { call_id: liveCall, provider: 'openai' } } });
     }
+    if (operation === 'voice.submit') {
+      expect(params.call_id).toBe(liveCall);
+      liveRequests.push(params.text);
+      return route.fulfill({ json: { result: { state: 'pending', user_row_id: 400 } } });
+    }
+    if (operation === 'voice.turn')
+      return route.fulfill({
+        json: {
+          result: liveReplyReady
+            ? {
+                state: 'ready',
+                user_row_id: 400,
+                assistant_row_id: 401,
+                assistant_text: 'Three tasks are open.',
+              }
+            : { state: 'pending', user_row_id: 400 },
+        },
+      });
     await route.fallback();
   });
   await page.goto('/');
@@ -562,132 +576,40 @@ test('real browser WebRTC preview and call preserve native receipt ownership and
   await page.screenshot({ path: info.outputPath('preview-no-audio.png') });
   expect(followups).toEqual([]);
   expect(await page.evaluate(() => window.__voiceTest.micReads())).toBe(0);
+
+  // A GPT-Live call: the live model talks, and real work goes to the Pebble.
   await page.evaluate(() => window.__voiceTest.silenceOutput(false));
   await page.getByRole('button', { name: 'Start call', exact: true }).click();
   await expect(page.getByRole('button', { name: 'Mute microphone' })).toBeVisible({
-    timeout: 30000,
+    timeout: 20000,
   });
-  expect(await page.evaluate(() => window.__voiceTest.micReads())).toBe(1);
-  await page.getByRole('button', { name: 'Show voice transcript' }).click();
-  await peerPage.evaluate(() => {
-    window.__voiceTest.send({
-      type: 'session.input_transcript.delta',
-      delta: 'Check the report.',
-      start_ms: 0,
-      end_ms: 200,
-    });
+  expect(liveStarts).toBe(1);
+  expect(sessionModes.at(-1)).toBe(false);
+  await page.evaluate(() => {
+    window.__voiceTest.send({ type: 'session.input_transcript.delta', delta: 'How many tasks ' });
+    window.__voiceTest.send({ type: 'session.input_transcript.delta', delta: 'are open?' });
     window.__voiceTest.send({
       type: 'session.delegation.created',
-      delegation: { id: 'owned-delegation' },
+      delegation: { id: 'delegation-1', target: 'client' },
     });
   });
-  await expect(page.getByRole('region', { name: 'Voice transcript' })).toContainText(
-    'Check the report.',
-  );
-  const bar = page.locator('[data-slot=voice-call-bar]');
-  await expect(bar).toBeInViewport({ ratio: 1 });
-  expect((await bar.boundingBox())!.y).toBeLessThan(180);
+  await expect.poll(() => liveRequests).toEqual(['How many tasks are open?']);
+  liveReplyReady = true;
   await expect
     .poll(() =>
-      page
-        .locator('[data-slot=audio-activity] span')
-        .first()
-        .evaluate((el) => el.getBoundingClientRect().height),
-    )
-    .toBeGreaterThan(6);
-  await page.screenshot({
-    path: `test-results/verification/voice-active-${page.viewportSize()?.width}.png`,
-  });
-  await page.getByRole('button', { name: 'Voice settings', exact: true }).click();
-  await expect(page.getByRole('tab', { name: 'Voice', exact: true })).toHaveAttribute(
-    'data-state',
-    'active',
-  );
-  await expect(page.getByRole('tab', { name: 'Model', exact: true })).toHaveCount(0);
-  await expect(page.getByRole('button', { name: 'Preview', exact: true })).toBeDisabled();
-  await page.getByRole('button', { name: 'Close Edit Arlo', exact: true }).click();
-  await expect(page.locator('[data-message-id="400"]')).toContainText('Check the report.');
-  await page.evaluate(() =>
-    Reflect.get(
-      window,
-      '__chatEvent',
-    )({
-      type: 'message.complete',
-      session_id: 'session-arlo',
-      payload: { persisted_turn: { user_row_id: 399, final_assistant_row_id: 401 } },
-    }),
-  );
-  expect(
-    await peerPage.evaluate(() =>
-      window.__voiceTest
-        .commands()
-        .some(
-          (event) =>
-            event.delegation_id === 'owned-delegation' &&
-            event.type === 'session.commentary.append',
-        ),
-    ),
-  ).toBe(false);
-  messages.push({
-    row_id: 402,
-    role: 'assistant',
-    text: 'The report is ready.',
-    timestamp: 1700000002,
-  });
-  await page.evaluate(() =>
-    Reflect.get(
-      window,
-      '__chatEvent',
-    )({
-      type: 'message.complete',
-      session_id: 'session-arlo',
-      payload: { persisted_turn: { user_row_id: 400, final_assistant_row_id: 402 } },
-    }),
-  );
-  await expect
-    .poll(() =>
-      peerPage.evaluate(
-        () =>
-          window.__voiceTest
-            .commands()
-            .filter(
-              (event) =>
-                event.delegation_id === 'owned-delegation' &&
-                event.content === 'The report is ready.',
-            ).length,
+      peerPage.evaluate(() =>
+        window.__voiceTest
+          .commands()
+          .filter(
+            (event) =>
+              event.type === 'session.commentary.append' && event.delegation_id === 'delegation-1',
+          )
+          .map((event) => event.content),
       ),
     )
-    .toBe(1);
-  await page.getByRole('button', { name: 'Mute microphone' }).click();
-  await expect(page.getByRole('button', { name: 'Unmute microphone' })).toBeVisible();
-  await page.getByRole('button', { name: 'Stop voice call', exact: true }).click();
-  expect(await page.evaluate(() => window.__voiceTest.stopped())).toBe(true);
-  await expect.poll(() => followups.length).toBe(1);
-  expect(followups[0]).toContain('Check the report.');
-  const entry = page.getByText('Voice call ended', { exact: true });
-  await expect(entry).toHaveCount(1);
-  const transcript = page.getByRole('log');
-  await expect(transcript).toContainText(/The report is ready\.[\s\S]*Voice call ended/);
-  await entry.scrollIntoViewIfNeeded();
-  await page.screenshot({
-    path: info.outputPath('voice-call-history.png'),
-    animations: 'disabled',
-  });
-  await expect(page.getByRole('button', { name: 'Start call', exact: true })).not.toBeVisible();
-  holdStatus = true;
-  await page.getByRole('button', { name: 'Voice chat', exact: true }).click();
-  await expect(page.locator('[data-slot=voice-call-bar]')).toBeVisible();
-  await expect(page.locator('[data-slot=card][aria-label="Voice settings"]')).toHaveCount(0);
-  await expect.poll(() => statusPending).toBe(true);
-  releaseStatus();
-  await expect(page.getByRole('button', { name: 'Mute microphone' })).toBeVisible();
-  expect(await page.evaluate(() => window.__voiceTest.micReads())).toBe(2);
-  await page.evaluate(() => window.__voiceTest.send({ type: 'session.closed' }));
-  await expect(entry).toHaveCount(2);
-  expect(followups[1]).toBe('');
-  await page.reload();
-  await expect(page.getByLabel('Message', { exact: true })).toBeEnabled();
-  await expect(entry).toHaveCount(2);
+    .toEqual(['Three tasks are open.']);
+  await page.getByRole('button', { name: 'Stop voice call' }).click();
+  await expect.poll(() => callRecords.length).toBe(1);
 });
 
 test('denied microphone returns to intact text chat without creating a provider session', async ({
@@ -734,14 +656,18 @@ test('denied microphone returns to intact text chat without creating a provider 
           result: {
             supported: true,
             configured: true,
-            voice: 'marin',
-            voices: ['marin'],
+            provider: 'elevenlabs',
+            providers: ['openai', 'elevenlabs'],
+            voice: 'brian',
+            voices: ['brian'],
             setup_complete: setupComplete,
             key_confirmed: keyConfirmed,
           },
         },
       });
-    if (operation === 'voice.session') providerRequests++;
+    if (operation === 'voice.start') providerRequests++;
+    if (operation === 'voice.voices')
+      return route.fulfill({ json: { result: { voices: { brian: 'Brian' } } } });
     await route.fallback();
   });
   await page.goto('/');

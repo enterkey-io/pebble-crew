@@ -34,7 +34,10 @@ test('agent images and files render in chat, survive live updates and reload, an
     if (body.operation !== 'media.read') return route.fallback();
     expect(body.params.session_id).toBe('session-arlo');
     expect(body.params.row_id).toBe(1);
-    expect(Object.keys(body.params).sort()).toEqual(['reference', 'row_id', 'session_id']);
+    const { variant, ...fields } = body.params;
+    expect(Object.keys(fields).sort()).toEqual(['reference', 'row_id', 'session_id']);
+    // Photos ask for a chat-sized copy; other files are always read whole.
+    expect(variant).toBe(keys.get(body.params.reference) === chart ? 'preview' : undefined);
     const source = keys.get(body.params.reference);
     expect(source).toBeDefined();
     reads.push(source!);

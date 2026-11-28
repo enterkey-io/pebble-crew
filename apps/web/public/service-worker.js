@@ -44,3 +44,57 @@ globalThis.addEventListener('fetch', (event) => {
     );
   }
 });
+
+// Message alerts. The server sends only while no Pebble Crew window is in view.
+globalThis.addEventListener('push', (event) => {
+  let message = {};
+  try {
+    message = event.data ? event.data.json() : {};
+  } catch {
+    message = {};
+  }
+  const title = typeof message.title === 'string' && message.title ? message.title : 'Pebble Crew';
+  const body = typeof message.body === 'string' ? message.body : 'New message';
+  const profile = typeof message.profile === 'string' ? message.profile : '';
+  event.waitUntil(
+    globalThis.registration.showNotification(title.slice(0, 80), {
+      body: body.slice(0, 240),
+      tag: typeof message.tag === 'string' ? message.tag : 'pebble',
+      icon: '/icons/pebble-192.png',
+      badge: '/icons/pebble-192.png',
+      data: { profile },
+    }),
+  );
+});
+globalThis.addEventListener('notificationclick', (event) => {
+  event.notification.close();
+  const profile = event.notification.data?.profile;
+  const target = /^[A-Za-z0-9_-]{1,64}$/.test(profile ?? '')
+    ? `/#chat=${encodeURIComponent(profile)}`
+    : '/';
+  // A suspended iPhone app can miss the message below; it reads this when it returns.
+  const remember =
+    target === '/'
+      ? Promise.resolve()
+      : globalThis.caches
+          .open('pebble-open-chat')
+          .then((cache) =>
+            cache.put('/pending-chat', new Response(JSON.stringify({ profile, at: Date.now() }))),
+          )
+          .catch(() => undefined);
+  event.waitUntil(
+    remember
+      .then(() => globalThis.clients.matchAll({ type: 'window', includeUncontrolled: true }))
+      .then((windows) => {
+        const open = windows.filter(
+          (client) => new URL(client.url).origin === globalThis.location.origin,
+        );
+        if (open.length) {
+          if (target !== '/')
+            for (const client of open) client.postMessage({ type: 'pebble.open-chat', profile });
+          return open[0].focus();
+        }
+        return globalThis.clients.openWindow(target);
+      }),
+  );
+});

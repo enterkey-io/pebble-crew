@@ -1,9 +1,10 @@
 import { submitMessage } from '../composer';
+import { atmeePortrait, atmeeWav, installAtmeeMicrophone } from '../atmee-room';
 import { execFileSync } from 'node:child_process';
 import { openSidebarMenu } from '../sidebar-menu';
 import { test, expect } from '@playwright/test';
 import type { BrowserContext, Page } from '@playwright/test';
-import { readFile } from 'node:fs/promises';
+import { readFile, writeFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { focusOrgCard } from '../chat-workspace/org-chart-driver';
 import { SHAPES } from '../../apps/web/src/avatar-lab/engine';
@@ -190,6 +191,40 @@ test('private first use, native onboarding, idle keepalive and reconnection', as
   );
   expectNoChatSends(signals);
   ownerCookies = await context.cookies();
+});
+
+test('shared interface choices reach a clean browser through the native plugin', async ({
+  page,
+  context,
+  browser,
+}) => {
+  await context.addCookies(ownerCookies);
+  await page.goto('/');
+  await expect(page.getByLabel('Message', { exact: true })).toBeEnabled();
+  await page.getByRole('button', { name: 'Your account', exact: true }).click();
+  await page.getByRole('menuitem', { name: 'Settings', exact: true }).click();
+  await page.getByRole('combobox', { name: 'Chat bubbles', exact: true }).click();
+  await page.getByRole('option', { name: 'Neutral', exact: true }).click();
+  await expect(page.locator('html')).toHaveAttribute('data-chat-bubbles', 'neutral');
+  await page.getByRole('combobox', { name: 'Appearance', exact: true }).click();
+  await page.getByRole('option', { name: 'Dark', exact: true }).click();
+  await expect(page.locator('html')).toHaveAttribute('data-appearance', 'dark');
+  const separate = await browser.newContext({
+    baseURL: 'https://127.0.0.1:5445',
+    ignoreHTTPSErrors: true,
+    colorScheme: 'light',
+    serviceWorkers: 'block',
+  });
+  try {
+    await separate.addCookies(ownerCookies);
+    const second = await separate.newPage();
+    await second.goto('/');
+    await expect(second.getByLabel('Message', { exact: true })).toBeEnabled();
+    await expect(second.locator('html')).toHaveAttribute('data-theme', 'dark');
+    await expect(second.locator('html')).toHaveAttribute('data-chat-bubbles', 'neutral');
+  } finally {
+    await separate.close();
+  }
 });
 
 test('three Markdown uploads stay attachment cards across native completion and reload', async ({
@@ -494,6 +529,10 @@ test('owner photo, account settings, tools layout and ordinary login persist', a
   await expect(page.getByRole('heading', { name: 'Sign in' })).toBeVisible();
   await expect(page).toHaveTitle('Sign in — Pebble Crew');
   await page.getByLabel('Username', { exact: true }).fill('owner');
+  await page.getByLabel('Password', { exact: true }).fill('synthetic-incorrect-password');
+  await page.getByRole('button', { name: 'Sign in', exact: true }).click();
+  await expect(page.getByRole('alert')).toHaveText('Incorrect username or password.');
+  await expect(page.getByLabel('Username', { exact: true })).toHaveValue('owner');
   await page.getByLabel('Password', { exact: true }).fill('synthetic-owner-password-456');
   await page.getByRole('button', { name: 'Sign in', exact: true }).click();
   await expect(page.getByLabel('Message', { exact: true })).toBeEnabled({ timeout: 30000 });
@@ -709,6 +748,13 @@ test('native chat reactions, generated media and agent-opened documents', async 
     timeout: 30000,
   });
   await expect(reader.getByText('Native document proof', { exact: true })).toBeVisible();
+  await expect
+    .poll(() =>
+      reader
+        .getByRole('img', { name: 'Mermaid diagram' })
+        .evaluate((image) => (image instanceof HTMLImageElement ? image.naturalWidth : 0)),
+    )
+    .toBeGreaterThan(0);
   await page.screenshot({ animations: 'disabled', path: 'test-results/native-document-phone.png' });
   await page.getByRole('button', { name: 'Close document', exact: true }).click();
   await expect(page.getByLabel('Message', { exact: true })).toBeEnabled();
@@ -718,6 +764,13 @@ test('native chat reactions, generated media and agent-opened documents', async 
   await page.setViewportSize({ width: 1440, height: 1000 });
   await page.getByRole('button', { name: 'View plan.md', exact: true }).click();
   await expect(reader.getByText('Native document proof', { exact: true })).toBeVisible();
+  await expect
+    .poll(() =>
+      reader
+        .getByRole('img', { name: 'Mermaid diagram' })
+        .evaluate((image) => (image instanceof HTMLImageElement ? image.naturalWidth : 0)),
+    )
+    .toBeGreaterThan(0);
   await page.screenshot({
     animations: 'disabled',
     path: 'test-results/native-document-desktop.png',
@@ -1046,5 +1099,173 @@ test('bare model command shows the current native model without prompting it', a
   const picker = page.getByRole('dialog', { name: 'Choose a model' });
   await expect(picker).toBeVisible();
   await expect(picker).toContainText('Current: fixture-model', { timeout: 20000 });
+  expectNoChatSends(signals);
+});
+
+test('Hermes owns the voice and camera turn in Aurora’s existing Bot Chat', async ({
+  page,
+  context,
+}) => {
+  await context.addCookies(ownerCookies);
+  const speak = await installAtmeeMicrophone(page);
+  await page.goto('/');
+  await expect(page.getByLabel('Message', { exact: true })).toBeEnabled();
+  await page.getByRole('button', { name: 'Your account' }).click();
+  await page.getByRole('menuitem', { name: 'Settings', exact: true }).click();
+  await page.getByRole('tab', { name: 'Connections', exact: true }).click();
+  await page.getByRole('button', { name: 'Add API key', exact: true }).click();
+  const key = page.getByRole('form', { name: 'Atmee API key' });
+  await key.getByLabel('API key').fill('sk_atmee_native-synthetic');
+  await key.getByRole('button', { name: 'Submit' }).click();
+  await expect(page.getByText('API key saved')).toBeVisible();
+  await page.getByRole('button', { name: 'Close Settings' }).click();
+  const start = page.getByRole('button', { name: 'Start video call' });
+  await start.click();
+  await page.getByRole('combobox', { name: 'Video avatar' }).click();
+  await page.getByRole('option', { name: 'Synthetic character' }).click();
+  await expect(page.getByRole('combobox', { name: 'Video avatar' })).toContainText(
+    'Synthetic character',
+  );
+  await page.getByRole('button', { name: /^Close Edit / }).click();
+  const composer = page.getByLabel('Message', { exact: true });
+  const transcript = page.getByRole('log');
+  const call = page.getByRole('region', { name: 'Video call with Aurora' });
+  const waitForSpeech = (text: string) => {
+    const played = page.waitForResponse(
+      (response) =>
+        response.url().endsWith('/v1/rpc') &&
+        response.request().postDataJSON()?.operation === 'atmee.speak' &&
+        response.ok(),
+      { timeout: 20000 },
+    );
+    return speak(text).then(() => played);
+  };
+
+  await composer.fill('nativevideo remember Cedar');
+  await submitMessage(page);
+  await expect(transcript.getByText('Aurora saved Cedar', { exact: true })).toBeVisible({
+    timeout: 30000,
+  });
+  await start.click();
+  const camera = call.getByRole('button', { name: 'Turn camera on' });
+  await expect(camera).toBeEnabled({ timeout: 20000 });
+  await waitForSpeech('nativevideo recall');
+  await expect(transcript.getByText('Aurora remembers Cedar', { exact: true })).toBeVisible();
+  await waitForSpeech('nativevideo correct: the location is Juniper');
+  await expect(transcript.getByText('Aurora saved Juniper', { exact: true })).toBeVisible();
+  await camera.click();
+  await expect
+    .poll(() =>
+      call
+        .getByLabel('Your camera preview')
+        .evaluate((video: HTMLVideoElement) => video.readyState),
+    )
+    .toBeGreaterThan(1);
+  await waitForSpeech('nativevideo identify camera');
+  await expect(
+    transcript.getByText('Aurora received the camera frame', { exact: true }),
+  ).toBeVisible();
+  await expect(transcript.getByText('nativevideo identify camera', { exact: true })).toBeVisible();
+  await expect(transcript.getByText('Image attached at:', { exact: false })).toHaveCount(0);
+  await call.getByRole('button', { name: 'End video call' }).click();
+  await expect(transcript.getByText('Video call ended', { exact: true })).toBeVisible();
+  await page.reload();
+  await expect(transcript.getByText('Video call ended', { exact: true })).toBeVisible();
+  await expect(transcript.getByText('nativevideo identify camera', { exact: true })).toBeVisible();
+  await composer.fill('nativevideo recall in text');
+  await submitMessage(page);
+  await expect(transcript.getByText('Aurora remembers Juniper', { exact: true })).toBeVisible({
+    timeout: 30000,
+  });
+});
+
+test('owner creates Aurora with a generated voice and with a recording', async ({
+  page,
+  context,
+}) => {
+  await context.addCookies(ownerCookies);
+  const signals = observeOwner(page);
+  await page.goto('/');
+  await expect(page.getByLabel('Message', { exact: true })).toBeEnabled();
+  await page.getByRole('button', { name: 'Your account' }).click();
+  await page.getByRole('menuitem', { name: 'Settings', exact: true }).click();
+  await page.getByRole('tab', { name: 'Connections', exact: true }).click();
+  await page
+    .getByRole('region', { name: 'Atmee' })
+    .getByRole('button', { name: /^(Add API key|Replace key)$/ })
+    .click();
+  const key = page.getByRole('form', { name: 'Atmee API key' });
+  await key.getByLabel('API key').fill('invalid-atmee-key');
+  await key.getByRole('button', { name: 'Submit' }).click();
+  await expect(key.getByRole('alert')).toContainText('Atmee rejected this API key.');
+  await key.getByLabel('API key').fill('sk_atmee_native-builder');
+  await key.getByRole('button', { name: 'Submit' }).click();
+  await expect(page.getByText('API key saved')).toBeVisible();
+  await expect(key).toBeHidden();
+  const home = (
+    await readFile(resolve(process.env.WORKSPACE_TEST_STATE!, 'native-home.txt'), 'utf8')
+  ).trim();
+  const stored = await readFile(resolve(home, '.env'), 'utf8');
+  expect(stored.includes('ATMEE_API_KEY=sk_atmee_native-builder')).toBe(true);
+  await writeFile(resolve(home, 'SOUL.md'), 'Synthetic Aurora prioritizes clear decisions.\n');
+
+  await page.getByRole('button', { name: 'Close Settings' }).click();
+  const openVideo = async () => {
+    await openSidebarMenu(page, 'Aurora');
+    await page.getByRole('menuitem', { name: 'Edit pebble', exact: true }).click();
+    await page.getByRole('tab', { name: 'Voice', exact: true }).click();
+  };
+  await openVideo();
+  await page.getByRole('button', { name: 'New video avatar', exact: true }).click();
+  await page.getByRole('button', { name: /Review Hermes profile/ }).click();
+  await expect(page.getByLabel('Avatar name')).toHaveValue('Aurora');
+  await expect(page.getByLabel('Avatar instructions')).toHaveValue(
+    /Synthetic Aurora prioritizes clear decisions/,
+  );
+  await page.getByLabel('Portrait', { exact: true }).setInputFiles(await atmeePortrait(page));
+  await page.getByLabel('Avatar name').fill('Aurora · Video test');
+  await page.getByLabel('Avatar instructions').fill('Approved Aurora character description.');
+  await page.getByRole('radio', { name: 'Design a voice', exact: true }).click();
+  await page.getByLabel('Describe the voice').fill('Warm and conversational with a calm tone.');
+  await page.getByRole('button', { name: 'Generate voice samples' }).click();
+  for (const name of ['Voice 1', 'Voice 2']) {
+    await page.getByRole('button', { name: `Preview ${name}` }).click();
+    const audio = page.getByLabel(`Sample for ${name}`);
+    await expect(audio).toHaveAttribute('src', /^blob:/);
+    await expect
+      .poll(() =>
+        audio.evaluate((element) =>
+          element instanceof HTMLAudioElement ? element.currentTime : 0,
+        ),
+      )
+      .toBeGreaterThan(0);
+  }
+  await page.getByRole('radio', { name: 'Voice 1' }).click();
+  await page.getByRole('button', { name: 'Create video avatar', exact: true }).click();
+  await expect(page.getByText('Aurora · Video test is ready.')).toBeVisible({ timeout: 30000 });
+  await page.getByRole('button', { name: 'Use video avatar', exact: true }).click();
+  const selected = page.getByRole('combobox', { name: 'Video avatar', exact: true });
+  await expect(selected).toContainText('Aurora · Video test');
+  await page.getByRole('button', { name: 'Close Edit Aurora' }).click();
+  await page.reload();
+  await expect(page.getByLabel('Message', { exact: true })).toBeEnabled();
+  await openVideo();
+  await expect(selected).toContainText('Aurora · Video test');
+
+  await page.getByRole('button', { name: 'New video avatar', exact: true }).click();
+  await page.getByLabel('Portrait', { exact: true }).setInputFiles(await atmeePortrait(page));
+  await page.getByRole('radio', { name: 'Upload recording', exact: true }).click();
+  await page.getByLabel('Voice recording').setInputFiles({
+    name: 'voice.wav',
+    mimeType: 'audio/wav',
+    buffer: atmeeWav(12),
+  });
+  await page.getByRole('button', { name: /Review Hermes profile/ }).click();
+  await page.getByLabel('Avatar name').fill('Aurora · Recording test');
+  await page.getByLabel('Avatar instructions').fill('Approved Aurora character description.');
+  await page.getByRole('button', { name: 'Create video avatar', exact: true }).click();
+  await expect(page.getByText('Aurora · Recording test is ready.')).toBeVisible({ timeout: 30000 });
+  await page.getByRole('button', { name: 'Use video avatar', exact: true }).click();
+  await expect(selected).toContainText('Aurora · Recording test');
   expectNoChatSends(signals);
 });

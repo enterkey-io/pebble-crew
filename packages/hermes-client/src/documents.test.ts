@@ -6,6 +6,11 @@ describe('document sharing boundary', () => {
     expect(decodeDocument(file)).toEqual(file);
     expect(documentFormat('NOTES.TXT')).toBe('text');
     expect(documentFormat('image.svg')).toBeUndefined();
+    for (const name of ['FLOW.MMD', 'sequence.mermaid']) {
+      const diagram = { name, text: 'flowchart LR\n A --> B', format: 'mermaid' };
+      expect(decodeDocument(diagram)).toEqual(diagram);
+      expect(() => decodeDocument({ ...diagram, format: 'text' })).toThrow();
+    }
     for (const invalid of [
       { ...file, name: '../plan.md' },
       { ...file, name: 'plan.html' },
