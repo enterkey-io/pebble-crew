@@ -21,6 +21,7 @@ import {
   CommandList,
 } from '../components/ui/command';
 import {
+  decodeModelGroupRules,
   groupOllamaProviders,
   selectionProvider,
   type ModelCatalog,
@@ -31,7 +32,7 @@ type Provider = ModelProvider;
 type Catalog = ModelCatalog;
 
 function catalog(value: unknown): Catalog {
-  const data = value as Partial<Catalog> | null;
+  const data = value as (Partial<Catalog> & { model_groups?: unknown }) | null;
   if (
     !data ||
     typeof data.model !== 'string' ||
@@ -48,7 +49,13 @@ function catalog(value: unknown): Catalog {
     )
   )
     throw new ClientError('INVALID_RESPONSE');
-  return { model: data.model, provider: data.provider, providers: data.providers };
+  const rules = decodeModelGroupRules(data.model_groups);
+  return {
+    model: data.model,
+    provider: data.provider,
+    providers: data.providers,
+    ...(rules ? { rules } : {}),
+  };
 }
 
 export function ModelPicker({

@@ -5,7 +5,9 @@ would replace, rewind or rename the Pebble's one Bot Chat, restart the host, or
 only work in a terminal. A command that needs another Hermes interface says so.
 """
 import asyncio
+import json
 import re
+from pathlib import Path
 from .operations import InvalidOperation, fields, identifier
 
 # Offered first in the menu; native '/' alone returns a short recent list.
@@ -31,6 +33,44 @@ def valid_model(value):
             and re.fullmatch(r'[A-Za-z0-9_./:@+-]+(?:\[1m\])?', value) is not None
             and not value.startswith('-'))
 
+MODEL_GROUPS = ('ollama-cloud', 'ollama-local')
+PROVIDER_ID = r'[A-Za-z0-9_.:-]{1,128}'
+
+
+def model_groups_path():
+    """Optional owner rules for the model picker, beside the private workspace store."""
+    from .workspace import workspace_path
+    return workspace_path().parent / 'model-groups.json'
+
+
+def owner_model_groups(path=None):
+    """Read and normalize owner model picker rules; a missing or invalid file means none."""
+    try:
+        path = Path(path) if path is not None else model_groups_path()
+        if path.is_symlink() or not path.is_file() or path.stat().st_size > 64_000:
+            return None
+        value = json.loads(path.read_text())
+    except Exception:
+        return None
+    if not isinstance(value, dict) or value.get('schema') != 1 or set(value) - {'schema', 'merge', 'hide', 'prefer'}:
+        return None
+    merge, hide, prefer = value.get('merge', []), value.get('hide', {}), value.get('prefer', {})
+    model_list = lambda items, limit: (isinstance(items, list) and len(items) <= limit
+                                       and all(valid_model(item) for item in items))
+    if not (isinstance(merge, list) and len(merge) <= 50 and all(
+                isinstance(item, dict) and set(item) == {'canonical', 'provider', 'group', 'spellings'}
+                and valid_model(item['canonical']) and isinstance(item['provider'], str)
+                and re.fullmatch(PROVIDER_ID, item['provider']) and item['group'] in MODEL_GROUPS
+                and model_list(item['spellings'], 50) for item in merge)
+            and isinstance(hide, dict) and all(group in MODEL_GROUPS and model_list(models, 500)
+                                               for group, models in hide.items())
+            and isinstance(prefer, dict) and len(prefer) <= 500 and all(
+                valid_model(model) and isinstance(provider, str) and re.fullmatch(PROVIDER_ID, provider)
+                for model, provider in prefer.items())):
+        return None
+    return {'merge': merge, 'hide': hide, 'prefer': prefer}
+
+
 async def invoke(ops, operation, params):
     fields(params, ['session_id', *{
         'chat.model.options': [], 'chat.model.select': ['provider', 'model', 'confirm'],
@@ -51,8 +91,11 @@ async def invoke(ops, operation, params):
                 if valid_model(model)))
             if models and item.get('authenticated') is not False:
                 providers.append({'id': slug, 'name': str(label or slug)[:120], 'models': models})
-        return {'model': str(result.get('model') or '')[:250], 'provider': str(result.get('provider') or '')[:128],
-                'providers': providers}
+        options = {'model': str(result.get('model') or '')[:250], 'provider': str(result.get('provider') or '')[:128],
+                   'providers': providers}
+        if groups := owner_model_groups():
+            options['model_groups'] = groups
+        return options
     if operation == 'chat.model.select':
         model, provider, confirm = params['model'], params['provider'], params['confirm']
         if (not isinstance(provider, str) or not re.fullmatch(r'[A-Za-z0-9_.:-]{1,128}', provider)

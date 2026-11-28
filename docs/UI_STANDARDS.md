@@ -571,3 +571,10 @@ and name the earlier ID when a rule is superseded.
 - Decision: The model picker shows Ollama and Olares providers as two rows, Ollama Cloud and Ollama Local. A provider id ending in -cloud or :cloud is Cloud; the rest of that family is Local, ignoring a custom: prefix. Other providers keep their own rows. A model offered by several providers in one group appears once, and the first provider in Hermes's order serves it. Choosing a grouped model selects it through the provider it came from.
 - Why: The owner runs the same models through several Ollama and Olares endpoints, and separate rows per endpoint made the picker hard to scan.
 - Evidence: The [grouping unit test](../apps/web/src/chat/model-groups.test.ts) covers Cloud and Local grouping, passthrough, routing, deduplication and labels. Breaking the cloud rule, the routing, the deduplication or the first-provider rule turns it red.
+
+### UI-owner-model-group-rules Let an owner file refine the Ollama groups
+
+- Date: 2026-11-28
+- Decision: The bridge reads an optional `model-groups.json` from the owner's private bot-web data folder and returns it with the model options. It can merge spellings of one model into a single entry under a chosen group, hide models from a group, prefer a provider when several offer the same model, and mark the merged group current when the current model is a merged spelling. Without a valid file the picker keeps UI-ollama-model-groups unchanged.
+- Why: The owner needs model-specific grouping rules without placing their model names in the public repository.
+- Evidence: The [grouping unit test](../apps/web/src/chat/model-groups.test.ts) covers each rule with synthetic names and the unchanged behavior without rules. The [bridge test](../test/plugin/test_commands.py) returns a valid file and ignores missing, malformed or unsafe files. Breaking any rule or the bridge validation turns them red.

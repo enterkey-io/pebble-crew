@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { groupOllamaProviders, selectionProvider, type ModelCatalog } from './model-groups';
+import {
+  decodeModelGroupRules,
+  groupOllamaProviders,
+  selectionProvider,
+  type ModelCatalog,
+} from './model-groups';
 
 const catalog = (provider: string, providers: ModelCatalog['providers']): ModelCatalog => ({
   model: 'alpha',
@@ -64,5 +69,89 @@ describe('Ollama model picker groups', () => {
     expect(cloud.models).toEqual(['alpha', 'beta:latest', 'org/alpha']);
     expect(selectionProvider(cloud, 'beta:latest')).toBe('ollama-cloud');
     expect(selectionProvider(cloud, 'org/alpha')).toBe('olares-ollama-cloud');
+  });
+});
+
+describe('owner model group rules', () => {
+  const rules = decodeModelGroupRules({
+    merge: [
+      {
+        canonical: 'alpha:latest',
+        provider: 'olares-ollama-cloud',
+        group: 'ollama-cloud',
+        spellings: ['alpha', 'Alpha:Latest', 'org/alpha'],
+      },
+    ],
+    hide: { 'ollama-local': ['Beta:Latest'] },
+    prefer: { 'gamma:7b': 'olares-ollama-local' },
+  })!;
+  const rows = (result: ModelCatalog) =>
+    result.providers.map((row) => [row.id, row.models, [...(row.modelRoutes ?? [])]]);
+
+  it('merges spellings under their group and keeps only the canonical route when offered', () => {
+    const providers = [
+      { id: 'ollama', name: 'Ollama', models: ['alpha', 'delta'] },
+      { id: 'custom:olares-ollama-cloud', name: 'Olares', models: ['org/alpha', 'alpha:latest'] },
+    ];
+    expect(rows(groupOllamaProviders({ ...catalog('openai', providers), rules }))).toEqual([
+      ['ollama-local', ['delta'], [['delta', 'ollama']]],
+      ['ollama-cloud', ['alpha:latest'], [['alpha:latest', 'custom:olares-ollama-cloud']]],
+    ]);
+    const withoutCanonical = [{ id: 'ollama', name: 'Ollama', models: ['alpha', 'org/alpha'] }];
+    expect(rows(groupOllamaProviders({ ...catalog('openai', withoutCanonical), rules }))).toEqual([
+      [
+        'ollama-cloud',
+        ['alpha', 'org/alpha'],
+        [
+          ['alpha', 'ollama'],
+          ['org/alpha', 'ollama'],
+        ],
+      ],
+    ]);
+  });
+
+  it('hides listed models only from the named group', () => {
+    const providers = [
+      { id: 'ollama-local', name: 'Local', models: ['beta:latest', 'delta'] },
+      { id: 'ollama-cloud', name: 'Cloud', models: ['beta:latest'] },
+    ];
+    expect(rows(groupOllamaProviders({ ...catalog('openai', providers), rules }))).toEqual([
+      ['ollama-local', ['delta'], [['delta', 'ollama-local']]],
+      ['ollama-cloud', ['beta:latest'], [['beta:latest', 'ollama-cloud']]],
+    ]);
+  });
+
+  it('routes a shared model to the preferred provider instead of the first', () => {
+    const providers = [
+      { id: 'ollama', name: 'Ollama', models: ['gamma:7b', 'delta'] },
+      { id: 'custom:olares-ollama-local', name: 'Olares', models: ['gamma:7b', 'delta'] },
+    ];
+    const local = groupOllamaProviders({ ...catalog('openai', providers), rules }).providers[0]!;
+    expect(selectionProvider(local, 'gamma:7b')).toBe('custom:olares-ollama-local');
+    expect(selectionProvider(local, 'delta')).toBe('ollama');
+  });
+
+  it('marks the merged group current when the current model is a merged spelling', () => {
+    const providers = [
+      { id: 'ollama', name: 'Ollama', models: ['delta'] },
+      { id: 'ollama-cloud', name: 'Cloud', models: ['org/alpha'] },
+    ];
+    const current = { model: 'ORG/alpha', provider: 'ollama', providers, rules };
+    expect(groupOllamaProviders(current).provider).toBe('ollama-cloud');
+    expect(
+      groupOllamaProviders({ model: 'ORG/alpha', provider: 'ollama', providers }).provider,
+    ).toBe('ollama-local');
+  });
+
+  it('ignores malformed rules so the picker stays generic', () => {
+    for (const value of [
+      undefined,
+      null,
+      'rules',
+      { merge: [{ canonical: 'alpha', provider: 'x', group: 'elsewhere', spellings: [] }] },
+      { hide: { 'ollama-local': 'beta:latest' } },
+      { prefer: { alpha: 7 } },
+    ])
+      expect(decodeModelGroupRules(value)).toBeUndefined();
   });
 });
