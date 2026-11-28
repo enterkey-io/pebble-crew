@@ -20,9 +20,15 @@ import {
   CommandItem,
   CommandList,
 } from '../components/ui/command';
+import {
+  groupOllamaProviders,
+  selectionProvider,
+  type ModelCatalog,
+  type ModelProvider,
+} from './model-groups';
 
-type Provider = { id: string; name: string; models: string[] };
-type Catalog = { model: string; provider: string; providers: Provider[] };
+type Provider = ModelProvider;
+type Catalog = ModelCatalog;
 
 function catalog(value: unknown): Catalog {
   const data = value as Partial<Catalog> | null;
@@ -79,6 +85,7 @@ export function ModelPicker({
     void client
       .invoke('chat.model.options', { session_id: sessionId })
       .then(catalog)
+      .then(groupOllamaProviders)
       .then(
         (result) => {
           if (current) setData(result);
@@ -98,7 +105,7 @@ export function ModelPicker({
     try {
       const result = (await client.invoke('chat.model.select', {
         session_id: sessionId,
-        provider: provider.id,
+        provider: selectionProvider(provider, model),
         model,
         confirm,
       })) as { value?: unknown; confirm_required?: unknown; message?: unknown; deferred?: unknown };
