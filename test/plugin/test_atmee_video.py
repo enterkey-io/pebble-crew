@@ -151,9 +151,13 @@ class AtmeeVideoTests(unittest.IsolatedAsyncioTestCase):
             {'role': 'user', 'display_kind': 'process_complete', 'text': 'Private background message'},
             {'role': 'assistant', 'display_commentary': True, 'text': 'Private commentary'},
         ]}
+        from types import SimpleNamespace
+        # Hermes supplies agent.redact in production; the briefing sends no history without it.
+        redact = SimpleNamespace(redact_sensitive_text=lambda text, *, force=False: text)
         with (
             patch('bot_web.atmee_video.provider', side_effect=self.vendor) as provider,
             patch('bot_web.atmee_video.read_key', return_value=KEY),
+            patch.dict('sys.modules', {'agent.redact': redact}),
         ):
             await self.service.invoke('atmee.select', {'bot_id': 'alpha-id', 'avatar_id': CHARACTER})
             self.assertEqual(await self.service.invoke('atmee.context', {
