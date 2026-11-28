@@ -60,9 +60,13 @@ export class TranscriptFollow {
     cancelAnimationFrame(this.resumeFrame);
     this.resumeFrame = 0;
   }
-  snap() {
+  snap(message?: HTMLElement) {
     this.cancel();
-    this.node.scrollTop = this.node.scrollHeight;
+    this.node.scrollTop = message
+      ? this.node.scrollTop +
+        message.getBoundingClientRect().bottom -
+        this.node.getBoundingClientRect().bottom
+      : this.node.scrollHeight;
     this.written = this.node.scrollTop;
   }
   follow() {

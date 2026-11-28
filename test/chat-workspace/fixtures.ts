@@ -89,6 +89,7 @@ export async function installFixture(
     messages?: (Record<string, unknown> & { row_id: number })[];
     open?: (profile: string) => unknown | Promise<unknown>;
     roomMembers?: Record<string, unknown>[];
+    roomDisband?: boolean;
     roomLog?: (params: Record<string, unknown>) => unknown | Promise<unknown>;
     historyPage?: (params: Record<string, unknown>) => unknown | Promise<unknown>;
   } = {},
@@ -284,6 +285,7 @@ export async function installFixture(
             generated_media: true,
             reactions: options.reactions !== false,
             room_reactions: options.reactions !== false,
+            room_disband: options.roomDisband === true,
           },
         },
       });

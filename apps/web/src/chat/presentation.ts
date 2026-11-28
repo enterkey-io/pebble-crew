@@ -1,3 +1,4 @@
+import { isConversationMessage } from '@hermes-client/protocol';
 import type { ConversationMessage as ChatMessage } from '@hermes-client/protocol';
 import type { ReactNode } from 'react';
 import { messageDate } from '../conversation';
@@ -84,8 +85,7 @@ export function projectTimeline(
           id: message.id ?? `activity-${items.length}`,
           messages: [message],
         });
-    } else if (message.text.trim() || message.files?.length)
-      items.push({ kind: 'message', message });
+    } else if (isConversationMessage(message)) items.push({ kind: 'message', message });
     else if (message.commentary?.length) {
       const text = message.commentary.filter((p: unknown) => typeof p === 'string').join('\n');
       if (text.trim())

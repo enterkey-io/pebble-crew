@@ -8,7 +8,8 @@ test('native slash suggestions use the open conversation and commands never beco
   context,
 }) => {
   await installFixture(context);
-  const commands: string[] = [],
+  const selections: Record<string, unknown>[] = [],
+    commands: string[] = [],
     prompts: string[] = [];
   await page.route('**/v1/rpc', async (route) => {
     const { operation, params } = route.request().postDataJSON();
@@ -27,6 +28,31 @@ test('native slash suggestions use the open conversation and commands never beco
                 : [],
             replace_from: 1,
           },
+        },
+      });
+    }
+    if (operation === 'chat.model.options') {
+      expect(params).toEqual({ session_id: 'session-arlo' });
+      return route.fulfill({
+        json: {
+          result: {
+            model: 'current-synthetic',
+            provider: 'test-one',
+            providers: [
+              { id: 'test-one', name: 'Test One', models: ['current-synthetic', 'small-model'] },
+              { id: 'test-two', name: 'Test Two', models: ['large-model'] },
+            ],
+          },
+        },
+      });
+    }
+    if (operation === 'chat.model.select') {
+      selections.push(params);
+      return route.fulfill({
+        json: {
+          result: params.confirm
+            ? { value: 'large-model', confirm_required: false }
+            : { confirm_required: true, message: 'Confirm this model switch.' },
         },
       });
     }
@@ -87,7 +113,38 @@ test('native slash suggestions use the open conversation and commands never beco
   if (await page.evaluate(() => matchMedia('(pointer: coarse)').matches))
     await suggestions.getByRole('option', { name: '/model Change model', exact: true }).click();
   else await field.press('Enter');
-  await expect(field).toHaveValue('/model ');
+  const picker = page.getByRole('dialog', { name: 'Choose a model' });
+  await expect(picker).toContainText('Current: current-synthetic · Test One');
+  await expect(picker.getByRole('option', { name: 'Test Two' })).toBeVisible();
+  await expect(picker.getByRole('option', { name: 'large-model' })).toHaveCount(0);
+  await picker.getByRole('option', { name: 'Test Two' }).click();
+  const models = page.getByRole('dialog', { name: 'Test Two' });
+  await expect(models).toContainText('Current: current-synthetic');
+  await page.screenshot({
+    animations: 'disabled',
+    path: `test-results/verification/model-picker-${page.viewportSize()?.width}.png`,
+  });
+  await models.getByRole('option', { name: 'large-model' }).click();
+  await expect(models).toContainText('Confirm this model switch.');
+  await models.getByRole('button', { name: 'Switch model' }).click();
+  await expect(models).toBeHidden();
+  await expect(page.getByRole('region', { name: '/model result' })).toContainText(
+    'Switched to large-model.',
+  );
+  expect(selections).toEqual(
+    [false, true].map((confirm) => ({
+      session_id: 'session-arlo',
+      provider: 'test-two',
+      model: 'large-model',
+      confirm,
+    })),
+  );
+  await field.fill('/model');
+  await field.press('Enter');
+  await expect(picker).toBeVisible();
+  await picker.getByRole('button', { name: 'Close' }).click();
+  await expect(field).toHaveValue('');
+
   await field.fill('/model synthetic-model');
   await submitMessage(page);
   await expect(

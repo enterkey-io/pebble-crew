@@ -151,7 +151,18 @@ export function ConversationInput({
           onBlur={() => setFocused(false)}
           onSelect={(e) => setCaret(e.currentTarget.selectionStart)}
           onKeyDown={(e) => {
-            if (touchKeyboard && e.key === 'Enter') return;
+            if (touchKeyboard && e.key === 'Enter') {
+              if (
+                target?.kind === 'bot' &&
+                !e.shiftKey &&
+                !e.nativeEvent.isComposing &&
+                value.trim().toLowerCase() === '/model'
+              ) {
+                e.preventDefault();
+                onSend();
+              }
+              return;
+            }
             if (
               !e.nativeEvent.isComposing &&
               (mentions.key(e.key) || commands.current?.key(e.key))

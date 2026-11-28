@@ -679,7 +679,11 @@
 .pc-row[draggable],
 .pc-pin[draggable],
 .pc-section-header[draggable] {
+  -webkit-touch-callout: none;
   user-select: none;
+}
+[data-context-label] img {
+  -webkit-user-drag: none;
 }
 
 .pc-crew-member {

@@ -55,10 +55,9 @@ export const CommandSuggestions = forwardRef<
   const index = selection.text === text ? selection.index % (items.length || 1) : 0;
   function choose(item: CommandSuggestion, execute: boolean) {
     const chosen = text.slice(0, current?.start ?? 1) + item.text;
-    const needsArgument = chosen.trim() === '/model';
-    const next = chosen.trimEnd() + (needsArgument || !execute ? ' ' : '');
-    if (!needsArgument) setDismissed(next);
-    onChoose(next, execute && !needsArgument);
+    const next = chosen.trimEnd() + (!execute ? ' ' : '');
+    setDismissed(next);
+    onChoose(next, execute);
   }
   useImperativeHandle(ref, () => ({
     key(key) {

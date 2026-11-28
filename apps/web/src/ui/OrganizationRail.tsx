@@ -1,7 +1,7 @@
 import { Fragment, useEffect, useRef, useState } from 'react';
 import type { Dispatch, DragEvent, ReactNode, SetStateAction } from 'react';
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
-import { ChevronDown, CornerUpRight, Plus } from 'lucide-react';
+import { ChevronDown, CornerUpRight, Plus, Trash2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -125,6 +125,7 @@ export function OrganizationRail({
   groupFace,
   onOpenPebble,
   onOpenGroup,
+  onDeleteGroup,
   onEditOrganization,
   onPin,
   actions,
@@ -139,6 +140,7 @@ export function OrganizationRail({
   groupFace: (id: string, readKey: string) => ReactNode;
   onOpenPebble: (id: string) => void;
   onOpenGroup: (id: string, readKey: string) => void;
+  onDeleteGroup?: ((group: RailGroup) => void) | undefined;
   onEditOrganization: (editor: OrganizationEditor) => void;
   onPin: (id: string) => void;
   actions: (id: string, children: ReactNode, placementId?: string) => ReactNode;
@@ -154,6 +156,7 @@ export function OrganizationRail({
     setOver('');
   };
   const startDrag = (event: DragEvent, item: RailDrag) => {
+    if (event.currentTarget.hasAttribute('data-stationary-press')) return;
     event.stopPropagation();
     event.dataTransfer.setData(dragFormat, JSON.stringify(item));
     event.dataTransfer.effectAllowed = 'move';
@@ -317,6 +320,17 @@ export function OrganizationRail({
               },
             ],
           },
+          ...(group && onDeleteGroup
+            ? [
+                {
+                  label: 'Delete group',
+                  icon: Trash2,
+                  danger: true,
+                  separatorBefore: true,
+                  action: () => onDeleteGroup(group),
+                },
+              ]
+            : []),
         ]}
       >
         {content}

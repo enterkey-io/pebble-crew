@@ -11,6 +11,11 @@ test('Markdown preserves code, lists, quotes and tables without widening the con
   await installFixture(context, {
     messages: [
       {
+        row_id: 2,
+        role: 'user',
+        text: '_My emphasis_\n**my bold**, `literal_under_score` and normal snake_case.',
+      },
+      {
         row_id: 1,
         role: 'assistant',
         text: [
@@ -29,7 +34,13 @@ test('Markdown preserves code, lists, quotes and tables without widening the con
   });
   await page.goto('/');
   await expect(page.getByLabel('Message', { exact: true })).toBeEnabled();
-  const body = page.getByRole('log').locator('.message-body');
+  const owner = page.getByRole('log').locator('[data-message-role="user"] .message-body');
+  await expect(owner.locator('em')).toHaveText('My emphasis');
+  await expect(owner.locator('em')).toHaveCSS('font-style', 'italic');
+  await expect(owner.locator('strong')).toHaveText('my bold');
+  await expect(owner.locator('code')).toHaveText('literal_under_score');
+  await expect(owner).toContainText('normal snake_case.');
+  const body = page.getByRole('log').locator('[data-message-role="assistant"] .message-body');
   await expect(body.getByRole('heading', { name: 'Research notes' })).toBeVisible();
   await expect(body.locator('strong')).toHaveText('clear');
   await expect(body.locator('em')).toHaveText('emphasis');

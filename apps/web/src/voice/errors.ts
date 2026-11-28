@@ -12,7 +12,12 @@ export function rejectedVoiceKey(cause: unknown): boolean {
   const reason = cause instanceof VoiceStartError ? cause.reason : cause;
   return (
     reason instanceof ClientError &&
-    (reason.code === 'VOICE_KEY_REJECTED' || reason.code === 'VOICE_KEY_REQUIRED')
+    [
+      'VOICE_KEY_REJECTED',
+      'VOICE_KEY_REQUIRED',
+      'ELEVEN_KEY_REJECTED',
+      'ELEVEN_KEY_REQUIRED',
+    ].includes(reason.code)
   );
 }
 
@@ -20,6 +25,8 @@ export function voiceFailure(cause: unknown, preview = false): string {
   const reason = cause instanceof VoiceStartError ? cause.reason : cause;
   if (reason instanceof ClientError) return reason.message;
   if (cause instanceof VoiceStartError && cause.stage === 'microphone') {
+    if (reason instanceof DOMException && reason.name === 'NotSupportedError')
+      return 'Microphone access is unavailable. Open Pebble Crew over HTTPS in a supported browser.';
     if (reason instanceof DOMException && reason.name === 'NotFoundError')
       return 'No microphone was found. Connect one, then try again.';
     if (reason instanceof DOMException && reason.name === 'NotReadableError')

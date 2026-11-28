@@ -951,3 +951,100 @@ test('owner-wide Tasks setting survives native reload and restores the existing 
   );
   expectNoChatSends(signals);
 });
+
+test('voice provider selection persists in the native owner without opening a paid session', async ({
+  page,
+  context,
+}) => {
+  await context.addCookies(ownerCookies);
+  const signals = observeOwner(page);
+  const voiceSessions: string[] = [];
+  page.on('request', (request) => {
+    if (request.url().endsWith('/v1/rpc') && request.postDataJSON()?.operation === 'voice.session')
+      voiceSessions.push(request.url());
+  });
+  const openVoice = async () => {
+    await expect(page.getByLabel('Message', { exact: true })).toBeEnabled({ timeout: 30000 });
+    await openSidebarMenu(page, 'Alpha Stone');
+    await page.getByRole('menuitem', { name: 'Edit pebble', exact: true }).click();
+    const settings = page.getByRole('region', { name: 'Edit Alpha Stone', exact: true });
+    await settings.getByRole('tab', { name: 'Voice', exact: true }).click();
+    await expect(settings.getByRole('radiogroup', { name: 'Voice provider' })).toBeVisible({
+      timeout: 30000,
+    });
+    return settings;
+  };
+  await page.goto('/');
+  let settings = await openVoice();
+  await expect(settings.getByRole('radio', { name: 'OpenAI' })).toHaveAttribute(
+    'aria-checked',
+    'true',
+  );
+  await settings.getByRole('radio', { name: 'ElevenLabs' }).click();
+  await expect(settings.getByRole('form', { name: 'ElevenLabs API key' })).toBeVisible();
+  await page.reload();
+  settings = await openVoice();
+  await expect(settings.getByRole('radio', { name: 'ElevenLabs' })).toHaveAttribute(
+    'aria-checked',
+    'true',
+  );
+  await settings.getByRole('radio', { name: 'OpenAI' }).click();
+  await expect(settings.getByRole('radio', { name: 'OpenAI' })).toHaveAttribute(
+    'aria-checked',
+    'true',
+  );
+  expect(voiceSessions).toEqual([]);
+  expectNoChatSends(signals);
+});
+
+test('owner can delete a native group from its sidebar menu', async ({ page, context }) => {
+  await context.addCookies(ownerCookies);
+  const signals = observeOwner(page);
+  await page.goto('/');
+  await expect(page.getByLabel('Message', { exact: true })).toBeEnabled();
+  await page.getByRole('button', { name: 'New', exact: true }).click();
+  await page.getByRole('menuitem', { name: 'New group chat', exact: true }).click();
+  const create = page.getByRole('dialog', { name: 'New group chat', exact: true });
+  await create.getByLabel('Name', { exact: true }).fill('Disposable discussion');
+  for (const name of ['Alpha Stone', 'Beta'])
+    await create.getByRole('checkbox', { name, exact: true }).check();
+  await create.getByRole('button', { name: 'Create', exact: true }).click();
+  const group = page.getByRole('button', { name: /^Disposable discussion .*Open chat$/ });
+  await expect(group).toBeVisible();
+  const confirm = page.getByRole('alertdialog', { name: 'Delete Disposable discussion?' });
+  const openDelete = async () => {
+    await openSidebarMenu(page, 'Disposable discussion');
+    await page.getByRole('menuitem', { name: 'Delete group', exact: true }).click();
+    await expect(confirm).toBeVisible();
+  };
+  await openDelete();
+  await confirm.getByRole('button', { name: 'Cancel', exact: true }).click();
+  await expect(group).toBeVisible();
+  await openDelete();
+  await confirm.getByRole('button', { name: 'Delete group', exact: true }).click();
+  await expect(confirm).toBeHidden();
+  await expect(group).toHaveCount(0);
+  await expect(page.locator('.chat-title')).not.toContainText('Disposable discussion');
+  await expect(page.getByText('This conversation is no longer in your sidebar.')).toHaveCount(0);
+  await page.reload();
+  await expect(page.getByRole('button', { name: 'New', exact: true })).toBeVisible();
+  await expect(group).toHaveCount(0);
+  expectNoChatSends(signals);
+});
+
+test('bare model command shows the current native model without prompting it', async ({
+  page,
+  context,
+}) => {
+  await context.addCookies(ownerCookies);
+  const signals = observeOwner(page);
+  await page.goto('/');
+  const composer = page.getByLabel('Message', { exact: true });
+  await expect(composer).toBeEnabled();
+  await composer.fill('/model');
+  await submitMessage(page);
+  const picker = page.getByRole('dialog', { name: 'Choose a model' });
+  await expect(picker).toBeVisible();
+  await expect(picker).toContainText('Current: fixture-model', { timeout: 20000 });
+  expectNoChatSends(signals);
+});

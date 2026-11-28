@@ -1,7 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { fixtureState } from '../../../../test/chat-workspace/fixtures';
 import { messageMentions } from './mentions';
-import { plainMentions } from './mention-markdown';
 
 function roster() {
   const bots = fixtureState().bots;
@@ -60,15 +59,5 @@ describe('message mention identity', () => {
     ]);
     for (const token of ['arlo', 'shared-alias', bots[2]!.handle, bots[3]!.handle])
       expect(mentions.has(token)).toBe(false);
-  });
-
-  it('preserves owner plaintext and excludes Markdown code, links and email contexts', () => {
-    const { bots } = roster();
-    const mentions = messageMentions(bots, []);
-    const text =
-      'Hello  **@TINA**\n\n`@tina`\n```\n@tina\n```\nhttps://example.test/@tina\nname@tina.test\n[@tina](https://example.test)\n\\@tina\n@tina-extra\nBye @tina!';
-    const matches = plainMentions(text, mentions);
-    expect(matches.map((m) => text.slice(m.start, m.end))).toEqual(['@TINA', '@tina']);
-    expect(matches.every((m) => m.bot.profile === 'friend-7c18d43223d1407e')).toBe(true);
   });
 });

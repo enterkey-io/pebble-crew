@@ -48,8 +48,9 @@ function SelectContent({
   children,
   position = 'item-aligned',
   align = 'center',
+  scrollButtons = true,
   ...props
-}: React.ComponentProps<typeof SelectPrimitive.Content>) {
+}: React.ComponentProps<typeof SelectPrimitive.Content> & { scrollButtons?: boolean }) {
   return (
     <SelectPrimitive.Portal>
       <SelectPrimitive.Content
@@ -64,7 +65,7 @@ function SelectContent({
         align={align}
         {...props}
       >
-        <SelectScrollUpButton />
+        {scrollButtons && <SelectScrollUpButton />}
         <SelectPrimitive.Viewport
           className={cn(
             'p-1',
@@ -74,7 +75,7 @@ function SelectContent({
         >
           {children}
         </SelectPrimitive.Viewport>
-        <SelectScrollDownButton />
+        {scrollButtons && <SelectScrollDownButton />}
       </SelectPrimitive.Content>
     </SelectPrimitive.Portal>
   );

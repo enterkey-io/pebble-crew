@@ -11,10 +11,10 @@ building blocks came from. Earlier design plans are historical.
 | Theme and controls       | Use one semantic theme across the installed app and review. Use the owned React shadcn controls and Radix behavior for fields, buttons, menus, tabs, and dialogs. Use semantic colors for interaction states. Keep avatar colors independent of the interface theme.                                                                                                                                     | [Theme](../apps/web/src/ui/theme.css), [tokens](../apps/web/src/ui/foundation.css), [controls](../apps/web/src/components/ui)                                                                                                                               |
 | Page layout              | Keep the app root in normal document flow. The phone workspace reserves the system safe areas once for every page. Dialogs and sheets apply the same viewport measurements in their own layer. Keep titles, close controls, and the composer reachable at cold open and after the keyboard closes.                                                                                                       | [Workspace panels](../apps/web/src/ui/WorkspacePanels.tsx), [phone layout](../apps/web/src/ui/mobile.css), [viewport](../apps/web/src/ui/viewport.ts), [dialog](../apps/web/src/components/ui/dialog.tsx), [sheet](../apps/web/src/components/ui/sheet.tsx) |
 | Sidebar and status       | Keep brand and search in the header and account in the footer. Use the same role label in regular rows and pins. Phone edge swipes return to the retained chat or to the list. Pair the connection dot with visible status text in both themes. The account avatar has no decorative border. When the phone list opens, focus the navigation region and leave keyboard focus indicators on the controls. | [Rail](../apps/web/src/chat/Rail.tsx), [role label](../apps/web/src/ui/RoleLabel.tsx), [edge navigation](../apps/web/src/ui/edge-navigation.ts)                                                                                                             |
-| Sections and group chats | Sections organize the sidebar. A group chat has explicitly selected members. Moving a row or adding a shortcut leaves conversation membership and reporting intact. Start a drag from the row itself. Cancel the hold menu if that gesture becomes a drag.                                                                                                                                               | [Organization rail](../apps/web/src/ui/OrganizationRail.tsx), [sections and groups contract](SECTIONS_AND_GROUPS_IMPLEMENTATION.md)                                                                                                                         |
+| Sections and group chats | Sections organize the sidebar. A group chat has explicitly selected members. Moving a row or adding a shortcut leaves conversation membership and reporting intact. Tap to open. Press and hold in place to show options. Move to start a drag from the row itself. Confirm before deleting a group chat.                                                                                                | [Organization rail](../apps/web/src/ui/OrganizationRail.tsx), [sections and groups contract](SECTIONS_AND_GROUPS_IMPLEMENTATION.md)                                                                                                                         |
 | Editors and dialogs      | Use a shared page header or dialog close control. Keep the header and actions reachable when a form scrolls. Put editor tabs and scroll behavior in the shared editor layout. Use the shared discard confirmation for unsaved changes.                                                                                                                                                                   | [Page header](../apps/web/src/ui/primitives.tsx), [editor layout](../apps/web/src/ui/EditorSurface.tsx), [discard confirmation](../apps/web/src/ui/DiscardChanges.tsx)                                                                                      |
 | Chat and approvals       | Use shared Message, Prompt Input, and Confirmation compositions. Keep Send, Stop, and Voice in one action position. When composing, show Send. On a phone, Return inserts a line break. Preserve the draft and reading position through navigation and recovery. Keep pending input reachable and leave a compact receipt when resolved. Explain unavailable conversations without launching setup.      | [Transcript](../apps/web/src/chat/Transcript.tsx), [composer](../apps/web/src/chat/ConversationInput.tsx), [AI Elements](../apps/web/src/components/ai-elements)                                                                                            |
-| Pins and photo avatars   | Give pin tiles a 100 px minimum and wrap when space runs out. Keep role labels outlined and readable in every tile state. Show circular photo thumbnails from the owner host, reserve their space on startup, and reuse loaded photos when a section reopens.                                                                                                                                            | [Pinned tile](../apps/web/src/ui/PebbleTile.tsx), [layout](../apps/web/src/ui/layout.css), [avatar delivery](../plugins/bot-web/workspace.py)                                                                                                               |
+| Pins and photo avatars   | Give pin tiles a 100 px minimum and wrap when space runs out. Keep the same filled, single-line role labels as the roster. Show circular photo thumbnails from the owner host, reserve their space on startup, and reuse loaded photos when a section reopens.                                                                                                                                           | [Pinned tile](../apps/web/src/ui/PebbleTile.tsx), [layout](../apps/web/src/ui/layout.css), [avatar delivery](../plugins/bot-web/workspace.py)                                                                                                               |
 | Message mentions         | Resolve known public handles, native profile aliases and unambiguous local roster aliases to stable identities in direct and group messages. Use neutral inline controls with a visible underline, keyboard focus and a read-only profile popover. Preserve the original token and copy text.                                                                                                            | [Mention rendering](../apps/web/src/chat/MessageMention.tsx), [identity lookup](../apps/web/src/chat/mentions.ts)                                                                                                                                           |
 | Startup                  | Center one animated shape above the progress line, with no role badge. Use the Main Pebble's saved shape and color when available, including for photo avatars. Use the default Iris pebble before setup and while connecting. Sign out belongs in the account menu.                                                                                                                                     | [Startup screen](../apps/web/src/StartupScreen.tsx), [shared avatar](../apps/web/src/AgentAvatar.tsx)                                                                                                                                                       |
 | Motion and feedback      | Use the shared timings and respect reduced motion. Keep automatic transcript movement under one controller and yield when the reader scrolls away. Pair meaningful color states with text or another visible cue. Keep button names and focus available to keyboard and touch users.                                                                                                                     | [Theme tokens](../apps/web/src/ui/foundation.css), [transcript controller](../apps/web/src/chat/viewport-motion.ts), [icon button](../apps/web/src/components/ui/icon-button.tsx)                                                                           |
@@ -165,9 +165,9 @@ and name the earlier ID when a rule is superseded.
 ### UI-pin-reflow Keep pinned roles readable when the sidebar narrows
 
 - Date: 2026-11-05
-- Decision: Reserve at least 100 px per pin and wrap as space narrows. Keep the avatar above the name and let the role wrap. Use the shared role label in its outline treatment on pins. Keep at least [4.5:1 text contrast](https://www.w3.org/WAI/WCAG22/Understanding/contrast-minimum) at rest, on hover and when selected. Hover changes the tile surface and preserves the selected fill.
+- Decision: Reserve at least 100 px per pin and wrap as space narrows. Keep the avatar above the name and use the same filled role label as the roster. Use one line and an ellipsis for long roles, with the full role in the tile’s accessible name and Pebble details. Keep at least [4.5:1 text contrast](https://www.w3.org/WAI/WCAG22/Understanding/contrast-minimum) at rest, on hover and when selected. Hover changes the tile surface and preserves the selected fill.
 - Why: Forcing three pins at every width cramped titles and made the light-theme tag compete with the hover surface. This supersedes the three-pins-at-minimum-width rule in UI-compact-pins-circle-photos.
-- Evidence: The [browser checks](../test/chat-workspace/interface-preferences.spec.ts) verify wrapping, three-across at wider widths, and label contrast over the light-mode tile surfaces.
+- Evidence: The [browser checks](../test/chat-workspace/interface-preferences.spec.ts) verify tile wrapping at narrow widths, aligned labels for three pins, and contrast in both themes.
 
 ### UI-pin-photo-badge Center status badges on the photo edge
 
@@ -224,3 +224,52 @@ and name the earlier ID when a rule is superseded.
 - Decision: Keep the details panel in phone navigation history when its Edit Pebble dialog opens. Close and browser Back dismiss the editor first.
 - Why: Returning directly to chat skips the panel the user opened the editor from.
 - Evidence: The [installed-shell browser checks](../test/mobile/installed-shell.spec.ts) exercise both dismissals and a second Back from the details panel to chat.
+
+### UI-chat-open-focus Open chats without a Back focus ring
+
+- Date: 2026-11-05
+- Decision: Move focus to the chat heading when leaving the phone list for a chat. Restore Back focus after keyboard Escape.
+- Why: A focus ring on Back after selecting a chat looked like a stuck control.
+- Evidence: The [installed-shell checks](../test/mobile/installed-shell.spec.ts) distinguish touch selection from keyboard dismissal.
+
+### UI-voice-picker Keep voice choices inside the safe area
+
+- Date: 2026-11-05
+- Decision: Anchor the voice list to its trigger, constrain it to the safe editor bounds, and scroll the list independently.
+- Why: Centering the menu around a selected item could position a long voice list above the phone’s visible area.
+- Evidence: The [voice browser checks](../test/chat-workspace/voice.spec.ts) open and scroll a long list on a short installed viewport.
+
+### UI-voice-provider Keep provider setup in the Pebble Voice tab
+
+- Date: 2026-11-05
+- Decision: Use the shared segmented control for provider selection, the private Secret Card for keys, and the same voice selector, preview and call bar for both providers.
+- Why: A Pebble has one place to set up or change its voice. Voice previews play a sample without activating the microphone.
+- Evidence: The [ElevenLabs voice browser journey](../test/chat-workspace/eleven-voice.spec.ts) exercises provider selection, a Vox preset, preview, interruption and the call receipt.
+
+### UI-image-download-contrast Keep image actions legible on every message
+
+- Date: 2026-11-05
+- Decision: Use the shared secondary button colors for image downloads and the accent surface on hover. The glyph has its own foreground in every state.
+- Why: A download icon could inherit the outgoing message’s dark text while sitting on a dark overlay.
+- Evidence: The [pasted-image browser checks](../test/chat-workspace/agent-media.spec.ts) measure the icon against its surface in both themes, including hover and focus.
+
+### UI-sidebar-hold-options Keep a stationary hold distinct from drag
+
+- Date: 2026-11-05
+- Decision: On touch, a stationary hold opens the shared options menu, including with slight finger movement. A moving drag cancels the menu. Delete group uses a confirmation and the native Hermes operation.
+- Why: A phone could start a drag during a stationary hold, leaving no way to reach actions.
+- Evidence: The [phone sidebar checks](../test/mobile/sidebar.spec.ts) cover pebbles, pins, groups, sections and a moving drag. The [owner browser check](../test/owner-browser/owner.spec.ts) exercises native group deletion and reload.
+
+### UI-chat-model-picker Open a provider-first model picker from chat
+
+- Date: 2026-11-06
+- Decision: Submitting bare `/model` opens a searchable provider list. Selecting a provider shows its models. The header keeps the current session model visible on both levels. An explicitly typed model still goes through Hermes.
+- Why: Users need to see the current model and browse choices without learning command syntax or scanning a combined list.
+- Evidence: The [slash-command browser journey](../test/chat-workspace/commands.spec.ts) checks both levels, the current model, the native confirmation, and the absence of a chat prompt.
+
+### UI-shared-chat-markdown Render Markdown in both sides of chat
+
+- Date: 2026-11-06
+- Decision: Use the same Markdown renderer for owner and Pebble bubbles. Keep owner paragraph line breaks and raw copy. Preserve literal code, escaped mentions and attachment permissions.
+- Why: Owner bubbles were using a separate plaintext renderer and showing the underscore markers.
+- Evidence: The [Markdown browser journey](../test/chat-workspace/markdown.spec.ts) checks rendered emphasis, bold, code, lists and tables.

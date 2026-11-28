@@ -3,6 +3,22 @@ export function record(value: unknown): Record<string, unknown> {
     throw new Error('Invalid voice response');
   return Object.fromEntries(Object.entries(value));
 }
+export type VoiceProvider = 'openai' | 'elevenlabs';
+export function isVoiceProvider(value: unknown): value is VoiceProvider {
+  return value === 'openai' || value === 'elevenlabs';
+}
+export function voiceLabels(value: unknown): Record<string, string> {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return {};
+  return Object.fromEntries(
+    Object.entries(value).filter(
+      ([id, label]) =>
+        /^[A-Za-z0-9_-]{1,80}$/.test(id) &&
+        typeof label === 'string' &&
+        label.length > 0 &&
+        label.length <= 100,
+    ),
+  );
+}
 export type VoiceSettings =
   | { supported: false }
   | {
@@ -10,7 +26,10 @@ export type VoiceSettings =
       configured: boolean;
       keyConfirmed: boolean;
       canChangeKey: boolean;
+      provider: VoiceProvider;
+      providers: VoiceProvider[];
       voice: string;
+      labels: Record<string, string>;
       voices: string[];
       setupComplete: boolean;
     };
@@ -31,7 +50,10 @@ export function settings(value: unknown): VoiceSettings {
     configured: data.configured,
     keyConfirmed: data.configured && (data.key_confirmed === true || data.setup_complete === true),
     canChangeKey: data.can_change_key !== false,
+    provider: isVoiceProvider(data.provider) ? data.provider : 'openai',
+    providers: Array.isArray(data.providers) ? data.providers.filter(isVoiceProvider) : ['openai'],
     voice: data.voice,
+    labels: voiceLabels(data.voice_labels),
     voices: data.voices,
     setupComplete: data.setup_complete,
   };

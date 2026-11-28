@@ -32,7 +32,7 @@ export function VoiceSettingsEditor({
   useEffect(() => {
     let current = true;
     void new ConversationDomain(client)
-      .open(profile)
+      .bind(profile)
       .then((chat) => {
         if (current) setSession(chat.sessionId);
       })

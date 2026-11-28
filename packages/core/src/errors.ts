@@ -1,4 +1,9 @@
 export const voiceErrors = {
+  ELEVEN_KEY_REQUIRED: 'Add an ElevenLabs API key to use voice.',
+  ELEVEN_KEY_REJECTED: 'ElevenLabs rejected this saved key.',
+  ELEVEN_ACCESS_DENIED: 'This ElevenLabs key does not have the required voice access.',
+  ELEVEN_RATE_LIMITED: 'ElevenLabs limited this request. Wait a moment, then try again.',
+  ELEVEN_CONNECTION_FAILED: 'Hermes could not open a connection to ElevenLabs voice.',
   VOICE_KEY_REQUIRED: 'Add an OpenAI API key to use voice.',
   VOICE_KEY_REJECTED: 'OpenAI rejected this saved key.',
   VOICE_ACCESS_DENIED:

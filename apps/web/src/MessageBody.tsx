@@ -17,7 +17,7 @@ import {
 import { memo, useEffect, useMemo, useState } from 'react';
 import Markdown, { defaultUrlTransform } from 'react-markdown';
 import type { PluggableList } from 'unified';
-import { remarkMentions, plainMentions } from './chat/mention-markdown';
+import { remarkMentions } from './chat/mention-markdown';
 import { noMentions } from './chat/mentions';
 import type { MentionIndex } from './chat/mentions';
 import { MessageMention } from './chat/MessageMention';
@@ -54,6 +54,7 @@ function CodeBlock({ value, language }: { value: string; language: string }) {
 }
 
 const components: Components = {
+  em: ({ children }) => <em className="italic">{children}</em>,
   p: ({ children }) => <Typography className="text-[length:inherit]">{children}</Typography>,
   h1: ({ children }) => <Typography as="h1">{children}</Typography>,
   h2: ({ children }) => <Typography as="h2">{children}</Typography>,
@@ -157,8 +158,10 @@ export const MessageBody = memo(function MessageBody({
   rowId,
   conversationKey,
   mentions = noMentions,
+  owner = false,
 }: {
   text: string;
+  owner?: boolean;
   mentions?: MentionIndex | undefined;
   client?: SessionClient | undefined;
   sessionId?: string | undefined;
@@ -178,8 +181,8 @@ export const MessageBody = memo(function MessageBody({
       : { kind: 'pending', identity: `${conversationKey ?? sessionId}:${rowId ?? ''}` };
   }, [client, sessionId, rowId, conversationKey]);
   const plugins = useMemo<PluggableList>(
-    () => [remarkGfm, remarkMedia, [remarkMentions, mentions]],
-    [mentions],
+    () => [remarkGfm, [remarkMentions, mentions, owner], ...(!owner ? [remarkMedia] : [])],
+    [mentions, owner],
   );
   const renderers = useMemo<Components>(
     () => ({
@@ -198,7 +201,9 @@ export const MessageBody = memo(function MessageBody({
   );
   return (
     <MessageMediaContext.Provider value={media}>
-      <div className="message-body min-w-0 space-y-4 wrap-break-word [&_li>ul]:mt-2 [&_li>ol]:mt-2">
+      <div
+        className={`message-body min-w-0 space-y-4 wrap-break-word [&_li>ul]:mt-2 [&_li>ol]:mt-2 ${owner ? '[&_p]:whitespace-pre-wrap' : ''}`}
+      >
         <Markdown
           skipHtml
           remarkPlugins={plugins}
@@ -209,32 +214,6 @@ export const MessageBody = memo(function MessageBody({
         </Markdown>
       </div>
     </MessageMediaContext.Provider>
-  );
-});
-
-export const PlainMessageBody = memo(function PlainMessageBody({
-  text,
-  mentions = noMentions,
-}: {
-  text: string;
-  mentions?: MentionIndex | undefined;
-}) {
-  let offset = 0;
-  const parts = plainMentions(text, mentions).map((match) => {
-    const before = text.slice(offset, match.start);
-    offset = match.end;
-    return (
-      <span key={match.start}>
-        {before}
-        <MessageMention bot={match.bot}>{match.text}</MessageMention>
-      </span>
-    );
-  });
-  return (
-    <p className="whitespace-pre-wrap">
-      {parts}
-      {text.slice(offset)}
-    </p>
   );
 });
 

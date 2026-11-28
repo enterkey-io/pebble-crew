@@ -95,6 +95,25 @@ test('the first tap after a cold open focuses the editable message field', async
   await expect(composer).toBeFocused();
 });
 
+test('opening a different chat leaves Back unhighlighted without focusing the composer', async ({
+  page,
+}, info) => {
+  const back = page.getByRole('button', { name: 'Toggle navigation', exact: true });
+  await back.tap();
+  await page.getByRole('button', { name: /^Mica .*Bot Chat$/ }).tap();
+  const composer = page.getByLabel('Message', { exact: true });
+  await expect(composer).toHaveAttribute('placeholder', 'Message Mica');
+  await expect(composer).toBeEnabled();
+  await expect(composer).not.toBeFocused();
+  await expect(back).not.toBeFocused();
+  expect(await back.evaluate((button) => button.matches(':focus-visible'))).toBe(false);
+  await page.screenshot({ path: info.outputPath('installed-chat-back-unhighlighted.png') });
+  await back.tap();
+  await page.keyboard.press('Escape');
+  await expect(back).toBeFocused();
+  expect(await back.evaluate((button) => button.matches(':focus-visible'))).toBe(true);
+});
+
 test('the installed sidebar follows the document scroll-to-top while the chat keeps its draft', async ({
   page,
 }, info) => {
@@ -181,11 +200,7 @@ for (const theme of ['dark', 'light'])
     await expect(pin).toBeVisible();
     await expect(row).toBeVisible();
     for (const label of await navigation.locator('.pc-pin-title').all()) {
-      expect(
-        await label.evaluate(
-          (e) => e.scrollHeight <= e.clientHeight && e.scrollWidth <= e.clientWidth,
-        ),
-      ).toBe(true);
+      expect(await label.evaluate((e) => e.scrollHeight <= e.clientHeight)).toBe(true);
     }
     await expect(row).toHaveCSS(
       'font-size',

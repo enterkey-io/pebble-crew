@@ -222,58 +222,106 @@ test('Library bounds the initial scan of a long text-only history and continues 
   await expect(page.getByRole('alert')).toHaveCount(0);
 });
 
-test('a pasted image opens inside its conversation and closes without a page reload', async ({
-  page,
-  context,
-}) => {
-  const png = await readFile('apps/web/public/icons/pebble-192.png');
-  await installFixture(context, { attachments: true, messages: [] });
-  await page.route('**/v1/files/read', async (route) => {
-    const { operation, params } = route.request().postDataJSON();
-    expect(operation).toBe('files.read');
-    expect(params.session_id).toBe('session-arlo');
-    await route.fulfill({
-      body: png,
-      headers: {
-        'content-type': 'image/png',
-        'content-disposition': "attachment; filename*=UTF-8''pasted-photo.png",
-        'access-control-expose-headers': 'Content-Disposition',
-      },
+for (const theme of ['dark', 'light'])
+  test(`a pasted image opens and keeps its download icon legible in ${theme}`, async ({
+    page,
+    context,
+  }, info) => {
+    await page.addInitScript(
+      (theme) => localStorage.setItem('pebble-crew.appearance', theme),
+      theme,
+    );
+    const png = await readFile('apps/web/public/icons/pebble-192.png');
+    const fixture = await installFixture(context, { attachments: true, messages: [] });
+    fixture.state.bots[0]!.appearance.color = 'clay';
+    await page.route('**/v1/files/read', async (route) => {
+      const { operation, params } = route.request().postDataJSON();
+      expect(operation).toBe('files.read');
+      expect(params.session_id).toBe('session-arlo');
+      await route.fulfill({
+        body: png,
+        headers: {
+          'content-type': 'image/png',
+          'content-disposition': "attachment; filename*=UTF-8''pasted-photo.png",
+          'access-control-expose-headers': 'Content-Disposition',
+        },
+      });
     });
+    await page.goto('/');
+    const input = page.getByLabel('Message', { exact: true });
+    await expect(input).toBeEditable();
+    await input.click();
+    await input.evaluate(
+      (node, bytes) => {
+        const clipboard = new DataTransfer();
+        clipboard.items.add(
+          new File([Uint8Array.from(bytes)], 'pasted-photo.png', { type: 'image/png' }),
+        );
+        node.dispatchEvent(
+          new ClipboardEvent('paste', {
+            clipboardData: clipboard,
+            bubbles: true,
+            cancelable: true,
+          }),
+        );
+      },
+      [...png],
+    );
+    await expect(page.getByText('pasted-photo.png', { exact: true })).toBeVisible();
+    await expect(input).toBeFocused();
+    await input.fill('Here is the photo');
+    await page.getByRole('button', { name: 'Send message', exact: true }).click();
+    const view = page.getByRole('button', { name: 'View pasted-photo.png', exact: true });
+    await expect(view).toBeVisible();
+    const download = page.getByRole('button', { name: 'Download pasted-photo.png', exact: true });
+    const expectDownloadContrast = () =>
+      expect
+        .poll(() =>
+          download.evaluate((button) => {
+            const canvas = document.createElement('canvas');
+            canvas.width = canvas.height = 1;
+            const paint = canvas.getContext('2d')!;
+            const luminance = (color: string) => {
+              paint.clearRect(0, 0, 1, 1);
+              paint.fillStyle = color;
+              paint.fillRect(0, 0, 1, 1);
+              const [r, g, b, alpha] = paint.getImageData(0, 0, 1, 1).data;
+              if (alpha !== 255) return NaN;
+              const channels = [r, g, b].map((byte) => {
+                const value = byte! / 255;
+                return value <= 0.04045 ? value / 12.92 : ((value + 0.055) / 1.055) ** 2.4;
+              });
+              return 0.2126 * channels[0]! + 0.7152 * channels[1]! + 0.0722 * channels[2]!;
+            };
+            const glyph = button.querySelector('svg')!;
+            const foreground = luminance(getComputedStyle(glyph).stroke);
+            const background = luminance(getComputedStyle(button).backgroundColor);
+            return (
+              (Math.max(foreground, background) + 0.05) / (Math.min(foreground, background) + 0.05)
+            );
+          }),
+        )
+        .toBeGreaterThanOrEqual(3);
+    await expect(download).toBeVisible();
+    await expectDownloadContrast();
+    if (await page.evaluate(() => matchMedia('(hover: hover)').matches)) {
+      await download.hover();
+      await expectDownloadContrast();
+    }
+    await download.focus();
+    await expectDownloadContrast();
+    await page.screenshot({ path: info.outputPath(`pasted-image-download-${theme}.png`) });
+    await input.fill('Keep this draft');
+    const originalField = (await input.elementHandle())!;
+    await view.click();
+    const dialog = page.getByRole('dialog', { name: 'pasted-photo.png', exact: true });
+    await expect(dialog).toBeVisible();
+    await expect
+      .poll(() => dialog.locator('img').evaluate((node: HTMLImageElement) => node.naturalWidth))
+      .toBe(192);
+    await dialog.getByRole('button', { name: /Close/i }).click();
+    await expect(dialog).toHaveCount(0);
+    await expect(input).toHaveValue('Keep this draft');
+    expect(await originalField.evaluate((element) => element.isConnected)).toBe(true);
+    await expect(view).toBeVisible();
   });
-  await page.goto('/');
-  const input = page.getByLabel('Message', { exact: true });
-  await expect(input).toBeEditable();
-  await input.click();
-  await input.evaluate(
-    (node, bytes) => {
-      const clipboard = new DataTransfer();
-      clipboard.items.add(
-        new File([Uint8Array.from(bytes)], 'pasted-photo.png', { type: 'image/png' }),
-      );
-      node.dispatchEvent(
-        new ClipboardEvent('paste', { clipboardData: clipboard, bubbles: true, cancelable: true }),
-      );
-    },
-    [...png],
-  );
-  await expect(page.getByText('pasted-photo.png', { exact: true })).toBeVisible();
-  await expect(input).toBeFocused();
-  await input.fill('Here is the photo');
-  await page.getByRole('button', { name: 'Send message', exact: true }).click();
-  const view = page.getByRole('button', { name: 'View pasted-photo.png', exact: true });
-  await expect(view).toBeVisible();
-  await input.fill('Keep this draft');
-  const originalField = (await input.elementHandle())!;
-  await view.click();
-  const dialog = page.getByRole('dialog', { name: 'pasted-photo.png', exact: true });
-  await expect(dialog).toBeVisible();
-  await expect
-    .poll(() => dialog.locator('img').evaluate((node: HTMLImageElement) => node.naturalWidth))
-    .toBe(192);
-  await dialog.getByRole('button', { name: /Close/i }).click();
-  await expect(dialog).toHaveCount(0);
-  await expect(input).toHaveValue('Keep this draft');
-  expect(await originalField.evaluate((element) => element.isConnected)).toBe(true);
-  await expect(view).toBeVisible();
-});

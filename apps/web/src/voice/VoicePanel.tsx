@@ -1,15 +1,18 @@
+import { useRef } from 'react';
 import type { RefObject } from 'react';
-import { Mic, Play, Square } from 'lucide-react';
+import { Mic, Play, Square, Upload } from 'lucide-react';
 import { AudioActivity } from '../components/ai-elements/audio-activity';
 import type { AudioActivityHandle } from '../components/ai-elements/audio-activity';
 import { Card, CardContent } from '../components/ui/card';
 import { Button } from '../components/ui/button';
 import { Alert, AlertDescription } from '../components/ui/alert';
 import { LoadingBar } from '../components/ui/loading-bar';
+import { ToggleGroup, ToggleGroupItem } from '../components/ui/toggle-group';
 import { SecretCard } from '../components/ai-elements/secret-card';
 import { VoiceOptions } from './VoiceOptions';
 import type { VoiceChoices } from './VoiceOptions';
-import type { VoiceSettings } from './decode';
+import { isVoiceProvider } from './decode';
+import type { VoiceProvider, VoiceSettings } from './decode';
 
 export function VoicePanel({
   panel,
@@ -32,6 +35,8 @@ export function VoicePanel({
   onPreview,
   onStart,
   onSave,
+  onProvider,
+  onImportVox,
 }: {
   panel: RefObject<HTMLDivElement | null>;
   settings: VoiceSettings | undefined;
@@ -53,7 +58,12 @@ export function VoicePanel({
   onPreview: () => void;
   onStart: () => void;
   onSave: () => void;
+  onProvider: (provider: VoiceProvider) => void;
+  onImportVox: (file: File) => void;
 }) {
+  const importFile = useRef<HTMLInputElement>(null);
+  const provider = settings?.supported ? settings.provider : 'openai';
+  const providerName = provider === 'elevenlabs' ? 'ElevenLabs' : 'OpenAI';
   return (
     <Card
       ref={panel}
@@ -67,12 +77,30 @@ export function VoicePanel({
             This Hermes build doesn’t support live voice.
           </p>
         )}
+        {settings?.supported && settings.providers.length > 1 && (
+          <div className="grid justify-items-start gap-2">
+            <span className="text-sm font-medium">Voice provider</span>
+            <ToggleGroup
+              type="single"
+              variant="segmented"
+              aria-label="Voice provider"
+              value={provider}
+              disabled={busy || previewState !== 'idle'}
+              onValueChange={(value) => {
+                if (isVoiceProvider(value)) onProvider(value);
+              }}
+            >
+              <ToggleGroupItem value="openai">OpenAI</ToggleGroupItem>
+              <ToggleGroupItem value="elevenlabs">ElevenLabs</ToggleGroupItem>
+            </ToggleGroup>
+          </div>
+        )}
         {settings?.supported && step !== 'settings' && (
           <>
             {settings.configured && step === 'key' && (
               <div className="grid gap-3">
                 <p className="text-sm text-muted-foreground">
-                  Use the OpenAI key saved in Hermes for all your pebbles.
+                  Use the {providerName} key saved in Hermes for all your pebbles.
                 </p>
                 <Button onClick={onUseSaved} disabled={busy}>
                   Use saved key
@@ -81,11 +109,11 @@ export function VoicePanel({
             )}
             {settings.canChangeKey && (
               <SecretCard
-                title="OpenAI API key"
+                title={`${providerName} API key`}
                 label="API key"
                 description={
                   settings.configured
-                    ? 'Enter a new OpenAI API key for voice.'
+                    ? `Enter a new ${providerName} API key for voice.`
                     : 'Saved privately in Hermes for all your pebbles.'
                 }
                 onSubmit={onKey}
@@ -94,7 +122,7 @@ export function VoicePanel({
             )}
             {!settings.canChangeKey && step === 'replacement' && (
               <p className="text-sm text-muted-foreground">
-                Ask your Pebble to update the OpenAI key saved in this profile.
+                Ask your Pebble to update the {providerName} key saved in this profile.
               </p>
             )}
           </>
@@ -109,6 +137,8 @@ export function VoicePanel({
             <VoiceOptions
               value={value}
               voices={settings.voices}
+              provider={provider}
+              labels={settings.labels}
               disabled={busy || previewState !== 'idle'}
               onChange={onChange}
             />
@@ -147,9 +177,33 @@ export function VoicePanel({
               </Button>
             )}
             <p className="text-xs leading-relaxed text-muted-foreground">
-              Calls and previews use your OpenAI account. Call audio and recent chat context go to
-              OpenAI.
+              {provider === 'elevenlabs'
+                ? 'ElevenLabs processes call audio and may read replies from Hermes aloud.'
+                : 'Calls and previews use your OpenAI account. Call audio and recent chat context go to OpenAI.'}
             </p>
+          </>
+        )}
+        {settings?.supported && provider === 'elevenlabs' && (
+          <>
+            <input
+              ref={importFile}
+              type="file"
+              accept=".json,application/json"
+              hidden
+              onChange={(event) => {
+                const file = event.currentTarget.files?.[0];
+                event.currentTarget.value = '';
+                if (file) onImportVox(file);
+              }}
+            />
+            <Button
+              className="justify-self-start"
+              variant="quiet"
+              disabled={busy || previewState !== 'idle'}
+              onClick={() => importFile.current?.click()}
+            >
+              <Upload /> Import Vox voices
+            </Button>
           </>
         )}
         {error && (
