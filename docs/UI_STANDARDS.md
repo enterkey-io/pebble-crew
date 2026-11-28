@@ -564,3 +564,10 @@ and name the earlier ID when a rule is superseded.
 - Decision: Video calls are discontinued. Settings → Connections has no Atmee key card, a Pebble's Voice tab has no video avatar section, and chat has no video-call control or surface. A saved video call reads "Call ended" with the phone icon. This supersedes UI-video-self-view, UI-video-composer, UI-composer-video-space and UI-atmee-character-creation. Saved keys, avatars and call records stay untouched on the owner host.
 - Why: The owner dropped video calls and asked for every entry point to be hidden.
 - Evidence: The [hidden video browser check](../test/chat-workspace/video-calls-hidden.spec.ts) runs against a host that still advertises Atmee setup. It checks the transcript, the Voice tab and Connections for any video or Atmee entry. Restoring the Connections key card, the Voice-tab section or the "Video call ended" label each turns it red.
+
+### UI-ollama-model-groups Group Ollama providers in the model picker
+
+- Date: 2026-11-28
+- Decision: The model picker shows Ollama and Olares providers as two rows, Ollama Cloud and Ollama Local. A provider id ending in -cloud or :cloud is Cloud; the rest of that family is Local, ignoring a custom: prefix. Other providers keep their own rows. A model offered by several providers in one group appears once, and the first provider in Hermes's order serves it. Choosing a grouped model selects it through the provider it came from.
+- Why: The owner runs the same models through several Ollama and Olares endpoints, and separate rows per endpoint made the picker hard to scan.
+- Evidence: The [grouping unit test](../apps/web/src/chat/model-groups.test.ts) covers Cloud and Local grouping, passthrough, routing, deduplication and labels. Breaking the cloud rule, the routing, the deduplication or the first-provider rule turns it red.
