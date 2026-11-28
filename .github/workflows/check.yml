@@ -1,178 +1,132 @@
+# Per-PR CI, following TESTING.md: typecheck, lint + format, the fast unit
+# and worker suites, and one e2e smoke (sign-in gate + one core write path).
+#
+# Runs once per PR head. Not on push and not on main after merge: the PR run
+# already tested that code. The `check` job must report on every PR,
+# docs-only ones included, so there is no workflow-level paths filter (a
+# path-skipped workflow never reports). The first step reads the PR's files
+# and the rest only runs when something other than docs changed.
+#
+# Heavy suites (mobile, component system, native owner, legacy native, full
+# chat workspace, avatars) live in full-suite.yml and run on demand.
+#
+# Public repo: GitHub-hosted ubuntu-latest only. Never self-hosted.
 name: Client foundation checks
+
 on:
-  push:
   pull_request:
+
 permissions:
   contents: read
+  pull-requests: read
+
+concurrency:
+  group: ci-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
 jobs:
   check:
+    name: check
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    # First PR run (cold Playwright cache): 3m07s. About 2.5x that.
+    timeout-minutes: 8
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - name: Changes
+        id: changes
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          PR: ${{ github.event.pull_request.number }}
+        run: |
+          # Docs-only PRs report green here and skip the rest. Workflow files
+          # count as code. Any error reading the file list runs everything.
+          full() { echo "$1; running the full check."; echo "code=true" >> "$GITHUB_OUTPUT"; exit 0; }
+          [ -n "$PR" ] || full "No PR number"
+          files=$(gh api --paginate "repos/$REPO/pulls/$PR/files" --jq '.[].filename') \
+            || full "Could not list PR files"
+          [ -n "$files" ] || full "Empty PR file list"
+          printf 'Changed:\n%s\n' "$files"
+          code=$(printf '%s\n' "$files" \
+            | grep -v -E '^(docs/|\.github/ISSUE_TEMPLATE/)|\.md$|^LICENSE$' | grep -c . || true)
+          [ "$code" = "0" ] || full "$code non-doc file(s) changed"
+          echo "Docs-only PR; skipping the rest."
+          echo "code=false" >> "$GITHUB_OUTPUT"
+
+      - if: steps.changes.outputs.code == 'true'
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           fetch-depth: 0 # Unit rollback fixtures read the exact historical Python payload.
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+      - if: steps.changes.outputs.code == 'true'
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version-file: .nvmrc
           cache: npm
-      - run: npm ci --ignore-scripts
-      - run: npm run check
-      - run: node scripts/audit-agent-guards.mjs
-      - run: node scripts/check-release-ui.mjs
-      - run: python3 -m venv /tmp/bot-web-test-env
-      - run: /tmp/bot-web-test-env/bin/pip install -r test/plugin/requirements.txt
-      - run: /tmp/bot-web-test-env/bin/python -m unittest discover -s test/plugin -p 'test_*.py'
-      - run: npx playwright install --with-deps chromium webkit
-      - run: npm run test:owner-worker
-      - run: npm run test:avatars
-      - run: npx playwright test --config playwright.chat.config.ts
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
-        if: always()
+      - if: steps.changes.outputs.code == 'true'
+        run: npm ci --ignore-scripts
+
+      - name: Typecheck
+        if: steps.changes.outputs.code == 'true'
+        run: npm run typecheck && npm run typecheck:worker
+      - name: Lint (prettier --check, then eslint)
+        if: steps.changes.outputs.code == 'true'
+        run: npm run format:check && npm run lint
+      - name: Unit tests
+        if: steps.changes.outputs.code == 'true'
+        run: npm test
+      - name: UI, system and connection contracts
+        if: steps.changes.outputs.code == 'true'
+        run: npm run check:ui
+      - name: Agent guard audit
+        if: steps.changes.outputs.code == 'true'
+        run: node scripts/audit-agent-guards.mjs
+      - name: Plugin unit tests
+        if: steps.changes.outputs.code == 'true'
+        run: |
+          python3 -m venv "$RUNNER_TEMP/bot-web-test-env"
+          "$RUNNER_TEMP/bot-web-test-env/bin/pip" install -q -r test/plugin/requirements.txt
+          "$RUNNER_TEMP/bot-web-test-env/bin/python" -m unittest discover -s test/plugin -p 'test_*.py'
+
+      # The smoke and the release UI check only need the web bundle.
+      - name: Build web
+        if: steps.changes.outputs.code == 'true'
+        run: npx vite build --config vite.web.config.ts
+      - name: Release UI check
+        if: steps.changes.outputs.code == 'true'
+        run: node scripts/check-release-ui.mjs
+
+      - name: Playwright version
+        id: pw
+        if: steps.changes.outputs.code == 'true'
+        run: echo "version=$(node -p "require('@playwright/test/package.json').version")" >> "$GITHUB_OUTPUT"
+      - name: Cache Playwright Chromium
+        if: steps.changes.outputs.code == 'true'
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
         with:
-          name: synthetic-ui-screenshots
-          path: test-results/**/*.png
+          path: ~/.cache/ms-playwright
+          key: playwright-chromium-${{ runner.os }}-${{ steps.pw.outputs.version }}
+      - name: Install Chromium
+        if: steps.changes.outputs.code == 'true'
+        run: npx playwright install chromium
+
+      - name: Owner worker tests
+        if: steps.changes.outputs.code == 'true'
+        run: npm run test:owner-worker
+      - name: E2E smoke (sign-in gate + project/task write)
+        if: steps.changes.outputs.code == 'true'
+        # drafts.spec: send a message, sign out, land on the Sign in gate.
+        # work.spec: create a project board and a task and see both show up.
+        run: >-
+          npx playwright test --config playwright.chat.config.ts
+          test/chat-workspace/drafts.spec.ts test/chat-workspace/work.spec.ts
+          -g "signing out clear saved drafts|project boards and tasks work through global creation"
+      - if: failure() && steps.changes.outputs.code == 'true'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: smoke-failure
+          path: test-results/**
           if-no-files-found: ignore
           retention-days: 7
-      - run: npm audit --omit=dev --audit-level=high
-  mobile-ui:
-    runs-on: ubuntu-latest
-    timeout-minutes: 30
-    steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
-        with:
-          node-version-file: .nvmrc
-          cache: npm
-      - run: npm ci --ignore-scripts
-      - run: npm run build
-      - run: npx playwright install --with-deps chromium webkit
-      - run: npm run test:mobile
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
-        if: always()
-        with:
-          name: synthetic-phone-screenshots
-          path: test-results/**/*.png
-          if-no-files-found: ignore
-          retention-days: 7
-  component-system:
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-    steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
-        with:
-          node-version-file: .nvmrc
-          cache: npm
-      - run: npm ci --ignore-scripts
-      - run: npx playwright install --with-deps chromium webkit
-      - run: VITE_SYSTEM_WORKBENCH=1 WORKSPACE_BUILD_ROOT="$RUNNER_TEMP/system-build" npm run build
-      - run: WORKSPACE_BUILD_ROOT="$RUNNER_TEMP/system-build" npx playwright test --config playwright.system.config.ts
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
-        if: always()
-        with:
-          name: component-system-evidence
-          path: test-results/system/**
-          if-no-files-found: ignore
-          retention-days: 7
-  native-owner:
-    runs-on: ubuntu-latest
-    timeout-minutes: 30
-    steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
-        with:
-          fetch-depth: 0 # Installed rollback checks the exact pre-contract integration source.
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
-        with:
-          repository: enterkey-io/hermes-agent
-          ref: af0cd4df34c73e41bcfcfa46c4081d1d83bdc81a
-          path: native-hermes
-          persist-credentials: false
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
-        with:
-          node-version-file: .nvmrc
-          cache: npm
-      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
-        with:
-          python-version: '3.14'
-      - run: npm ci --ignore-scripts
-      - run: npm run build
-      - run: npx playwright install --with-deps chromium
-      - run: |
-          python -m venv "$RUNNER_TEMP/hermes-ui-env"
-          "$RUNNER_TEMP/hermes-ui-env/bin/pip" install uv -e './native-hermes[web]' -r test/plugin/requirements.txt
-          echo "$RUNNER_TEMP/hermes-ui-env/bin" >> "$GITHUB_PATH"
-          echo "HERMES_NATIVE_ROOT=$GITHUB_WORKSPACE/native-hermes" >> "$GITHUB_ENV"
-          echo "HERMES_NATIVE_PYTHON=$RUNNER_TEMP/hermes-ui-env/bin/python" >> "$GITHUB_ENV"
-      - run: python scripts/fixture/management_smoke.py
-      - run: python scripts/fixture/connection_smoke.py
-      - run: python scripts/fixture/attribution_smoke.py
-      - run: python scripts/fixture/history_smoke.py
-      - run: python scripts/fixture/codex_grant_smoke.py
-      - run: python scripts/fixture/model_grant_smoke.py
-      - run: python scripts/fixture/voice_preferences_smoke.py
-      - run: python scripts/fixture/workspace_smoke.py
-      - run: python scripts/fixture/exchange_smoke.py
-      - run: npm run test:owner-browser
-      - run: python scripts/fixture/reactions_smoke.py
-      - run: python scripts/fixture/busy_send_smoke.py
-      - run: python scripts/fixture/approval_scopes_smoke.py
-      - run: python scripts/fixture/media_smoke.py
-      - run: python scripts/fixture/documents_smoke.py
-      - run: python scripts/fixture/projects_smoke.py
-      - run: python scripts/fixture/work_model_smoke.py
-      - run: python scripts/fixture/conversation_cards_smoke.py
-      - run: python scripts/package.py
-      - run: node scripts/verify-release.mjs
-        env:
-          WORKSPACE_PLUGIN_ARCHIVE: ${{ github.workspace }}/artifacts/packages/workspace-plugin-preview.zip
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
-        if: always()
-        with:
-          name: installed-package-evidence
-          path: |
-            artifacts/installed-package-acceptance.json
-            artifacts/plugin-login.png
-            artifacts/installed-plugin-failure.png
-            artifacts/packages/workspace-manifest.json
-          if-no-files-found: ignore
-          retention-days: 7
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
-        if: failure()
-        with:
-          name: native-owner-ui-failure
-          path: test-results/owner
-          retention-days: 7
-  native-reactions-legacy:
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-    steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
-        with:
-          repository: enterkey-io/hermes-agent
-          ref: 29112bef099274229cadff79cdff7bf7b99c4b77
-          path: native-hermes
-          persist-credentials: false
-      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
-        with:
-          python-version: '3.12'
-      - run: python -m venv "$RUNNER_TEMP/hermes-legacy-env"
-      - run: |
-          "$RUNNER_TEMP/hermes-legacy-env/bin/pip" install uv -e './native-hermes[web]' -r test/plugin/requirements.txt
-      - run: '"$RUNNER_TEMP/hermes-legacy-env/bin/python" scripts/fixture/codex_grant_smoke.py'
-      - run: '"$RUNNER_TEMP/hermes-legacy-env/bin/python" scripts/fixture/model_grant_smoke.py'
-      - run: '"$RUNNER_TEMP/hermes-legacy-env/bin/python" scripts/fixture/management_smoke.py'
-      - run: '"$RUNNER_TEMP/hermes-legacy-env/bin/python" scripts/fixture/connection_smoke.py'
-      - run: '"$RUNNER_TEMP/hermes-legacy-env/bin/python" scripts/fixture/attribution_smoke.py'
-      - run: '"$RUNNER_TEMP/hermes-legacy-env/bin/python" scripts/fixture/history_smoke.py'
-      - run: '"$RUNNER_TEMP/hermes-legacy-env/bin/python" scripts/fixture/reactions_smoke.py'
-      - run: '"$RUNNER_TEMP/hermes-legacy-env/bin/python" scripts/fixture/busy_send_smoke.py'
-      - run: '"$RUNNER_TEMP/hermes-legacy-env/bin/python" scripts/fixture/approval_scopes_smoke.py'
-      - run: '"$RUNNER_TEMP/hermes-legacy-env/bin/python" scripts/fixture/media_smoke.py'
-      - run: '"$RUNNER_TEMP/hermes-legacy-env/bin/python" scripts/fixture/documents_smoke.py'
-      - run: '"$RUNNER_TEMP/hermes-legacy-env/bin/python" scripts/fixture/workspace_smoke.py'
-      - run: '"$RUNNER_TEMP/hermes-legacy-env/bin/python" scripts/fixture/exchange_smoke.py'
-      - run: '"$RUNNER_TEMP/hermes-legacy-env/bin/python" scripts/fixture/projects_smoke.py'
-      - run: '"$RUNNER_TEMP/hermes-legacy-env/bin/python" scripts/fixture/work_model_smoke.py'
-      - run: '"$RUNNER_TEMP/hermes-legacy-env/bin/python" scripts/fixture/conversation_cards_smoke.py'
+
+      - name: Dependency audit
+        if: steps.changes.outputs.code == 'true'
+        run: npm audit --omit=dev --audit-level=high
