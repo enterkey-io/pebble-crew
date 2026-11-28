@@ -9,7 +9,8 @@ export function VoiceCallEntry({ call }: { call: VoiceCallRecord }) {
       <TraceIcon>
         <Phone />
       </TraceIcon>
-      <TraceTitle>Voice call ended</TraceTitle>
+      {/* Video calls are discontinued; saved ones read as plain calls. */}
+      <TraceTitle>{call.kind === 'video' ? 'Call ended' : 'Voice call ended'}</TraceTitle>
       <TraceDescription>
         <time dateTime={ended.toISOString()} title={ended.toLocaleString()}>
           {ended.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' })}

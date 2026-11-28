@@ -15,6 +15,7 @@ export type ConversationMessage = {
   role: 'user' | 'assistant' | 'tool';
   text: string;
   id?: string | undefined;
+  messageUid?: string;
   renderKey?: string | undefined;
   author?: string | undefined;
   timestamp?: string | number | undefined;
@@ -33,7 +34,11 @@ export type HistoryCoverage = {
   readonly maxRow: number;
   readonly rowIds?: readonly number[];
 };
-export type VoiceCallRecord = { readonly id: string; readonly endedAt: number };
+export type VoiceCallRecord = {
+  readonly id: string;
+  readonly endedAt: number;
+  readonly kind?: 'video';
+};
 
 export function decodeVoiceCall(value: unknown): VoiceCallRecord | undefined {
   const call = optionalRecord(value);
@@ -44,7 +49,11 @@ export function decodeVoiceCall(value: unknown): VoiceCallRecord | undefined {
     Number.isFinite(call.ended_at) &&
     call.ended_at > 0 &&
     call.ended_at < 8.64e12
-    ? { id: call.id, endedAt: call.ended_at * 1000 }
+    ? {
+        id: call.id,
+        endedAt: call.ended_at * 1000,
+        ...(call.kind === 'video' ? { kind: 'video' as const } : {}),
+      }
     : undefined;
 }
 
@@ -72,6 +81,12 @@ function identity(value: unknown): string | undefined {
   if (typeof value === 'number' && Number.isSafeInteger(value) && value > 0) return String(value);
   if (typeof value === 'string' && value.length > 0 && value.length <= 512) return value;
   return undefined;
+}
+function messageUid(value: unknown): string | undefined {
+  return typeof value === 'string' && /^[a-f0-9]{32}$/.test(value) ? value : undefined;
+}
+export function conversationMessageKey(row: ConversationMessage): string | undefined {
+  return row.messageUid ? `native-uid:${row.messageUid}` : row.id;
 }
 function timestamp(value: unknown): string | number | undefined {
   return typeof value === 'string'
@@ -209,7 +224,14 @@ export function decodeNativeMessages(value: unknown): ConversationMessage[] {
     if (!data || (data.role !== 'user' && data.role !== 'assistant' && data.role !== 'tool'))
       continue;
     if (data.display_kind === 'hidden') continue;
+    if (
+      data.role === 'tool' &&
+      (data.name === 'pebble_progress' || data.tool_name === 'pebble_progress')
+    )
+      continue;
     const metadata = optionalRecord(data.display_metadata);
+    const uid = messageUid(data.message_uid);
+    const stable = uid ? { messageUid: uid } : {};
     if (data.role === 'user' && !ownerInput(data)) {
       const activity =
         typeof data.display_kind === 'string' ? nativeActivities[data.display_kind] : undefined;
@@ -218,6 +240,7 @@ export function decodeNativeMessages(value: unknown): ConversationMessage[] {
           role: 'tool',
           text: '',
           toolName: activity.name,
+          ...stable,
           id: identity(data.row_id),
           timestamp: timestamp(data.timestamp),
           reactions: [],
@@ -236,6 +259,7 @@ export function decodeNativeMessages(value: unknown): ConversationMessage[] {
           : data.role === 'assistant'
             ? finalReply(data.codex_message_items)
             : '',
+      ...stable,
       id: identity(data.row_id),
       timestamp: timestamp(data.timestamp),
       reactions: decodeMessageReactions(metadata?.reactions),
@@ -455,6 +479,7 @@ export class ConversationDomain {
       accepted: disposition !== 'uncertain',
       disposition,
       userRowId: identity(value.user_row_id),
+      userMessageUid: messageUid(value.user_message_uid),
     };
   }
   async sendRoom(edit: { roomId: string; eventId: string; text: string }): Promise<string> {
@@ -595,11 +620,14 @@ export class ConversationDomain {
       visited.add(cursor);
       const earlier = await this.older(sessionId, cursor).catch(() => undefined);
       if (!earlier?.page || (earlier.page.older && visited.has(earlier.page.older))) break;
-      const known = new Set(history.messages.map((row) => row.id).filter(Boolean));
+      const known = new Set(history.messages.map(conversationMessageKey));
       history = {
         page: earlier.page,
         messages: [
-          ...earlier.messages.filter((row) => !row.id || !known.has(row.id)),
+          ...earlier.messages.filter((row) => {
+            const key = conversationMessageKey(row);
+            return !key || !known.has(key);
+          }),
           ...history.messages,
         ],
         voiceCalls: [...(earlier.voiceCalls ?? []), ...(history.voiceCalls ?? [])],
@@ -646,6 +674,9 @@ export class ConversationDomain {
       await this.bridge.invoke('chat.history', { session_id: sessionId, before }),
     );
   }
+  async olderConversation(sessionId: string, before: string): Promise<ConversationHistory> {
+    return this.withRecentConversation(await this.older(sessionId, before), sessionId);
+  }
   private async cover(
     recent: ConversationHistory,
     retained: readonly ConversationMessage[],
@@ -654,12 +685,12 @@ export class ConversationDomain {
     // A fresh open transfers one page. Recovery fills only a missed gap, then
     // keeps previously loaded rows/identities instead of replacing the window.
     if (!recent.page || !retained.length) return recent;
-    const known = new Set(retained.flatMap((row) => (row.id ? [row.id] : [])));
+    const known = new Set(retained.map(conversationMessageKey).filter(Boolean));
     let messages = recent.messages;
     const voiceCalls = [...(recent.voiceCalls ?? [])];
     let older = recent.page.older;
     const visited = new Set<string>();
-    while (older && !messages.some((row) => row.id && known.has(row.id))) {
+    while (older && !messages.some((row) => known.has(conversationMessageKey(row)))) {
       if (visited.has(older)) throw new ClientError('INVALID_RESPONSE');
       visited.add(older);
       const page = await this.older(sessionId, older);
@@ -667,17 +698,22 @@ export class ConversationDomain {
       voiceCalls.push(...(page.voiceCalls ?? []));
       older = page.page?.older ?? null;
     }
-    const boundary = retained.findIndex(
-      (row) => row.id && messages.some((next) => next.id === row.id),
-    );
+    // A rewritten row may be present in the retained prefix under its retired
+    // row number. Keep the authoritative copy and its current reaction address.
+    const current = new Set(messages.map(conversationMessageKey).filter(Boolean));
+    const boundary = retained.findIndex((row) => current.has(conversationMessageKey(row)));
     const prefix = boundary < 0 ? [] : retained.slice(0, boundary);
     const ids = new Set<string>();
     return {
       ...recent,
       ...(voiceCalls.length ? { voiceCalls } : {}),
-      messages: [...prefix, ...messages].filter(
-        (row) => !row.id || (!ids.has(row.id) && !!ids.add(row.id)),
-      ),
+      messages: [...prefix, ...messages]
+        .reverse()
+        .filter((row) => {
+          const key = conversationMessageKey(row);
+          return !key || (!ids.has(key) && !!ids.add(key));
+        })
+        .reverse(),
     };
   }
   async message(sessionId: string, id: string): Promise<ConversationMessage | undefined> {

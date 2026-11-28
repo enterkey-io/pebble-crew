@@ -1,4 +1,5 @@
 import { createPortal } from 'react-dom';
+import { ClientError } from '@hermes-client/core';
 import type { ReactNode } from 'react';
 import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from 'react';
 import type { SessionClient, BridgeEvent } from '@hermes-client/protocol';
@@ -12,16 +13,21 @@ import { choices } from './VoiceOptions';
 import type { VoiceChoices } from './VoiceOptions';
 import type { AudioActivityHandle } from '../components/ai-elements/audio-activity';
 import { rejectedVoiceKey, voiceFailure } from './errors';
-import { ConversationDomain, decodeVoiceCall } from '@hermes-client/protocol';
+import { decodeVoiceCall } from '@hermes-client/protocol';
 import type { VoiceCallRecord } from '@hermes-client/protocol';
-import type { ChatMessage } from '../conversation';
-import { record, settings as decodeSettings, sessionAnswer, voiceLabels } from './decode';
+import {
+  providerNames,
+  record,
+  settings as decodeSettings,
+  sessionAnswer,
+  voiceLabels,
+} from './decode';
 import type { VoiceProvider, VoiceSettings, VoiceSettingsRequest } from './decode';
 import { VoiceLiveSession } from './live-session';
 import type { VoiceLiveHandlers } from './live-session';
-import { ElevenRealtimeSession, elevenSessionAnswer } from './eleven-session';
-import { DelegationReceipts, delegationPrompt } from './delegations';
-import type { Completion } from './delegations';
+import { SpokenSession, setAudioSession } from './spoken-session';
+import { GrokSession } from './grok-session';
+import { delegationPrompt } from './delegations';
 
 export type VoiceChatHandle = { open: () => void; event: (event: BridgeEvent) => void };
 export const VoiceChat = forwardRef<
@@ -31,7 +37,6 @@ export const VoiceChat = forwardRef<
     sessionId: string;
     running: boolean;
     inputBlocked?: boolean;
-    onAccepted: (message: ChatMessage) => void;
     onCallEnded?: (call: VoiceCallRecord) => void;
     onOpenSettings?: (request: VoiceSettingsRequest) => void;
     settingsRequest?: VoiceSettingsRequest | undefined;
@@ -52,7 +57,6 @@ export const VoiceChat = forwardRef<
     sessionId,
     running,
     inputBlocked = false,
-    onAccepted,
     onCallEnded,
     onOpenSettings,
     settingsRequest,
@@ -85,14 +89,25 @@ export const VoiceChat = forwardRef<
   const [error, setError] = useState('');
   const [showTranscript, setShowTranscript] = useState(false);
   const [captions, setCaptions] = useState<{ speaker: 'user' | 'assistant'; text: string }[]>([]);
-  const live = useRef<VoiceLiveSession | ElevenRealtimeSession | undefined>(undefined),
+  const live = useRef<VoiceLiveSession | SpokenSession | GrokSession | undefined>(undefined),
+    /** The bridge's call ID for a GPT-Live call (Grok and ElevenLabs carry their own). */
+    liveCall = useRef<string | null>(null),
     generation = useRef(0),
     mounted = useRef(true);
-  const startedCallId = useRef<string | null>(null);
-  const receipts = useRef(new DelegationReceipts());
-  const seenDelegations = useRef(new Set<string>());
-  const active = useRef(false),
-    queue = useRef<{ id: string; text: string; context: string }[]>([]);
+  const sampleContext = useRef<AudioContext | undefined>(undefined);
+  const sampleFrame = useRef(0);
+  const [partialCaption, setPartialCaption] = useState('');
+  const active = useRef(false);
+  /** A spoken turn for the Pebble. Live providers carry the request that answers it. */
+  const queue = useRef<
+    {
+      id: string;
+      text: string;
+      speechGeneration?: number;
+      delegationId?: string;
+      toolCallId?: string;
+    }[]
+  >([]);
   const busy = useRef(running);
   busy.current = running || inputBlocked;
   const previewTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
@@ -114,7 +129,7 @@ export const VoiceChat = forwardRef<
       await rpc('voice.preferences', {
         ...selection,
         complete,
-        ...(selected === 'elevenlabs' ? { provider: selected } : {}),
+        ...(selected !== 'openai' ? { provider: selected } : {}),
       }),
     );
     setSettings(next);
@@ -132,28 +147,41 @@ export const VoiceChat = forwardRef<
     return applySettings(decodeSettings(await rpc('voice.status')), requestKey);
   }
   const [elevenLabels, setElevenLabels] = useState<Record<string, string>>({});
+  const [catalogState, setCatalogState] = useState<'loading' | 'ready' | 'key' | 'error'>(
+    'loading',
+  );
+  const [catalogAttempt, setCatalogAttempt] = useState(0);
   const loadElevenVoices =
     mode === 'settings' &&
+    step === 'settings' &&
     settings?.supported &&
     settings.provider === 'elevenlabs' &&
     settings.keyConfirmed &&
     visible;
   useEffect(() => {
     setElevenLabels({});
+    setCatalogState('loading');
     if (!loadElevenVoices) return;
     let active = true;
     void rpc('voice.voices')
       .then((value) => {
         if (!active) return;
-        setElevenLabels(voiceLabels(record(value).voices));
+        setElevenLabels(voiceLabels(record(record(value).voices)));
+        setCatalogState('ready');
       })
-      .catch(() => {
-        // Presets and the default voice remain available if the key cannot list voices.
+      .catch((cause) => {
+        if (!active) return;
+        setCatalogState(
+          cause instanceof ClientError &&
+            ['ELEVEN_KEY_REJECTED', 'ELEVEN_ACCESS_DENIED'].includes(cause.code)
+            ? 'key'
+            : 'error',
+        );
       });
     return () => {
       active = false;
     };
-  }, [loadElevenVoices, client, sessionId]);
+  }, [loadElevenVoices, client, sessionId, catalogAttempt]);
   async function open() {
     if (inputBlocked && mode === 'chat') return;
     setVisible(true);
@@ -202,23 +230,26 @@ export const VoiceChat = forwardRef<
     generation.current++;
     clearTimeout(previewTimer.current);
     clearTimeout(setupTimer.current);
+    cancelAnimationFrame(sampleFrame.current);
+    const sample = sampleContext.current;
+    sampleContext.current = undefined;
+    if (sample && sample.state !== 'closed') {
+      void sample.close().catch(() => undefined);
+      setAudioSession('auto');
+    }
     const previous = live.current;
     live.current = undefined;
-    const callId = startedCallId.current;
-    startedCallId.current = null;
-    if (previous && callId) {
-      const transcript = followUp
-        ? previous
-            .contextWindow()
-            .map(
-              (fragment) => `${fragment.speaker === 'user' ? 'User' : agentName}: ${fragment.text}`,
-            )
-            .join('\n')
-            .slice(-6000)
-        : '';
+    const callId =
+      previous instanceof SpokenSession || previous instanceof GrokSession
+        ? previous.sessionId
+        : previous instanceof VoiceLiveSession
+          ? liveCall.current
+          : null;
+    liveCall.current = null;
+    if (callId) {
       const epoch = generation.current;
       void client
-        .invoke('voice.end', { session_id: sessionId, call_id: callId, transcript })
+        .invoke('voice.end', { session_id: sessionId, call_id: callId, follow_up: followUp })
         .then((value) => {
           const result = record(value);
           const saved = decodeVoiceCall(result.call);
@@ -229,7 +260,7 @@ export const VoiceChat = forwardRef<
             generation.current === epoch
           ) {
             setVisible(true);
-            setError('The call was saved. Its text follow-up could not be confirmed.');
+            setError('The call was saved. Its follow-up could not be confirmed.');
           }
         })
         .catch(() => {
@@ -241,15 +272,14 @@ export const VoiceChat = forwardRef<
     }
     previous?.close();
     queue.current = [];
-    seenDelegations.current.clear();
     active.current = false;
-    receipts.current = new DelegationReceipts();
     if (mounted.current) {
       setOpening(false);
       setState('idle');
       setPreviewPlaying(false);
       setMuted(false);
       setCaptions([]);
+      setPartialCaption('');
       setBlockedAudio(false);
     }
   }
@@ -257,61 +287,92 @@ export const VoiceChat = forwardRef<
     end(true);
     if (mode === 'chat' && state !== 'preview') setVisible(false);
   }
-  async function finish(result: Completion) {
-    const id = receipts.current.take(result),
-      call = live.current,
-      epoch = generation.current;
-    if (!id || !call) return;
-    try {
-      if (result.kind === 'failed') {
-        call.speak(id, 'That request failed. Please check the error in chat.');
-        return;
-      }
-      const reply = await new ConversationDomain(client).message(
-        sessionId,
-        String(result.assistant),
-      );
-      if (generation.current !== epoch || live.current !== call) return;
-      if (reply?.text) call.speak(id, reply.text);
-      else call.speak(id, 'The result is available in chat.');
-    } catch {
-      if (generation.current === epoch && live.current === call) {
-        call.speak(id, 'The reply is in chat. Voice could not read it.');
-        setError('The reply is in chat. Voice could not read it.');
-      }
-    } finally {
-      active.current = false;
-    }
-  }
   async function drain() {
     const call = live.current;
-    if (!call?.connected || busy.current || active.current || !queue.current.length) return;
+    const callId =
+      call instanceof SpokenSession || call instanceof GrokSession
+        ? call.sessionId
+        : call instanceof VoiceLiveSession
+          ? liveCall.current
+          : null;
+    if (
+      !call ||
+      !callId ||
+      !call.connected ||
+      busy.current ||
+      active.current ||
+      !queue.current.length
+    )
+      return;
     const request = queue.current.shift();
     if (!request) return;
     active.current = true;
     const epoch = generation.current;
+    const params = { call_id: callId, utterance_id: request.id };
+    // A live provider is waiting on this request; it always gets an answer.
+    const answerLive = (text: string) => {
+      if (call instanceof GrokSession && request.toolCallId) call.answer(request.toolCallId, text);
+      if (call instanceof VoiceLiveSession && request.delegationId)
+        call.speak(request.delegationId, text);
+    };
     try {
-      const response = await rpc('voice.submit', { text: request.text, context: request.context });
-      if (generation.current !== epoch || live.current !== call) return;
-      const early = receipts.current.accept(request.id, response);
-      call.think(request.id, 'The selected agent is handling your request.');
-      const data = record(response);
-      const user = await new ConversationDomain(client).message(
-        sessionId,
-        String(data.user_row_id),
-      );
-      if (user && generation.current === epoch) onAccepted(user);
-      if (early) await finish(early);
-    } catch (cause) {
-      if (generation.current === epoch && mounted.current) {
-        call.speak(request.id, 'Hermes could not confirm the request. Please check chat.');
-        setError(
-          cause instanceof Error
-            ? cause.message
-            : 'The spoken request could not be confirmed. Check chat before repeating it.',
-        );
-        active.current = false;
+      let result;
+      try {
+        result = record(await rpc('voice.submit', { ...params, text: request.text }));
+      } catch {
+        // A lost response is reconciled by ID. Do not submit another Hermes turn.
+        result = record(await rpc('voice.turn', params));
       }
+      const deadline = Date.now() + 15 * 60 * 1000;
+      for (;;) {
+        if (generation.current !== epoch) return;
+        if (result.state === 'ready') {
+          try {
+            // Call rows are hidden from chat, so the server sends the reply text for
+            // captions. Looking the row up in history would walk the whole history.
+            if (typeof result.assistant_text === 'string' && result.assistant_text.trim()) {
+              const text = result.assistant_text.slice(0, 6000);
+              setCaptions((previous) => [...previous.slice(-39), { speaker: 'assistant', text }]);
+            }
+            if (call instanceof SpokenSession)
+              await call.speak(request.speechGeneration ?? -1, (signal) =>
+                client.voiceAudio(sessionId, callId, request.id, signal),
+              );
+            else
+              answerLive(
+                typeof result.assistant_text === 'string' && result.assistant_text.trim()
+                  ? result.assistant_text
+                  : 'The answer is in the chat, but it could not be read here. Say so briefly.',
+              );
+          } catch {
+            if (generation.current === epoch)
+              setError('The reply is in chat. Voice could not read it.');
+          }
+          return;
+        }
+        if (result.state === 'silent') {
+          answerLive('There was no reply to share. Say so briefly.');
+          return;
+        }
+        if (result.state === 'failed') {
+          answerLive('That request failed. Say so briefly; details are in the chat.');
+          setError('Hermes could not finish this turn. Check chat for details.');
+          return;
+        }
+        if (result.state !== 'pending' || Date.now() >= deadline)
+          throw new Error(
+            'Hermes could not confirm the spoken reply. Check chat before repeating it.',
+          );
+        await new Promise<void>((resolve) => setTimeout(resolve, 750));
+        if (generation.current !== epoch) return;
+        result = record(await rpc('voice.turn', params));
+      }
+    } catch {
+      answerLive('The request could not be confirmed. Ask the owner to check the chat.');
+      if (generation.current === epoch && mounted.current)
+        setError('Hermes could not confirm the spoken reply. Check chat before repeating it.');
+    } finally {
+      if (generation.current === epoch) active.current = false;
     }
   }
   useEffect(() => {
@@ -337,20 +398,56 @@ export const VoiceChat = forwardRef<
       void open();
     },
     event(event) {
-      if (event.type === 'bridge.resync') {
-        end();
-        return;
-      }
+      if (event.type === 'bridge.resync') return;
       if (event.session_id !== sessionId) return;
       if (event.type === 'voice.setup') {
         onOpenSettings?.({
           kind: event.payload?.replace_key === true ? 'replace-key' : 'settings',
         });
       }
-      const result = receipts.current.observe(event);
-      if (result) void finish(result);
     },
   }));
+  async function playElevenSample(voice: string, epoch: number) {
+    // Plays through the iPhone silent switch, like a media app.
+    setAudioSession('playback');
+    const context = new AudioContext();
+    sampleContext.current = context;
+    void context.resume().catch(() => undefined);
+    const data = record(await rpc('voice.sample', { voice }));
+    if (typeof data.audio !== 'string' || !data.audio || data.audio.length > 11_184_812)
+      throw new ClientError('ELEVEN_SAMPLE_UNAVAILABLE');
+    const bytes = Uint8Array.from(atob(data.audio), (byte) => byte.charCodeAt(0));
+    const buffer = await context.decodeAudioData(bytes.buffer);
+    if (generation.current !== epoch) return;
+    const source = context.createBufferSource();
+    const analyser = context.createAnalyser();
+    analyser.fftSize = 256;
+    source.buffer = buffer;
+    source.connect(analyser);
+    analyser.connect(context.destination);
+    source.onended = () => {
+      if (generation.current === epoch) end();
+    };
+    const wave = new Uint8Array(analyser.fftSize);
+    const tick = () => {
+      if (generation.current !== epoch) return;
+      analyser.getByteTimeDomainData(wave);
+      let peak = 0;
+      for (const byte of wave) peak = Math.max(peak, Math.abs(byte - 128));
+      audioActivity.current?.update(peak / 128);
+      sampleFrame.current = requestAnimationFrame(tick);
+    };
+    setState('preview');
+    const syncAudio = () => {
+      if (generation.current !== epoch) return;
+      setPreviewPlaying(context.state === 'running');
+      setBlockedAudio(context.state !== 'running');
+    };
+    context.onstatechange = syncAudio;
+    syncAudio();
+    source.start();
+    tick();
+  }
   async function start(preview: boolean, selection = value, selected: VoiceProvider = provider) {
     if (inputBlocked && !preview) return;
     end();
@@ -367,6 +464,148 @@ export const VoiceChat = forwardRef<
     setError('');
     setNotice('');
     setState('starting');
+    if (preview && selected !== 'openai') {
+      try {
+        await playElevenSample(selection.voice, epoch);
+      } catch (cause) {
+        if (generation.current === epoch) {
+          end();
+          reportFailure(
+            cause instanceof ClientError
+              ? cause.message
+              : `This ${providerNames[selected]} sample could not play. Try again.`,
+            rejectedVoiceKey(cause),
+          );
+        }
+      }
+      return;
+    }
+    if (!preview && selected === 'grok') {
+      let started = false;
+      const call = new GrokSession(
+        {
+          onStarted() {
+            if (generation.current !== epoch) return;
+            started = true;
+            clearTimeout(setupTimer.current);
+            setState('live');
+          },
+          onAudioLevel(level) {
+            if (generation.current === epoch) audioActivity.current?.update(level);
+          },
+          onAutoplayBlocked() {
+            if (generation.current === epoch) setBlockedAudio(true);
+          },
+          onTranscript(fragment) {
+            if (generation.current !== epoch) return;
+            setCaptions((previous) => {
+              const last = previous.at(-1);
+              if (!fragment.done && last?.speaker === fragment.speaker)
+                return [
+                  ...previous.slice(0, -1),
+                  { speaker: last.speaker, text: (last.text + fragment.text).slice(-4000) },
+                ];
+              return [...previous.slice(-39), { speaker: fragment.speaker, text: fragment.text }];
+            });
+          },
+          onAsk(toolCallId, request) {
+            if (generation.current !== epoch) return;
+            if (queue.current.length >= 4) {
+              call.answer(
+                toolCallId,
+                'Several requests are already waiting. Ask the owner to wait.',
+              );
+              return;
+            }
+            queue.current.push({ id: crypto.randomUUID(), text: request, toolCallId });
+            void drain();
+          },
+          onClosed(message) {
+            if (generation.current !== epoch) return;
+            end();
+            if (started) setError(message);
+            else reportFailure(message);
+          },
+        },
+        async () => {
+          await savePreferences(true, selection, selected);
+          return rpc('voice.start');
+        },
+      );
+      live.current = call;
+      setupTimer.current = setTimeout(() => {
+        if (generation.current !== epoch) return;
+        end();
+        reportFailure('The voice connection timed out. Try again.');
+      }, 45000);
+      try {
+        await call.start();
+      } catch (cause) {
+        if (generation.current !== epoch) return;
+        end();
+        reportFailure(voiceFailure(cause), rejectedVoiceKey(cause));
+      }
+      return;
+    }
+    if (!preview && selected === 'elevenlabs') {
+      let started = false;
+      const call = new SpokenSession(
+        {
+          onStarted() {
+            if (generation.current !== epoch) return;
+            started = true;
+            clearTimeout(setupTimer.current);
+            setState('live');
+          },
+          onAudioLevel(level) {
+            if (generation.current === epoch) audioActivity.current?.update(level);
+          },
+          onAutoplayBlocked() {
+            if (generation.current === epoch) setBlockedAudio(true);
+          },
+          onPartial(text) {
+            if (generation.current === epoch) setPartialCaption(text);
+          },
+          onUtterance(utterance) {
+            if (generation.current !== epoch) return;
+            setCaptions((previous) => [
+              ...previous.slice(-39),
+              { speaker: 'user', text: utterance.text },
+            ]);
+            if (queue.current.length >= 4) {
+              setError('Several spoken turns are waiting. Give this Pebble a moment.');
+              return;
+            }
+            queue.current.push(utterance);
+            void drain();
+          },
+          onClosed(message) {
+            if (generation.current !== epoch) return;
+            end();
+            if (started) setError(message);
+            else reportFailure(message);
+          },
+        },
+        async () => {
+          await savePreferences(true, selection, selected);
+          return rpc('voice.start');
+        },
+      );
+      live.current = call;
+      setupTimer.current = setTimeout(() => {
+        if (generation.current !== epoch) return;
+        end();
+        reportFailure('The voice connection timed out. Try again.');
+      }, 45000);
+      try {
+        await call.start();
+      } catch (cause) {
+        if (generation.current !== epoch) return;
+        end();
+        reportFailure(voiceFailure(cause), rejectedVoiceKey(cause));
+      }
+      return;
+    }
     let previewHeard = false,
       playbackBlocked = false;
     const handlers: VoiceLiveHandlers = {
@@ -377,28 +616,21 @@ export const VoiceChat = forwardRef<
           previewHeard = true;
           setPreviewPlaying(true);
           clearTimeout(previewTimer.current);
-          previewTimer.current = setTimeout(end, 30000);
+          previewTimer.current = setTimeout(() => end(), 30000);
         }
       },
       onSpeakingChange(speaking) {
         if (!preview || generation.current !== epoch) return;
         if (!previewHeard) return;
         clearTimeout(previewTimer.current);
-        previewTimer.current = setTimeout(end, speaking ? 30000 : 1500);
+        previewTimer.current = setTimeout(() => end(), speaking ? 30000 : 1500);
       },
       onStarted() {
         if (generation.current !== epoch) return;
         clearTimeout(setupTimer.current);
         if (preview) {
           setState('preview');
-          const voiceName =
-            selected === 'elevenlabs'
-              ? settings?.supported && Object.hasOwn(settings.labels, selection.voice)
-                ? settings.labels[selection.voice]
-                : Object.hasOwn(elevenLabels, selection.voice)
-                  ? elevenLabels[selection.voice]
-                  : 'selected ElevenLabs'
-              : selection.voice.charAt(0).toUpperCase() + selection.voice.slice(1);
+          const voiceName = selection.voice.charAt(0).toUpperCase() + selection.voice.slice(1);
           call.speak(null, `Hi, this is the ${voiceName} voice on Pebble Crew. How do I sound?`);
           previewTimer.current = setTimeout(
             () => {
@@ -413,24 +645,17 @@ export const VoiceChat = forwardRef<
             },
             previewHeard ? 30000 : 15000,
           );
-        } else {
-          startedCallId.current ??= call.sessionId;
-          setState('live');
-        }
+        } else setState('live');
       },
-      onDelegation(id, context, request) {
+      onDelegation(id, context) {
         if (preview || generation.current !== epoch) return;
         const prompt = delegationPrompt(context);
-        const text = request ?? prompt.text;
-        if (!text) return;
+        if (!prompt.text) return;
         if (queue.current.length >= 4) {
-          if (selected === 'elevenlabs') call.speak(id, 'Several requests are still waiting.');
-          setError('Several requests are waiting. Let this work finish before adding more.');
+          call.speak(id, 'Several requests are already waiting. Ask the owner to wait.');
           return;
         }
-        if (active.current || busy.current)
-          call.think(id, 'Your request is waiting for the current Hermes work to finish.');
-        queue.current.push({ id, context: prompt.context, text });
+        queue.current.push({ id: crypto.randomUUID(), text: prompt.text, delegationId: id });
         void drain();
       },
       onError() {
@@ -463,18 +688,18 @@ export const VoiceChat = forwardRef<
         }
       },
     };
-    const call =
-      selected === 'elevenlabs'
-        ? new ElevenRealtimeSession(handlers, async (sampleOnly) => {
-            await savePreferences(!sampleOnly, selection, selected);
-            return elevenSessionAnswer(
-              await rpc('voice.session', { provider: selected, preview: sampleOnly }),
-            );
-          })
-        : new VoiceLiveSession(handlers, async (sdp, sampleOnly) => {
-            await savePreferences(!sampleOnly, selection, selected);
-            return sessionAnswer(await rpc('voice.session', { sdp, preview: sampleOnly }));
-          });
+    const call = new VoiceLiveSession(handlers, async (sdp) => {
+      await savePreferences(!preview, selection, selected);
+      if (!preview) {
+        // The bridge's call record: the Pebble's spoken turns and call history.
+        const started = record(await rpc('voice.start'));
+        if (typeof started.call_id !== 'string' || !/^[a-f0-9]{32}$/.test(started.call_id))
+          throw new Error('Invalid voice call');
+        if (generation.current !== epoch) throw new Error('Voice operation was closed.');
+        liveCall.current = started.call_id;
+      }
+      return sessionAnswer(await rpc('voice.session', { sdp, preview }));
+    });
     live.current = call;
     setupTimer.current = setTimeout(() => {
       if (generation.current === epoch) {
@@ -520,6 +745,35 @@ export const VoiceChat = forwardRef<
                 }
               : settings
           }
+          voiceCatalog={
+            loadElevenVoices && (
+              <>
+                {catalogState === 'loading' && (
+                  <LoadingBar active label="Loading ElevenLabs voices" />
+                )}
+                {catalogState === 'ready' && Object.keys(elevenLabels).length === 0 && (
+                  <p className="text-sm text-muted-foreground">
+                    No ElevenLabs voices are available.
+                  </p>
+                )}
+                {(catalogState === 'key' || catalogState === 'error') && (
+                  <Alert>
+                    <AlertDescription>
+                      {catalogState === 'key'
+                        ? 'Couldn’t load ElevenLabs voices. Check that your ElevenLabs key has Voices read access.'
+                        : 'Couldn’t load ElevenLabs voices.'}
+                      <Button
+                        variant="link"
+                        onClick={() => setCatalogAttempt((value) => value + 1)}
+                      >
+                        Retry
+                      </Button>
+                    </AlertDescription>
+                  </Alert>
+                )}
+              </>
+            )
+          }
           value={value}
           onChange={setValue}
           step={step}
@@ -534,7 +788,7 @@ export const VoiceChat = forwardRef<
                 : 'idle'
           }
           activity={audioActivity}
-          onStopPreview={end}
+          onStopPreview={() => end()}
           startIntent={
             (settingsRequest?.kind === 'start' ||
               settingsRequest?.kind === 'failure' ||
@@ -543,9 +797,8 @@ export const VoiceChat = forwardRef<
           }
           audioBlocked={blockedAudio}
           onEnableAudio={() => {
-            void live.current
-              ?.resumeAudio()
-              .then(() => setBlockedAudio(false))
+            void (sampleContext.current?.resume() ?? live.current?.resumeAudio())
+              ?.then(() => setBlockedAudio(false))
               .catch(() => setError('Your browser blocked audio playback.'));
           }}
           onClose={() => {
@@ -559,7 +812,7 @@ export const VoiceChat = forwardRef<
             const receipt = record(
               await rpc('voice.credential', {
                 value,
-                ...(provider === 'elevenlabs' ? { provider } : {}),
+                ...(provider !== 'openai' ? { provider } : {}),
               }),
             );
             if (receipt.saved !== true) throw new Error('Save not confirmed');
@@ -584,31 +837,6 @@ export const VoiceChat = forwardRef<
             setNotice('');
             void rpc('voice.provider', { provider: next })
               .then((value) => applySettings(decodeSettings(value)))
-              .catch((cause) => setError(voiceFailure(cause)))
-              .finally(() => setSaving(false));
-          }}
-          onImportVox={(file) => {
-            if (file.size > 64 * 1024) {
-              setError('Choose a Vox voice export smaller than 64 KB.');
-              return;
-            }
-            setSaving(true);
-            setError('');
-            setNotice('');
-            void file
-              .text()
-              .then(async (value) => {
-                let presets: unknown;
-                try {
-                  presets = JSON.parse(value);
-                } catch {
-                  setError('This file isn’t a Vox voice export.');
-                  return;
-                }
-                await rpc('voice.vox_import', { presets });
-                await loadSettings();
-                setNotice('Vox voices imported.');
-              })
               .catch((cause) => setError(voiceFailure(cause)))
               .finally(() => setSaving(false));
           }}
@@ -639,7 +867,7 @@ export const VoiceChat = forwardRef<
         (() => {
           const content = (
             <div
-              className="mx-auto grid w-full max-w-lg gap-2 px-3 pb-2"
+              className="mx-auto grid w-full min-w-0 max-w-lg grid-cols-1 gap-2 px-3 pb-2"
               data-slot="voice-call-surface"
             >
               <VoiceCallBar
@@ -678,6 +906,7 @@ export const VoiceChat = forwardRef<
                   aria-label="Voice transcript"
                   className="max-h-36 overflow-y-auto rounded-lg bg-muted/50 px-3 py-2 text-sm"
                 >
+                  {partialCaption && <p className="text-muted-foreground">{partialCaption}</p>}
                   {captions.length ? (
                     captions.map((caption, index) => (
                       <p key={index} className="mb-1 last:mb-0">

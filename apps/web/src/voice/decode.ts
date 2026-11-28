@@ -3,10 +3,15 @@ export function record(value: unknown): Record<string, unknown> {
     throw new Error('Invalid voice response');
   return Object.fromEntries(Object.entries(value));
 }
-export type VoiceProvider = 'openai' | 'elevenlabs';
+export type VoiceProvider = 'openai' | 'elevenlabs' | 'grok';
 export function isVoiceProvider(value: unknown): value is VoiceProvider {
-  return value === 'openai' || value === 'elevenlabs';
+  return value === 'openai' || value === 'elevenlabs' || value === 'grok';
 }
+export const providerNames: Record<VoiceProvider, string> = {
+  openai: 'OpenAI',
+  elevenlabs: 'ElevenLabs',
+  grok: 'Grok',
+};
 export function voiceLabels(value: unknown): Record<string, string> {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return {};
   return Object.fromEntries(

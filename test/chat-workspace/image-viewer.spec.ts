@@ -115,7 +115,8 @@ test('photo viewer supports wheel, keyboard and mouse pan without disturbing cha
   await expect(viewer).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
   await expect(viewer.getByRole('group', { name: 'Image canvas' })).toBeFocused();
   await expect(viewer.getByRole('group', { name: 'Image canvas' })).toHaveCSS('overflow', 'hidden');
-  await expect(image).toHaveCSS('pointer-events', 'none');
+  // The photo itself takes touches so iPhone can show its long-press image menu.
+  await expect(image).toHaveCSS('pointer-events', 'auto');
   const fit = await bounds(image);
   expect(Math.abs(fit.x + fit.width / 2 - page.viewportSize()!.width / 2)).toBeLessThan(1);
   const readCount = reads();
@@ -184,7 +185,8 @@ test('photo viewer supports wheel, keyboard and mouse pan without disturbing cha
   await page.evaluate(() => history.back());
   await expect(viewer).toHaveCount(0);
   await expect(field).toHaveValue('Keep this photo draft');
-  expect(reads()).toBe(readCount);
+  // Each reopen reads only the original again; the chat copy is never re-read.
+  expect(reads()).toBe(readCount + 2);
 });
 
 test('phone photo viewer supports pinch and one-finger pan', async ({ page, context }, info) => {
@@ -256,5 +258,73 @@ test('borderless photo viewer fits resized viewports and respects reduced motion
   );
   await page.screenshot({ path: info.outputPath('image-viewer-landscape.png') });
   await viewer.getByRole('button', { name: 'Close image', exact: true }).click();
+  await expect(viewer).toHaveCount(0);
+});
+
+test('one tap closes a photo immediately and after reopening', async ({ page, context }, info) => {
+  test.skip(!info.project.use.isMobile, 'Single-touch dismissal uses phone browsers.');
+  const { trigger } = await setup(page, context);
+  for (let attempt = 0; attempt < 3; attempt++) {
+    await trigger.tap();
+    const viewer = page.getByRole('dialog', { name: 'Field notes', exact: true });
+    await expect(viewer.getByRole('img')).toBeVisible();
+    await viewer.getByRole('button', { name: 'Close image', exact: true }).tap();
+    await expect(viewer).toHaveCount(0);
+  }
+});
+
+test('one tap on the photo backdrop closes the viewer', async ({ page, context }, info) => {
+  test.skip(!info.project.use.isMobile, 'Backdrop dismissal uses phone browsers.');
+  const { trigger } = await setup(page, context);
+  await trigger.tap();
+  const viewer = page.getByRole('dialog', { name: 'Field notes', exact: true });
+  await expect(viewer.getByRole('img')).toBeVisible();
+  const canvas = viewer.getByRole('group', { name: 'Image canvas' });
+  const box = await bounds(canvas);
+  await page.touchscreen.tap(box.x + 20, box.y + 80);
+  await expect(viewer).toHaveCount(0);
+});
+
+test('a backdrop tap with slight finger movement still closes the photo', async ({
+  page,
+  context,
+}, info) => {
+  test.skip(!info.project.use.isMobile, 'Finger movement uses phone browsers.');
+  const { trigger } = await setup(page, context);
+  await trigger.tap();
+  const viewer = page.getByRole('dialog', { name: 'Field notes', exact: true });
+  await expect(viewer.getByRole('img')).toBeVisible();
+  const canvas = viewer.getByRole('group', { name: 'Image canvas' });
+  const box = await bounds(canvas);
+  const x = box.x + 20,
+    y = box.y + 80;
+  await touch(canvas, 'touchstart', [{ x, y }]);
+  await touch(canvas, 'touchmove', [{ x: x + 2, y: y + 2 }]);
+  await touch(canvas, 'touchend', []);
+  await expect(viewer).toHaveCount(0);
+});
+
+test('dragging or cancelling a backdrop touch does not dismiss the photo', async ({
+  page,
+  context,
+}, info) => {
+  test.skip(!info.project.use.isMobile, 'Touch gesture cancellation uses phone browsers.');
+  const { trigger } = await setup(page, context);
+  await trigger.tap();
+  const viewer = page.getByRole('dialog', { name: 'Field notes', exact: true });
+  await expect(viewer.getByRole('img')).toBeVisible();
+  const canvas = viewer.getByRole('group', { name: 'Image canvas' });
+  const box = await bounds(canvas);
+  const x = box.x + 20,
+    y = box.y + 80;
+  await touch(canvas, 'touchstart', [{ x, y }]);
+  await touch(canvas, 'touchmove', [{ x: x + 30, y: y + 30 }]);
+  await touch(canvas, 'touchend', []);
+  await expect(viewer).toBeVisible();
+  await touch(canvas, 'touchstart', [{ x, y }]);
+  await touch(canvas, 'touchcancel', []);
+  await touch(canvas, 'touchend', []);
+  await expect(viewer).toBeVisible();
+  await viewer.getByRole('button', { name: 'Close image', exact: true }).tap();
   await expect(viewer).toHaveCount(0);
 });

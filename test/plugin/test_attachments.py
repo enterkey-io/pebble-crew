@@ -25,7 +25,7 @@ class FilesNative(Native):
             return {'attached': True, 'ref_text': '@file /private/' + str(params.get('id', '')) + '.txt'}
         if method == 'bot_web.conversation.history':
             return {'messages': self.history}
-        if method == 'prompt.submit':
+        if method == 'bot_web.conversation.submit':
             self.calls.append((method, params))
             if self.fail:
                 raise NativeError('unknown delivery')
@@ -50,7 +50,7 @@ class AttachmentTests(unittest.IsolatedAsyncioTestCase):
         params = {'session_id':'live-alpha','text':'Read this','attachments':[row['id']],'request_id':'send-1'}
         self.assertEqual((await self.store.submit(self.ops,'owner',params))['state'],'accepted')
         self.assertEqual((await self.store.submit(self.ops,'owner',params))['state'],'accepted')
-        self.assertEqual(sum(m=='prompt.submit' for m,_ in self.native.calls),1)
+        self.assertEqual(sum(m=='bot_web.conversation.submit' for m,_ in self.native.calls),1)
         self.store.db.close();self.store=AttachmentStore(Path(self.tmp.name)/'files')
         result,data=await self.store.invoke(self.ops,'owner','files.read',{'session_id':'live-alpha','id':row['id']})
         self.assertEqual(data,b'private fixture')
@@ -95,24 +95,24 @@ class AttachmentTests(unittest.IsolatedAsyncioTestCase):
             with self.assertRaises(InvalidOperation): await self.upload()
         row=await self.upload();path=self.store.path(row['id']);path.unlink();path.symlink_to(Path(self.tmp.name)/'secret')
         with self.assertRaises(InvalidOperation): self.store.read(row)
-        self.assertFalse(any(m=='prompt.submit' for m,_ in self.native.calls))
+        self.assertFalse(any(m=='bot_web.conversation.submit' for m,_ in self.native.calls))
     async def test_unknown_send_never_replays_and_requires_explicit_cleanup(self):
         row=await self.upload();params={'session_id':'live-alpha','text':'Read','attachments':[row['id']],'request_id':'uncertain-1'}
         self.native.fail=True
         with self.assertRaises(NativeError): await self.store.submit(self.ops,'owner',params)
         self.assertEqual((await self.store.submit(self.ops,'owner',params))['state'],'uncertain')
-        self.assertEqual(sum(m=='prompt.submit' for m,_ in self.native.calls),1)
+        self.assertEqual(sum(m=='bot_web.conversation.submit' for m,_ in self.native.calls),1)
         with self.assertRaises(InvalidOperation): await self.store.submit(self.ops,'owner',{**params,'text':'changed'})
         self.assertEqual((await self.store.invoke(self.ops,'owner','files.reconcile',{'session_id':'live-alpha'}))['state'],'uncertain')
         self.assertEqual((await self.store.invoke(self.ops,'owner','files.discard',{'session_id':'live-alpha'}))['state'],'discarded')
-        self.assertEqual(sum(m=='prompt.submit' for m,_ in self.native.calls),1)
+        self.assertEqual(sum(m=='bot_web.conversation.submit' for m,_ in self.native.calls),1)
     async def test_duplicate_ids_foreign_sessions_and_changed_blobs_rejected(self):
         row=await self.upload()
         for changes in [{'attachments':[row['id'],row['id']]},{'session_id':'another-session'}]:
             with self.assertRaises(InvalidOperation): await self.store.submit(self.ops,'owner',{'session_id':'live-alpha','text':'','attachments':[row['id']],'request_id':'new-send',**changes})
         self.store.path(row['id']).write_bytes(b'changed')
         with self.assertRaises(InvalidOperation): self.store.read(row)
-        self.assertFalse(any(m=='prompt.submit' for m,_ in self.native.calls))
+        self.assertFalse(any(m=='bot_web.conversation.submit' for m,_ in self.native.calls))
 
     async def test_lost_attachment_receipt_can_be_reconciled_beyond_the_recent_page(self):
         row = await self.upload()
@@ -132,4 +132,4 @@ class AttachmentTests(unittest.IsolatedAsyncioTestCase):
             result = await self.store.invoke(self.ops,'owner','files.reconcile',{'session_id':'live-alpha'})
         self.assertEqual(result, {'state':'accepted','ids':[row['id']]})
         self.assertEqual(len(pages), 2)
-        self.assertEqual(sum(method == 'prompt.submit' for method, _ in self.native.calls), 1)
+        self.assertEqual(sum(method == 'bot_web.conversation.submit' for method, _ in self.native.calls), 1)

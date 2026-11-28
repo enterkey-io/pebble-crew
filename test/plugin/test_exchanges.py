@@ -7,6 +7,7 @@ import tempfile
 import unittest
 from unittest.mock import patch
 import test_security
+import hermes_stub
 from bot_web.exchanges import Exchanges, register_runtime
 from bot_web.operations import InvalidOperation
 
@@ -59,6 +60,7 @@ class ExchangeTests(unittest.TestCase):
         self.ledger.complete(receipt,{'pid':43,'exit_code':0,'reply':'received'})
         self.assertEqual(self.ledger.db.execute('SELECT count(*) FROM deliveries').fetchone()[0],2)
         self.assertEqual(len(self.ledger.read(ident)['messages']),3)
+    @unittest.skipUnless(hermes_stub.HERMES_STORAGE, hermes_stub.NEEDS_HERMES_STORAGE)
     def test_admission_reserves_each_reply_wakeup_inside_the_turn_budget(self):
         ident = self.send()['exchange_id']
         self.ledger.db.execute("UPDATE participants SET session='private-a' WHERE identity='a'"); self.ledger.db.commit()

@@ -1,9 +1,37 @@
-"""Profile-scoped native cron management; never runs a routine or a model."""
+"""Profile-scoped native cron management; never runs a routine or a model.
+
+A routine wakes its Pebble in its own Bot Chat with a runbook. The native job runs
+no model: a fixed script prints the runbook, and Hermes delivers that output as a
+turn in the Pebble's existing conversation, where it acts with its full context."""
+import hashlib
 import json
+import os
+import re
 from .operations import InvalidOperation, fields, identifier
 from .work_store import fingerprint
 
 CONFIG = ('name', 'prompt', 'schedule', 'deliver', 'enabled', 'skills', 'skill', 'model', 'provider', 'base_url', 'enabled_toolsets', 'continuity', 'repeat')
+
+
+WAKE_DIR = 'pebble-routines'
+WAKE = 'Routine time. Do this now, here in our chat:\n\n'
+
+
+def wake_script(runbook):
+    """Writes the model-free script for ``runbook`` in the current profile's scripts
+    folder and returns its path relative to that folder."""
+    from hermes_constants import get_hermes_home
+    body = ("# Pebble Crew routine. Prints the runbook; Hermes delivers it to this Pebble's chat.\n"
+            'print(' + repr(WAKE + re.sub(r'\s*\[pebble-proactive:[^\]\n]*\]\s*$', '', runbook).strip()) + ')\n')
+    name = hashlib.sha256(body.encode()).hexdigest()[:32] + '.py'
+    folder = get_hermes_home() / 'scripts' / WAKE_DIR
+    folder.mkdir(parents=True, exist_ok=True)
+    path = folder / name
+    if not path.is_file() or path.read_text(encoding='utf-8') != body:
+        temporary = folder / ('.' + name + '.tmp')
+        temporary.write_text(body, encoding='utf-8')
+        os.replace(temporary, path)
+    return WAKE_DIR + '/' + name
 
 
 def validate_command(command):
@@ -55,6 +83,9 @@ def manage(profile, command):
         params = {k: v for k, v in command.items() if k != 'expected'}
         if command['action'] == 'create':
             params['deliver'] = 'bot-chat'
+        if command['action'] in {'create', 'update'}:
+            # Updating an older routine also moves it to waking the Pebble in its chat.
+            params.update(no_agent=True, script=wake_script(command['prompt']))
         result = json.loads(cronjob(**params))
         if result.get('success') is not True:
             return {'success': False, 'code': 'ROUTINE_REJECTED'}

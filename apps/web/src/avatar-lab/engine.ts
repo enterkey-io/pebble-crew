@@ -4,6 +4,7 @@ export { SHAPES } from '@hermes-client/core';
 export type { Shape } from '@hermes-client/core';
 export const STATES = ['ready', 'thinking', 'working', 'waiting', 'attention', 'done'] as const;
 export type Activity = (typeof STATES)[number];
+export type AvatarMood = 'resting' | 'welcoming';
 export const COLORS = [
   { id: 'iris', label: 'Iris', hex: '#aca8ed' },
   { id: 'citron', label: 'Citron', hex: '#d4dc85' },
@@ -166,6 +167,26 @@ export function samplePose(
     pose.leftOpen *= blink;
     pose.rightOpen *= blink;
   }
+  return pose;
+}
+
+/** A small greeting while the real Main Pebble's conversation opens. */
+export function sampleWelcomePose(milliseconds: number, seed: number, reduced = false): Pose {
+  const pose = samplePose('ready', 0, seed, true);
+  pose.leftOpen = pose.rightOpen = 1.08;
+  if (reduced) return pose;
+  const t = Number.isFinite(milliseconds) ? Math.max(0, milliseconds) / 1000 : 0;
+  pose.gazeX = Math.sin((t * TAU) / 3.2 + 0.6) * 5.2;
+  pose.gazeY = -2.2 + Math.sin(t * 1.7) * 0.8;
+  const hop = Math.max(0, Math.sin((t * TAU) / 2.4));
+  pose.y = -5 * hop * hop;
+  pose.rotation = Math.sin(t * 2.3) * 3.5;
+  pose.sy = 1 + Math.sin((t * TAU) / 2.4) * 0.025;
+  pose.sx = 2 - pose.sy;
+  const blinkPhase = (t + 1.8) % 2.7;
+  const blink = blinkPhase < 0.18 ? 1 - Math.sin((blinkPhase / 0.18) * Math.PI) * 0.95 : 1;
+  pose.leftOpen *= blink;
+  pose.rightOpen *= blink;
   return pose;
 }
 

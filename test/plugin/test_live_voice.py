@@ -2,7 +2,6 @@ import asyncio
 import json
 from pathlib import Path
 from tempfile import TemporaryDirectory
-import time
 from types import SimpleNamespace
 import unittest
 from unittest.mock import AsyncMock, Mock, patch
@@ -20,14 +19,36 @@ class VoiceBoundaryTests(unittest.IsolatedAsyncioTestCase):
         self.ops.session_incarnations['live-alpha'] = 'a'*64
         self.voice = LiveVoice(self.ops)
 
-    async def test_delegation_uses_native_live_surface_and_the_normal_model(self):
+    async def test_provider_requests_and_old_live_starts_cannot_submit(self):
         with patch('bot_web.live_voice.supported', return_value=True):
-            await self.voice.invoke('voice.submit', {'session_id': 'live-alpha', 'text': 'Check the report', 'context': 'User: the report'})
-        method, params = self.native.calls[-1]
-        self.assertEqual(method, 'prompt.submit')
-        self.assertEqual(params, {'session_id': 'live-alpha', 'text': 'Check the report', 'surface': 'voice-live', 'voice_context': 'User: the report', 'queued': True})
-        self.assertNotIn('voice_turn', params)
-        self.assertNotIn('session.interrupt', [call[0] for call in self.native.calls])
+            for operation, params in (
+                ('voice.submit', {'text': 'Provider instructions', 'context': 'Fabricated user words'}),
+                ('voice.session', {'provider': 'elevenlabs', 'preview': False}),
+            ):
+                with self.assertRaises(InvalidOperation):
+                    await self.voice.invoke(operation, {'session_id': 'live-alpha', **params})
+        self.assertNotIn('prompt.submit', [call[0] for call in self.native.calls])
+
+    async def test_video_calls_use_elevenlabs_whatever_the_audio_call_provider(self):
+        from contextlib import nullcontext
+        from bot_web.workspace import WorkspaceStore
+        scope = SimpleNamespace(_config_profile_scope=lambda profile: nullcontext())
+        root = TemporaryDirectory()
+        self.addCleanup(root.cleanup)
+        store = WorkspaceStore(Path(root.name) / 'workspace.sqlite')
+        self.addCleanup(store.db.close)
+        self.voice = LiveVoice(self.ops, store)
+        self.ops.session_conversations['live-alpha'] = 'root-alpha'
+        with patch('bot_web.live_voice.supported', return_value=True), \
+                patch.dict('sys.modules', {'hermes_cli.web_server_profiles': scope}), \
+                patch('bot_web.eleven_voice.provider', return_value='openai'), \
+                patch('bot_web.eleven_voice.source', return_value=('synthetic-eleven-key', True)), \
+                patch('bot_web.eleven_voice.preferences', return_value={'voice': 'synthetic_voice'}), \
+                patch('bot_web.eleven_voice.transcription_token', return_value='synthetic-ticket-1234'):
+            started = await self.voice.invoke('voice.start', {'session_id': 'live-alpha'}, video=True)
+        self.assertEqual(started['token'], 'synthetic-ticket-1234')
+        self.assertEqual(self.voice.spoken.voice('live-alpha', started['call_id']), 'synthetic_voice')
+        self.assertNotIn('prompt.submit', [call[0] for call in self.native.calls])
 
     async def test_changed_profile_or_foreign_session_cannot_start_voice(self):
         with patch('bot_web.live_voice.supported', return_value=True):
@@ -70,60 +91,30 @@ class VoiceBoundaryTests(unittest.IsolatedAsyncioTestCase):
             response = await http.post('/v1/rpc', headers={**headers, 'Origin': 'https://evil.invalid', 'X-Bot-Connection': first}, json={'operation': 'voice.credential', 'params': {'session_id': 'live-alpha', 'value': 'synthetic'}})
             self.assertEqual(response.status_code, 403)
 
-    async def test_call_followup_is_hidden_single_use_and_refuses_preview_or_foreign_calls(self):
-        import time
-        self.voice.calls['actual-call'] = {'session_id': 'live-alpha', 'preview': False, 'expires': time.monotonic() + 60, 'followed_up': False}
-        params = {'session_id': 'live-alpha', 'call_id': 'actual-call', 'transcript': 'User: We have not decided yet.'}
-        with patch('bot_web.live_voice.supported', return_value=True):
-            await self.voice.invoke('voice.end', params)
-            self.assertEqual(await self.voice.invoke('voice.end', params), {'submitted': False})
-            for call_id, call in [('preview', {'session_id': 'live-alpha', 'preview': True}), ('foreign', {'session_id': 'another-chat', 'preview': False})]:
-                self.voice.calls[call_id] = {**call, 'expires': time.monotonic() + 60, 'followed_up': False}
-                with self.assertRaises(InvalidOperation):
-                    await self.voice.invoke('voice.end', {**params, 'call_id': call_id})
-        submits = [call for call in self.native.calls if call[0] == 'prompt.submit']
-        self.assertEqual(len(submits), 1)
-        method, request = submits[0]
-        self.assertEqual(method, 'prompt.submit')
-        self.assertEqual(request['display_kind'], 'hidden')
-        self.assertEqual(request['voice_context'], params['transcript'])
-        self.assertIn('Do not use tools', request['text'])
-
-    async def test_call_records_survive_reopen_and_followup_failure_without_leaking_transcripts(self):
+    async def test_only_real_calls_produce_one_durable_history_entry(self):
         from bot_web.workspace import WorkspaceStore
         with TemporaryDirectory() as root, patch('bot_web.live_voice.supported', return_value=True):
             path = Path(root) / 'workspace.sqlite'
-            self.voice.workspace = WorkspaceStore(path)
+            store = WorkspaceStore(path)
+            self.voice = LiveVoice(self.ops, store)
             self.native._publish = Mock()
             self.ops.session_conversations['live-alpha'] = 'root-alpha'
-            self.voice.calls = {key: {'session_id': 'live-alpha', 'preview': False,
-                'expires': time.monotonic() + 60, 'followed_up': False} for key in ('silent', 'spoken')}
-            silent = await self.voice.invoke('voice.end', {'session_id': 'live-alpha', 'call_id': 'silent', 'transcript': ''})
-            self.assertFalse(silent['submitted'])
-            self.assertEqual([m for m, _ in self.native.calls], ['bot_web.lifecycle'])
-            original_call = self.native.call
-            async def fail_followup(method, params):
-                if method == 'prompt.submit':
-                    raise NativeError('unconfirmed')
-                return await original_call(method, params)
-            self.native.call = AsyncMock(side_effect=fail_followup)
-            params = {'session_id': 'live-alpha', 'call_id': 'spoken', 'transcript': 'Private voice context'}
-            spoken = await self.voice.invoke('voice.end', params)
-            self.assertTrue(spoken['follow_up_unconfirmed'])
-            duplicate = await self.voice.invoke('voice.end', params)
-            self.assertEqual(duplicate, {'submitted': False, 'call': spoken['call']})
-            self.assertEqual([c.args[0] for c in self.native.call.await_args_list].count('prompt.submit'), 1)
-            self.assertEqual(self.native._publish.call_count, 2)
-            self.voice.workspace.db.close()
-            self.assertNotIn(b'Private voice context', path.read_bytes())
+            ident = self.voice.spoken.begin('live-alpha', 'chosen_voice')
+            params = {'session_id': 'live-alpha', 'call_id': ident}
+            with self.assertRaises(InvalidOperation):
+                await self.voice.invoke('voice.end', {**params, 'transcript': 'Provider words'})
+            saved = await self.voice.invoke('voice.end', params)
+            self.assertEqual(await self.voice.invoke('voice.end', params), {})
+            self.assertNotIn('prompt.submit', [m for m, _ in self.native.calls])
+            self.native._publish.assert_called_once()
+            store.db.close()
             store = WorkspaceStore(path)
             try:
                 reopened = LiveVoice(self.ops, store)
                 self.ops.session_conversations['new-live-id'] = 'root-alpha'
                 self.ops.session_incarnations['new-live-id'] = 'a'*64
                 history = reopened.history('new-live-id', (None, None))
-                self.assertCountEqual(history, [silent['call'], spoken['call']])
-                self.assertEqual(reopened.history('new-live-id', (None, silent['call']['ended_at'])), [])
+                self.assertEqual(history, [saved['call']])
                 self.ops.session_incarnations['new-live-id'] = 'b'*64
                 self.assertEqual(reopened.history('new-live-id', (None, None)), [])
             finally:

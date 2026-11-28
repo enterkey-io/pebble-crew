@@ -2,6 +2,7 @@ import { usePageTitle } from './ui/page-title';
 import { TabbedEditor } from './ui/EditorSurface';
 import { useRef, useState } from 'react';
 import type { SessionClient } from '@hermes-client/protocol';
+import type { InterfaceSettings } from '@hermes-client/protocol';
 import type { WorkspaceSnapshot as WorkspaceState, WorkspaceBot } from '@hermes-client/protocol';
 import { OwnerAccount } from './OwnerAccount';
 import { GeneralSettings } from './GeneralSettings';
@@ -26,8 +27,12 @@ export function WorkspaceSettings({
   voiceRequest,
   onVoiceReady,
   onProactive,
+  interfaceSettings,
+  onInterfaceSettings,
 }: {
   onProactive?: (() => void) | undefined;
+  interfaceSettings: InterfaceSettings;
+  onInterfaceSettings: (settings: InterfaceSettings) => void;
   initialAgentTab?: 'identity' | 'voice';
   callActive?: boolean;
   voiceRequest?: import('./voice/decode').VoiceSettingsRequest | undefined;
@@ -122,6 +127,9 @@ export function WorkspaceSettings({
     >
       {tab === 'general' && (
         <GeneralSettings
+          interfaceSettings={interfaceSettings}
+          onInterfaceSettings={onInterfaceSettings}
+          onDirtyChange={onDirtyChange}
           client={client}
           state={state}
           onChange={onChange}

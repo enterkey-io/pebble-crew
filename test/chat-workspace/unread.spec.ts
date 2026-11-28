@@ -19,10 +19,11 @@ async function expectOnPhotoEdge(pin: Locator, badge: Locator, side = 1) {
   expect(x * side).toBeGreaterThan(0);
   expect(Math.hypot(x, y)).toBeCloseTo(radius, 0);
   expect(y).toBeCloseTo(Math.abs(x), 0);
+  return { x, y };
 }
 
 for (const theme of ['dark', 'light']) {
-  test(`unread indicators occupy the row edge and replace the pinned Main badge in ${theme}`, async ({
+  test(`unread indicators occupy every avatar and replace the pinned Main badge in ${theme}`, async ({
     page,
     context,
   }, info) => {
@@ -78,17 +79,8 @@ for (const theme of ['dark', 'light']) {
       .filter({ has: page.getByRole('button', { name: /^Ember .*Bot Chat$/ }) });
     const rowDot = row.getByRole('img', { name: 'Unread messages', exact: true });
     await expect(rowDot).toBeVisible();
-    const spacing = await row.evaluate((node) => {
-      const bounds = node.getBoundingClientRect();
-      const edge = node.querySelector('.row-unread')!.getBoundingClientRect();
-      return {
-        right: bounds.right - edge.right,
-        center: Math.abs(edge.y + edge.height / 2 - bounds.y - bounds.height / 2),
-      };
-    });
-    expect(spacing.right).toBeGreaterThanOrEqual(11);
-    expect(spacing.right).toBeLessThanOrEqual(13);
-    expect(spacing.center).toBeLessThan(1);
+    await expect(row.locator('.agent-avatar [data-avatar-badge="unread"]')).toHaveCount(1);
+    await expect(row.locator(':scope > .status-dot')).toHaveCount(0);
     await expect(row.locator('.pc-overflow')).toHaveCount(0);
     await page.screenshot({ path: info.outputPath(`unread-${theme}.png`), animations: 'disabled' });
     await pin.screenshot({
@@ -102,23 +94,73 @@ for (const theme of ['dark', 'light']) {
     await expect
       .poll(() => fixture.state.bots.find((b) => b.profile === 'mica')!.unread)
       .toBe(false);
+    if (info.project.use.isMobile)
+      await expect(page.locator('.pc-mobile-conversation')).toHaveCSS('transform', 'none');
+    await page.emulateMedia({ reducedMotion: 'no-preference' });
     await emit(page, 'message.start', {}, 'mica');
     const identity = page.locator('.pc-chat-identity');
-    const activity = identity.getByRole('img', { name: 'thinking', exact: true });
+    const activity = identity.getByRole('img', { name: 'Active', exact: true });
+    const headerStar = identity.getByRole('img', { name: 'Main Pebble', exact: true });
     await expect(activity).toBeVisible();
-    await expectOnPhotoEdge(identity, activity, -1);
-    await expect(activity).toHaveCSS('border-left-width', '1px');
+    const activeOffset = await expectOnPhotoEdge(identity, activity);
+    await expect(headerStar).toHaveCount(0);
+    await expect(identity.locator('[data-avatar-badge]')).toHaveCount(1);
+    await expect(page.locator('.agent-avatar .photo-status')).toHaveCount(0);
+    await expect(activity).toHaveCSS(
+      'background-color',
+      theme === 'dark' ? 'rgb(149, 186, 165)' : 'rgb(50, 108, 74)',
+    );
+    await expect(activity).toHaveCSS('animation-name', 'unread-pulse');
+    const activeBounds = (await activity.boundingBox())!;
     await identity.screenshot({
       path: info.outputPath(`photo-activity-${theme}.png`),
       animations: 'disabled',
     });
+    await navigation();
+    const pinnedWorking = pin.getByRole('img', { name: 'Active', exact: true });
+    await expect(pinnedWorking).toBeVisible();
+    await expect(pin.locator('[data-avatar-badge]')).toHaveCount(1);
+    await expectOnPhotoEdge(pin, pinnedWorking);
+    const pinnedActiveSize = (await pinnedWorking.boundingBox())!.width;
+    await pin.screenshot({
+      path: info.outputPath(`photo-pin-working-${theme}.png`),
+      animations: 'disabled',
+    });
+    if (info.project.use.isMobile) {
+      await page.goBack();
+      await expect(identity).toBeVisible();
+    }
+    await identity.click();
+    const detailsAvatar = page.locator('.pc-details-identity');
+    const detailsWorking = detailsAvatar.getByRole('img', { name: 'Active', exact: true });
+    await expect(detailsWorking).toBeVisible();
+    await expect(detailsAvatar.locator('[data-avatar-badge]')).toHaveCount(1);
+    await expectOnPhotoEdge(detailsAvatar, detailsWorking);
+    await detailsAvatar.screenshot({
+      path: info.outputPath(`photo-details-working-${theme}.png`),
+      animations: 'disabled',
+    });
+    await page.getByRole('button', { name: 'Close details', exact: true }).click();
+    await expect(identity).toBeVisible();
     await emit(page, 'message.complete', { status: 'done' }, 'mica');
+    await expect(activity).toHaveCount(0);
+    const idleOffset = await expectOnPhotoEdge(identity, headerStar);
+    await expect(identity.locator('[data-avatar-badge]')).toHaveCount(1);
+    const idleBounds = (await headerStar.boundingBox())!;
+    expect(idleBounds.width).toBe(activeBounds.width);
+    expect(idleOffset.x).toBeCloseTo(activeOffset.x, 0);
+    expect(idleOffset.y).toBeCloseTo(activeOffset.y, 0);
+    await identity.screenshot({
+      path: info.outputPath(`photo-header-idle-${theme}.png`),
+      animations: 'disabled',
+    });
     await navigation();
     await expect(pin.getByRole('img', { name: 'Unread messages', exact: true })).toHaveCount(0, {
       timeout: 1500,
     });
     const star = pin.getByRole('img', { name: 'Main Pebble', exact: true });
     await expect(star).toBeVisible();
+    expect((await star.boundingBox())!.width).toBe(pinnedActiveSize);
     await expectOnPhotoEdge(pin, star);
     await pin.screenshot({
       path: info.outputPath(`photo-star-${theme}.png`),
@@ -135,3 +177,39 @@ for (const theme of ['dark', 'light']) {
     await expect(dot).toBeVisible();
   });
 }
+
+test('open conversation uses one avatar badge while roster unread changes during a reply', async ({
+  page,
+  context,
+}, info) => {
+  const fixture = await installFixture(context);
+  await page.goto('/');
+  await expect(page.getByRole('textbox', { name: 'Message', exact: true })).toBeEnabled();
+  const arlo = fixture.state.bots.find((bot) => bot.profile === 'arlo')!;
+  const header = page.locator('.pc-chat-identity');
+  const pin = page.locator('.pc-pin').filter({
+    has: page.getByRole('button', { name: /^Arlo .*Bot Chat$/ }),
+  });
+  await emit(page, 'message.start', {}, 'arlo');
+  await expect(header.getByRole('img', { name: 'Active', exact: true })).toBeVisible();
+  arlo.unread = true;
+  arlo.cursor = 9000;
+  arlo.cursor_type = 'row';
+  arlo.role.title = 'Working team lead';
+  await emit(page, 'workspace.changed', {}, 'arlo');
+  await expect(header).toContainText('Working team lead');
+  if (info.project.use.isMobile)
+    await page.getByRole('button', { name: 'Toggle navigation', exact: true }).click();
+  await expect(pin.getByRole('img', { name: 'Active', exact: true })).toBeVisible();
+  await expect(pin.getByRole('img', { name: 'Unread messages', exact: true })).toHaveCount(0);
+  await pin.screenshot({
+    path: info.outputPath('shared-avatar-active.png'),
+    animations: 'disabled',
+  });
+  if (info.project.use.isMobile) await page.goBack();
+  await emit(page, 'message.complete', { status: 'done' }, 'arlo');
+  await expect(header.getByRole('img', { name: 'Unread messages', exact: true })).toBeVisible();
+  if (info.project.use.isMobile)
+    await page.getByRole('button', { name: 'Toggle navigation', exact: true }).click();
+  await expect(pin.getByRole('img', { name: 'Unread messages', exact: true })).toBeVisible();
+});

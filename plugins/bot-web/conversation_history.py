@@ -6,12 +6,17 @@ that a new message can shift. They grant no access outside that conversation.
 import base64
 import inspect
 import json
+import re
 
 PAGE_ROWS = 60
 PAGE_BYTES = 2 * 1024 * 1024
 DISPLAY_KEYS = frozenset({'role', 'text', 'row_id', 'timestamp', 'name', 'tool_name',
     'tool_call_id', 'context', 'display_kind', 'display_metadata', 'display_commentary',
     'codex_message_items'})
+
+
+def message_uid(value):
+    return value if isinstance(value, str) and re.fullmatch(r'[0-9a-f]{32}', value) else None
 
 
 def cursor(key, row_id):
@@ -42,7 +47,9 @@ def display_rows(server, rows, home):
             return content
         return [{'type': 'text', 'text': '[image]'} if isinstance(part, dict) and part.get('type') in {'image_url', 'input_image', 'image'} else part for part in content]
     native = [{**row, 'content': compact_content(row.get('content')), '_row_id': row['id']} for row in rows]
+    identities = {row['id']: uid for row in rows if (uid := message_uid(row.get('message_uid')))}
     tools = {row.get('tool_call_id'): row['id'] for row in rows if row.get('role') == 'tool' and row.get('tool_call_id')}
+    compacted = {row['id'] for row in rows if row.get('_compressed_summary')}
     projected = {}
     tool_rows = iter(row['id'] for row in rows if row.get('role') == 'tool' and row.get('display_kind') != 'hidden')
     for value in display(native, **options):
@@ -50,6 +57,8 @@ def display_rows(server, rows, home):
             tool_row = next(tool_rows, None)
             if tool_row is not None:
                 value = {**value, 'row_id': tool_row}
+        if value.get('row_id') in compacted or value.get('_row_id') in compacted:
+            value = {**value, '_compressed_summary': True}
         item = project_message(value)
         item = {k: v for k, v in item.items() if k in DISPLAY_KEYS}
         metadata = item.get('display_metadata')
@@ -69,6 +78,8 @@ def display_rows(server, rows, home):
         if item.get('role') == 'tool' and item.get('tool_call_id') in tools:
             item['row_id'] = tools[item['tool_call_id']]
         if type(item.get('row_id')) is int:
+            if uid := identities.get(item['row_id']):
+                item['message_uid'] = uid
             projected[item['row_id']] = item
     return [projected.get(row['id'], {'role': 'system', 'row_id': row['id']}) for row in rows]
 

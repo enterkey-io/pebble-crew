@@ -5,6 +5,9 @@ import type { CSSProperties } from 'react';
 export function ownerBubbleStyle(color?: string): CSSProperties {
   const selected = COLORS.find((item) => item.id === color);
   return selected && selected.id !== 'white'
-    ? { backgroundColor: selected.hex, color: '#101112' }
+    ? {
+        backgroundColor: `var(--owner-bubble-background, ${selected.hex})`,
+        color: 'var(--owner-bubble-foreground, #101112)',
+      }
     : {};
 }

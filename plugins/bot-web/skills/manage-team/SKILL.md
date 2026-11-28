@@ -62,9 +62,13 @@ umber, moss, ocean, heather, sienna. Use a saved photo only when one exists.
 and `command`. Commands: `list` (optional `offset`); `create` with `name`, `prompt`,
 `schedule`; `update` with `job_id`, `expected`, `name`, `prompt`, `schedule`;
 `pause`, `resume` or `remove` with `job_id`, `expected`. List first for current
-job IDs/configuration revisions and follow `next_offset`. These use Hermes cron;
-new routines deliver to that agent's existing Bot Chat. This tool never runs a job
-immediately. Preserve unrelated settings.
+job IDs/configuration revisions and follow `next_offset`. A routine wakes that
+agent in its existing Bot Chat at the scheduled local time, and its `prompt` is the
+runbook the agent follows then, with its full conversation context. Write it as
+steps for the agent, not as a message to the owner. No separate model runs, and
+updating an older routine moves it to this behavior. Never create routines with the
+`hermes cron` CLI. This tool never runs a job immediately. Preserve unrelated
+settings.
 
 Ask before unsolicited changes; the owner's explicit request authorizes that
 change. These controls do not grant tools, secrets, deletion or owner authority.

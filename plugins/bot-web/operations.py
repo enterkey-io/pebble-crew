@@ -6,6 +6,17 @@ import re
 from .native import NativeError
 
 
+
+def shown_preview(value):
+    """The list preview, blank when the latest reply was a silence marker the chat hides."""
+    text = str(value or '')
+    try:
+        from gateway.response_filters import is_intentional_silence_response
+        silent = is_intentional_silence_response(text.strip())
+    except Exception:
+        silent = text.strip() == 'NO_REPLY'
+    return '' if silent or text.strip() == '[PEBBLE_NO_REPLY]' else text[:500]
+
 class InvalidOperation(Exception):
     def __init__(self, message, code="INVALID_PARAMETERS"):
         super().__init__(message)
@@ -70,7 +81,7 @@ class BotOperations:
                 "canonical": bool(chat.get("id")),
                 "hidden": meta.get('hidden') is True, "pinned": meta.get('pinned') is True,
                 "pin_configured": 'pinned' in meta,
-                "preview": str(chat.get('preview') or '')[:500],
+                "preview": shown_preview(chat.get('preview')),
                 "cursor": count,
                 "last_activity": activity if count and type(activity) in {int, float} and 0 < activity < float('inf') else 0,
                 "conversation_id": str(chat.get('resolved_id') or chat.get('id') or ''), **row.get('_presentation_clock', {})}
@@ -207,7 +218,7 @@ class BotOperations:
             if await self.stamp(self.sessions[sid]) != self.session_incarnations.get(sid):
                 raise InvalidOperation('This conversation belongs to a retired profile; open the current pebble')
             native_params = {"session_id": sid, **({"before": params["before"]} if operation == "chat.history" and "before" in params else {})}
-            method = {"chat.send": "prompt.submit", "chat.stop": "session.interrupt",
+            method = {"chat.send": "bot_web.conversation.submit", "chat.stop": "session.interrupt",
                       "chat.history": "bot_web.conversation.history", "chat.approvals": "approval.pending",
                       "chat.approve": "approval.respond", "chat.replay": "session.events.since",
                       "chat.react": "message.react"}[operation]

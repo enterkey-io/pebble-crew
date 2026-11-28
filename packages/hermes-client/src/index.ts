@@ -9,6 +9,7 @@ export * from './role-instructions';
 export * from './workspace-domain';
 
 export * from './conversation-domain';
+export * from './atmee';
 export * from './stream-position';
 
 export * from './reporting';
@@ -31,3 +32,4 @@ export * from './plans-domain';
 export * from './proactive-domain';
 
 export * from './organization-domain';
+export * from './interface-settings';

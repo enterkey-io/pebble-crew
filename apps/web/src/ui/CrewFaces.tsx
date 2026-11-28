@@ -1,5 +1,6 @@
 import { Users } from 'lucide-react';
 import type { ReactNode } from 'react';
+import { Badge } from '../components/ui/badge';
 
 /** A shared, bounded group portrait. Only the front member needs a live avatar. */
 export function CrewFaces({
@@ -22,7 +23,14 @@ export function CrewFaces({
         </span>
       ))}
       {!members.length && <Users aria-hidden="true" />}
-      {members.length > 5 && <small>+{members.length - 5}</small>}
+      {members.length > 5 && (
+        <Badge
+          className="pc-crew-count h-5 min-w-5 border-0 px-1 text-xs font-bold leading-none"
+          aria-hidden="true"
+        >
+          +{members.length - 5}
+        </Badge>
+      )}
     </span>
   );
 }

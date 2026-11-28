@@ -101,9 +101,6 @@
   color: var(--muted-foreground);
   max-width: 88%;
 }
-.pc-composer-row .menu-anchor {
-  align-self: flex-end;
-}
 .pc-action-glyphs,
 .pc-action-glyphs > span {
   display: grid;
@@ -264,17 +261,32 @@
   display: grid;
   gap: 16px;
 }
+.startup-pebble-stage {
+  height: 112px;
+  display: grid;
+  place-items: center;
+}
 .startup-pebble {
-  display: flex;
-  justify-content: center;
+  animation: startup-pebble-enter 300ms var(--ease-out) both;
 }
 .startup-pebble .agent-avatar {
   width: 72px;
   height: 78px;
 }
-.startup-progress .loading-track {
-  background: var(--border);
-  border-radius: 1px;
+@keyframes startup-pebble-enter {
+  from {
+    opacity: 0;
+    transform: translateY(3px) scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .startup-pebble {
+    animation: none;
+  }
 }
 .startup-error {
   font-size: var(--text-meta);
@@ -565,24 +577,6 @@
 .computer-screen canvas {
   max-width: 100%;
 }
-.photo-status {
-  position: absolute;
-  right: 0;
-  bottom: 8px;
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: var(--ring);
-}
-.pc-chat-identity .photo-status {
-  left: 14.64466%;
-  right: auto;
-  bottom: 14.64466%;
-  translate: -50% 50%;
-  width: 8px;
-  height: 8px;
-  border: 1px solid var(--background);
-}
 @media (max-width: 767px) {
   .entity-page {
     padding: 24px 20px;
@@ -676,35 +670,41 @@
 .search-status.error {
   color: var(--destructive);
 }
-.unread-dot {
+.status-dot {
   width: 10px;
   height: 10px;
   display: inline-block;
   border-radius: 50%;
-  background: var(--unread);
+  --signal-color: var(--unread);
+  background: var(--signal-color);
   pointer-events: none;
   animation: unread-pulse 1.8s ease-out infinite;
 }
-.avatar-unread {
-  width: 12px;
-  height: 12px;
+.avatar-status {
+  width: var(--avatar-badge-size);
+  height: var(--avatar-badge-size);
+  outline: 1px solid var(--background);
 }
-.row-unread {
-  position: absolute;
-  right: 12px;
-  top: calc(50% - 5px);
+.status-dot[data-status='attention'] {
+  --signal-color: var(--attention);
+}
+.status-dot[data-status='active'] {
+  --signal-color: var(--success);
+}
+.agent-avatar .avatar-decoration {
+  display: none;
 }
 @keyframes unread-pulse {
   0%,
   100% {
-    box-shadow: 0 0 0 0 color-mix(in srgb, var(--unread) 40%, transparent);
+    box-shadow: 0 0 0 0 color-mix(in srgb, var(--signal-color) 40%, transparent);
   }
   65% {
     box-shadow: 0 0 0 5px transparent;
   }
 }
 @media (prefers-reduced-motion: reduce) {
-  .unread-dot {
+  .status-dot {
     animation: none;
   }
 }
@@ -998,18 +998,23 @@
 .agent-options {
   padding: 8px 0;
 }
-.connection-status {
-  display: flex;
-  align-items: center;
-  gap: 7px;
+/* Connection badge on the owner's avatar, placed like a pebble's status dot. */
+.account-avatar {
+  position: relative;
+  display: inline-flex;
 }
-.connection-status i {
-  width: 6px;
-  height: 6px;
+.account-avatar > .connection-status {
+  position: absolute;
+  right: 4%;
+  bottom: 4%;
+  width: 30%;
+  height: 30%;
   border-radius: 50%;
-  background: #9d916c;
+  background: var(--muted-foreground);
+  outline: 2px solid var(--rail);
+  pointer-events: none;
 }
-.connection-status[data-online='true'] i {
+.account-avatar > .connection-status[data-online='true'] {
   background: var(--success);
 }
 .loading-track {

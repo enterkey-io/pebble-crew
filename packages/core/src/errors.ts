@@ -3,6 +3,7 @@ export const voiceErrors = {
   ELEVEN_KEY_REJECTED: 'ElevenLabs rejected this saved key.',
   ELEVEN_ACCESS_DENIED: 'This ElevenLabs key does not have the required voice access.',
   ELEVEN_RATE_LIMITED: 'ElevenLabs limited this request. Wait a moment, then try again.',
+  ELEVEN_SAMPLE_UNAVAILABLE: 'ElevenLabs has no playable sample for this voice. Try another voice.',
   ELEVEN_CONNECTION_FAILED: 'Hermes could not open a connection to ElevenLabs voice.',
   VOICE_KEY_REQUIRED: 'Add an OpenAI API key to use voice.',
   VOICE_KEY_REJECTED: 'OpenAI rejected this saved key.',
@@ -29,10 +30,35 @@ export const voiceErrors = {
   VOICE_SETUP_FAILED:
     'Hermes could not confirm voice setup. Check this Pebble’s voice configuration.',
   VOICE_PREFERENCES_FAILED: 'Hermes could not save your voice settings.',
+  VOICE_MEDIA_ONLY_REQUIRED: 'Choose ElevenLabs in this Pebble’s voice settings to call it.',
+} as const;
+
+export const atmeeErrors = {
+  ATMEE_KEY_REJECTED: 'Atmee rejected this API key.',
+  ATMEE_KEY_SCOPE: 'Enable avatar read access for this key in Atmee Studio.',
+  ATMEE_KEY_SAVE_FAILED: 'Hermes couldn’t save this Atmee key. Try again.',
+  ATMEE_UNAVAILABLE: 'Atmee is unavailable. Try again shortly.',
+  ATMEE_AVATAR_UNAVAILABLE: 'Select an available video avatar in this Pebble’s Voice settings.',
+  ATMEE_MEDIA_SETUP_REQUIRED: 'Install the optional video relay on your Hermes host first.',
+  ATMEE_WARMING: 'Atmee is warming up this avatar. Try again in a minute.',
+  ATMEE_MEDIA_UNAVAILABLE: 'Couldn’t play the Atmee video. Try again.',
+  ATMEE_CALL_LIMIT: 'Check your Atmee credits or end the other video call.',
+  ATMEE_VOICE_UNAVAILABLE:
+    'This Atmee voice sample is unavailable. Choose another voice or design a new one.',
+  ATMEE_VOICE_PREVIEW_MISSING:
+    'Pebble Crew did not save the playback link. You can still select this voice for your avatar.',
+  ATMEE_BUILD_SCOPE: 'Use an account-wide Atmee key with avatar and generation write access.',
+  ATMEE_BUILD_CREDITS:
+    'This Atmee account has no V2-eligible credits. Check your plan or invite in Atmee Studio.',
+  ATMEE_BUILD_INPUT: 'Atmee could not use these inputs. Try another photo or voice style.',
 } as const;
 
 export type ErrorCode =
   | keyof typeof voiceErrors
+  | keyof typeof atmeeErrors
+  | 'PUSH_UNSUPPORTED'
+  | 'PUSH_DEVICE_LIMIT'
+  | 'PUSH_REFUSED'
   | 'CONVERSATION_CHANGED'
   | 'BOT_CHAT_MISSING'
   | 'LEASE_GONE'
@@ -70,6 +96,7 @@ const messages: Record<ErrorCode, string> = {
   CAPACITY: 'Too many open connections. Close an unused tab and try again.',
   UPDATE_REQUIRED: 'Update Pebble Crew and its Hermes plugin, then reopen the app.',
   ...voiceErrors,
+  ...atmeeErrors,
   UNSUPPORTED_COMMAND:
     'This command is not supported in Pebble Crew. Use a command from the suggestions or run it in Hermes.',
   STALE_REVISION: 'Your workspace changed. Refresh it before saving again.',
@@ -81,6 +108,9 @@ const messages: Record<ErrorCode, string> = {
   REQUIRES_SETUP: 'This service needs its native Hermes installation before it can be added here.',
   INVALID_ATTACHMENT: 'Choose a valid file up to 10 MB. Images must be PNG, JPEG or WebP.',
   ATTACHMENT_QUOTA: 'Attachment storage is full on your Hermes host.',
+  PUSH_UNSUPPORTED: 'This browser’s notification service is not supported.',
+  PUSH_DEVICE_LIMIT: 'Too many devices have alerts on. Turn one off first.',
+  PUSH_REFUSED: 'The notification service did not accept this device. Try again.',
   INVALID_PHOTO: 'That photo could not be safely opened. Choose a PNG, JPEG or WebP image.',
   INVALID_PARAMETERS:
     'These settings could not be saved. Check the fields and refresh before trying again.',

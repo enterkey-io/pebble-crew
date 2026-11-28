@@ -22,3 +22,8 @@ license. See [its notice](react-zoom-pan-pinch.md) and
 
 The locally bundled Caprasimo Regular font is licensed under the SIL Open Font
 License 1.1. See [its copyright and license](caprasimo-OFL.txt).
+
+## Diagram viewer
+
+Pele 1.13.0 renders Mermaid diagrams under the MIT license. See [its notice](pele.txt)
+and [source](https://github.com/obsidianmd/pele).

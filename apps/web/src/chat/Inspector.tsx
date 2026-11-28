@@ -13,8 +13,10 @@ import { PebbleAvatar, CrewAvatar } from './Rail';
 import type { WorkspaceSnapshot as WorkspaceState } from '@hermes-client/protocol';
 import type { SessionClient } from '@hermes-client/protocol';
 import type { Row } from '../conversation';
+import type { PebblePresence } from '../ui/avatar-status';
 export function Inspector({
   active = true,
+  presence,
   bot,
   room,
   workspace,
@@ -30,6 +32,7 @@ export function Inspector({
   target,
 }: {
   active?: boolean;
+  presence?: PebblePresence | undefined;
   bot?: ChatBot | undefined;
   room?: Row | undefined;
   workspace?: WorkspaceState | undefined;
@@ -92,7 +95,7 @@ export function Inspector({
       </header>
       <div className="pc-details-identity identity-summary">
         {bot ? (
-          <PebbleAvatar bot={bot} workspace={workspace} client={client} large />
+          <PebbleAvatar bot={bot} workspace={workspace} client={client} presence={presence} large />
         ) : room ? (
           <CrewAvatar room={room} workspace={workspace} client={client} />
         ) : null}

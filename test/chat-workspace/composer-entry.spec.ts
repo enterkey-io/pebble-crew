@@ -49,6 +49,33 @@ for (const theme of ['dark', 'light']) {
     const action = await voice.elementHandle();
     const bounds = (await voice.boundingBox())!;
     const plus = page.getByRole('button', { name: 'Add attachment', exact: true });
+    const readGeometry = async (primary: typeof plus) => {
+      const [bar, attachment, action] = await Promise.all([
+        frame.boundingBox(),
+        plus.boundingBox(),
+        primary.boundingBox(),
+      ]);
+      const center = (box: { y: number; height: number }) => box.y + box.height / 2;
+      return { bar: bar!, attachment: center(attachment!), action: center(action!) };
+    };
+    const singleLine = await readGeometry(voice);
+    const expectFixedControls = async (primary: typeof plus) => {
+      const current = await readGeometry(primary);
+      const bottom = ({ y, height }: typeof singleLine.bar) => y + height;
+      const oneLineCenter = singleLine.bar.y + singleLine.bar.height / 2;
+      expect(
+        Math.abs(current.attachment - oneLineCenter),
+        'Attachment moved vertically',
+      ).toBeLessThanOrEqual(0.5);
+      expect(
+        Math.abs(current.action - oneLineCenter),
+        'Primary action moved vertically',
+      ).toBeLessThanOrEqual(0.5);
+      expect(
+        Math.abs(bottom(current.bar) - bottom(singleLine.bar)),
+        'Bar bottom moved',
+      ).toBeLessThanOrEqual(0.5);
+    };
     const style = await plus.evaluate((node) => {
       const style = getComputedStyle(node),
         box = node.getBoundingClientRect();
@@ -66,6 +93,11 @@ for (const theme of ['dark', 'light']) {
       path: info.outputPath(`composer-voice-${theme}.png`),
       animations: 'disabled',
     });
+    await expectFixedControls(voice);
+    await frame.screenshot({
+      path: info.outputPath(`composer-one-line-${theme}.png`),
+      animations: 'disabled',
+    });
     await field.fill('Send this message');
     await expect(frame).toHaveCSS('box-shadow', edge);
     const send = page.getByRole('button', { name: 'Send message', exact: true });
@@ -79,9 +111,25 @@ for (const theme of ['dark', 'light']) {
       path: info.outputPath(`composer-send-${theme}.png`),
       animations: 'disabled',
     });
+    await expectFixedControls(send);
+    await field.fill('Send this message\nwith a second line\nand a third.');
+    await expect
+      .poll(async () => (await frame.boundingBox())!.height)
+      .toBeGreaterThan(bounds.height + 4);
+    await frame.screenshot({
+      path: info.outputPath(`composer-multiline-${theme}.png`),
+      animations: 'disabled',
+    });
+    await expectFixedControls(send);
+    await field.fill('A long draft that wraps in the composer. '.repeat(40).trim());
+    await expect
+      .poll(async () => (await frame.boundingBox())!.height)
+      .toBeGreaterThan(singleLine.bar.height * 2);
+    await expectFixedControls(send);
     await field.fill('   ');
     await field.blur();
     await expect(voice).toBeEnabled();
+    await expectFixedControls(voice);
     await voice.click();
     await expect(page.getByRole('dialog', { name: /Edit/ })).toBeVisible();
     await expect(page.getByRole('button', { name: 'Use saved key', exact: true })).toBeVisible();

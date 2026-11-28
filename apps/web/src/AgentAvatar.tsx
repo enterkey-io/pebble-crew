@@ -1,12 +1,13 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { Star } from 'lucide-react';
-import { UnreadDot } from './ui/UnreadDot';
+import { StatusDot } from './ui/StatusDot';
+import { avatarStatus } from './ui/avatar-status';
 import { Button } from './components/ui/button';
 import { Toggle } from './components/ui/toggle';
 import { AvatarView, AvatarScheduler } from './avatar-lab/renderer';
 import { BODY_PATHS, COLORS, SHAPES } from './avatar-lab/engine';
 import { previewPhoto } from './avatar-lab/photo';
-import type { Activity } from './avatar-lab/engine';
+import type { Activity, AvatarMood } from './avatar-lab/engine';
 import type { Appearance } from '@hermes-client/protocol';
 import type { SessionClient } from '@hermes-client/protocol';
 let clock: AvatarScheduler | undefined;
@@ -145,6 +146,7 @@ export function AgentAvatar({
   large = false,
   revision,
   animated = true,
+  mood = 'resting',
 }: {
   id: string;
   look: Appearance;
@@ -157,6 +159,7 @@ export function AgentAvatar({
   large?: boolean;
   revision?: number | undefined;
   animated?: boolean;
+  mood?: AvatarMood;
 }) {
   const host = useRef<HTMLSpanElement>(null);
   const view = useRef<AvatarView | undefined>(undefined);
@@ -167,6 +170,7 @@ export function AgentAvatar({
     id,
   );
   const image = look.kind === 'photo' ? photo || savedPhoto : '';
+  const badge = avatarStatus({ state, unread }) ?? (orchestrator ? 'main' : undefined);
   useLayoutEffect(() => {
     if (!host.current || look.kind !== 'shape') return;
     const motion = matchMedia('(prefers-reduced-motion: reduce)');
@@ -177,6 +181,7 @@ export function AgentAvatar({
       state,
       false,
       large,
+      mood,
     );
     view.current = avatar;
     host.current.append(avatar.svg);
@@ -206,7 +211,7 @@ export function AgentAvatar({
       motion.removeEventListener('change', update);
       release();
     };
-  }, [id, look.kind, look.shape, look.color, orchestrator, large, animated]);
+  }, [id, look.kind, look.shape, look.color, orchestrator, large, animated, mood]);
   useEffect(() => {
     if (view.current && clock) {
       view.current.setState(state, clock.clock);
@@ -215,22 +220,20 @@ export function AgentAvatar({
   }, [state]);
   return (
     <span
-      className={`agent-avatar avatar-${look.kind} avatar-${look.shape} ${large ? 'large' : ''}`}
+      className={`agent-avatar avatar-${look.kind} avatar-${look.shape} ${large ? 'large' : ''} ${look.kind === 'photo' ? 'aspect-square h-auto' : ''}`}
       ref={host}
     >
-      {image && (
-        <>
-          <img src={image} alt="" draggable={false} />
-          {state !== 'ready' && state !== 'done' && (
-            <span className="photo-status" role="img" aria-label={state} />
-          )}
-        </>
-      )}
-      {unread ? (
-        <UnreadDot avatar />
+      {image && <img src={image} alt="" draggable={false} />}
+      {badge && badge !== 'main' ? (
+        <StatusDot avatar kind={badge} />
       ) : (
-        orchestrator && (
-          <span className="avatar-star" role="img" aria-label="Main Pebble">
+        badge === 'main' && (
+          <span
+            className="avatar-star"
+            data-avatar-badge="main"
+            role="img"
+            aria-label="Main Pebble"
+          >
             <Star className="size-[9px]" aria-hidden="true" />
           </span>
         )

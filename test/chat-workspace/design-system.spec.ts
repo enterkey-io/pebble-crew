@@ -187,7 +187,7 @@ test('attachments are conversation bound, can be removed, send without text, and
   await expect(page.locator('.attachment-chips')).toHaveCount(0);
   await page.getByRole('button', { name: /Show details/ }).click();
   await page.getByRole('tab', { name: 'Library', exact: true }).click();
-  await expect(page.locator('.file-list')).toContainText('notes.txt');
+  await expect(page.getByRole('list', { name: 'Library items' })).toContainText('notes.txt');
   const download = page.waitForEvent('download');
   await page
     .getByRole('tabpanel', { name: 'Library', exact: true })

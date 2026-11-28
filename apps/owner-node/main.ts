@@ -10,6 +10,7 @@ import { ownerBodyLimit } from '../../packages/owner-service/src/photo';
 import type { OwnerSettings } from '../../packages/owner-service/src/service';
 import { proxyBridge, proxyBridgeUpgrade } from '../../packages/owner-service/src/bridge-proxy';
 import ownerSchema from '../../packages/owner-service/src/schema.sql';
+import { ownerPolicy } from './csp';
 
 const command = process.argv[2];
 function flag(name: string) {
@@ -123,9 +124,9 @@ if (command === 'init' || command === 'recover') {
       }),
   );
   if (bridgePort !== undefined && headers['Content-Security-Policy'])
-    headers['Content-Security-Policy'] = headers['Content-Security-Policy'].replace(
-      "connect-src 'self' https: wss:",
-      `connect-src 'self' ${settings.origin.replace(/^https:/, 'wss:')} wss://api.elevenlabs.io`,
+    headers['Content-Security-Policy'] = ownerPolicy(
+      headers['Content-Security-Policy'],
+      settings.origin,
     );
   const mime: Record<string, string> = {
     '.html': 'text/html; charset=utf-8',

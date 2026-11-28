@@ -118,3 +118,71 @@ class MediaTransferTests(unittest.IsolatedAsyncioTestCase):
         for changes in [{'session_id': 'foreign'}, {'row_id': True}, {'row_id': 0}, {'reference': '/etc/passwd'}]:
             with self.assertRaises(InvalidOperation):
                 await media.read({**params, **changes})
+
+
+class PhotoNative(Native):
+    reads = 0
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        from PIL import Image
+        out = io.BytesIO()
+        # A wide 3000x2000 photo with an EXIF rotation, as phones save them.
+        image = Image.new('RGB', (3000, 2000), (200, 120, 90))
+        exif = image.getexif()
+        exif[0x0112] = 6
+        image.save(out, 'JPEG', quality=95, exif=exif)
+        self.data = out.getvalue()
+
+    async def call(self, method, params):
+        if method == 'bot_web.media':
+            if params['offset'] == 0:
+                self.reads += 1
+            offset = params['offset']
+            return {'size': len(self.data), 'name': 'beach.jpg', 'revision': 'a' * 64,
+                    'data': base64.b64encode(self.data[offset:offset + CHUNK_BYTES]).decode()}
+        return await super().call(method, params)
+
+
+class PhotoSizeTests(unittest.IsolatedAsyncioTestCase):
+    async def test_chat_and_thumbnail_sizes_come_from_one_read_of_the_original(self):
+        from PIL import Image
+        native = PhotoNative()
+        ops = BotOperations(native)
+        await ops.invoke('bot.open', {'profile': 'alpha'})
+        media = GeneratedMedia(ops)
+        params = {'session_id': 'live-alpha', 'row_id': 4, 'reference': 'c' * 64}
+        sizes = {}
+        for variant, limit in [('thumb', 360), ('preview', 1280)]:
+            data, name, mime = await media.read({**params, 'variant': variant})
+            self.assertEqual((name, mime), ('beach.jpg', 'image/jpeg'))
+            with Image.open(io.BytesIO(data)) as image:
+                # The rotation is applied, so the stored landscape shows as portrait.
+                self.assertEqual(max(image.size), limit)
+                self.assertGreater(image.height, image.width)
+            sizes[variant] = len(data)
+        self.assertLess(sizes['thumb'], sizes['preview'])
+        self.assertLess(sizes['preview'], len(native.data))
+        original, _name, _mime = await media.read(params)
+        self.assertEqual(original, native.data)
+        self.assertEqual(native.reads, 1)
+        with self.assertRaises(InvalidOperation):
+            await media.read({**params, 'variant': 'huge'})
+
+    async def test_files_that_are_not_photos_come_back_whole(self):
+        native = MediaNative()
+        ops = BotOperations(native)
+        await ops.invoke('bot.open', {'profile': 'alpha'})
+        media = GeneratedMedia(ops)
+        data, _name, mime = await media.read(
+            {'session_id': 'live-alpha', 'row_id': 4, 'reference': 'c' * 64, 'variant': 'thumb'})
+        self.assertEqual((data, mime), (native.data, 'application/octet-stream'))
+
+    def test_cache_stays_within_its_byte_budget(self):
+        from bot_web.photo_sizes import PhotoCache
+        cache = PhotoCache(budget=1000)
+        for number in range(5):
+            cache.put(number, (b'x' * 400, 'n', 'image/jpeg'))
+        self.assertLessEqual(cache.used, 1000)
+        self.assertIsNone(cache.get(0))
+        self.assertIsNotNone(cache.get(4))

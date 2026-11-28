@@ -346,17 +346,30 @@ const TranscriptMessage = memo(function TranscriptMessage({
           )
         }
       >
-        {m.text.trim() && (
-          <MessageBody
-            text={m.text}
-            owner={m.role === 'user'}
-            mentions={mentions}
-            client={m.role === 'user' ? undefined : client}
-            sessionId={sessionId}
-            rowId={m.id}
-            conversationKey={conversationKey}
-          />
-        )}
+        {m.text.trim() &&
+          (m.role === 'user' ? (
+            <LongOwnerText text={m.text}>
+              {(text) => (
+                <MessageBody
+                  text={text}
+                  owner
+                  mentions={mentions}
+                  sessionId={sessionId}
+                  rowId={m.id}
+                  conversationKey={conversationKey}
+                />
+              )}
+            </LongOwnerText>
+          ) : (
+            <MessageBody
+              text={m.text}
+              mentions={mentions}
+              client={client}
+              sessionId={sessionId}
+              rowId={m.id}
+              conversationKey={conversationKey}
+            />
+          ))}
         {m.files?.map((file) =>
           client && sessionId && /\.(?:png|jpe?g|webp)$/i.test(file.name) ? (
             <GeneratedImage
@@ -397,3 +410,43 @@ const TranscriptMessage = memo(function TranscriptMessage({
     </motion.div>
   );
 });
+
+/** Owner messages longer than this show a shortened preview until expanded. */
+const LONG_MESSAGE = 420;
+const PREVIEW = 260;
+
+/** Shortens a long owner message with an ellipsis; tapping it or "Show all" expands it. */
+function LongOwnerText({
+  text,
+  children,
+}: {
+  text: string;
+  children: (text: string) => ReactNode;
+}) {
+  const [open, setOpen] = useState(false);
+  if (text.length <= LONG_MESSAGE) return <>{children(text)}</>;
+  const cut = text.slice(0, PREVIEW);
+  const preview = `${cut.slice(0, Math.max(cut.lastIndexOf(' '), PREVIEW - 40)).trimEnd()}…`;
+  return (
+    <div className="long-message">
+      <div
+        className={open ? undefined : 'cursor-pointer'}
+        onClick={(event) => {
+          if (open || (event.target instanceof Element && event.target.closest('a,button'))) return;
+          if (window.getSelection()?.toString()) return;
+          setOpen(true);
+        }}
+      >
+        {children(open ? text : preview)}
+      </div>
+      <button
+        type="button"
+        className="mt-1 text-xs font-medium opacity-75 underline-offset-2 hover:underline"
+        aria-expanded={open}
+        onClick={() => setOpen((value) => !value)}
+      >
+        {open ? 'Hide' : 'Show all'}
+      </button>
+    </div>
+  );
+}

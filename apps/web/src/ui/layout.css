@@ -15,7 +15,36 @@
   min-height: 0;
 }
 .pc-rail-top {
+  position: relative;
+  z-index: 2;
   flex-shrink: 0;
+}
+.pc-unread-jump {
+  position: absolute;
+  inset-inline: 0;
+  display: flex;
+  justify-content: center;
+  pointer-events: none;
+}
+.pc-unread-jump > button {
+  pointer-events: auto;
+}
+.pc-unread-jump-above {
+  top: calc(100% + 8px);
+}
+.pc-unread-jump-below {
+  bottom: calc(100% + 8px);
+}
+.pc-section-unread {
+  position: relative;
+  display: inline-flex;
+  width: 10px;
+  height: 10px;
+  margin-inline-start: auto;
+}
+.pc-section-unread > .status-dot {
+  inset: 0;
+  transform: none;
 }
 .pc-rail-header {
   height: 64px;
@@ -26,6 +55,9 @@
   flex-shrink: 0;
 }
 .pc-wordmark {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
   font-family: var(--font-brand);
   font-size: 20px;
   font-weight: 400;
@@ -71,7 +103,17 @@
   opacity: 0;
 }
 .pc-list {
+  display: flow-root;
   margin: 16px 0 24px;
+}
+.pc-section-stack {
+  display: flow-root;
+}
+.pc-section-insertion {
+  height: 0;
+}
+.pc-list[data-section-dragging] {
+  opacity: 0.45;
 }
 .pc-unsectioned {
   min-height: 12px;
@@ -106,67 +148,77 @@
 }
 .pc-crew-faces {
   position: relative;
-  width: 36px;
-  height: 36px;
+  width: 44px;
+  height: 44px;
   flex-shrink: 0;
   display: inline-block;
 }
-.pc-crew-faces > span {
+.pc-crew-faces > span[data-member] {
   position: absolute;
-  width: 20px;
-  height: 22px;
+  width: 24px;
+  height: 24px;
   left: 0;
-  top: 14px;
+  top: 20px;
   z-index: 5;
 }
 .pc-crew-faces .agent-avatar {
   width: 100%;
   height: 100%;
+  --avatar-badge-size: 9px;
+}
+.pc-crew-faces .avatar-photo {
+  border-radius: 50%;
+  outline: 2px solid var(--rail);
+}
+.pc-crew-faces .avatar-silhouette {
+  stroke: var(--rail);
+  stroke-width: 8px;
+  paint-order: stroke fill;
 }
 .pc-crew-faces > span[data-member='1'] {
-  left: 16px;
-  top: 6px;
+  left: 20px;
+  top: 8px;
   z-index: 4;
 }
 .pc-crew-faces > span[data-member='2'] {
   left: 0;
   top: 0;
   z-index: 3;
-  width: 18px;
-  height: 20px;
+  width: 22px;
+  height: 22px;
 }
 .pc-crew-faces > span[data-member='3'] {
-  left: 19px;
-  top: 20px;
+  left: 24px;
+  top: 24px;
   z-index: 2;
-  width: 16px;
-  height: 16px;
+  width: 20px;
+  height: 20px;
 }
 .pc-crew-faces > span[data-member='4'] {
-  left: 12px;
+  left: 14px;
   top: 0;
   z-index: 1;
-  width: 15px;
-  height: 16px;
+  width: 20px;
+  height: 20px;
 }
-.pc-crew-faces[data-count='1'] > span {
+.pc-crew-faces[data-count='1'] > span[data-member] {
   left: 4px;
   top: 4px;
-  width: 28px;
-  height: 30px;
+  width: 36px;
+  height: 36px;
 }
-.pc-crew-faces > small {
+.pc-crew-count {
   position: absolute;
-  right: -5px;
-  bottom: -3px;
-  font-size: 9px;
+  right: -4px;
+  bottom: -2px;
   z-index: 6;
-  color: var(--muted-foreground);
 }
 .pc-crew-faces .avatar-star {
   display: none;
 }
 .pc-rail-footer {
+  position: relative;
+  z-index: 2;
   flex-shrink: 0;
   min-height: 64px;
   display: flex;
@@ -242,16 +294,17 @@
   margin-inline: auto;
 }
 .pc-composer {
+  --draft-font-size: var(--text-chat);
   background: var(--composer);
   box-shadow: inset 0 0 0 1px var(--composer-border);
-  border-radius: 25px;
-  padding: 7px;
+  /* Concentric with the 6px inset round buttons. */
+  border-radius: 28px;
   transition: background-color var(--motion-hover);
 }
-.pc-composer-row {
-  display: flex;
-  align-items: center;
-  gap: 7px;
+@media (max-width: 767px), (pointer: coarse) and (max-height: 500px) {
+  .pc-composer {
+    --draft-font-size: max(16px, 1rem);
+  }
 }
 .pc-composer [data-slot='button'] {
   width: 36px;
@@ -296,6 +349,11 @@
   overflow: hidden;
   background: var(--details);
   flex-shrink: 0;
+}
+.pc-details-fixed[data-expanded='true'] {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
 }
 .pc-details-fixed {
   width: 320px;
@@ -366,6 +424,7 @@
   padding-top: 16px;
 }
 .agent-avatar {
+  --avatar-badge-size: 12px;
   display: inline-block;
   position: relative;
   width: 40px;
@@ -392,14 +451,14 @@
   overflow: hidden;
 }
 .avatar-star,
-.avatar-unread {
+.avatar-status {
   position: absolute;
   right: 8%;
   bottom: 12%;
 }
 .avatar-star {
-  width: 12px;
-  height: 12px;
+  width: var(--avatar-badge-size);
+  height: var(--avatar-badge-size);
   display: grid;
   place-items: center;
   border-radius: 50%;
@@ -415,33 +474,32 @@
   fill: currentColor;
   stroke-width: 1;
 }
+.pc-details .agent-avatar {
+  --avatar-badge-size: 20px;
+}
 .pc-details .avatar-star {
-  width: 20px;
-  height: 20px;
   font-size: var(--text-meta);
   outline-color: var(--details);
 }
-.pc-pin .avatar-photo,
-.pc-chat-identity .avatar-photo {
-  height: auto;
-  aspect-ratio: 1;
-}
-.pc-pin .avatar-photo > :is(.avatar-star, .avatar-unread) {
+.avatar-photo > :is(.avatar-star, .avatar-status) {
   /* Center the badge on the circle at 45 degrees. */
   right: 14.64466%;
   bottom: 14.64466%;
   translate: 50% 50%;
 }
+.pc-pin .agent-avatar {
+  --avatar-badge-size: 15px;
+}
 .pc-pin .avatar-star {
-  width: 15px;
-  height: 15px;
   font-size: 10px;
 }
+.pc-chat-header .agent-avatar {
+  --avatar-badge-size: 10px;
+}
 .pc-chat-header .avatar-star {
-  width: 10px;
-  height: 10px;
   font-size: 7px;
   outline-width: 1.5px;
+  outline-color: var(--background);
 }
 .pc-search {
   width: 640px;
@@ -472,12 +530,6 @@
   font-size: var(--text-caption);
   color: var(--muted-foreground);
   background: var(--details);
-}
-@media (max-width: 1279px) and (min-width: 768px) {
-  .pc-rail {
-    width: 320px;
-    flex-basis: 320px;
-  }
 }
 @media (max-width: 767px), (any-pointer: coarse) {
   body:has(.pc-shell) {

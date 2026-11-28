@@ -192,6 +192,40 @@ test('private first use, native onboarding, idle keepalive and reconnection', as
   ownerCookies = await context.cookies();
 });
 
+test('shared interface choices reach a clean browser through the native plugin', async ({
+  page,
+  context,
+  browser,
+}) => {
+  await context.addCookies(ownerCookies);
+  await page.goto('/');
+  await expect(page.getByLabel('Message', { exact: true })).toBeEnabled();
+  await page.getByRole('button', { name: 'Your account', exact: true }).click();
+  await page.getByRole('menuitem', { name: 'Settings', exact: true }).click();
+  await page.getByRole('combobox', { name: 'Chat bubbles', exact: true }).click();
+  await page.getByRole('option', { name: 'Neutral', exact: true }).click();
+  await expect(page.locator('html')).toHaveAttribute('data-chat-bubbles', 'neutral');
+  await page.getByRole('combobox', { name: 'Appearance', exact: true }).click();
+  await page.getByRole('option', { name: 'Dark', exact: true }).click();
+  await expect(page.locator('html')).toHaveAttribute('data-appearance', 'dark');
+  const separate = await browser.newContext({
+    baseURL: 'https://127.0.0.1:5445',
+    ignoreHTTPSErrors: true,
+    colorScheme: 'light',
+    serviceWorkers: 'block',
+  });
+  try {
+    await separate.addCookies(ownerCookies);
+    const second = await separate.newPage();
+    await second.goto('/');
+    await expect(second.getByLabel('Message', { exact: true })).toBeEnabled();
+    await expect(second.locator('html')).toHaveAttribute('data-theme', 'dark');
+    await expect(second.locator('html')).toHaveAttribute('data-chat-bubbles', 'neutral');
+  } finally {
+    await separate.close();
+  }
+});
+
 test('three Markdown uploads stay attachment cards across native completion and reload', async ({
   page,
   context,
@@ -494,6 +528,10 @@ test('owner photo, account settings, tools layout and ordinary login persist', a
   await expect(page.getByRole('heading', { name: 'Sign in' })).toBeVisible();
   await expect(page).toHaveTitle('Sign in — Pebble Crew');
   await page.getByLabel('Username', { exact: true }).fill('owner');
+  await page.getByLabel('Password', { exact: true }).fill('synthetic-incorrect-password');
+  await page.getByRole('button', { name: 'Sign in', exact: true }).click();
+  await expect(page.getByRole('alert')).toHaveText('Incorrect username or password.');
+  await expect(page.getByLabel('Username', { exact: true })).toHaveValue('owner');
   await page.getByLabel('Password', { exact: true }).fill('synthetic-owner-password-456');
   await page.getByRole('button', { name: 'Sign in', exact: true }).click();
   await expect(page.getByLabel('Message', { exact: true })).toBeEnabled({ timeout: 30000 });
@@ -709,6 +747,13 @@ test('native chat reactions, generated media and agent-opened documents', async 
     timeout: 30000,
   });
   await expect(reader.getByText('Native document proof', { exact: true })).toBeVisible();
+  await expect
+    .poll(() =>
+      reader
+        .getByRole('img', { name: 'Mermaid diagram' })
+        .evaluate((image) => (image instanceof HTMLImageElement ? image.naturalWidth : 0)),
+    )
+    .toBeGreaterThan(0);
   await page.screenshot({ animations: 'disabled', path: 'test-results/native-document-phone.png' });
   await page.getByRole('button', { name: 'Close document', exact: true }).click();
   await expect(page.getByLabel('Message', { exact: true })).toBeEnabled();
@@ -718,6 +763,13 @@ test('native chat reactions, generated media and agent-opened documents', async 
   await page.setViewportSize({ width: 1440, height: 1000 });
   await page.getByRole('button', { name: 'View plan.md', exact: true }).click();
   await expect(reader.getByText('Native document proof', { exact: true })).toBeVisible();
+  await expect
+    .poll(() =>
+      reader
+        .getByRole('img', { name: 'Mermaid diagram' })
+        .evaluate((image) => (image instanceof HTMLImageElement ? image.naturalWidth : 0)),
+    )
+    .toBeGreaterThan(0);
   await page.screenshot({
     animations: 'disabled',
     path: 'test-results/native-document-desktop.png',

@@ -15,9 +15,12 @@ import socket
 
 from .native import NativeError
 from .operations import InvalidOperation, fields, identifier
+from .spoken_turns import SpokenTurns
 from .voice_credentials import resolve_source, confirm_source, save_shared_key
+from . import grok_voice
+from .live_context import instructions as live_instructions, profile_context, recent_history
 
-VOICE_ERROR_CODES = {'ELEVEN_KEY_REQUIRED', 'ELEVEN_KEY_REJECTED', 'ELEVEN_ACCESS_DENIED', 'ELEVEN_RATE_LIMITED', 'ELEVEN_CONNECTION_FAILED', 'VOICE_KEY_REJECTED', 'VOICE_PROVIDER_UNREACHABLE', 'VOICE_INVALID_ANSWER', 'VOICE_KEY_REQUIRED', 'VOICE_SETUP_FAILED', 'VOICE_PREFERENCES_FAILED', 'VOICE_ACCESS_DENIED', 'VOICE_OFFER_REJECTED', 'VOICE_MODEL_UNAVAILABLE', 'VOICE_LIMIT_REACHED', 'VOICE_RATE_LIMITED', 'VOICE_CREDITS_EXHAUSTED', 'VOICE_SPEND_LIMIT_REACHED', 'VOICE_QUOTA_EXHAUSTED', 'VOICE_PROVIDER_TIMEOUT', 'VOICE_PROVIDER_UNAVAILABLE'}
+VOICE_ERROR_CODES = {'VOICE_MEDIA_ONLY_REQUIRED', 'ELEVEN_KEY_REQUIRED', 'ELEVEN_KEY_REJECTED', 'ELEVEN_ACCESS_DENIED', 'ELEVEN_RATE_LIMITED', 'ELEVEN_CONNECTION_FAILED', 'ELEVEN_SAMPLE_UNAVAILABLE', 'VOICE_KEY_REJECTED', 'VOICE_PROVIDER_UNREACHABLE', 'VOICE_INVALID_ANSWER', 'VOICE_KEY_REQUIRED', 'VOICE_SETUP_FAILED', 'VOICE_PREFERENCES_FAILED', 'VOICE_ACCESS_DENIED', 'VOICE_OFFER_REJECTED', 'VOICE_MODEL_UNAVAILABLE', 'VOICE_LIMIT_REACHED', 'VOICE_RATE_LIMITED', 'VOICE_CREDITS_EXHAUSTED', 'VOICE_SPEND_LIMIT_REACHED', 'VOICE_QUOTA_EXHAUSTED', 'VOICE_PROVIDER_TIMEOUT', 'VOICE_PROVIDER_UNAVAILABLE'}
 
 _CONFIG = threading.Lock()
 PACE_START = '[Pebble Crew delivery]'
@@ -143,12 +146,66 @@ def create_session(sdp, name, preview, history=None, coordination=""):
             'transport': {'type': 'webrtc', 'sdp': transport['sdp']}}
 
 
+
+CALL_FOLLOW_UP = ('The owner just ended the live call. Send one brief closing message in your own voice, '
+                  'based on the spoken turns of this call in this chat: follow up on anything left open, '
+                  'or simply sign off warmly if nothing was. Do not repeat the call back. '
+                  'Do not use tools or treat a discussion as approval.')
+
+
 class LiveVoice:
     def __init__(self, ops, workspace=None):
         self.ops = ops
         self.workspace = workspace
         self.inflight = set()
-        self.calls = {}
+        self.spoken = SpokenTurns(ops, workspace)
+        self.starting = set()
+
+    def selected_provider(self, profile):
+        from hermes_cli.web_server_profiles import _config_profile_scope
+        from . import eleven_voice
+        with _CONFIG, _config_profile_scope(profile):
+            return eleven_voice.provider()
+
+    async def briefing(self, sid, profile, summary, *, handoff):
+        """The selected Pebble's persona, memory of the owner and recent chat."""
+        try:
+            context = await asyncio.to_thread(profile_context, profile)
+            history = await recent_history(self.ops, sid)
+        except InvalidOperation:
+            raise
+        except Exception:
+            raise InvalidOperation('Voice setup could not be confirmed', 'VOICE_SETUP_FAILED') from None
+        return live_instructions(summary.get('name') or profile, summary.get('description') or '',
+                                 context, handoff=handoff), history
+
+    async def start_live(self, sid, profile, provider):
+        """A GPT-Live or Grok call. The live model talks; the Pebble does the work
+        through spoken turns in its own Bot Chat."""
+        def credentials():
+            from hermes_cli.web_server_profiles import _config_profile_scope
+            with _CONFIG, _config_profile_scope(profile):
+                if provider == 'openai':
+                    source = resolve_source()
+                    if not source['key']:
+                        raise InvalidOperation('Set up an OpenAI voice key first', 'VOICE_KEY_REQUIRED')
+                    if not source['confirmed']:
+                        raise InvalidOperation('Approve the saved voice key first', 'VOICE_KEY_REQUIRED')
+                    return None, None
+                key, confirmed = grok_voice.source()
+                if not confirmed:
+                    raise InvalidOperation('Confirm the xAI key first', 'VOICE_KEY_REQUIRED')
+                return key, grok_voice.selected_voice()
+        key, voice = await asyncio.to_thread(credentials)
+        if provider == 'openai':
+            return {'call_id': self.spoken.begin(sid, 'gpt-live'), 'provider': 'openai'}
+        summary = self.ops.summary(await self.ops.bot(profile))
+        instructions, history = await self.briefing(sid, profile, summary, handoff=(
+            'Call the ask_pebble tool with the request in the owner\'s words; it reaches the '
+            'real you, with all your tools and memory, and returns your answer.'))
+        token = await asyncio.to_thread(grok_voice.client_secret, key)
+        return {'call_id': self.spoken.begin(sid, 'grok-' + voice), 'provider': 'grok', 'token': token,
+                'model': grok_voice.MODEL, 'voice': voice, 'instructions': instructions, 'history': history}
 
     def history(self, sid, bounds):
         conversation = self.ops.session_conversations.get(sid)
@@ -156,12 +213,24 @@ class LiveVoice:
             return []
         lower, upper = bounds
         rows = self.workspace.db.execute(
-            'SELECT id, ended_at FROM voice_calls WHERE incarnation=? AND conversation=? '
-            'AND ended_at>=? AND ended_at<? ORDER BY ended_at DESC,id LIMIT 1000',
+            'SELECT v.id, v.ended_at, a.id FROM voice_calls v LEFT JOIN atmee_call a ON a.voice_id=v.id '
+            'WHERE v.incarnation=? AND v.conversation=? AND v.ended_at>=? AND v.ended_at<? '
+            'ORDER BY v.ended_at DESC,v.id LIMIT 1000',
             (self.ops.session_incarnations[sid], conversation, lower or 0, upper or float('inf')))
-        return [{'id': row[0], 'ended_at': row[1]} for row in rows]
+        return [{'id': row[0], 'ended_at': row[1], **({'kind': 'video'} if row[2] else {})} for row in rows]
 
-    def record_call(self, sid, call_id):
+    async def follow_up(self, sid):
+        """Ask the agent for one short closing message after the owner hangs up."""
+        try:
+            await self.ops.gateway.call('prompt.submit', {
+                'session_id': sid, 'surface': 'voice-live', 'queued': True, 'display_kind': 'hidden',
+                'text': CALL_FOLLOW_UP,
+            })
+            return True
+        except NativeError:
+            return False
+
+    def record_call(self, sid, call_id, *, video_id=None):
         conversation = self.ops.session_conversations.get(sid)
         if not self.workspace or not conversation:
             return None, True
@@ -170,10 +239,12 @@ class LiveVoice:
         with self.workspace.db:
             added = self.workspace.db.execute('INSERT OR IGNORE INTO voice_calls VALUES(?,?,?,?)',
                 (ident, stamp, conversation, time.time())).rowcount
+            if video_id:
+                self.workspace.db.execute('UPDATE atmee_call SET voice_id=? WHERE id=?', (ident, video_id))
             ended_at, = self.workspace.db.execute('SELECT ended_at FROM voice_calls WHERE id=?', (ident,)).fetchone()
         return {'id': ident, 'ended_at': ended_at}, bool(added)
 
-    async def invoke(self, operation, params):
+    async def invoke(self, operation, params, *, speech_rate=24000, video=False):
         if not supported():
             if operation == 'voice.status':
                 return {'supported': False}
@@ -182,44 +253,70 @@ class LiveVoice:
         profile = self.ops.sessions.get(sid)
         if not profile or await self.ops.stamp(profile) != self.ops.session_incarnations.get(sid):
             raise InvalidOperation('Reopen this Pebble before using voice')
-        if operation == 'voice.end':
-            fields(params, ['session_id', 'call_id', 'transcript'])
-            call_id, transcript = params['call_id'], params['transcript']
-            if not isinstance(call_id, str) or not isinstance(transcript, str) or not 0 < len(call_id) <= 256 or len(transcript) > 6000:
-                raise InvalidOperation('Invalid call follow-up')
-            call = self.calls.get(call_id)
-            if not call or call['session_id'] != sid or call['preview'] or call['expires'] < time.monotonic():
-                raise InvalidOperation('Call follow-up unavailable')
-            saved, added = self.record_call(sid, call_id)
-            result = {'submitted': False, **({'call': saved} if saved else {})}
-            if not added or call['followed_up']:
-                return result
-            if saved:
-                self.ops.gateway._publish({'type': 'voice.call.ended', 'session_id': sid, 'payload': saved})
-            if not transcript.strip():
-                return result
-            # An uncertain follow-up cannot undo the durable call record or trigger a second prompt.
-            call['followed_up'] = True
+        from . import eleven_voice
+        def eleven_config(require_selection=False):
+            from hermes_cli.web_server_profiles import _config_profile_scope
+            with _CONFIG, _config_profile_scope(profile):
+                if require_selection and eleven_voice.provider() != 'elevenlabs':
+                    raise InvalidOperation('Choose ElevenLabs for a Hermes voice call', 'VOICE_MEDIA_ONLY_REQUIRED')
+                key, confirmed = eleven_voice.source()
+                if not confirmed:
+                    raise InvalidOperation('Confirm the ElevenLabs key first', 'ELEVEN_KEY_REQUIRED')
+                return key, eleven_voice.preferences()['voice']
+
+        if operation == 'voice.start':
+            fields(params, ['session_id'])
+            if sid in self.starting:
+                raise InvalidOperation('A voice call is starting')
+            self.starting.add(sid)
             try:
-                receipt = await self.ops.gateway.call('prompt.submit', {'session_id': sid,
-                    'text': 'The live voice call has ended. Send one brief, natural follow-up in this text chat, in your existing personality. Refer only to the actual discussion in the voice context. If a decision was left open, offer to pick it up when the owner is ready. Do not claim actions happened or treat discussion as approval. Do not use tools, make changes, or start tasks. Do not invent unfinished work.',
-                    'surface': 'voice-live', 'voice_context': transcript, 'display_kind': 'hidden', 'queued': True})
-            except NativeError:
-                return {**result, 'follow_up_unconfirmed': True}
-            return {**result, **receipt, 'submitted': True}
+                selected = 'elevenlabs' if video else await asyncio.to_thread(self.selected_provider, profile)
+                if selected in ('openai', 'grok'):
+                    return await self.start_live(sid, profile, selected)
+                # A video call always speaks through ElevenLabs, so it needs only the
+                # shared key; the audio-call provider choice does not apply to it.
+                key, voice = await asyncio.to_thread(eleven_config, not video)
+                token = await asyncio.to_thread(eleven_voice.transcription_token, key)
+                return {'call_id': self.spoken.begin(sid, voice), 'token': token}
+            finally:
+                self.starting.discard(sid)
         if operation == 'voice.submit':
-            fields(params, ['session_id', 'text', 'context'])
-            text, context = params['text'], params['context']
-            if not isinstance(text, str) or not text.strip() or len(text) > 6000 or not isinstance(context, str) or len(context) > 6000:
-                raise InvalidOperation('Invalid spoken request')
-            # A racing writer queues safely. The client never retries or guesses the
-            # receipt of a queued turn, and only speaks an exactly matching completion.
-            return await self.ops.gateway.call('prompt.submit', {'session_id': sid,
-                'text': text, 'surface': 'voice-live', 'voice_context': context, 'queued': True})
+            return await self.spoken.submit(sid, params)
+        if operation == 'voice.turn':
+            fields(params, ['session_id', 'call_id', 'utterance_id'])
+            self.spoken.voice(sid, params['call_id'])
+            status = self.spoken.status(params['call_id'], identifier(params['utterance_id']))
+            if status['state'] == 'ready' and type(status['assistant_row_id']) is int:
+                text = await self.spoken.reply_text(sid, status['assistant_row_id'])
+                if text:
+                    status['assistant_text'] = text
+            return status
+        if operation == 'voice.speech':
+            voice, text = await self.spoken.speech(sid, params)
+            key, _voice = await asyncio.to_thread(eleven_config)
+            return await asyncio.to_thread(eleven_voice.speech_stream, key, voice, text, sample_rate=speech_rate)
+        if operation == 'voice.end':
+            fields(params, ['session_id', 'call_id', 'follow_up'] if 'follow_up' in params else ['session_id', 'call_id'])
+            follow_up = params.get('follow_up', False)
+            if type(follow_up) is not bool:
+                raise InvalidOperation('Invalid call follow-up')
+            call = identifier(params['call_id'])
+            try:
+                has_reply = self.spoken.end(sid, call)
+            except InvalidOperation:
+                # An expired or already ended call cannot create another record.
+                return {}
+            saved, added = self.record_call(sid, call)
+            if saved and added:
+                self.ops.gateway._publish({'type': 'voice.call.ended', 'session_id': sid, 'payload': saved})
+            result = {'call': saved} if saved else {}
+            if added and has_reply and follow_up and not await self.follow_up(sid):
+                result['follow_up_unconfirmed'] = True
+            return result
         allowed = {'voice.status': ['session_id'], 'voice.preferences': ['session_id', 'voice', 'complete'],
                    'voice.credential': ['session_id', 'value'], 'voice.session': ['session_id', 'sdp', 'preview'],
                    'voice.provider': ['session_id', 'provider'], 'voice.voices': ['session_id'],
-                   'voice.vox_import': ['session_id', 'presets']}
+                   'voice.sample': ['session_id', 'voice']}
         if operation not in allowed:
             raise InvalidOperation('Unsupported voice operation')
         requested = params.get('provider', 'openai')
@@ -227,48 +324,40 @@ class LiveVoice:
         if operation in {'voice.session', 'voice.preferences', 'voice.credential'} and 'provider' in params:
             expected = [field for field in expected if field != 'sdp' or requested != 'elevenlabs'] + ['provider']
         fields(params, expected)
-        if requested not in ('openai', 'elevenlabs'):
+        if requested not in eleven_voice.PROVIDERS:
             raise InvalidOperation('Choose a supported voice provider')
         from . import eleven_voice
-        if operation == 'voice.vox_import':
-            return eleven_voice.import_presets(self.workspace, params['presets'])
-        if operation == 'voice.voices':
-            def catalog():
+        if operation in {'voice.voices', 'voice.sample'}:
+            def read_eleven():
                 from hermes_cli.web_server_profiles import _config_profile_scope
                 with _CONFIG, _config_profile_scope(profile):
-                    key, confirmed = eleven_voice.source() if eleven_voice.provider() == 'elevenlabs' else ('', False)
-                return eleven_voice.catalog(key if confirmed else '')
-            return await asyncio.to_thread(catalog)
+                    selected = eleven_voice.provider()
+                    key, confirmed = (eleven_voice.source() if selected == 'elevenlabs'
+                                      else grok_voice.source() if selected == 'grok' else ('', False))
+                if selected == 'grok':
+                    if operation == 'voice.voices':
+                        return {'voices': grok_voice.preferences()['voice_labels']}
+                    if not confirmed:
+                        raise InvalidOperation('Confirm the xAI key first', 'VOICE_KEY_REQUIRED')
+                    return grok_voice.sample(key, params['voice'])
+                if operation == 'voice.voices':
+                    return eleven_voice.catalog(key if confirmed else '')
+                if not confirmed:
+                    raise InvalidOperation('Confirm the ElevenLabs key first', 'ELEVEN_KEY_REQUIRED')
+                return eleven_voice.sample(key, params['voice'])
+            return await asyncio.to_thread(read_eleven)
         if sid in self.inflight:
             raise InvalidOperation('Voice setup is already in progress')
         # A single owner/profile-scoped config operation, off the event loop. Do not
         # hold native session/skills locks over provider I/O.
-        history = []
-        if operation == 'voice.session' and requested == 'openai' and params.get('preview') is False:
-            budget, before, visited, complete = 6000, None, set(), False
-            while not complete:
-                saved = await self.ops.invoke('chat.history', {'session_id': sid,
-                    **({'before': before} if before is not None else {})})
-                for row in reversed(saved.get('messages', [])):
-                    text = str(row.get('text') or '').strip()[:1200]
-                    if row.get('role') not in {'user', 'assistant'} or not text or row.get('display_kind') == 'hidden':
-                        continue
-                    if len(history) >= 24 or len(text) > budget:
-                        complete = True
-                        break
-                    budget -= len(text)
-                    history.insert(0, {'type': 'message', 'role': row['role'], 'content': [{'type': 'output_text' if row['role'] == 'assistant' else 'input_text', 'text': text}]})
-                before = (saved.get('history_page') or {}).get('older')
-                if not before:
-                    break
-                if before in visited:
-                    raise NativeError('Voice context history did not advance')
-                visited.add(before)
-        preset = eleven_voice.vox_preset(self.workspace, profile)
-        bot = await self.ops.bot(profile)
-        name = self.ops.summary(bot)['name']
-        from .coordination import voice_context
-        coordination = voice_context(self.workspace, profile) if self.workspace and operation == 'voice.session' and params.get('preview') is False else ''
+        if operation == 'voice.session' and requested != 'openai':
+            raise InvalidOperation('Choose OpenAI for a GPT-Live session', 'VOICE_PREFERENCES_FAILED')
+        summary = self.ops.summary(await self.ops.bot(profile)) if operation == 'voice.session' else {}
+        name = summary.get('name', '')
+        briefing = None
+        if operation == 'voice.session' and params.get('preview') is False:
+            briefing = await self.briefing(sid, profile, summary, handoff=(
+                'Delegate it to your backend (the Hermes agent is you, with all your tools and memory).'))
         def execute_configured():
             from hermes_cli.web_server_profiles import _config_profile_scope
             with _CONFIG, _config_profile_scope(profile):
@@ -276,23 +365,29 @@ class LiveVoice:
                     eleven_voice.save_voice({'pebble_provider': requested})
                 selected = eleven_voice.provider()
                 if operation in {'voice.status', 'voice.provider'}:
-                    status = eleven_voice.preferences(preset) if selected == 'elevenlabs' else preferences()
-                    return {**status, 'providers': ['openai', 'elevenlabs']}
+                    status = (eleven_voice.preferences() if selected == 'elevenlabs'
+                              else grok_voice.preferences() if selected == 'grok' else preferences())
+                    return {**status, 'providers': list(eleven_voice.PROVIDERS)}
                 if requested != selected:
                     raise InvalidOperation('Voice provider changed. Reopen voice settings.', 'VOICE_PREFERENCES_FAILED')
+                if selected == 'grok':
+                    if operation == 'voice.preferences':
+                        return {**grok_voice.save_preferences(params['voice'], params['complete']), 'providers': list(eleven_voice.PROVIDERS)}
+                    if operation == 'voice.credential':
+                        value = params['value']
+                        if not isinstance(value, str) or not re.fullmatch(r'[\x21-\x7e]{8,4096}', value):
+                            raise ValueError('Invalid credential')
+                        return grok_voice.store_key(value)
                 if selected == 'elevenlabs':
                     if operation == 'voice.preferences':
-                        return {**eleven_voice.save_preferences(params['voice'], params['complete'], preset), 'providers': ['openai', 'elevenlabs']}
+                        return {**eleven_voice.save_preferences(params['voice'], params['complete']), 'providers': list(eleven_voice.PROVIDERS)}
                     if operation == 'voice.credential':
                         value = params['value']
                         if not isinstance(value, str) or not re.fullmatch(r'[\x21-\x7e]{8,4096}', value):
                             raise ValueError('Invalid credential')
                         return eleven_voice.store_key(value)
-                    if type(params['preview']) is not bool:
-                        raise ValueError('Invalid voice preview')
-                    return eleven_voice.session_parameters(name, params['preview'], preset)
                 if operation == 'voice.preferences':
-                    return {**save_preferences(params['voice'], params['complete']), 'providers': ['openai', 'elevenlabs']}
+                    return {**save_preferences(params['voice'], params['complete']), 'providers': list(eleven_voice.PROVIDERS)}
                 if operation == 'voice.credential':
                     value = params['value']
                     if not isinstance(value, str) or not re.fullmatch(r'[\x21-\x7e]{8,4096}', value):
@@ -306,21 +401,18 @@ class LiveVoice:
                 sdp = params['sdp']
                 if not isinstance(sdp, str) or not sdp.startswith('v=0') or len(sdp) > 48_000 or type(params['preview']) is not bool:
                     raise ValueError('Invalid voice offer')
-                return create_session(sdp, name, params['preview'], history, coordination)
+                if briefing is None:
+                    return create_session(sdp, name, True)
+                instructions, history = briefing
+                items = [{'type': 'message', 'role': turn['role'],
+                          'content': [{'type': 'input_text' if turn['role'] == 'user' else 'output_text',
+                                       'text': turn['text']}]} for turn in history]
+                return create_session(sdp, name, False, items or None, instructions)
         if sid in self.inflight:
             raise InvalidOperation('Voice setup is already in progress')
         self.inflight.add(sid)
         try:
             result = await asyncio.to_thread(execute_configured)
-            if operation == 'voice.session' and requested == 'elevenlabs':
-                result = await asyncio.to_thread(eleven_voice.create_session, *result)
-            if await self.ops.stamp(profile) != self.ops.session_incarnations.get(sid):
-                raise InvalidOperation('This Pebble changed during setup')
-            if operation == 'voice.session':
-                self.calls = {key: value for key, value in self.calls.items() if value['expires'] > time.monotonic()}
-                if len(self.calls) >= 64:
-                    self.calls.pop(next(iter(self.calls)))
-                self.calls[result['session']['id']] = {'session_id': sid, 'preview': params['preview'], 'expires': time.monotonic() + 14400, 'followed_up': False}
             return result
         except InvalidOperation:
             raise

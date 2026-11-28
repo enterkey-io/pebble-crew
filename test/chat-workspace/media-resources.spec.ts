@@ -30,11 +30,13 @@ test('scrolling through image history releases offscreen blobs and keeps an open
       text: `Image ${index}\n\n![Image ${index}](/hermes/cache/generated/example-${index}.png)`,
     })),
   });
-  let reads = 0;
+  let reads = 0,
+    originals = 0;
   await context.route('https://hermes.fixture.invalid/v1/files/read', async (route) => {
-    const { operation } = route.request().postDataJSON();
+    const { operation, params } = route.request().postDataJSON();
     if (operation !== 'media.read') return route.fallback();
     reads++;
+    if (!params.variant) originals++;
     return route.fulfill({
       body: png,
       headers: {
@@ -55,9 +57,17 @@ test('scrolling through image history releases offscreen blobs and keeps an open
   }
   const first = page.locator('.message-image').first();
   const before = await first.boundingBox();
+  // The chat only ever reads chat-sized copies.
+  expect(originals).toBe(0);
+  const chatCopy = await page
+    .getByRole('img', { name: 'Image 0', exact: true })
+    .getAttribute('src');
   await page.getByRole('button', { name: 'View Image 0', exact: true }).click();
   const viewer = page.getByRole('dialog', { name: 'Image 0', exact: true });
   await expect(viewer).toBeVisible();
+  // The viewer opens on the chat copy, then swaps in the original.
+  await expect.poll(() => originals).toBe(1);
+  await expect(viewer.getByRole('img')).not.toHaveAttribute('src', chatCopy!);
   const source = await viewer.getByRole('img').getAttribute('src');
   await page.locator('.pc-transcript').evaluate((node) => {
     node.scrollTop = node.scrollHeight;

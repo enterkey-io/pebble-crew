@@ -3,7 +3,7 @@ import { Label } from './components/ui/label';
 import { Form } from './components/ui/form';
 import { Input } from './components/ui/input';
 import { Button } from './components/ui/button';
-import { useEffect, useState } from 'react';
+import { useEffect, useId, useState } from 'react';
 import { App } from './App';
 import { useAppViewport } from './ui/viewport';
 import { StartupScreen } from './StartupScreen';
@@ -11,6 +11,7 @@ import { ownerRequest, OwnerRequestError } from './owner-request';
 import { OwnerPhotoProvider, sessionPhoto } from './OwnerPhoto';
 import { clearSavedDrafts } from './chat/drafts';
 import { Disclosure } from './components/ui/disclosure';
+import { Alert, AlertDescription } from './components/ui/alert';
 
 export interface OwnerConnection {
   ticket: (
@@ -38,6 +39,7 @@ export function OwnerShell({ setupProof = '' }: { setupProof?: string } = {}) {
   const [proof, setProof] = useState(setupProof);
   const usingSetupLink = Boolean(setupProof);
   const [error, setError] = useState('');
+  const errorId = useId();
   const [image, setImage] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   async function check() {
@@ -87,7 +89,13 @@ export function OwnerShell({ setupProof = '' }: { setupProof?: string } = {}) {
       setConfirmation('');
       setMode('ready');
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Could not sign in.');
+      if (mode === 'login' && e instanceof OwnerRequestError && e.status === 401) {
+        setError('Incorrect username or password.');
+      } else if (mode === 'login' && (!(e instanceof OwnerRequestError) || e.status >= 500)) {
+        setError('Couldn’t sign in. Try again in a moment.');
+      } else {
+        setError(e instanceof Error ? e.message : 'Could not sign in.');
+      }
     } finally {
       setBusy(false);
     }
@@ -176,6 +184,7 @@ export function OwnerShell({ setupProof = '' }: { setupProof?: string } = {}) {
                   {...(mode === 'setup' ? { placeholder: 'At least 12 characters' } : {})}
                   maxLength={128}
                   value={password}
+                  aria-describedby={error ? errorId : undefined}
                   onChange={(e) => setPassword(e.target.value)}
                 />
               </Label>
@@ -192,9 +201,9 @@ export function OwnerShell({ setupProof = '' }: { setupProof?: string } = {}) {
                 </Label>
               )}
               {error && (
-                <p className="error" role="alert">
-                  {error}
-                </p>
+                <Alert variant="destructive">
+                  <AlertDescription id={errorId}>{error}</AlertDescription>
+                </Alert>
               )}
               <Button variant="default" className="primary" disabled={busy}>
                 {busy ? 'Please wait…' : mode === 'setup' ? 'Create login' : 'Sign in'}

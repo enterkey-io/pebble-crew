@@ -26,7 +26,7 @@ for (const theme of ['dark', 'light']) {
       'font-size',
       phone ? '13px' : '12px',
     );
-    await expect(input).toHaveCSS('font-size', phone ? '17px' : '14px');
+    await expect(input).toHaveCSS('font-size', phone ? '16px' : '14px');
     await input.fill('A more readable message');
     await page.screenshot({
       animations: 'disabled',

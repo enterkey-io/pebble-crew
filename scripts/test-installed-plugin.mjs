@@ -297,10 +297,12 @@ try {
   await expect(page.getByRole('option').filter({ hasText: '/model' }).first()).toBeVisible();
   await message.fill('/model');
   await page.getByRole('button', { name: 'Send message', exact: true }).click();
-  await expect(
-    page.getByRole('log').getByRole('region', { name: '/model result', exact: true }),
-  ).toContainText('Use /model <model name>');
-  checks.native_slash_catalog_and_command_are_packaged = true;
+  const modelPicker = page.getByRole('dialog', { name: 'Choose a model', exact: true });
+  await expect(modelPicker).toContainText('Current: fixture-model');
+  await expect(modelPicker.getByRole('option', { name: 'fixture', exact: true })).toBeVisible();
+  await page.keyboard.press('Escape');
+  await expect(modelPicker).toHaveCount(0);
+  checks.native_slash_catalog_and_model_picker_are_packaged = true;
   await message.fill('Synthetic installed plugin round trip');
   await page.getByRole('button', { name: 'Send message', exact: true }).click();
   await expect(page.getByText('Native fixture reply', { exact: true }).last()).toBeVisible();
@@ -409,6 +411,28 @@ try {
     console.log('Actual previous-release to candidate host-first upgrade passed.');
     await exerciseRestarts(true);
   }
+  await page.getByRole('button', { name: 'Your account', exact: true }).click();
+  await page.getByRole('menuitem', { name: 'Settings', exact: true }).click();
+  await page.getByLabel('App title', { exact: true }).fill('Synthetic Team');
+  await page.getByLabel('App title', { exact: true }).press('Enter');
+  await expect(page.getByRole('button', { name: 'Save', exact: true })).toBeDisabled();
+  await page.getByRole('button', { name: 'Close Settings', exact: true }).click();
+  await expect(page.locator('.pc-wordmark')).toHaveText('Synthetic Team');
+  await page.reload();
+  await expect(message).toBeEnabled();
+  await expect(page.locator('.pc-wordmark')).toHaveText('Synthetic Team');
+  await page.screenshot({ path: 'artifacts/plugin-shared-title.png' });
+  checks.shared_app_title_persists_in_installed_owner = true;
+  expect((await control('audit')).count).toBe(1);
+  await message.fill('nativeprogress: check the website project');
+  await page.getByRole('button', { name: 'Send message', exact: true }).click();
+  await expect(page.locator('.pc-activity-lane [role="status"]')).toHaveText(
+    'Checking the website project',
+  );
+  await expect(page.getByText('Native progress reply', { exact: true }).last()).toBeVisible();
+  await expect(page.locator('.pc-activity-lane [role="status"]')).toHaveText('');
+  expect((await control('audit')).count).toBe(4);
+  checks.native_public_progress_tool_is_discoverable_and_streams_to_its_conversation = true;
   // A native client redeems once, then proves the actual packaged Hermes handshake.
   // Owner cookies authorize invitation management, never bridge access.
   async function ownerDevice(path, data) {

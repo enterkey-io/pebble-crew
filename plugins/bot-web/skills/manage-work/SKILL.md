@@ -23,14 +23,14 @@ Reuse that same operation ID and unchanged payload after an interrupted request.
 `work.receipt` takes those two fields. `completed` confirms the saved native
 record; `uncertain` requires inspection, and must not be replayed as a new save.
 
-| Operation             | Additional params                                                                                                                     |
-| --------------------- | ------------------------------------------------------------------------------------------------------------------------------------- |
-| `work.project.create` | `name`, `description` (string; may be empty)                                                                                          |
-| `work.project.update` | `project_id`, `expected_revision` from its board, `name`, `description`                                                               |
+| Operation             | Additional params                                                                                                                                                               |
+| --------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `work.project.create` | `name`, `description` (string; may be empty)                                                                                                                                    |
+| `work.project.update` | `project_id`, `expected_revision` from its board, `name`, `description`                                                                                                         |
 | `work.task.create`    | `board`, `title`, `body` (Markdown/checklist), `assignee` (profile or null), `priority` (integer; low -1, normal 0, high 1, urgent 2), optional `status` (defaults to `triage`) |
-| `work.task.update`    | Same task fields plus `id` and task `expected_revision`; requires `capabilities.edit_details`                                         |
-| `work.task.comment`   | `board`, `id`, `body`; `@handle` notifies enrolled pebbles                                                                            |
-| `work.task.move`      | `board`, `id`, `expected_revision`, `status` (`triage`, `todo`, `ready`, `blocked`, `done`, `archived`)                               |
+| `work.task.update`    | Same task fields plus `id` and task `expected_revision`; requires `capabilities.edit_details`                                                                                   |
+| `work.task.comment`   | `board`, `id`, `body`; `@handle` notifies enrolled pebbles                                                                                                                      |
+| `work.task.move`      | `board`, `id`, `expected_revision`, `status` (`triage`, `todo`, `ready`, `blocked`, `done`, `archived`)                                                                         |
 
 Reads omit `operation_id`: `work.board` takes `workspace_id` and `board`;
 `work.task` additionally takes the native task `id`. Always carry the board
@@ -52,7 +52,6 @@ schedules stay with the agent; they are not a project board or Tasks setting.
 
 If project links conflict, show the existing board and ask for repair. Never
 silently merge projects, adopt an ambiguous catalog or delete a partial board.
-
 
 ## Plans and project goals
 

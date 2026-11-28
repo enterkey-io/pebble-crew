@@ -227,6 +227,68 @@ class PresentationTests(WorkspaceTests):
         self.assertEqual(self.deleted, 0)
 
 
+    async def test_shared_interface_title_is_independent_durable_and_revision_checked(self):
+        import json
+        from bot_web.workspace import WorkspaceStore
+        initial = await self.service.invoke('presentation.settings', {})
+        self.assertEqual(initial, {'revision': 0, 'app_title': 'Pebble Crew', 'appearance': None, 'chat_bubbles': None})
+        before = self.store.read()
+        self.native.calls.clear()
+        value = await self.service.invoke('presentation.settings.update', {'app_title': '  Öykü’s Team  ', 'expected_revision': 0})
+        self.assertEqual(value, {'revision': 1, 'app_title': 'Öykü’s Team', 'appearance': None, 'chat_bubbles': None})
+        self.assertEqual(self.native.calls, [])
+        self.assertEqual(self.store.read(), before)
+        # A retry after a lost receipt is idempotent, while a conflicting write is refused.
+        self.assertEqual(await self.service.invoke('presentation.settings.update', {'app_title': 'Öykü’s Team', 'expected_revision': 0}), value)
+        with self.assertRaises(InvalidOperation):
+            await self.service.invoke('presentation.settings.update', {'app_title': 'Different', 'expected_revision': 0})
+        another = WorkspaceStore(self.path)
+        try:
+            self.assertEqual(json.loads(another.db.execute("SELECT value FROM presentation WHERE key='interface-settings'").fetchone()[0]), value)
+        finally:
+            another.db.close()
+        snapshot = await self.service.invoke('workspace.snapshot', {})
+        self.assertEqual(snapshot['interface_settings'], value)
+        identity = self.spec()['id']
+        await self.service.invoke('presentation.order', {'ids': [identity], 'expected_revision': 0})
+        self.assertEqual(await self.service.invoke('presentation.settings', {}), value)
+
+    async def test_shared_appearance_patches_legacy_row_and_rejects_stale_writes(self):
+        import json
+        from bot_web.workspace import WorkspaceStore
+        legacy = '{ "revision": 4, "app_title": "Custom team" }'
+        with self.store.db:
+            self.store.db.execute("INSERT INTO presentation VALUES ('interface-settings', ?)", (legacy,))
+        self.assertEqual(await self.service.invoke('presentation.settings', {}),
+                         {'revision': 4, 'app_title': 'Custom team', 'appearance': None, 'chat_bubbles': None})
+        save = 'presentation.settings.update'
+        first = await self.service.invoke(save, {'expected_revision': 4, 'chat_bubbles': 'neutral'})
+        self.assertEqual(first['revision'], 5)
+        self.assertEqual(await self.service.invoke(save, {'expected_revision': 4, 'chat_bubbles': 'neutral'}), first)
+        with self.assertRaises(InvalidOperation) as error:
+            await self.service.invoke(save, {'expected_revision': 4, 'chat_bubbles': 'pebble'})
+        self.assertEqual(error.exception.code, 'STALE_REVISION')
+        for bad in ({'appearance': 'sepia'}, {'chat_bubbles': None}, {}):
+            with self.assertRaises(InvalidOperation):
+                await self.service.invoke(save, {'expected_revision': 5, **bad})
+        second = await self.service.invoke(save, {'expected_revision': 5, 'appearance': 'system'})
+        self.assertEqual(second, {'revision': 6, 'app_title': 'Custom team', 'appearance': 'system',
+                                  'chat_bubbles': 'neutral'})
+        another = WorkspaceStore(self.path)
+        try:
+            row = another.db.execute("SELECT value FROM presentation WHERE key='interface-settings'").fetchone()
+            self.assertEqual(json.loads(row[0]), second)
+        finally:
+            another.db.close()
+        self.assertEqual((await self.service.invoke('workspace.snapshot', {}))['interface_settings'], second)
+
+    async def test_interface_title_rejects_empty_long_controls_and_untyped_revisions(self):
+        for title, revision in [('', 0), ('  ', 0), ('x'*65, 0), ('New\nLine', 0), ('Hidden\u202e', 0), ('Title', True), ('Title', -1), ('Title', '0')]:
+            with self.assertRaises(InvalidOperation):
+                await self.service.invoke('presentation.settings.update', {'app_title': title, 'expected_revision': revision})
+        self.assertEqual(await self.service.invoke('presentation.settings', {}), {'revision': 0, 'app_title': 'Pebble Crew', 'appearance': None, 'chat_bubbles': None})
+
+
 class IncarnationTests(unittest.TestCase):
     def test_restart_rename_clone_and_reused_name(self):
         from pathlib import Path

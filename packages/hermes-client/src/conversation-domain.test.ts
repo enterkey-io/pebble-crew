@@ -221,6 +221,7 @@ describe('conversation presentation boundary', () => {
       accepted: false,
       disposition: 'uncertain',
       userRowId: undefined,
+      userMessageUid: undefined,
     });
     const uncertain = new ConversationDomain({
       invoke: async () => {
@@ -240,6 +241,7 @@ describe('conversation presentation boundary', () => {
         accepted: true,
         disposition: status === 'streaming' ? 'started' : status,
         userRowId: undefined,
+        userMessageUid: undefined,
       });
     }
   });
@@ -483,4 +485,34 @@ it('advances aggregate history coverage without projecting hidden native records
     expect(() =>
       decodeHistory({ messages: [], history_page: { older: null, coverage } }),
     ).toThrow();
+});
+
+it('keeps public progress control calls out of visible messages without changing native history coverage', () => {
+  const result = decodeNativeMessages([
+    { row_id: 1, role: 'user', text: 'Check the project.' },
+    { row_id: 2, role: 'tool', name: 'pebble_progress', text: '{"published":true}' },
+    { row_id: 3, role: 'assistant', text: 'The project is on track.' },
+  ]);
+  expect(result.map((row) => row.id)).toEqual(['1', '3']);
+});
+
+it('replaces a retained native row with its rewritten address and preserves an intentional repeat', async () => {
+  const uid = 'a'.repeat(32);
+  const old = { role: 'user', row_id: 1, message_uid: uid, text: 'Same words' };
+  const anchor = { role: 'assistant', row_id: 2, text: 'Progress' };
+  const domain = new ConversationDomain({
+    invoke: async (operation) => {
+      expect(operation).toBe('chat.history');
+      return {
+        history_page: { older: 'before-anchor' },
+        messages: [
+          anchor,
+          { ...old, row_id: 9 },
+          { ...old, row_id: 10, message_uid: 'b'.repeat(32) },
+        ],
+      };
+    },
+  });
+  const merged = await domain.history('bot', decodeHistory({ messages: [old, anchor] }).messages);
+  expect(merged.messages.map((row) => row.id)).toEqual(['2', '9', '10']);
 });

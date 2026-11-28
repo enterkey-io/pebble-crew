@@ -51,7 +51,7 @@ function DialogContent({
 }) {
   return (
     <DialogPortal data-slot="dialog-portal">
-      <DialogOverlay className={variant === 'image' ? 'bg-black/95' : undefined} />
+      <DialogOverlay className={variant === 'image' ? 'bg-black' : undefined} />
       <DialogPrimitive.Content
         data-slot="dialog-content"
         data-variant={variant}

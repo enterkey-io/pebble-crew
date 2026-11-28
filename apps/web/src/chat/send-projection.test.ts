@@ -288,7 +288,7 @@ it('removes only a proven undispatched optimistic row while preserving the prior
   view.begin({ id: 'not-sent', renderKey: 'not-sent', role: 'user', text: 'retry me' }, [
     { id: 'old', role: 'assistant', text: 'existing' },
   ]);
-  expect(view.cancelUnsent('not-sent').map((row) => row.id)).toEqual(['old']);
+  expect(view.discardPreview('not-sent').map((row) => row.id)).toEqual(['old']);
 });
 
 it('never removes committed replies or moves old user rows when a running snapshot spans other turns', () => {
@@ -366,4 +366,43 @@ it('keeps a receipted deferred send after the live reply while preserving its lo
   const rows = view.display(restored.messages, restored.stream).messages;
   expect(rows.map((row) => row.text)).toEqual(['Start', 'Work', 'Later']);
   expect(rows.at(-1)?.renderKey).toBe('local-followup');
+});
+
+it('matches the accepted send after Hermes reissues its physical row mid-reply', () => {
+  const view = new SendProjection();
+  const uid = 'a'.repeat(32);
+  const pending = {
+    id: 'pending',
+    renderKey: 'pending',
+    role: 'user' as const,
+    text: 'Same words',
+  };
+  view.begin(pending, []);
+  view.acknowledge(15, 'pending', false, uid);
+  view.beginReply();
+  const restored = view.restore({
+    history: {
+      messages: [
+        { id: '17', role: 'user', text: 'Same words', messageUid: 'b'.repeat(32) },
+        { id: '18', role: 'user', text: 'Same words', messageUid: uid },
+      ],
+    },
+    running: true,
+    inflight: 'Still working',
+    corrections: [],
+    activeUserId: '18',
+  });
+  expect(
+    view
+      .display(restored.messages, restored.stream)
+      .messages.map((row) => row.id)
+      .slice(0, 2),
+  ).toEqual(['17', '18']);
+  expect(restored.messages[1]?.renderKey).toBe('pending');
+  expect(
+    view.prepend(
+      [{ id: '15', role: 'user', text: 'Same words', messageUid: uid }],
+      restored.messages,
+    ),
+  ).toEqual(restored.messages);
 });

@@ -90,3 +90,11 @@ class HistoryPagesTests(unittest.TestCase):
                 boundary(invalid, 'canonical')
         with self.assertRaises(ValueError):
             read_page(self.server, {}, cursor('canonical', 99999))
+
+    def test_page_exposes_native_message_uid_beside_the_current_row_id(self):
+        self.rows[-2]['message_uid'] = 'a' * 32
+        self.rows[-1]['message_uid'] = 'not-an-identity'
+        messages = read_page(self.server, {})['messages']
+        self.assertEqual(messages[-2]['row_id'], 304)
+        self.assertEqual(messages[-2]['message_uid'], 'a' * 32)
+        self.assertNotIn('message_uid', messages[-1])

@@ -1,6 +1,15 @@
-import { createContext, lazy, Suspense, useContext, useEffect, useRef, useState } from 'react';
+import {
+  createContext,
+  lazy,
+  Suspense,
+  useContext,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
 import type { ReactNode } from 'react';
-import type { SessionClient, DownloadedMedia } from '@hermes-client/protocol';
+import type { SessionClient, DownloadedMedia, PhotoSize } from '@hermes-client/protocol';
 import { Download, Eye, File, RotateCw, Play, Expand } from 'lucide-react';
 import { IconButton } from '../components/ui/icon-button';
 import { LoadingBar } from '../components/ui/loading-bar';
@@ -18,6 +27,10 @@ import { documentFormat } from '@hermes-client/protocol';
 import { useDocumentActions } from '../documents/DocumentReader';
 
 const ImageViewerContent = lazy(() => import('../components/ui/image-viewer'));
+const MediaGalleryContent = lazy(() => import('../components/ui/media-gallery'));
+import { useGalleryPhoto } from './media-gallery-context';
+import type { GalleryItem } from './media-gallery-context';
+import { saveMedia } from './media-save';
 
 export type MessageMedia =
   | { kind: 'pending'; identity: string }
@@ -170,9 +183,57 @@ export function GeneratedImage({
   const host = useRef<HTMLSpanElement>(null);
   const [visible, setVisible] = useState(false);
   const [attempt, setAttempt] = useState(0);
-  const [viewer, setViewer] = useState<{ key: string; open: boolean; time?: number }>();
+  const [viewer, setViewer] = useState<{
+    key: string;
+    open: boolean;
+    time?: number;
+    gallery?: { items: GalleryItem[]; index: number };
+  }>();
+  const photo = useMemo<GalleryItem | undefined>(() => {
+    if (video) return;
+    const name = decodeName(source);
+    if (uploadClient && uploadSession)
+      return {
+        key,
+        name: alt || name,
+        load: (signal, size) => uploadClient.downloadFile(uploadSession, source, signal, size),
+        cached: () => held.current,
+      };
+    if (media?.kind !== 'saved') return;
+    return {
+      key,
+      name,
+      // Agents describe their photos in the alt text; a bare file name is not a title.
+      title: alt && alt !== name && !/^(?:photo|image)$/i.test(alt.trim()) ? alt : undefined,
+      load: async (signal, size) =>
+        (
+          await media.client.downloadMedia(
+            media.sessionId,
+            media.rowId,
+            await referenceKey(source),
+            signal,
+            size,
+          )
+        ).blob,
+      cached: () => held.current,
+    };
+  }, [video, source, alt, key, media, uploadClient, uploadSession]);
+  const openGallery = useGalleryPhoto(host, photo);
+  /** The chat shows a smaller copy; saving always fetches the original. */
+  const [saving, setSaving] = useState(false);
+  function saveOriginal(name: string) {
+    if (!photo || saving) return;
+    setSaving(true);
+    void photo
+      .load(new AbortController().signal)
+      .then((blob) => saveMedia(blob, name))
+      .catch(() => undefined)
+      .finally(() => setSaving(false));
+  }
+  const held = useRef<{ blob: Blob; url: string } | undefined>(undefined);
   const [loaded, setState] = useState<ImageState>({ kind: 'idle', key });
   const state: ImageState = loaded.key === key ? loaded : { kind: 'idle', key };
+  held.current = state.kind === 'ready' ? { blob: state.file.blob, url: state.url } : undefined;
   const resource = useRef<{ key: string; url: string } | undefined>(undefined);
   useEffect(
     () => () => {
@@ -206,13 +267,21 @@ export function GeneratedImage({
     if (resource.current?.key === key) return;
     const controller = new AbortController();
     setState({ kind: 'loading', key });
+    // Photos show a chat-sized copy; the original loads only to view or save it.
+    const size: PhotoSize | undefined = video ? undefined : 'preview';
     const download = uploaded
       ? uploadClient
-          .downloadFile(uploadSession, source, controller.signal)
+          .downloadFile(uploadSession, source, controller.signal, size)
           .then((blob) => ({ blob, name: alt }))
       : media?.kind === 'saved'
         ? referenceKey(source).then((reference) =>
-            media.client.downloadMedia(media.sessionId, media.rowId, reference, controller.signal),
+            media.client.downloadMedia(
+              media.sessionId,
+              media.rowId,
+              reference,
+              controller.signal,
+              size,
+            ),
           )
         : undefined;
     void download
@@ -293,7 +362,7 @@ export function GeneratedImage({
                   alt={alt || state.file.name}
                   initialTime={viewer.time ?? 0}
                   open={viewer.open}
-                  onDownload={() => save(state.file)}
+                  onDownload={() => void saveMedia(state.file.blob, state.file.name)}
                   onOpenChange={(open) => setViewer({ key, open })}
                 />
               </Suspense>
@@ -303,14 +372,20 @@ export function GeneratedImage({
             className="absolute top-1 right-1 rounded-full bg-black/60 text-white hover:bg-black/80 hover:text-white"
             label={`Download ${state.file.name}`}
             icon={Download}
-            onClick={() => save(state.file)}
+            onClick={() => void saveMedia(state.file.blob, state.file.name)}
           />
         </>
       ) : state.kind === 'ready' && state.file.blob.type.startsWith('image/') ? (
         <>
           <Dialog
             open={viewer?.key === key && viewer.open}
-            onOpenChange={(open) => setViewer({ key, open })}
+            onOpenChange={(open) =>
+              setViewer(
+                open
+                  ? { key, open, ...(openGallery() ? { gallery: openGallery()! } : {}) }
+                  : { key, open },
+              )
+            }
           >
             <DialogTrigger asChild>
               <Button
@@ -334,12 +409,23 @@ export function GeneratedImage({
                 />
               </Button>
             </DialogTrigger>
-            {viewer?.key === key && (
+            {viewer?.key === key && viewer.gallery && (
+              <Suspense fallback={<LoadingBar as="span" active label="Opening image" />}>
+                <MediaGalleryContent
+                  items={viewer.gallery.items}
+                  initialIndex={viewer.gallery.index}
+                  open={viewer.open}
+                  onOpenChange={(open) => setViewer({ key, open })}
+                />
+              </Suspense>
+            )}
+            {viewer?.key === key && !viewer.gallery && (
               <Suspense fallback={<LoadingBar as="span" active label="Opening image" />}>
                 <ImageViewerContent
                   src={state.url}
                   alt={alt || state.file.name}
                   open={viewer.open}
+                  onSave={() => saveOriginal(state.file.name)}
                   onOpenChange={(open) => setViewer({ key, open })}
                 />
               </Suspense>
@@ -350,7 +436,8 @@ export function GeneratedImage({
             className="message-image-download rounded-full hover:bg-accent hover:text-accent-foreground"
             label={`Download ${state.file.name}`}
             icon={Download}
-            onClick={() => state.kind === 'ready' && save(state.file)}
+            disabled={saving}
+            onClick={() => state.kind === 'ready' && saveOriginal(state.file.name)}
           />
         </>
       ) : state.kind === 'ready' ? (
@@ -388,11 +475,153 @@ export function GeneratedImage({
             />
           )}
         </span>
-      ) : state.kind === 'idle' ? (
+      ) : state.kind === 'idle' && (available || media?.kind !== 'pending') ? (
         <span aria-hidden="true" />
       ) : (
         <LoadingBar as="span" active label={video ? 'Loading video' : 'Loading image'} />
       )}
     </span>
+  );
+}
+
+/** Several photos sent together, shown as a fanned stack of cards. Tapping it opens
+ *  them in the gallery; each card may carry a title. */
+export function PhotoStack({ photos }: { photos: { source: string; title: string }[] }) {
+  const media = useContext(MessageMediaContext);
+  const host = useRef<HTMLButtonElement>(null);
+  const [visible, setVisible] = useState(false);
+  const [open, setOpen] = useState(false);
+  const [covers, setCovers] = useState<Record<string, string | 'error'>>({});
+  // The stack takes the shape of its top photo: wide photos get a wide card.
+  const [shape, setShape] = useState<'portrait' | 'landscape' | 'square'>();
+  // The markdown renderer passes a new array each render; key the stack by content.
+  const signature = JSON.stringify(photos);
+  const items = useMemo<GalleryItem[]>(() => {
+    if (media?.kind !== 'saved') return [];
+    const list = JSON.parse(signature) as { source: string; title: string }[];
+    return list.map(({ source, title }) => {
+      const name = decodeName(source);
+      return {
+        key: `${media.identity}:${source}`,
+        name,
+        title: title && title !== name ? title : undefined,
+        load: async (signal: AbortSignal, size?: PhotoSize) =>
+          (
+            await media.client.downloadMedia(
+              media.sessionId,
+              media.rowId,
+              await referenceKey(source),
+              signal,
+              size,
+            )
+          ).blob,
+      };
+    });
+  }, [media, signature]);
+  useEffect(() => {
+    const observer = new IntersectionObserver(
+      (entries) => setVisible(entries.some((entry) => entry.isIntersecting)),
+      { rootMargin: '200px' },
+    );
+    if (host.current) observer.observe(host.current);
+    return () => observer.disconnect();
+  }, []);
+  // Load the three cards that are visible in the fan: a chat-sized copy on top,
+  // thumbnails behind it.
+  useEffect(() => {
+    if (!visible || !items.length) return;
+    const controller = new AbortController();
+    const urls: string[] = [];
+    for (const [depth, item] of items.slice(0, 3).entries())
+      item
+        .load(controller.signal, depth ? 'thumb' : 'preview')
+        .then((blob) => {
+          if (controller.signal.aborted) return;
+          const url = URL.createObjectURL(blob);
+          urls.push(url);
+          setCovers((value) => ({ ...value, [item.key]: url }));
+        })
+        .catch(() => {
+          if (!controller.signal.aborted) setCovers((value) => ({ ...value, [item.key]: 'error' }));
+        });
+    return () => {
+      controller.abort();
+      urls.forEach((url) => URL.revokeObjectURL(url));
+      setCovers({});
+    };
+  }, [visible, items]);
+  const fan = items.slice(0, 3);
+  const top = fan[0];
+  const label = `View ${items.length} photos${top?.title ? `, starting with ${top.title}` : ''}`;
+  return (
+    <Dialog open={open} onOpenChange={setOpen}>
+      <DialogTrigger asChild>
+        <button
+          ref={host}
+          type="button"
+          aria-label={label}
+          disabled={!items.length}
+          data-shape={shape ?? 'square'}
+          className={`photo-stack relative mx-3 mt-4 mb-8 block outline-none focus-visible:ring-2 focus-visible:ring-ring ${
+            shape === 'landscape'
+              ? 'aspect-[4/3] w-[min(20rem,75vw)]'
+              : shape === 'portrait'
+                ? 'aspect-[4/5] w-[min(16rem,65vw)]'
+                : 'aspect-square w-[min(17rem,68vw)]'
+          }`}
+        >
+          {!items.length && <LoadingBar as="span" active label="Loading photos" />}
+          {[...fan].reverse().map((item, reversed) => {
+            const depth = fan.length - 1 - reversed;
+            const cover = covers[item.key];
+            return (
+              <span
+                key={item.key}
+                aria-hidden={depth > 0}
+                className="absolute inset-0 overflow-hidden rounded-2xl bg-muted shadow-[0_6px_24px_#0006] transition-transform"
+                style={{
+                  transform: `rotate(${[0, -6, 6][depth]}deg) translate(${[0, -10, 10][depth]}px, ${depth * 4}px)`,
+                  zIndex: 3 - depth,
+                }}
+              >
+                {cover && cover !== 'error' && (
+                  <img
+                    src={cover}
+                    alt={depth ? '' : item.title || item.name}
+                    draggable={false}
+                    decoding="async"
+                    style={{ WebkitTouchCallout: 'default' }}
+                    className="size-full object-cover"
+                    {...(depth
+                      ? {}
+                      : {
+                          onLoad: ({ currentTarget: { naturalWidth: w, naturalHeight: h } }) =>
+                            setShape(
+                              w > h * 1.1 ? 'landscape' : h > w * 1.1 ? 'portrait' : 'square',
+                            ),
+                        })}
+                  />
+                )}
+                {!depth && item.title && (
+                  <span className="absolute inset-x-0 bottom-2 flex justify-center px-2">
+                    <span className="max-w-full truncate rounded-full bg-neutral-500/60 px-3 py-1 text-xs text-white backdrop-blur-sm">
+                      {item.title}
+                    </span>
+                  </span>
+                )}
+              </span>
+            );
+          })}
+          <span className="absolute top-2 right-2 z-10 rounded-full bg-black/60 px-2 py-0.5 text-xs text-white">
+            {items.length}
+          </span>
+        </button>
+      </DialogTrigger>
+      {open && (
+        <Suspense fallback={<LoadingBar as="span" active label="Opening photos" />}>
+          <MediaGalleryContent items={items} initialIndex={0} open onOpenChange={setOpen} />
+        </Suspense>
+      )}
+    </Dialog>
   );
 }

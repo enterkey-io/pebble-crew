@@ -97,8 +97,32 @@ test('shared MP4 plays inline and opens a centered zoomable player with seek, mu
   expect(
     Math.abs(playingBounds.x + playingBounds.width / 2 - page.viewportSize()!.width / 2),
   ).toBeLessThan(3);
+  // Where the platform offers a share sheet (iPhone), Save hands it the file so
+  // it lands in Photos; elsewhere it downloads.
+  const sharing = await page.evaluate(
+    () =>
+      typeof navigator.share === 'function' &&
+      !!navigator.canShare?.({ files: [new File(['x'], 'x.mp4', { type: 'video/mp4' })] }),
+  );
+  if (sharing) {
+    await page.evaluate(() => {
+      Reflect.set(window, '__shared', []);
+      navigator.share = async (data?: ShareData) => {
+        (Reflect.get(window, '__shared') as string[]).push(
+          ...(data?.files ?? []).map((f) => `${f.name}:${f.type}:${f.size}`),
+        );
+      };
+    });
+    await viewer.getByRole('button', { name: 'Save video', exact: true }).click();
+    await expect
+      .poll(() => page.evaluate(() => Reflect.get(window, '__shared') as string[]))
+      .toEqual([`sample-video.mp4:video/mp4:${bytes.length}`]);
+    await page.evaluate(() => {
+      Reflect.set(navigator, 'canShare', () => false);
+    });
+  }
   const download = page.waitForEvent('download');
-  await viewer.getByRole('button', { name: 'Download video', exact: true }).click();
+  await viewer.getByRole('button', { name: 'Save video', exact: true }).click();
   const file = await download;
   expect(file.suggestedFilename()).toBe('sample-video.mp4');
   expect(await readFile((await file.path())!)).toEqual(bytes);

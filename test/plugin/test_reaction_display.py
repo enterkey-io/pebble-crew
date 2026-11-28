@@ -68,3 +68,17 @@ class ReactionDisplayTests(unittest.TestCase):
         self.assertEqual(replay['events'][-1]['payload']['text'], '')
         self.assertEqual(replay['latest_seq'], 3)
         self.assertEqual(self.display.prefixes, {})
+
+
+class SilentPreviewTests(unittest.TestCase):
+    def test_the_pebble_list_does_not_preview_a_silence_marker(self):
+        from bot_web.operations import BotOperations
+        filters = SimpleNamespace(is_intentional_silence_response=lambda text: text == 'NO_REPLY')
+        with patch.dict(sys.modules, {'gateway.response_filters': filters}):
+            def preview(text):
+                return BotOperations.summary({'name': 'sarah', 'ui_meta': {'hermes-bots': {}},
+                                              'canonical_session': {'id': 's', 'preview': text}})['preview']
+            self.assertEqual(preview('NO_REPLY'), '')
+            self.assertEqual(preview(' NO_REPLY\n'), '')
+            self.assertEqual(preview('[PEBBLE_NO_REPLY]'), '')
+            self.assertEqual(preview('NO_REPLY is a marker'), 'NO_REPLY is a marker')

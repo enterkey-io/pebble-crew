@@ -19,6 +19,35 @@ class ConversationPresentationTests(unittest.TestCase):
             self.assertNotIn('PRIVATE', str(result))
         self.assertEqual(notice, saved, 'Display reads never rewrite native model/history content')
 
+    def test_a_returned_peer_result_is_activity_not_the_owner_speaking(self):
+        from types import SimpleNamespace
+        from bot_web.exchanges import Exchanges
+        fake = SimpleNamespace(db=SimpleNamespace(execute=lambda *a: SimpleNamespace(fetchone=lambda: {'sender': 'x', 'text': 'PRIVATE result'})),
+                               actor=lambda _id: {'handle': 'alina'})
+        text = Exchanges.followup_message(fake, {'delivery': 'd', 'exchange': 'e'})
+        row = {'role': 'user', 'row_id': 14379, 'timestamp': 5, 'text': text}
+        for method in ('session.resume', 'session.history', 'bot_web.conversation.snapshot'):
+            result = project_result(method, {'messages': [row]})
+            self.assertEqual(result['messages'], [{'role': 'tool', 'name': 'delegate_task', 'text': '',
+                'context': 'Result from @alina', 'row_id': 14379, 'timestamp': 5}])
+            self.assertNotIn('PRIVATE', str(result))
+        owner = {'role': 'user', 'row_id': 1, 'text': 'A peer has returned a result? What peer?'}
+        self.assertEqual(project_message(owner), owner)
+
+    def test_context_compaction_summary_never_shows_as_a_message(self):
+        # Hermes stores its compaction handoff as an ordinary user or assistant row.
+        for row in (
+            {'role': 'user', 'row_id': 68486, 'timestamp': 1, 'text': '[CONTEXT COMPACTION \u2014 REFERENCE ONLY] PRIVATE summary'},
+            {'role': 'assistant', 'row_id': 64151, 'timestamp': 2, 'text': '[PRIOR CONTEXT \u2014 for reference only] PRIVATE'},
+            {'role': 'user', 'row_id': 7, 'timestamp': 3, 'text': 'PRIVATE', '_compressed_summary': 1},
+        ):
+            for method in ('session.resume', 'session.history', 'bot_web.conversation.snapshot'):
+                result = project_result(method, {'messages': [row]})
+                self.assertEqual(result['messages'], [{'role': 'system', 'row_id': row['row_id'], 'timestamp': row['timestamp']}])
+                self.assertNotIn('PRIVATE', str(result))
+        owner = {'role': 'user', 'text': 'What does [CONTEXT COMPACTION] mean?'}
+        self.assertEqual(project_message(owner), owner)
+
     def test_hidden_and_future_operational_rows_keep_coverage_without_owner_attribution(self):
         for kind in ('hidden', 'internal_notification', 'future_automation', {}, 7):
             result = project_message({'role': 'user', 'display_kind': kind, 'row_id': 55, 'text': 'PRIVATE'})

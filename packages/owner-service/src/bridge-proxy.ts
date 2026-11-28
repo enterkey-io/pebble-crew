@@ -122,7 +122,8 @@ export function proxyBridge(
       }, 2000)
     : undefined;
   outgoing.on('close', () => clearInterval(revocation));
-  upstream.setTimeout(45000, () => upstream.destroy());
+  // Longer than the browser's own 50-second limit, so a slow operation reports a timeout, not a lost reply.
+  upstream.setTimeout(60000, () => upstream.destroy());
   upstream.on('error', () => {
     if (!outgoing.headersSent) outgoing.writeHead(503, { 'Retry-After': '2' });
     outgoing.end();

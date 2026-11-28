@@ -138,25 +138,32 @@ test('agents open only current live documents and reconnect does not reopen a cl
   await expect(reader).toHaveCount(0);
 });
 
-test('Files opens a shared text preview and returns to the same details tab', async ({
+test('Library opens text and diagram previews and returns to the same details tab', async ({
   page,
   context,
 }) => {
   await installFixture(context);
   const id = 'a'.repeat(43);
+  const diagramId = 'b'.repeat(43);
   await page.route('**/v1/rpc', async (route) => {
     if (route.request().postDataJSON().operation === 'files.list')
       return route.fulfill({
         json: {
-          result: { files: [{ id, name: 'notes.txt', size: 19, kind: 'file', state: 'sent' }] },
+          result: {
+            files: [
+              { id, name: 'notes.txt', size: 19, kind: 'file', state: 'sent' },
+              { id: diagramId, name: 'workflow.mmd', size: 50, kind: 'file', state: 'sent' },
+            ],
+          },
         },
       });
     return route.fallback();
   });
   await page.route('**/v1/files/read', async (route) => {
-    expect(route.request().postDataJSON().params.id).toBe(id);
+    const requested = route.request().postDataJSON().params.id;
+    expect([id, diagramId]).toContain(requested);
     return route.fulfill({
-      body: 'Plain owner notes.',
+      body: requested === diagramId ? 'flowchart LR\n Start --> Finish' : 'Plain owner notes.',
       headers: { 'content-type': 'application/octet-stream' },
     });
   });
@@ -181,4 +188,167 @@ test('Files opens a shared text preview and returns to the same details tab', as
     'true',
   );
   await expect(details.getByRole('button', { name: 'View notes.txt', exact: true })).toBeVisible();
+  await details.getByRole('button', { name: 'View workflow.mmd', exact: true }).click();
+  await expect(reader.getByRole('img', { name: 'Mermaid diagram' })).toBeVisible();
+  await expect
+    .poll(() =>
+      reader
+        .getByRole('img')
+        .evaluate((img) => (img instanceof HTMLImageElement ? img.naturalWidth : 0)),
+    )
+    .toBeGreaterThan(0);
+  await reader.getByRole('button', { name: 'Close document', exact: true }).click();
+  await expect(details.getByRole('tab', { name: 'Library', exact: true })).toHaveAttribute(
+    'aria-selected',
+    'true',
+  );
+});
+
+test('renders Mermaid and Pele fences and keeps source available for invalid diagrams', async ({
+  page,
+  context,
+}, info) => {
+  await installFixture(context);
+  const remote: string[] = [];
+  page.on('request', (request) => {
+    if (request.url().includes('tracker.invalid')) remote.push(request.url());
+  });
+  await page.goto('/');
+  await expect(page.getByLabel('Message', { exact: true })).toBeEnabled();
+  const request = {
+    request_id: '12345678-1234-1234-1234-123456789ac1',
+    expires_at: Date.now() + 60_000,
+  };
+  await emit(page, 'document.open', {
+    ...request,
+    name: 'Workflow.md',
+    format: 'markdown',
+    text: [
+      '# Workflow',
+      '',
+      '```mermaid',
+      'flowchart LR',
+      '  A[Draft] --> B[Review] --> C[Publish]',
+      '  click A "https://tracker.invalid/visit"',
+      '```',
+      '',
+      '```pele',
+      'sequenceDiagram',
+      '  Author->>Reviewer: Send plan',
+      '  Reviewer-->>Author: Approved',
+      '```',
+    ].join('\n'),
+  });
+  const reader = page.getByRole('region', { name: 'Document viewer', exact: true });
+  await expect(reader.getByRole('heading', { name: 'Workflow', exact: true })).toBeVisible();
+  const diagrams = reader.getByRole('img', { name: 'Mermaid diagram' });
+  await expect(diagrams).toHaveCount(2);
+  await expect
+    .poll(() =>
+      diagrams.evaluateAll((images) =>
+        images.every((img) => img instanceof HTMLImageElement && img.naturalWidth > 0),
+      ),
+    )
+    .toBe(true);
+  expect(remote).toEqual([]);
+  await expect
+    .poll(() =>
+      reader.evaluate((node) => {
+        const box = node.getBoundingClientRect();
+        return box.left >= -1 && box.right <= window.innerWidth + 1;
+      }),
+    )
+    .toBe(true);
+  await expect(reader.getByRole('button', { name: 'Close document' })).toBeInViewport();
+  if (page.viewportSize()!.width < 768) {
+    await expect(page.getByRole('separator', { name: 'Resize document viewer' })).toHaveCount(0);
+    await expect(reader.getByRole('button', { name: 'Expand document' })).toHaveCount(0);
+  }
+  await page.screenshot({ animations: 'disabled', path: info.outputPath('diagram-viewer.png') });
+  await emit(page, 'document.open', {
+    ...request,
+    request_id: '12345678-1234-1234-1234-123456789ac2',
+    name: 'Broken.mermaid',
+    format: 'mermaid',
+    text: 'This is invalid diagram syntax.',
+  });
+  await expect(reader.getByRole('alert')).toContainText('couldn’t be rendered');
+  await expect(reader.locator('pre')).toHaveText('This is invalid diagram syntax.');
+  await expect(reader.getByRole('button', { name: 'Download Broken.mermaid' })).toBeVisible();
+});
+
+test('document divider resizes the viewer and remembers its width', async ({
+  page,
+  context,
+}, info) => {
+  test.skip(info.project.use.isMobile === true, 'Phones use a full-width viewer.');
+  await page.setViewportSize({ width: 1520, height: 900 });
+  await installFixture(context);
+  await page.goto('/');
+  await expect(page.getByLabel('Message', { exact: true })).toBeEnabled();
+
+  async function openDocument(requestId: string) {
+    await emit(page, 'document.open', {
+      name: 'Flow.mmd',
+      format: 'mermaid',
+      text: 'flowchart LR\n  Draft --> Review --> Publish',
+      request_id: requestId,
+      expires_at: Date.now() + 60_000,
+    });
+    await expect(page.getByRole('img', { name: 'Mermaid diagram' })).toBeVisible();
+  }
+
+  const dock = page.getByRole('complementary', { name: 'Document', exact: true });
+  const handle = dock.getByRole('separator', { name: 'Resize document viewer' });
+  const diagram = dock.getByRole('img', { name: 'Mermaid diagram' });
+  await openDocument('12345678-1234-1234-1234-123456789ad1');
+  await expect(dock).toHaveCSS('width', '560px');
+  const previousSource = await diagram.getAttribute('src');
+  const edge = (await handle.boundingBox())!;
+  await page.mouse.move(edge.x + 2, edge.y + 160);
+  await page.mouse.down();
+  await page.mouse.move(edge.x - 160, edge.y + 160, { steps: 12 });
+  await page.mouse.up();
+  await expect.poll(async () => (await dock.boundingBox())!.width).toBeGreaterThan(710);
+  await expect(diagram).not.toHaveAttribute('src', previousSource!);
+
+  await handle.focus();
+  await page.keyboard.press('ArrowRight');
+  await expect.poll(async () => (await dock.boundingBox())!.width).toBeLessThan(710);
+  const chosenWidth = Math.round((await dock.boundingBox())!.width);
+  const chat = page.getByRole('region', { name: 'Conversation', exact: true });
+  expect((await chat.boundingBox())!.width).toBeGreaterThanOrEqual(360);
+  await page.screenshot({
+    animations: 'disabled',
+    path: info.outputPath('document-viewer-resized.png'),
+  });
+
+  await dock.getByText('Diagram source', { exact: true }).click();
+  await dock.getByRole('button', { name: 'Expand document', exact: true }).click();
+  const fullPage = page.getByRole('dialog', { name: 'Document', exact: true });
+  await expect(fullPage).toBeVisible();
+  expect(await fullPage.boundingBox()).toEqual({ x: 0, y: 0, width: 1520, height: 900 });
+  await expect(fullPage.getByText('Flow.mmd', { exact: true })).toBeVisible();
+  await expect(fullPage.locator('details')).toHaveAttribute('open', '');
+  await expect(chat).toHaveCount(0);
+  await expect(page.getByRole('separator', { name: 'Resize document viewer' })).toHaveCount(0);
+  await page.screenshot({
+    animations: 'disabled',
+    path: info.outputPath('document-viewer-full-page.png'),
+  });
+  await fullPage.getByRole('button', { name: 'Return to sidebar', exact: true }).click();
+  await expect(dock).toHaveCSS('width', `${chosenWidth}px`);
+  await expect(dock.locator('details')).toHaveAttribute('open', '');
+  await expect(chat).toBeVisible();
+  await dock.getByRole('button', { name: 'Expand document', exact: true }).click();
+  await page.keyboard.press('Escape');
+  await expect(dock).toHaveCSS('width', `${chosenWidth}px`);
+  await expect(fullPage).toHaveCount(0);
+
+  await page.reload();
+  await expect(page.getByLabel('Message', { exact: true })).toBeEnabled();
+  await openDocument('12345678-1234-1234-1234-123456789ad2');
+  await expect(dock).toHaveCSS('width', `${chosenWidth}px`);
+  await handle.dblclick();
+  await expect(dock).toHaveCSS('width', '560px');
 });

@@ -17,13 +17,15 @@ export async function ownerRequest(path: string, body?: unknown, signal?: AbortS
     ...(body === undefined ? {} : { body: JSON.stringify(body) }),
     ...(signal ? { signal } : {}),
   });
-  const value: unknown = await response.json();
-  if (!response.ok)
-    throw new OwnerRequestError(
-      value && typeof value === 'object' && 'error' in value && typeof value.error === 'string'
+  if (response.ok) return response.json();
+  const value: unknown = await response.json().catch(() => null);
+  const message =
+    value && typeof value === 'object'
+      ? 'error' in value && typeof value.error === 'string'
         ? value.error
-        : 'Please sign in.',
-      response.status,
-    );
-  return value;
+        : 'message' in value && typeof value.message === 'string'
+          ? value.message
+          : ''
+      : '';
+  throw new OwnerRequestError(message || 'Please sign in.', response.status);
 }

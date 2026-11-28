@@ -2,11 +2,14 @@ import { ClientError } from '@hermes-client/core';
 import { record } from './json';
 
 export const DOCUMENT_LIMIT = 256 * 1024;
-export function documentFormat(name: string): 'markdown' | 'text' | undefined {
-  return /\.(md|markdown)$/i.test(name) ? 'markdown' : /\.txt$/i.test(name) ? 'text' : undefined;
+export function documentFormat(name: string) {
+  if (/\.(md|markdown)$/i.test(name)) return 'markdown';
+  if (/\.txt$/i.test(name)) return 'text';
+  if (/\.(mmd|mermaid)$/i.test(name)) return 'mermaid';
 }
 export function decodeDocument(value: unknown) {
   const data = record(value);
+  const format = typeof data.name === 'string' ? documentFormat(data.name) : undefined;
   if (
     typeof data.name !== 'string' ||
     !data.name ||
@@ -18,11 +21,11 @@ export function decodeDocument(value: unknown) {
     typeof data.text !== 'string' ||
     new TextEncoder().encode(data.text).length > DOCUMENT_LIMIT ||
     [...data.text].some((char) => char.charCodeAt(0) < 32 && !'\n\r\t'.includes(char)) ||
-    !documentFormat(data.name) ||
-    data.format !== documentFormat(data.name)
+    !format ||
+    data.format !== format
   )
     throw new ClientError('INVALID_RESPONSE');
-  return { name: data.name, text: data.text, format: documentFormat(data.name)! };
+  return { name: data.name, text: data.text, format };
 }
 export type SharedDocument = ReturnType<typeof decodeDocument>;
 

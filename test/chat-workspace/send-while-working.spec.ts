@@ -208,3 +208,52 @@ test('opening during continuous deltas merges the native snapshot without gaps o
   );
   await expect(page.getByRole('log').locator('[data-message-role]')).toHaveCount(2);
 });
+
+test('a native rewrite replaces the original sent row without duplicating the bubble', async ({
+  page,
+  context,
+}, info) => {
+  const uid = 'a'.repeat(32);
+  const prompt = 'This is one Aurora message.';
+  const history = [
+    { role: 'user', row_id: 31, message_uid: uid, text: prompt },
+    { role: 'assistant', row_id: 32, text: 'I’m working on it.' },
+  ];
+  await installFixture(context, { messages: [] });
+  let sends = 0;
+  await page.route('**/v1/rpc', async (route) => {
+    const { operation } = route.request().postDataJSON();
+    if (operation === 'chat.send') {
+      sends++;
+      return route.fulfill({
+        json: { result: { status: 'streaming', user_row_id: 31, user_message_uid: uid } },
+      });
+    }
+    if (operation === 'chat.history')
+      return route.fulfill({
+        json: { result: { messages: history, history_page: { older: null } } },
+      });
+    return route.fallback();
+  });
+  await page.goto('/');
+  const input = page.getByLabel('Message', { exact: true });
+  await expect(input).toBeEnabled();
+  await input.fill(prompt);
+  await submitMessage(page);
+  await expect(page.getByText(prompt, { exact: true })).toHaveCount(1);
+  await expect.poll(() => sends).toBe(1);
+  await emit(page, 'message.start');
+  await emit(page, 'message.delta', { text: 'I’m working on it.' });
+  await expect(page.getByText('I’m working on it.', { exact: true })).toBeVisible();
+  history.splice(0, 1);
+  history.push({ role: 'user', row_id: 39, message_uid: uid, text: prompt });
+  await emit(page, 'message.complete', { persisted_turn: { final_assistant_row_id: 32 } });
+  await expect(page.locator('[data-message-id="39"]')).toContainText(prompt);
+  await expect(page.getByText(prompt, { exact: true })).toHaveCount(1);
+  await expect(page.locator('[data-message-id="31"]')).toHaveCount(0);
+  expect(sends).toBe(1);
+  await page.screenshot({
+    path: info.outputPath('rewritten-message-once.png'),
+    animations: 'disabled',
+  });
+});

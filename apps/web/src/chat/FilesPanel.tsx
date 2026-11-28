@@ -1,14 +1,16 @@
 import { Button } from '../components/ui/button';
 import { lazy, Suspense, useEffect, useRef, useState } from 'react';
-import type { SessionClient } from '@hermes-client/protocol';
+import type { PhotoSize, SessionClient } from '@hermes-client/protocol';
 import { Notice } from '../ui/primitives';
 import { LoadingBar } from '../components/ui/loading-bar';
 export type { SharedConversationFile as SharedFile } from '@hermes-client/protocol';
 import type { SharedConversationFile as SharedFile } from '@hermes-client/protocol';
 import { ConversationDomain } from '@hermes-client/protocol';
-import { Item, ItemContent, ItemTitle, ItemDescription, ItemMedia } from '../components/ui/item';
+import { Download, Film, FileText } from 'lucide-react';
 import { IconButton } from '../components/ui/icon-button';
-import { Download, Eye, Image, Film, FileText } from 'lucide-react';
+import { saveMedia } from './media-save';
+import type { GalleryItem } from './media-gallery-context';
+const MediaGallery = lazy(() => import('../components/ui/media-gallery'));
 import { documentFormat } from '@hermes-client/protocol';
 import { useDocumentActions } from '../documents/DocumentReader';
 import { Dialog } from '../components/ui/dialog';
@@ -52,6 +54,14 @@ export function FilesPanel({
     kind: 'image' | 'video';
     blob: Blob;
   }>();
+  const [gallery, setGallery] = useState<{ items: GalleryItem[]; index: number }>();
+  useEffect(() => {
+    // Release the open video's object URL when it closes or changes.
+    const url = viewer?.url;
+    return () => {
+      if (url) URL.revokeObjectURL(url);
+    };
+  }, [viewer?.url]);
   const generation = useRef(0);
   useEffect(() => {
     if (!active) return;
@@ -143,20 +153,29 @@ export function FilesPanel({
       setMore(false);
     }
   }
-  async function blob(item: LibraryItem) {
+  async function blob(item: LibraryItem, signal?: AbortSignal, size?: PhotoSize) {
     return item.kind === 'upload'
-      ? client.downloadFile(sessionId, item.file.id)
-      : (await client.downloadMedia(sessionId, item.file.rowId, item.file.reference)).blob;
+      ? client.downloadFile(sessionId, item.file.id, signal, size)
+      : (await client.downloadMedia(sessionId, item.file.rowId, item.file.reference, signal, size))
+          .blob;
   }
-  function save(value: Blob, name: string) {
-    const url = URL.createObjectURL(value),
-      link = document.createElement('a');
-    link.href = url;
-    link.download = name;
-    link.click();
-    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  const isPhoto = (item: LibraryItem) => /\.(?:png|jpe?g|webp|gif|avif)$/i.test(item.file.name);
+  function openPhoto(item: LibraryItem) {
+    const photos = items.filter(isPhoto);
+    setGallery({
+      items: photos.map((photo) => ({
+        key: key(photo),
+        name: photo.file.name,
+        load: (signal: AbortSignal, size?: PhotoSize) => blob(photo, signal, size),
+      })),
+      index: Math.max(0, photos.indexOf(item)),
+    });
   }
   async function view(item: LibraryItem) {
+    if (isPhoto(item)) {
+      openPhoto(item);
+      return;
+    }
     if (documentFormat(item.file.name) && openDocument) {
       openDocument({ name: item.file.name, load: () => blob(item) });
       return;
@@ -183,7 +202,7 @@ export function FilesPanel({
     setBusy(key(item));
     setError('');
     try {
-      save(await blob(item), item.file.name);
+      await saveMedia(await blob(item), item.file.name);
     } catch {
       setError('This item could not be downloaded.');
     } finally {
@@ -204,45 +223,52 @@ export function FilesPanel({
       {!loading && !error && !items.length && !cursor && (
         <p className="empty-note">Nothing shared here yet.</p>
       )}
-      <ul className="file-list">
-        {items.map((item) => {
-          const photo = /\.(?:png|jpe?g|webp|gif|avif)$/i.test(item.file.name),
-            video = /\.mp4$/i.test(item.file.name),
-            Icon = photo ? Image : video ? Film : FileText;
-          return (
-            <Item asChild key={key(item)} className="flex-nowrap px-0">
-              <li data-file-id={key(item)}>
-                <ItemMedia>
-                  <Icon className="size-4 text-muted-foreground" />
-                </ItemMedia>
-                <ItemContent>
-                  <ItemTitle className="break-all">{item.file.name}</ItemTitle>
-                  <ItemDescription className="text-xs">{fileSize(item.file.size)}</ItemDescription>
-                </ItemContent>
-                {(photo || video || (documentFormat(item.file.name) && openDocument)) && (
-                  <IconButton
-                    label={`View ${item.file.name}`}
-                    icon={Eye}
-                    disabled={!!busy}
-                    onClick={() => void view(item)}
-                  />
-                )}
-                <IconButton
-                  label={`Download ${item.file.name}`}
-                  icon={Download}
-                  disabled={!!busy}
-                  onClick={() => void download(item)}
-                />
-              </li>
-            </Item>
-          );
-        })}
+      <ul className="grid grid-cols-3 gap-2 p-1" aria-label="Library items">
+        {items.map((item) => (
+          <LibraryTile
+            key={key(item)}
+            id={key(item)}
+            name={item.file.name}
+            size={item.file.size}
+            photo={isPhoto(item)}
+            video={/\.mp4$/i.test(item.file.name)}
+            viewable={
+              isPhoto(item) ||
+              /\.mp4$/i.test(item.file.name) ||
+              (!!documentFormat(item.file.name) && !!openDocument)
+            }
+            busy={busy === key(item)}
+            disabled={!!busy}
+            load={(signal) => blob(item, signal, 'thumb')}
+            onOpen={() => void view(item)}
+            onDownload={() => void download(item)}
+          />
+        ))}
       </ul>
       {!!cursor && (
         <Button variant="quiet" disabled={more} onClick={() => void loadMore()}>
           Load more
         </Button>
       )}
+      <Dialog
+        open={!!gallery}
+        onOpenChange={(open) => {
+          if (!open) setGallery(undefined);
+        }}
+      >
+        {gallery && (
+          <Suspense fallback={<LoadingBar active label="Opening photo" />}>
+            <MediaGallery
+              items={gallery.items}
+              initialIndex={gallery.index}
+              open
+              onOpenChange={(open) => {
+                if (!open) setGallery(undefined);
+              }}
+            />
+          </Suspense>
+        )}
+      </Dialog>
       <Dialog
         open={!!viewer}
         onOpenChange={(open) => {
@@ -259,11 +285,110 @@ export function FilesPanel({
               onOpenChange={(open) => {
                 if (!open) setViewer(undefined);
               }}
-              onDownload={() => save(viewer.blob, viewer.name)}
+              onDownload={() => void saveMedia(viewer.blob, viewer.name)}
             />
           </Suspense>
         )}
       </Dialog>
     </div>
+  );
+}
+
+/** A square Library tile: a cropped preview for photos, an icon and name for anything else. */
+function LibraryTile({
+  id,
+  name,
+  size,
+  photo,
+  video,
+  viewable,
+  busy,
+  disabled,
+  load,
+  onOpen,
+  onDownload,
+}: {
+  id: string;
+  name: string;
+  size: number;
+  photo: boolean;
+  video: boolean;
+  viewable: boolean;
+  busy: boolean;
+  disabled: boolean;
+  load: (signal: AbortSignal) => Promise<Blob>;
+  onOpen: () => void;
+  onDownload: () => void;
+}) {
+  const host = useRef<HTMLLIElement>(null);
+  const [preview, setPreview] = useState<string | 'error'>();
+  const [visible, setVisible] = useState(false);
+  useEffect(() => {
+    if (!photo || !host.current) return;
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries.some((entry) => entry.isIntersecting)) setVisible(true);
+      },
+      { rootMargin: '300px' },
+    );
+    observer.observe(host.current);
+    return () => observer.disconnect();
+  }, [photo]);
+  useEffect(() => {
+    if (!photo || !visible) return;
+    const controller = new AbortController();
+    let url: string | undefined;
+    load(controller.signal)
+      .then((data) => {
+        if (controller.signal.aborted) return;
+        url = URL.createObjectURL(data);
+        setPreview(url);
+      })
+      .catch(() => {
+        if (!controller.signal.aborted) setPreview('error');
+      });
+    return () => {
+      controller.abort();
+      if (url) URL.revokeObjectURL(url);
+    };
+    // `load` is recreated each render; the tile identity is its id.
+  }, [photo, visible, id]);
+  const Icon = video ? Film : FileText;
+  return (
+    <li ref={host} data-file-id={id} className="relative aspect-square">
+      <button
+        type="button"
+        aria-label={viewable ? `View ${name}` : `Download ${name}`}
+        disabled={disabled}
+        onClick={viewable ? onOpen : onDownload}
+        className="flex size-full flex-col items-center justify-center gap-1 overflow-hidden rounded-xl bg-muted p-2 text-center outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-70"
+      >
+        {photo && <span className="sr-only">{name}</span>}
+        {photo && preview && preview !== 'error' ? (
+          <img
+            src={preview}
+            alt=""
+            draggable={false}
+            className="absolute inset-0 size-full rounded-xl object-cover"
+          />
+        ) : (
+          <>
+            <Icon aria-hidden="true" className="size-5 shrink-0 text-muted-foreground" />
+            <span className="line-clamp-3 text-xs break-all">{name}</span>
+            <span className="text-[0.6875rem] text-muted-foreground">{fileSize(size)}</span>
+          </>
+        )}
+      </button>
+      {!photo && viewable && (
+        <IconButton
+          label={`Download ${name}`}
+          icon={Download}
+          disabled={disabled}
+          className="absolute right-1 bottom-1 size-8 rounded-full"
+          onClick={onDownload}
+        />
+      )}
+      <LoadingBar as="span" active={busy} label={`Opening ${name}`} />
+    </li>
   );
 }

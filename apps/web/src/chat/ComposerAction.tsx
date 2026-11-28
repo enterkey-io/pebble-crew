@@ -22,7 +22,7 @@ export function ComposerAction({
       type={sending ? 'submit' : 'button'}
       variant="secondary"
       size="icon"
-      className={`self-end size-9 shrink-0 rounded-full bg-foreground p-0 text-background hover:bg-foreground/90 pointer-coarse:size-11 ${action}-button`}
+      className={`size-9 shrink-0 self-end rounded-full bg-foreground p-0 text-background hover:bg-foreground/90 pointer-coarse:size-11 ${action}-button`}
       data-action={action}
       aria-label={
         mode === 'voice'

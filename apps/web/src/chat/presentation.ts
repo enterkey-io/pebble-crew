@@ -9,6 +9,22 @@ export type TranscriptCard = {
   content: ReactNode;
   needsInput?: boolean;
 };
+export function cardsWithinHistory(
+  messages: ChatMessage[],
+  cards: readonly TranscriptCard[],
+  hasEarlier: boolean,
+): readonly TranscriptCard[] {
+  if (!hasEarlier) return cards;
+  let first = Infinity;
+  for (const message of messages) {
+    const at = messageDate(message.timestamp)?.getTime();
+    if (at !== undefined && at < first) first = at;
+  }
+  if (!Number.isFinite(first)) return cards;
+  return cards.filter(
+    (card) => card.needsInput || card.createdAt === undefined || card.createdAt >= first,
+  );
+}
 type PositionedCard = { index: number; card: TranscriptCard };
 type CardAnchor = { kind: 'before' | 'after'; key: string } | { kind: 'start' };
 const messageKey = (message: ChatMessage) => message.renderKey ?? message.id;

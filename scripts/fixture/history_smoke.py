@@ -1,4 +1,4 @@
-"""Recent-first native history acceptance; synthetic home and zero model turns."""
+"""Recent-first native history acceptance with a disposable home and local model."""
 import asyncio
 from http.server import ThreadingHTTPServer
 import json
@@ -55,6 +55,32 @@ async def verify(home):
         assert Model.turns == 0
         print(json.dumps({'native_history_pages': 'pass', 'initial_rows': len(opened['messages']),
             'history_rows': len(seen), 'pages': pages, 'initial_json_bytes': len(json.dumps(opened).encode()), 'model_turns': Model.turns}), flush=True)
+
+        queue = asyncio.Queue(maxsize=256)
+        native.listeners.add(queue)
+        receipt = await ops.invoke('chat.send', {'session_id': sid, 'text': 'A native message rewrite probe'})
+        async with asyncio.timeout(45):
+            while True:
+                event = await queue.get()
+                if event.get('type') == 'message.complete' and event.get('session_id') == sid:
+                    assert event.get('payload', {}).get('status') != 'error'
+                    break
+        current = await ops.invoke('chat.history', {'session_id': sid})
+        sent = next(m for m in current['messages'] if m.get('row_id') == receipt['user_row_id'])
+        uid = sent.get('message_uid')
+        if uid:
+            assert receipt.get('user_message_uid') == uid
+            db = SessionDB(db_path=Path(get_profile_dir('alpha')) / 'state.db')
+            try:
+                key = db.get_compression_tip('canonical-alpha')
+                rows = db.get_messages_as_conversation(key)
+                db.replace_messages(key, rows, active_only=True)
+            finally:
+                db.close()
+            rewritten = await ops.invoke('chat.history', {'session_id': sid})
+            matches = [row for row in rewritten['messages'] if row.get('message_uid') == uid]
+            assert len(matches) == 1 and matches[0]['row_id'] != sent['row_id']
+        print(json.dumps({'native_rewrite': 'pass' if uid else 'legacy row-address fallback'}), flush=True)
     finally:
         await native.stop()
 

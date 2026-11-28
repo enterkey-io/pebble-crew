@@ -33,3 +33,21 @@ it('finishes on a browser that truncates scroll writes instead of scheduling fra
   expect(follower.active).toBe(false);
   expect(frames.size).toBe(0);
 });
+
+it('moves the conversation up with a shorter pane in the same frame and glides for new content', () => {
+  const frames: FrameRequestCallback[] = [];
+  vi.stubGlobal('requestAnimationFrame', (callback: FrameRequestCallback) => frames.push(callback));
+  vi.stubGlobal('cancelAnimationFrame', () => undefined);
+  vi.stubGlobal('matchMedia', () => ({ matches: false }));
+  const node = { scrollTop: 500, scrollHeight: 1000, clientHeight: 500 };
+  const follower = new TranscriptFollow(node as unknown as HTMLElement);
+  node.clientHeight = 476;
+  follower.resized();
+  expect(node.scrollTop).toBe(524);
+  expect(frames).toHaveLength(0);
+  node.scrollHeight = 1100;
+  node.clientHeight = 500;
+  follower.resized();
+  expect(node.scrollTop).toBe(524);
+  expect(frames).toHaveLength(1);
+});

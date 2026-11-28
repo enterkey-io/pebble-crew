@@ -1,7 +1,6 @@
 import type { WorkspaceBot } from '@hermes-client/protocol';
 import { AgentAvatar } from './AgentAvatar';
 import { Button } from './components/ui/button';
-import { LoadingBar } from './components/ui/loading-bar';
 
 export function StartupScreen({
   mainPebble,
@@ -15,18 +14,22 @@ export function StartupScreen({
   return (
     <main className="owner-entry">
       <div className="startup-progress">
-        <div className="startup-pebble" aria-hidden="true">
-          <AgentAvatar
-            id={mainPebble?.id ?? 'startup'}
-            look={{
-              kind: 'shape',
-              shape: mainPebble?.appearance.shape ?? 'pebble',
-              color: mainPebble?.appearance.color ?? 'iris',
-            }}
-            large
-          />
+        <div className="startup-pebble-stage" role="progressbar" aria-label="Opening Pebble Crew">
+          {mainPebble && (
+            <div className="startup-pebble" key={mainPebble.id} aria-hidden="true">
+              <AgentAvatar
+                id={mainPebble.id}
+                look={{
+                  kind: 'shape',
+                  shape: mainPebble.appearance.shape,
+                  color: mainPebble.appearance.color,
+                }}
+                mood="welcoming"
+                large
+              />
+            </div>
+          )}
         </div>
-        <LoadingBar active label="Opening Pebble Crew" />
         {error && (
           <div className="startup-error">
             <p role="alert">{error}</p>

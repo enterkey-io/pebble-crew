@@ -46,6 +46,8 @@ export function ConversationInput({
   onSend,
   onStop,
   onVoice,
+  beforeAction,
+  keepBeforeAction,
   children,
 }: {
   draft: ComposerDraft;
@@ -65,6 +67,9 @@ export function ConversationInput({
   onSend: (command?: string) => void;
   onStop: () => void;
   onVoice: () => void;
+  beforeAction?: ReactNode;
+  /** Keeps `beforeAction` shown while the box has text (dictation in progress). */
+  keepBeforeAction?: boolean;
   children: ReactNode;
 }) {
   const value = useSyncExternalStore(draft.subscribe, draft.get);
@@ -108,7 +113,7 @@ export function ConversationInput({
       )}
       <MentionSuggestions suggestions={mentions} className="pc-composer-width mb-2" />
       <PromptInputFrame
-        className="pc-composer pc-composer-row pc-composer-width"
+        className="pc-composer pc-composer-row pc-composer-width gap-1.5 p-[6px]"
         autoComplete="off"
         onSubmit={(e) => {
           e.preventDefault();
@@ -120,6 +125,7 @@ export function ConversationInput({
       >
         {children}
         <PromptInputField
+          className="text-[length:var(--draft-font-size)] leading-normal md:text-[length:var(--draft-font-size)]"
           sizing="fixed"
           ref={field}
           rows={1}
@@ -176,6 +182,7 @@ export function ConversationInput({
             }
           }}
         />
+        {((!value && !hasMessage) || keepBeforeAction) && beforeAction}
         <ComposerAction
           mode={
             running && !composing

@@ -418,16 +418,20 @@ export function PebbleEditor({
           </FormSection>
         )}
         {tab === 'voice' && !retired && (
-          <VoiceSettingsEditor
-            client={client}
-            profile={bot.profile}
-            callActive={callActive}
-            request={voiceRequest}
-            requestResolved={!!voiceRequest && resolvedVoiceRequest === voiceRequest}
-            onCredentialConfirmed={() => setResolvedVoiceRequest(voiceRequest)}
-            onReady={onVoiceReady}
-            onClose={close}
-          />
+          <div className="grid gap-6">
+            {client.supportsLiveVoice && (
+              <VoiceSettingsEditor
+                client={client}
+                profile={bot.profile}
+                callActive={callActive}
+                request={voiceRequest}
+                requestResolved={!!voiceRequest && resolvedVoiceRequest === voiceRequest}
+                onCredentialConfirmed={() => setResolvedVoiceRequest(voiceRequest)}
+                onReady={onVoiceReady}
+                onClose={close}
+              />
+            )}
+          </div>
         )}
       </TabbedEditor>
       {busy && (

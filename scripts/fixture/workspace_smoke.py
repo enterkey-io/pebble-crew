@@ -148,6 +148,10 @@ async def verify(home, model_port):
     workspace = WorkspaceService(ops, store)
     try:
         await native.call('profiles.create', {'name': 'engineer', 'no_alias': True, 'no_skills': True, 'mirror_credentials': False})
+        engineer_home = home / 'profiles' / 'engineer'
+        (engineer_home / 'SOUL.md').write_text('SYNTHETIC_SPOKEN_ENGINEER_PERSONA\n')
+        (engineer_home / 'memories').mkdir(exist_ok=True)
+        (engineer_home / 'memories' / 'MEMORY.md').write_text('The synthetic office plant is named Saffron.\n')
         existing_model = await native.call('bot_web.models', {'action': 'describe'})
         await native.call('bot_web.models', {'action': 'grant', 'profile': 'engineer', 'expected': existing_model['fingerprint']})
         soul = (home / 'SOUL.md').read_bytes()
@@ -255,8 +259,9 @@ async def verify(home, model_port):
                 config = read_user_config_raw() or {}
                 config.setdefault('auxiliary', {})['voice_chat'] = {'model': 'must-not-use-auxiliary-voice-reasoner'}
                 config.setdefault('voice', {}).setdefault('gpt_live', {})['base_url'] = 'http://127.0.0.1:' + str(model_port) + '/v1'
+                config['approvals'] = {'mode': 'manual'}
                 save_config(config)
-            voice = LiveVoice(ops)
+            voice = LiveVoice(ops, store)
             engineer_chat = await ops.invoke('bot.open', {'profile': 'engineer'})
             sid = engineer_chat['session_id']
             before_env = (home / '.env').read_bytes()
@@ -270,42 +275,69 @@ async def verify(home, model_port):
             assert (await voice.invoke('voice.status', {'session_id': sid}))['key_confirmed'], 'Saved-key confirmation was lost between voice entry points'
             status = await voice.invoke('voice.preferences', {'session_id': sid, 'voice': status['voices'][1], 'complete': True})
             assert 'speed' not in status and status['setup_complete'], status
-            for preview in (True, False):
-                answer = await voice.invoke('voice.session', {'session_id': sid, 'sdp': 'v=0\r\nsynthetic-offer\r\n', 'preview': preview})
-                assert answer['transport']['sdp'] == 'v=0\r\nsynthetic-answer\r\n'
-                sent = WorkspaceModel.live_requests[-1]
-                assert sent['transport']['sdp'] == 'v=0\r\nsynthetic-offer\r\n'
-                assert sent['session']['audio']['output']['voice'] == status['voice']
-                assert '[Pebble Crew delivery]' not in sent['session']['instructions']
-                assert 'synthetic-voice-only-key' not in json.dumps(sent)
+            preview = True
+            answer = await voice.invoke('voice.session', {'session_id': sid, 'sdp': 'v=0\r\nsynthetic-offer\r\n', 'preview': preview})
+            assert answer['transport']['sdp'] == 'v=0\r\nsynthetic-answer\r\n'
+            sent = WorkspaceModel.live_requests[-1]
+            assert sent['transport']['sdp'] == 'v=0\r\nsynthetic-offer\r\n'
+            assert sent['session']['audio']['output']['voice'] == status['voice']
+            assert '[Pebble Crew delivery]' not in sent['session']['instructions']
+            assert 'synthetic-voice-only-key' not in json.dumps(sent)
             assert before_env in (home / '.env').read_bytes(), 'Voice credential changed unrelated primary secrets'
             with _config_profile_scope('default'):
                 from hermes_cli.config import load_env
                 assert load_env()['VOICE_TOOLS_OPENAI_KEY'] == 'synthetic-voice-only-key'
             assert (await voice.invoke('voice.status', {'session_id': opened['session_id']}))['key_confirmed'], 'Primary did not reuse the approved shared voice account'
             start = len(WorkspaceModel.requests)
-            accepted = await voice.invoke('voice.submit', {'session_id': sid, 'text': 'Synthetic live voice request', 'context': 'User: check this synthetic request'})
-            assert type(accepted.get('user_row_id')) is int, accepted
-            async with asyncio.timeout(60):
-                while True:
-                    event = await queue.get()
-                    if event.get('type') == 'message.complete' and event.get('session_id') == sid:
-                        receipt = event.get('payload', {}).get('persisted_turn', {})
-                        assert receipt.get('user_row_id') == accepted['user_row_id'], event
-                        assert type(receipt.get('final_assistant_row_id')) is int, event
-                        break
+            call_id = voice.spoken.begin(sid, 'fixture-voice')
+            request = {'session_id': sid, 'call_id': call_id, 'utterance_id': 'spoken-fixture'}
+            params = {**request, 'text': 'Synthetic live voice request'}
+            assert (await voice.invoke('voice.submit', params))['state'] == 'pending'
+            await asyncio.wait_for(asyncio.gather(*voice.spoken.tasks), 60)
+            status = await voice.invoke('voice.turn', request)
+            assert status['state'] == 'ready', status
+            assert type(status['user_row_id']) is int and type(status['assistant_row_id']) is int, status
+            assert await voice.invoke('voice.submit', params) == status
             assert WorkspaceModel.requests[start:] and all(r.get('model') == 'fixture-model' for r in WorkspaceModel.requests[start:])
             assert 'live spoken conversation' in json.dumps(WorkspaceModel.requests[start:]), 'Native Live surface note omitted'
-            followup = await voice.invoke('voice.end', {'session_id': sid, 'call_id': 'synthetic-live', 'transcript': 'User: We could change the project next week. No decision yet.\nAssistant: We can decide later.'})
-            assert followup['submitted'] is True
-            assert await voice.invoke('voice.end', {'session_id': sid, 'call_id': 'synthetic-live', 'transcript': 'replay'}) == {'submitted': False}
-            async with asyncio.timeout(60):
-                while True:
-                    event = await queue.get()
-                    if event.get('type') == 'message.complete' and event.get('session_id') == sid and event.get('payload', {}).get('persisted_turn', {}).get('user_row_id') == followup['user_row_id']:
-                        break
+            voice_payloads = json.dumps(WorkspaceModel.requests[start:])
+            assert 'SYNTHETIC_SPOKEN_ENGINEER_PERSONA' in voice_payloads, 'Voice turn omitted the selected persona'
+            assert 'The synthetic office plant is named Saffron.' in voice_payloads, 'Voice turn omitted native memory'
             history = await ops.invoke('chat.history', {'session_id': sid})
-            assert not any(str(row.get('row_id')) == str(followup['user_row_id']) or 'The live voice call has ended' in str(row.get('text', '')) for row in history['messages']), 'Call-end instruction became a visible owner message'
+            user, = [row for row in history['messages'] if row.get('row_id') == status['user_row_id']]
+            assert user['role'] == 'user' and user['text'] == params['text'], user
+            reply, = [row for row in history['messages'] if row.get('row_id') == status['assistant_row_id']]
+            assert await voice.spoken.speech(sid, request) == ('fixture-voice', reply['text'])
+            call = await voice.invoke('voice.end', {'session_id': sid, 'call_id': call_id})
+            assert call['call']['id']
+            assert await voice.invoke('voice.end', {'session_id': sid, 'call_id': call_id}) == {}
+            # The existing terminal tool must go through the native approval queue.
+            target = home.parent / 'spoken-approval-target'
+            target.mkdir()
+            marker = target / 'keep.txt'
+            marker.write_text('Synthetic protected file')
+            Model.approval_target = str(target)
+            approval_call = voice.spoken.begin(sid, 'fixture-voice')
+            approval = {'session_id': sid, 'call_id': approval_call, 'utterance_id': 'spoken-approval'}
+            await voice.invoke('voice.submit', {**approval, 'text': 'nativeapproval: require explicit permission'})
+            async with asyncio.timeout(30):
+                while True:
+                    pending = await ops.invoke('chat.approvals', {'session_id': sid})
+                    if pending['approvals']:
+                        break
+                    await asyncio.sleep(0.1)
+            assert marker.exists()
+            assert (await voice.invoke('voice.turn', approval))['state'] == 'pending'
+            try:
+                await voice.spoken.speech(sid, approval)
+            except InvalidOperation:
+                pass
+            else:
+                raise AssertionError('Unresolved approval reached voice playback')
+            await ops.invoke('chat.approve', {'session_id': sid, 'request_id': pending['approvals'][0]['request_id'], 'choice': 'deny'})
+            await asyncio.wait_for(asyncio.gather(*voice.spoken.tasks), 30)
+            assert (await voice.invoke('voice.turn', approval))['state'] == 'ready'
+            assert marker.exists(), 'Denied spoken action was executed'
         # Native completion is profile/session scoped and does not invoke a model.
         from bot_web.commands import invoke as command
         command_chat = await ops.invoke('bot.open', {'profile': 'engineer'})

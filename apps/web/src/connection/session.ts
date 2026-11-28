@@ -102,6 +102,9 @@ export class OwnerSession {
       get supportsRoomDisband() {
         return capabilities()?.supportsRoomDisband ?? false;
       },
+      get supportsAtmeeSetup() {
+        return capabilities()?.supportsAtmeeSetup ?? false;
+      },
       get supportsAttachments() {
         return capabilities()?.supportsAttachments ?? false;
       },
@@ -126,11 +129,15 @@ export class OwnerSession {
           (wire) => wire.invoke(operation, params),
           operationEffect(operation, params) !== 'write',
         ),
+      videoMedia: (session, call, signal) => this.#transport().videoMedia(session, call, signal),
+      voiceAudio: (session, call, utterance, signal) =>
+        this.#transport().voiceAudio(session, call, utterance, signal),
       uploadFile: (session, file, signal) =>
         this.#request((wire) => wire.uploadFile(session, file, signal), false),
-      downloadFile: (session, id) => this.#request((wire) => wire.downloadFile(session, id), true),
-      downloadMedia: (session, row, reference, signal) =>
-        this.#request((wire) => wire.downloadMedia(session, row, reference, signal), true),
+      downloadFile: (session, id, signal, size) =>
+        this.#request((wire) => wire.downloadFile(session, id, signal, size), true),
+      downloadMedia: (session, row, reference, signal, size) =>
+        this.#request((wire) => wire.downloadMedia(session, row, reference, signal, size), true),
     };
   }
   get recoveryVersion() {

@@ -128,6 +128,41 @@ def register(source):
         return response
     server.method('bot_web.conversation.resume')(resume)
 
+    def submit(rid, params):
+        if not isinstance(params, dict) or set(params) != {'session_id', 'text'}:
+            return server._err(rid, -32602, 'Invalid chat submission')
+        session, error = server._sess_nowait(params, rid)
+        if error:
+            return error
+        target_key = getattr(server, '_submit_row_target_key', lambda s: s.get('session_key'))
+        before = target_key(session)
+        response = server._methods['prompt.submit'](rid, params)
+        result = response.get('result')
+        row_id = result.get('user_row_id') if isinstance(result, dict) else None
+        if type(row_id) is not int or row_id <= 0:
+            return response
+        # Native row IDs can be retired as Hermes rewrites a turn. Look up the
+        # stable identity of this exact receipt without replaying the prompt.
+        from conversation_history import message_uid
+        try:
+            with server._session_db(session) as db:
+                around = getattr(db, 'get_messages_around', None)
+                if around:
+                    for key in dict.fromkeys((before, target_key(session))):
+                        if not key:
+                            continue
+                        for row in around(key, row_id, window=0)['window']:
+                            if row['id'] == row_id and row['role'] == 'user':
+                                if uid := message_uid(row.get('message_uid')):
+                                    return server._ok(rid, {**result, 'user_message_uid': uid})
+        except Exception:
+            # The native submit already ran. An optional lookup cannot change
+            # the outcome or cause the caller to retry the mutation.
+            pass
+        return response
+
+    server.method('bot_web.conversation.submit')(submit)
+
     def live_snapshot(rid, params):
         """Native display snapshot with a proven current-turn row anchor."""
         if not isinstance(params, dict) or set(params) != {'session_id'}:

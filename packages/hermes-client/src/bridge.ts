@@ -1,4 +1,5 @@
 import {
+  atmeeErrors,
   ClientError,
   ConnectionLifetime,
   endpointUrl,
@@ -17,6 +18,8 @@ export interface BridgeEvent {
   readonly payload?: Readonly<Record<string, unknown>>;
 }
 export type DownloadedMedia = { blob: Blob; name: string };
+/** A smaller copy of a photo: `thumb` for thumbnails, `preview` for chat. */
+export type PhotoSize = 'thumb' | 'preview';
 
 /** Direct connection to an optional plugin on the user's Hermes host. */
 export class BotBridgeClient {
@@ -42,6 +45,7 @@ export class BotBridgeClient {
   #reactions = false;
   #roomReactions = false;
   #roomDisband = false;
+  #atmeeSetup = false;
   #exchanges = false;
   #exchangeEvents = false;
   #recovery = false;
@@ -83,6 +87,9 @@ export class BotBridgeClient {
   }
   get supportsRoomDisband(): boolean {
     return this.#roomDisband;
+  }
+  get supportsAtmeeSetup(): boolean {
+    return this.#atmeeSetup;
   }
   computerSocket(ticket: string): WebSocket {
     if (
@@ -165,6 +172,7 @@ export class BotBridgeClient {
     this.#reactions = !!data.capabilities && record(data.capabilities).reactions === true;
     this.#roomReactions = !!data.capabilities && record(data.capabilities).room_reactions === true;
     this.#roomDisband = !!data.capabilities && record(data.capabilities).room_disband === true;
+    this.#atmeeSetup = !!data.capabilities && record(data.capabilities).atmee_setup === true;
   }
 
   async invoke(operation: string, params: Readonly<Record<string, unknown>>): Promise<unknown> {
@@ -273,14 +281,106 @@ export class BotBridgeClient {
       throw new ClientError('INVALID_RESPONSE');
     return result as { id: string; name: string; size: number; kind: string; state: string };
   }
-  async downloadFile(sessionId: string, id: string, signal?: AbortSignal): Promise<Blob> {
+  voiceAudio(sessionId: string, callId: string, utteranceId: string, signal: AbortSignal) {
+    return this.#callMedia(
+      'v1/voice/speech',
+      'voice.speech',
+      'application/octet-stream',
+      {
+        session_id: sessionId,
+        call_id: callId,
+        utterance_id: utteranceId,
+      },
+      8,
+      signal,
+    );
+  }
+
+  videoMedia(sessionId: string, callId: string, signal: AbortSignal) {
+    return this.#callMedia(
+      'v1/atmee/media',
+      'atmee.media',
+      'video/mp4',
+      {
+        session_id: sessionId,
+        call_id: callId,
+      },
+      undefined,
+      signal,
+    );
+  }
+
+  async *#callMedia(
+    path: string,
+    operation: string,
+    type: string,
+    params: Record<string, string>,
+    maxMiB: number | undefined,
+    signal: AbortSignal,
+  ): AsyncGenerator<Uint8Array> {
+    if (!this.#connection) throw new ClientError('DISCONNECTED');
+    const generation = this.#lifetime.capture();
+    const controller = new AbortController();
+    const abort = () => controller.abort();
+    signal.addEventListener('abort', abort, { once: true });
+    if (signal.aborted) controller.abort();
+    this.#active.add(controller);
+    let timer = setTimeout(abort, 120000);
+    try {
+      const url = endpointUrl(this.#endpoint, path);
+      const response = await this.#fetch(
+        url,
+        this.#options(controller, 'POST', {
+          operation,
+          params,
+        }),
+      );
+      await this.#check(response, url);
+      if (response.headers.get('content-type') !== type || !response.body)
+        throw new ClientError('INVALID_RESPONSE');
+      const reader = response.body.getReader();
+      let bytes = 0;
+      try {
+        for (;;) {
+          const part = await reader.read();
+          this.#lifetime.assertCurrent(generation);
+          if (part.done) return;
+          if (maxMiB === undefined) {
+            clearTimeout(timer);
+            timer = setTimeout(abort, 120000);
+          } else {
+            bytes += part.value.length;
+            if (bytes > maxMiB * 1024 * 1024) throw new ClientError('INVALID_RESPONSE');
+          }
+          yield part.value;
+        }
+      } finally {
+        await reader.cancel().catch(() => undefined);
+        reader.releaseLock();
+      }
+    } finally {
+      clearTimeout(timer);
+      signal.removeEventListener('abort', abort);
+      controller.abort();
+      this.#active.delete(controller);
+    }
+  }
+  /** `size` asks for a smaller copy of a photo; other files always come back whole. */
+  async downloadFile(
+    sessionId: string,
+    id: string,
+    signal?: AbortSignal,
+    size?: PhotoSize,
+  ): Promise<Blob> {
     const generation = this.#lifetime.capture();
     return this.#withSlot(() => {
       this.#lifetime.assertCurrent(generation);
       signal?.throwIfAborted();
-      return this.#downloadBinary('files.read', { session_id: sessionId, id }, signal).then(
-        (file) => file.blob,
-      );
+      return this.#downloadBinary(
+        'files.read',
+        { session_id: sessionId, id, ...(size ? { variant: size } : {}) },
+        signal,
+      ).then((file) => file.blob);
     });
   }
   async downloadMedia(
@@ -288,6 +388,7 @@ export class BotBridgeClient {
     rowId: number,
     reference: string,
     signal?: AbortSignal,
+    size?: PhotoSize,
   ): Promise<DownloadedMedia> {
     if (!this.#generatedMedia) throw new ClientError('UNSUPPORTED');
     const generation = this.#lifetime.capture();
@@ -296,7 +397,7 @@ export class BotBridgeClient {
       signal?.throwIfAborted();
       return this.#downloadBinary(
         'media.read',
-        { session_id: sessionId, row_id: rowId, reference },
+        { session_id: sessionId, row_id: rowId, reference, ...(size ? { variant: size } : {}) },
         signal,
       );
     });
@@ -461,10 +562,14 @@ export class BotBridgeClient {
         'INVALID_PARAMETERS',
         'INVALID_ATTACHMENT',
         'ATTACHMENT_QUOTA',
+        'PUSH_UNSUPPORTED',
+        'PUSH_DEVICE_LIMIT',
+        'PUSH_REFUSED',
       ] as const;
       const match =
         known.find((item) => item === code) ??
-        Object.keys(voiceErrors).find((item): item is keyof typeof voiceErrors => item === code);
+        Object.keys(voiceErrors).find((item): item is keyof typeof voiceErrors => item === code) ??
+        Object.keys(atmeeErrors).find((item): item is keyof typeof atmeeErrors => item === code);
       const retry = Number(response.headers.get('Retry-After'));
       throw new ClientError(
         match ?? 'RPC_FAILED',
