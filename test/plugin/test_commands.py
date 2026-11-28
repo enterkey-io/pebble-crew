@@ -1,5 +1,8 @@
+import json
+import tempfile
 import unittest
-from unittest.mock import AsyncMock
+from pathlib import Path
+from unittest.mock import AsyncMock, patch
 from test_security import Native
 from bot_web.commands import invoke
 from bot_web.operations import BotOperations, InvalidOperation
@@ -60,3 +63,27 @@ class CommandBoundaryTests(unittest.IsolatedAsyncioTestCase):
         for model in ['model[2m]','model[1m]--flag','model;echo','-flag','x'*251]:
             with self.assertRaises(InvalidOperation):
                 await invoke(self.ops, 'chat.model.select', {'session_id':'chat-alpha', 'provider':'native', 'model':model, 'confirm':False})
+
+    async def test_owner_model_group_rules_are_returned_only_when_valid(self):
+        self.ops.gateway.call.return_value = {'model': 'alpha', 'provider': 'ollama', 'providers': [
+            {'slug': 'ollama', 'name': 'Ollama', 'authenticated': True, 'models': ['alpha']}]}
+        rules = {'schema': 1,
+                 'merge': [{'canonical': 'alpha:latest', 'provider': 'olares-ollama-cloud',
+                            'group': 'ollama-cloud', 'spellings': ['alpha', 'org/alpha']}],
+                 'hide': {'ollama-local': ['beta:latest']}, 'prefer': {'gamma:7b': 'olares-ollama-local'}}
+        with tempfile.TemporaryDirectory() as home:
+            path = Path(home) / 'model-groups.json'
+            with patch('bot_web.commands.model_groups_path', return_value=path):
+                options = lambda: invoke(self.ops, 'chat.model.options', {'session_id': 'chat-alpha'})
+                self.assertNotIn('model_groups', await options())
+                path.write_text(json.dumps(rules))
+                self.assertEqual((await options())['model_groups'],
+                                 {key: rules[key] for key in ('merge', 'hide', 'prefer')})
+                for broken in ({**rules, 'schema': 2}, {**rules, 'extra': True},
+                               {**rules, 'hide': {'elsewhere': ['alpha']}},
+                               {**rules, 'prefer': {'alpha': '--provider x'}},
+                               {**rules, 'merge': [{**rules['merge'][0], 'spellings': ['alpha; rm']}]}):
+                    path.write_text(json.dumps(broken))
+                    self.assertNotIn('model_groups', await options(), broken)
+                path.write_text('{not json')
+                self.assertNotIn('model_groups', await options())
